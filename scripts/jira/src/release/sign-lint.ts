@@ -53,5 +53,6 @@ export function planOf(spec: string): string | null {
 }
 
 export function estimateLine(text: string): boolean {
-  return text.split('\n').some((line) => /^[ \t\r\f\v]*estimate record:/i.test(line));
+  const line = text.split('\n').find((l) => /^[ \t\r\f\v]*estimate record:/i.test(l)) ?? ':';
+  return line.slice(line.indexOf(':') + 1).trim().replace(/^`/, '').replace(/`$/, '') !== '';
 }

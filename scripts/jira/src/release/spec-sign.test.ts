@@ -3253,10 +3253,19 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       await sameRefusal('spec', fileArgs('HIMMEL-10205', f.spec, f.verdicts, f.plan), /residual findings[\s\S]*capped verifier unavailable\/refused/);
     });
 
-    it('(b) a path:line Fact ownership cell gets the signing lint refusal', async () => {
-      const { spec: p, plan } = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh:12');
-      await sameRefusal('spec', fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')], plan),
-        /minerva-trace-lint\.sh refused the spec:[\s\S]*minerva-spec-gate\.sh:12/);
+    it('(b) a path:line Fact ownership cell gets the signing lint refusal, with this checkout\'s new message', async () => {
+      const scripts = 'marketplace/plugins/himmel-ops/scripts';
+      const signerRoot = mkdtempSync(join(root, 'signer-root-'));
+      execFileSync('git', ['init', '-q', signerRoot]);
+      mkdirSync(join(signerRoot, scripts), { recursive: true });
+      for (const name of ['minerva-spec-gate.sh', 'minerva-trace-lint.sh']) copyFileSync(join(candidateRoot, scripts, name), join(signerRoot, scripts, name));
+      vi.stubEnv('HIMMEL_REPO', candidateRoot);
+      sourceFixture.primary = signerRoot;
+      try {
+        const { spec: p, plan } = bucketSpec(`${scripts}/minerva-spec-gate.sh:12`);
+        await sameRefusal('spec', fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')], plan),
+          /minerva-trace-lint\.sh refused the spec:[\s\S]*minerva-spec-gate\.sh:12; cite the file in backticks and name its function bare/);
+      } finally { sourceFixture.primary = null; }
     });
 
     it('(c) a spec-review SPEC CLEAN that reviewed other bytes gets the signing message', async () => {
@@ -3278,9 +3287,18 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       expect(checked).toEqual({ code: 0, out: [expect.stringMatching(/ plan-sha=none$/)] });
     });
 
-    it('prints one OK line on accepted bytes and leaves every record and fixture file as it was', async () => {
+    it('a spec-review record spec-review accepts is accepted with --route spec-review, naming the plan sha', async () => {
+      const f = rspec();
+      const args = fileArgs('K-2', f.spec, [critic(f.spec, 'SPEC CLEAN')], f.plan);
+      const checked = await signCheckRun(...args, '--route', 'spec-review');
+      expect(await signingRefusal('spec-review', args)).toBeNull();
+      expect(checked).toEqual({ code: 0, out: [`SIGN-CHECK OK spec-sha=${sha(f.spec)} plan-sha=${sha(f.plan)}`] });
+    });
+
+    it('prints one OK line on accepted bytes, reads no signer or release record and leaves every file as it was', async () => {
       const p = spec();
       const args = fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]);
+      writeFileSync(join(sctx().dir, 'operator.jsonl'), 'not a record chain\n');
       const before = fixtureHashes(root);
       const checked = await signCheckRun(...args);
       expect(checked).toEqual({ code: 0, out: [expect.stringMatching(OK_LINE)] });
@@ -3357,14 +3375,16 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
     });
 
     it('estimateLine agrees with the spec gate on each estimate-line form', () => {
-      const answers = ['Estimate record: x', '  estimate RECORD: x', 'Estimates: x'].map((line, i) => {
+      const forms = ['Estimate record: x', '  estimate RECORD: x', 'Estimates: x', 'Estimate record:', 'Estimate record:   ', 'Estimate record: ``',
+        'Estimate record:\nEstimate record: x'];
+      const answers = forms.map((line, i) => {
         const p = join(root, `estimate-${i}.md`);
         writeFileSync(p, `# title\n\n${line}\n`);
         const present = !gate(p).stderr.includes("no 'Estimate record:");
         expect(estimateLine(readFileSync(p, 'utf8')), line).toBe(present);
         return present;
       });
-      expect(answers).toEqual([true, true, false]);
+      expect(answers).toEqual([true, true, false, false, false, false, false]);
     });
 
     it('one lintSpec call runs the shell lint once while the gate really calls sign-shape', () => {
