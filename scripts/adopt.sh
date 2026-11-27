@@ -1757,11 +1757,18 @@ do_core() {
       GIVEN_ITEMS+=(wiring-pretooluse)
       wire_merge_gate "$merge_container_created"
     fi
+    local local_absent=0
+    [[ -e "$TARGET/.claude/settings.local.json" || -L "$TARGET/.claude/settings.local.json" ]] || local_absent=1
     wire_local_trio
     # The initiative SessionStart hook is not a portable file: it reads THIS
     # clone's .env, which is where `himmelctl config set initiative.*` writes, so
     # it is referenced by the clone's path (like the statusline), not copied.
     wire_sessionstart_hook "$TARGET/.claude/settings.local.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
+    if [[ $local_absent -eq 1 && $DRY_RUN -eq 0 && -f "$TARGET/.claude/settings.local.json" ]]; then
+      prov_record create file "$TARGET/.claude/settings.local.json" --scope project --class code \
+        --row project-settings --writer adopt.sh --pre-absent --post-file "$TARGET/.claude/settings.local.json" \
+        || echo "  warning: provenance record failed for $TARGET/.claude/settings.local.json" >&2
+    fi
     echo "  worktree commands: bash $TARGET/scripts/worktree.sh feat/slug"
   else
     # user scope: reference this himmel clone, don't copy per-repo. Wire the full

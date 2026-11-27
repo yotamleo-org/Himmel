@@ -114,10 +114,15 @@ PROV_STEP="preflight"
 prov_finish() {
   local rc=$?
   if [[ $DRY_RUN -eq 0 ]]; then
+    local only_false=true
+    if [[ -n "${SHARED_PRE_ENABLED_JSON:-}" ]]; then
+      PROV_SETTINGS_FILE="$SETTINGS_FILE"; PROV_SCOPE=project; only_false=false
+      PROV_PRE_ENABLED_JSON="$SHARED_PRE_ENABLED_JSON"; EP_CONTAINER_ABSENT="$SHARED_EP_ABSENT"
+    fi
     if [[ -n "${PROV_PRE_ENABLED_JSON:-}" ]]; then
       local keys spec ptr
-      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" \
-        '(.enabledPlugins // {}) | to_entries[] | select(.value == false and (.key as $k | $pre | has($k) | not)) | .key' \
+      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" --argjson onlyFalse "$only_false" \
+        '(.enabledPlugins // {}) | to_entries[] | select((($onlyFalse | not) or .value == false) and (.key as $k | $pre | has($k) | not)) | .key' \
         "$PROV_SETTINGS_FILE" 2>/dev/null) || keys=""
       while IFS= read -r spec; do
         [[ -n "$spec" ]] || continue
@@ -536,6 +541,10 @@ fi
 PRE_INSTALL_ENABLED_JSON='{}'
 if [[ -f "$SETTINGS_FILE" ]] && jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
   PRE_INSTALL_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$SETTINGS_FILE")
+fi
+if [[ $STRIP_USER -eq 1 ]]; then
+  SHARED_PRE_ENABLED_JSON="$PRE_INSTALL_ENABLED_JSON"; SHARED_EP_ABSENT=true
+  jq -e 'has("enabledPlugins")' "$SETTINGS_FILE" >/dev/null 2>&1 && SHARED_EP_ABSENT=false
 fi
 
 # ── Install plugins ─────────────────────────────────────────────────────────
