@@ -4311,6 +4311,8 @@ assert_rc "11341c7 a real assignment prefix before an agy read verb allows" 0 \
     "$(bash_rc_of "$WT2" 'k1=v agy plugin list' HOME="$T3H")"
 assert_rc "11341c8 an array assignment prefix before an agy read verb allows" 0 \
     "$(bash_rc_of "$WT2" 'k[1]=v agy plugin list' HOME="$T3H")"
+assert_rc "11341a9 two bracket globs with an equals sign between them ahead of an agy path deny" 2 \
+    "$(bash_rc_of "$WT2" 's[c]ripts/[x]=y/agy plugin install ./p' HOME="$T3H")"
 assert_rc "11341c9 a nested array subscript assignment prefix before another CLI's plugin install allows" 0 \
     "$(bash_rc_of "$WT2" 'k[i[0]]=v claude plugin install foo' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
