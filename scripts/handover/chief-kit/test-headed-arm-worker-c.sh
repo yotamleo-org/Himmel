@@ -1281,6 +1281,9 @@ git -C "$r53" worktree add -q --detach "$t3live53" || exit 1
 git -C "$r53" worktree add -q --detach "$feat53" || exit 1
 git -C "$r53" worktree add -q --detach "$shaped53/t3-broken" || exit 1
 rm -rf "${r53:?}/.git/worktrees/t3-broken"
+for repo53 in "$r53" "$t3live53" "$feat53"; do
+  git -C "$repo53" read-tree HEAD || exit 1
+done
 git -C "$u53" worktree add -q --detach "$tmp53/t3-53/worktrees/u53/t3-unreg" || exit 1
 git -C "$s53" worktree add -q --detach "$state53" || exit 1
 git -C "$s53" worktree add -q --detach "$claude53" || exit 1
@@ -1314,7 +1317,8 @@ real53() {
 snap53() {
   git -C "$r53" worktree list --porcelain &&
     ls -R "$r53/.git/worktrees" &&
-    cksum "$r53/.git/config" "$r53"/.git/worktrees/*/gitdir "$r53"/.git/worktrees/*/HEAD "$r53"/.git/worktrees/*/commondir &&
+    cksum "$r53/.git/config" "$r53/.git/index" "$r53"/.git/worktrees/*/gitdir \
+      "$r53"/.git/worktrees/*/HEAD "$r53"/.git/worktrees/*/commondir "$r53"/.git/worktrees/*/index &&
     git -C "$r53" config --list --local &&
     git -C "$r53" for-each-ref
 }
@@ -1352,7 +1356,8 @@ refused53() {
   check "53$1 $2 exits 2" "$rc53" 2
   contains "53$1 $2 reports the stale worktree" "$out53" "$refusal53"
 }
-for path53 in "$shaped53/t3-plain" "$shaped53/t3-broken" "$tmp53/h53-wt/x" "$tmp53/h53-worktrees/x" "$tmp53/h53b-wt" "$tmp53/h53-worktrees"; do
+for path53 in "$shaped53/t3-plain" "$shaped53/t3-broken" "$tmp53/h53-wt/x" "$tmp53/h53-worktrees/x" \
+  "$tmp53/h53b-wt" "$tmp53/h53-worktrees" "$tmp53/h53c/worktrees"; do
   dry53 "$path53"
   refused53 d "${path53#"$tmp53"/}"
 done
@@ -1437,6 +1442,30 @@ check "53o precondition: state query exits 2 without an anchor" "$rc53" 2
 dry53 "$feat53" HIMMEL_REPO="$noanchor53" UNGUARDED_LAUNCH_OK=1
 check "53o indeterminate state query dry-run exits 0" "$rc53" 0
 contains "53o indeterminate state query leaves the session folder derived" "$out53" "$derived53"
+
+blocked53="$tmp53/blocked53"
+mkdir "$blocked53" || exit 1
+trap 'chmod 700 "$blocked53"; rm -rf "$tmp"' EXIT
+chmod 000 "$blocked53" || exit 1
+if (cd -P "$blocked53") 2>/dev/null; then
+  echo "SKIP - 53q permissions do not prevent entering the fixture"
+else
+  dry53 "$blocked53/worktrees/gone"
+  refused53 q 'inaccessible shaped path'
+  real53 "$tmp53/c53q" PROJ-53-q ""
+  check "53q inaccessible shaped path real launch exits 2" "$rc53" 2
+  contains "53q inaccessible shaped path logs the refusal" "$(cat "$tmp53/c53q/log" 2>/dev/null)" \
+    "LAUNCH-REFUSED PROJ-53-q the doc's resume_cwd ($blocked53/worktrees/gone) $refusal53"
+  check "53q inaccessible shaped path leaves no launch record" "$([ -e "$tmp53/c53q/record" ] && echo record || echo absent)" absent
+  dry53 "$blocked53/plain/gone"
+  check "53q inaccessible unshaped path dry-run exits 0" "$rc53" 0
+  contains "53q inaccessible unshaped path leaves the session folder derived" "$out53" "$derived53"
+  dry53 "$blocked53/.cache/himmel/verdicts/q-wt/scratch"
+  check "53q inaccessible judge scratch dry-run exits 0" "$rc53" 0
+  contains "53q inaccessible judge scratch leaves the session folder derived" "$out53" "$derived53"
+fi
+chmod 700 "$blocked53" || exit 1
+trap 'rm -rf "$tmp"' EXIT
 
 # --- 17r. The readiness launcher (C0s cycle 1): worker-claude-launcher.sh is the ONE owner of the
 # final claude argv for the readiness role. Its real exec and its validation-only render (an env

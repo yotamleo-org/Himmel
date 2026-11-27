@@ -1388,10 +1388,13 @@ _worker_rcwd="${_worker_rcwd%"${_worker_rcwd##*[![:space:]]}"}"
 _worker_rcwd="${_worker_rcwd#\'}"; _worker_rcwd="${_worker_rcwd%\'}"
 _worker_rcwd="${_worker_rcwd#\"}"; _worker_rcwd="${_worker_rcwd%\"}"
 case "$_worker_rcwd" in \~|\~/*) _worker_rcwd="${HOME:-}${_worker_rcwd#\~}" ;; esac
-_worker_rcwd_phys="" _worker_rc_scratch=0 _worker_rc_claude=0 _worker_rc_top=""
+_worker_rcwd_phys="" _worker_rcwd_shape="" _worker_rcwd_failed=0
+_worker_rc_scratch=0 _worker_rc_claude=0 _worker_rc_top=""
 if [ -n "$_worker_rcwd" ]; then
-    _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_phys="" # swallow-ok: no resolved path to check
-    case "$_worker_rcwd_phys" in */.cache/himmel/verdicts/*/scratch) _worker_rc_scratch=1 ;; esac
+    _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_failed=1
+    _worker_rcwd_shape="$_worker_rcwd_phys"
+    [ "$_worker_rcwd_failed" -eq 0 ] || _worker_rcwd_shape="/${_worker_rcwd#/}"
+    case "$_worker_rcwd_shape" in */.cache/himmel/verdicts/*/scratch) _worker_rc_scratch=1 ;; esac
     case "$_worker_rcwd" in */.claude/worktrees/*) _worker_rc_claude=1 ;; esac
 fi
 _worker_vroot="${HANDOVER_DIR:-}"
@@ -1411,8 +1414,8 @@ if [ -n "$_worker_rcwd" ] && [ -n "$_worker_vroot" ]; then
     fi
 fi
 # A worktree-shaped resume_cwd must name a live Git toplevel. The raw .claude
-# spelling supplies its branch hint. Other shapes use the physical path and
-# exempt judge scratch. Both checks run before the dry-run report.
+# spelling supplies its branch hint. Other shapes use the physical path when
+# available, and exempt judge scratch. Both checks run before the dry-run report.
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 if [ -d "$_worker_rcwd_phys" ]; then
@@ -1449,7 +1452,7 @@ case "$_worker_rc_claude" in
     ;;
 0)
     if [ "$_worker_rc_scratch" -eq 0 ]; then
-        case "$_worker_rcwd_phys" in
+        case "$_worker_rcwd_shape" in
         */worktrees|*/worktrees/*|*-worktrees|*-worktrees/*|*-wt|*-wt/*)
             if [ -z "$_worker_rc_top" ] || [ "$_worker_rc_top" != "$_worker_rcwd_phys" ]; then
                 _launch_refusal_note worktree-missing "the doc's resume_cwd ($_worker_rcwd) is not an existing git worktree"
@@ -1500,7 +1503,7 @@ fi
 _judge_doc=""; _judge_qid=""
 if [ "$JUDGE" -eq 1 ]; then
     _judge_doc="$(_worker_phys_path "$DOC")" || _judge_doc=""
-    if [ "$_worker_rc_scratch" -eq 1 ]; then
+    if [ "$_worker_rc_scratch" -eq 1 ] && [ "$_worker_rcwd_failed" -eq 0 ]; then
         _judge_qid="${_worker_rcwd_phys%/scratch}"; _judge_qid="${_judge_qid##*/}"
         case "$_judge_qid" in "" | *[!A-Za-z0-9._-]*) _judge_qid="" ;; esac
     fi
@@ -1509,7 +1512,7 @@ fi
 _rm_doc=""
 [ "$RM" -eq 1 ] && { _rm_doc="$(_worker_phys_path "$DOC")" || _rm_doc=""; }
 unset -f _worker_phys_path
-unset -v _worker_rcwd _worker_rcwd_phys _worker_rc_scratch _worker_rc_claude _worker_rc_top _worker_vroot _worker_vroot_phys _worker_wt_base
+unset -v _worker_rcwd _worker_rcwd_phys _worker_rcwd_shape _worker_rcwd_failed _worker_rc_scratch _worker_rc_claude _worker_rc_top _worker_vroot _worker_vroot_phys _worker_wt_base
 # A session folder that would not load the himmel guard hooks is refused before the dry-run report and
 # every side effect below (preflight slot, doc edit, launch log, pretrust, exec). UNGUARDED_LAUNCH_OK=1
 # (launching shell) launches anyway with one WARN; the exported marker keeps headed-arm.sh from repeating it.
