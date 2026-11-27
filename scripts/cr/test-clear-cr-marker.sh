@@ -3049,6 +3049,8 @@ write_marker "$tmp" "$_tip"
 write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-imp","severity":"imp","file":"a.sh","line":1,"verdict":""}' "$_r1")" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-sug","severity":"sug","file":"a.sh","line":2,"verdict":""}' "$_r1")" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-crit","severity":"crit","verdict":""}' "$_r1")" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r1-escape","severity":"sug","fu_class":"escape","verdict":""}' "$_r1")" \
     "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"r2-fixed","severity":"sug","file":"a.sh","line":3,"verdict":"fixed"}' "${_tip:0:8}")" \
     "$(avail_ok "${_tip:0:8}")"
 # r2-fixed carries its variant-sweep record, so gate 4d passes and
@@ -3062,7 +3064,48 @@ if grepq "$LAST_CLEAR_OUT" -F 'r1-imp'; then pass; else
     fail "the refusal must name round-1 finding r1-imp: $LAST_CLEAR_OUT"; fi
 if grepq "$LAST_CLEAR_OUT" -F 'r1-sug'; then pass; else
     fail "the refusal must name round-1 finding r1-sug: $LAST_CLEAR_OUT"; fi
+if grepq "$LAST_CLEAR_OUT" -F "scripts/cr/review-round.sh defer --head $_tip --branch feat/x"; then pass; else
+    fail "11392 earlier-round suggestion refusal must give the tip defer command"; fi
+if [ "$(grep -cF 'scripts/cr/review-round.sh defer --head' <<< "$LAST_CLEAR_OUT")" -eq 1 ]; then pass; else
+    fail "11392 Important, Critical and escape rows must get no defer command"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh amend --head' && ! grepq "$LAST_CLEAR_OUT" -F '<agreed-or-disproved>'; then pass; else
+    fail "11392 excluded rows must get guidance to record the actual verdict"; fi
 if marker_exists "$tmp"; then pass; else fail "earlier-round unadjudicated: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+make_repo || exit 1
+_r1="$sha"
+(cd "$tmp" && echo x >> f.txt && git commit -qam "round 2" && git push -q origin feat/x) >/dev/null 2>&1 || exit 1
+_tip=$(git -C "$tmp" rev-parse --verify refs/heads/feat/x)
+write_marker "$tmp" "$_tip"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"sug"}' "$_r1")" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"codex-2","severity":"sug"}' "$_r1")" \
+    "$(avail_ok "${_tip:0:8}")"
+mkdir -p "$tmp/.git/cr-review-rounds/feat"
+printf '2\n' > "$tmp/.git/cr-review-rounds/feat/x.round"
+cp "$SCRIPT_DIR/../lib/"{go-gate,load-dotenv,project-mode}.sh "$tmp/scripts/lib/" || exit 1
+cp "$SCRIPT_DIR/"{known-findings.json,write-verdicts.sh} "$tmp/scripts/cr/" || exit 1
+cat > "$tmp/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+    'pr list') case "$*" in *'number,headRefOid'*) printf '6158 %s\n' "$(git rev-parse HEAD)";; *) echo 6158;; esac ;;
+    'repo view') echo 'example/replay main' ;;
+    'api repos/example/replay/contents/scripts/ci/ci-trust-paths.txt?ref=main') echo '^scripts/' ;;
+    'api repos/example/replay/pulls/6158') printf '%s|1\n' "$(git rev-parse HEAD)" ;;
+    'api repos/example/replay/pulls/6158/files') printf 'f.txt\t\n' ;;
+    *) exit 1 ;;
+esac
+STUB
+chmod +x "$tmp/bin/gh"
+stub_check_ci "$tmp" 0
+_defer_rc=0
+_defer_out=$(cd "$tmp" && PATH="$tmp/bin:$PATH" GH="$tmp/bin/gh" TRACKER=local CR_DEFER_TO='' \
+    bash "$tmp/scripts/cr/review-round.sh" defer --branch feat/x --head "$_tip" 2>&1) || _defer_rc=$?
+if [ "$_defer_rc" -eq 0 ] && ! marker_exists "$tmp"; then pass; else
+    fail "11392 PR 6158 replay must defer at the tip and clear the marker (rc=$_defer_rc): $_defer_out"; fi
+write_marker "$tmp" "$_tip"
+run_clear "$tmp" 0 "11392 PR 6158 replay clears again without a manual amend"
 rm -rf "$tmp"
 
 # 8f. --dry-run must NEVER mutate the shared ledger via the branch-wide gate
