@@ -4635,6 +4635,24 @@ out=$(mg_run mgs "$MGS" --merge-into-live); rc=$?
   && pass "T-merge a genuinely shrunken merge result still trips the shrink guard" \
   || fail "T-merge shrunk expected the shrink-guard refusal with the live graph kept (rc=$rc nodes=$(mg_count "$MGS/graphify-out/graph.json")): $out"
 
+PAC="$WS/pa-corpus"; mg_corpus "$PAC" 30 2
+cp "$PAC/graphify-out/graph.json" "$PAC/graphify-out/.graph.pre-ast.json"
+cp "$PAC/graphify-out/graph.json" "$WS/pa.orig"
+out=$(mg_run pat "$PAC" --merge-into-live); rc=$?
+{ [ "$rc" -eq 2 ] && cmp -s "$WS/pa.orig" "$PAC/graphify-out/graph.json" && [ ! -e "$PAC/graphify-out/.promote.lock" ]; } \
+  && pass "T-pre-ast a leftover snapshot refuses the merge, graph.json byte-identical" \
+  || fail "T-pre-ast expected rc 2 and an unchanged graph (rc=$rc nodes=$(mg_count "$PAC/graphify-out/graph.json")): $out"
+{ grep -qF "graphify-out/.graph.pre-ast.json" <<<"$out" && grep -qF "ast-update.sh" <<<"$out"; } \
+  && pass "T-pre-ast names the snapshot and the recovery command" || fail "T-pre-ast message: $out"
+out=$(mg_run pat "$PAC"); rc=$?
+{ [ "$rc" -eq 2 ] && grep -qF ".graph.pre-ast.json" <<<"$out" && cmp -s "$WS/pa.orig" "$PAC/graphify-out/graph.json"; } \
+  && pass "T-pre-ast a plain promote is refused too" || fail "T-pre-ast plain promote (rc=$rc): $out"
+rm -f "$PAC/graphify-out/.graph.pre-ast.json"
+out=$(mg_run pat "$PAC" --merge-into-live); rc=$?
+{ [ "$rc" -eq 0 ] && [ "$(mg_has "$PAC/graphify-out/graph.json" ast-0)" = 1 ] && [ "$(mg_has "$PAC/graphify-out/graph.json" sem-tracked.md)" = 1 ]; } \
+  && pass "T-pre-ast negative control: with no snapshot the same refresh merges as before" \
+  || fail "T-pre-ast control (rc=$rc): $out"
+
 # --- T-scope: a deliberate ignore-rule change (a stamp of the effective rules, kept in the out dir)
 # lets the shrink guard count only the prior nodes still in scope, once; the same drop with no rule
 # change, or a loss inside the scope, is still refused. Vault shape: the stub emits one node per md file. ---

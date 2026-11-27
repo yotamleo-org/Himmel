@@ -927,6 +927,38 @@ for site in "$GO_SCRIPT" "$AUTO_GO_SRC"; do
     done
 done
 
+gk() {
+    HOME="$1" GO_GATE_SRC="$GO_GATE_SRC" bash -c 'unset -f go_key_ensure 2>/dev/null || true; . "$GO_GATE_SRC"; go_key_ensure'
+}
+GK1H="$ROOT/gk1"; mkdir -p "$GK1H"
+GK1K="$GK1H/.config/himmel/go-hmac.key"
+rc=0; gk "$GK1H" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] || fail "GK1: go_key_ensure failed on an empty HOME (rc=$rc)"
+mode=$(stat -c %a "$GK1K" 2>/dev/null || stat -f %Lp "$GK1K" 2>/dev/null)
+[ "$mode" = 600 ] || fail "GK1: key mode is '$mode', want 600"
+grep -qxE '[0-9a-f]{64}' "$GK1K" 2>/dev/null || fail "GK1: key is not 64 lowercase hex chars"
+before=$(_k=$(cat "$GK1K" 2>/dev/null); printf '%s' "$_k")
+rc=0; gk "$GK1H" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && [ "$(cat "$GK1K" 2>/dev/null)" = "$before" ] || fail "GK1c: a second call changed the key or failed (rc=$rc)"
+GK2H="$ROOT/gk2"; mkdir -p "$GK2H"
+GK2K="$GK2H/.config/himmel/go-hmac.key"
+gk "$GK2H" >/dev/null 2>&1 & p1=$!
+gk "$GK2H" >/dev/null 2>&1 & p2=$!
+r1=0; wait "$p1" || r1=$?
+r2=0; wait "$p2" || r2=$?
+[ "$r1" -eq 0 ] && [ "$r2" -eq 0 ] || fail "GK2: concurrent calls returned $r1 and $r2, want 0 0"
+n=$(find "$GK2H/.config/himmel" -type f 2>/dev/null | wc -l | tr -d ' ')
+[ "$n" = 1 ] || fail "GK2: want exactly one key file after concurrent calls, found $n"
+gk2key=$(cat "$GK2K" 2>/dev/null)
+rc=0; HOME="$GK2H" HANDOVER_DIR="$GROOT" bash "$GO_SCRIPT" 94 "$SHA" >/dev/null 2>&1 || rc=$?
+want=$(printf 'himmel-go-v2|o/r|94|%s' "$SHA" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$gk2key" 2>/dev/null | awk '{print $NF}')
+[ "$rc" -eq 0 ] && [ -n "$gk2key" ] && [ "$(sed -n 's/^mac=//p' "$GROOT/.locks/go/94.$SHA" 2>/dev/null)" = "$want" ] \
+    || fail "GK2c: go.sh (rc=$rc) did not sign with the key go_key_ensure minted"
+GK3H="$ROOT/gk3"; mkdir -p "$GK3H/.config/himmel"; : > "$GK3H/.config/himmel/go-hmac.key"
+rc=0; err=$(gk "$GK3H" 2>&1 >/dev/null) || rc=$?
+[ "$rc" -eq 1 ] && [ "$(printf '%s\n' "$err" | wc -l | tr -d ' ')" = 1 ] && [ ! -s "$GK3H/.config/himmel/go-hmac.key" ] \
+    || fail "GK3: want rc 1, one stderr line and the key untouched (rc=$rc: $err)"
+
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: test-go-gate.sh"
     exit 0

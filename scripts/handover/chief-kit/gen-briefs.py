@@ -22,7 +22,8 @@ ONLY this field supplies the brief's Writes paths, never scope or prior. An abso
 stays on the line; any other absolute path is dropped. Missing writes leaves an
 empty Writes line, which the brief-lint run below refuses; `none named` explicitly
 means no writes. scope and prior also appear on Writes note, which holds nothing), hook (true: the launcher exports
-the hook-integrity bypass, the brief says so; default false), judge (true: the
+the hook-integrity bypass, the brief says so; brief-lint refuses a brief whose Writes
+name a file the pinned guards run unless hook is true; default false), judge (true: the
 chief runs an opus judge before GO; default false), env (true: the ticket touches CI, infra or the
 environment, so the RED-first contract requires a fixture copied from the real environment; default
 false), extra (appended to the
@@ -157,7 +158,10 @@ A ticket whose mirror row lacks a DoD or Proof is read again after one increment
 Every worker brief is run through brief-lint.sh (with HANDOVER_DIR set to --handover-root) right after it is written; a brief it refuses is
 removed, no launcher is written for it, and the run exits 1 with lint's reason.
 
-Exit: 0 ok; 1 a worker is invalid, a worktree failed or brief-lint refused a brief (nothing kept for it); 2 usage.
+Each worker's RETASK token is generation 1 of the token record (worker-token.sh mint, with HANDOVER_DIR set to --handover-root); where the
+record refuses (a worker or relay), the token is random and unrecorded.
+
+Exit: 0 ok; 1 a worker is invalid, a worktree or its token mint failed, or brief-lint refused a brief (nothing kept for it); 2 usage.
 """
 import argparse, contextlib, fcntl, hashlib, importlib.util, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
@@ -182,8 +186,8 @@ def fit_slug(key, label, slug, date):
     return cut.rstrip('-')
 RM_MODEL = 'claude-opus-5-5'
 RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
-HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
-             "that flag covers ONLY the integrity pin. No other `*_OK=1` bypass. Probe a guard only by feeding JSON to the worktree "
+HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file or a file a hook sources; "
+             "that flag covers ONLY the integrity pin and the worker write fence's pin-dir and anchor fences. No other `*_OK=1` bypass. Probe a guard only by feeding JSON to the worktree "
              "copy (as its test file does); keep payloads in fixture files, never on your own Bash command line.")
 PLAIN_LINE = "> - **Native lane, no bypass.**"
 JUDGE_LINE = ("This touches a guard/gate, so the chief runs an opus judge before GO. If your diff touches a pattern in "
@@ -355,6 +359,23 @@ TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`,
 def die(msg, rc=1):
     print('gen-briefs: ' + msg, file=sys.stderr)
     sys.exit(rc)
+
+
+def mint_nonce(l, doc, letter, hroot):
+    prefix = '%s-RM-%s' % (letter, l['release']) if l.get('kind') == 'rm' else '%s-%s' % (letter, l['label'])
+    writer = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'worker-token.sh')
+    try:
+        r = subprocess.run(['bash', writer, 'mint', doc, prefix], capture_output=True, text=True, timeout=120,
+                           env=dict(os.environ, HANDOVER_DIR=hroot))
+    except (OSError, subprocess.SubprocessError) as e:
+        die('worker %s: worker-token.sh could not run (%s), so no brief is written for it or the workers after it' % (l['label'], e))
+    if r.returncode == 3:
+        print('gen-briefs: token not recorded (worker-token.sh refused)', file=sys.stderr)
+        return '%s-%s' % (prefix, secrets.token_hex(4))
+    if r.returncode != 0 or not r.stdout.strip():
+        die('worker %s: worker-token.sh mint failed (rc %d), so no brief is written for it or the workers after it: %s' % (
+            l['label'], r.returncode, ' '.join(r.stderr.split())))
+    return r.stdout.strip()
 
 
 def tier_gate(model):
@@ -1720,8 +1741,10 @@ def drop_refused_brief(doc, l):
 
 def lint_brief(doc, l, hroot):
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
+    env = lint_env(hroot)
+    env['HIMMEL_HOOK_INTEGRITY_BYPASS_OK'] = '1' if l.get('hook') else ''
     try:
-        r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
+        r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=env)
     except (OSError, subprocess.SubprocessError) as e:
         drop_refused_brief(doc, l)
         die('worker %s: brief-lint could not run (%s), so no brief or launcher is kept for it or the workers after it' % (l['label'], e))
@@ -1923,10 +1946,8 @@ def main():
         if l.get('ab_arm') and l.get('lane', 'native') == 'native' and l['model'].startswith('claude-sonnet-5') and sonnet_ceiling_profile(l['profile']):
             die('worker %s: ab_arm %s needs the plain 200000 ceiling, but profile %s gives a claude-sonnet-5 launch its Sonnet ceiling; set "profile": "worker-docs" for the A/B arm' % (l['label'], l['ab_arm'], l['profile']))
         if rm:
-            l['nonce'] = '%s-RM-%s-%s' % (letter, l['release'], secrets.token_hex(4))
             l['stem'] = '%s-%s-rm-%s-%s' % (l['keys'][0], l['label'], l['release'], a.date)
         else:
-            l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             fitted = fit_slug(l['keys'][0], l['label'], l['slug'], a.date)
             if fitted != l['slug']:
                 print('%s slug trimmed to fit the bus limit of %d (room kept for -RESUME): %s -> %s' % (l['label'], BUS_NAME_MAX, l['slug'], fitted))
@@ -1992,6 +2013,7 @@ def main():
                 if anc.returncode != 0:
                     die('worktree %s is not based on %s; no brief written for %s or the workers after it' % (l['wt'], a.base, l['label']))
         doc = os.path.join(a.bucket, l['stem'] + '.md')
+        l['nonce'] = mint_nonce(l, doc, letter, a.handover_root)
         if l.get('series_plan'):
             create_series_ledger(l['series_plan'], doc)
         with open(doc, 'w') as f:

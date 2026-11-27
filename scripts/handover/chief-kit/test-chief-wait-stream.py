@@ -187,6 +187,7 @@ class StreamFixture(unittest.TestCase):
         self.doc.write_text('# chief\n## Results\n')
         self.procs = []
         self.env = dict(os.environ, CR_ANCHOR_HANDOFF='0', CHIEF_WAIT_STREAM_STDOUT_OK='1',
+                        CHIEF_WAIT_STREAM_NO_WORKER_WAKES_OK='1',
                         CHIEF_WAIT_STREAM_SOFT_SEC='60', CHIEF_WAIT_STREAM_HARD_SEC='65',
                         CHIEF_WAIT_POLL_SEC='0.05', CHIEF_WAIT_INTERVAL='180',
                         CHIEF_WAIT_STREAM_ADOPT_SEC='2', CHIEF_WAIT_STREAM_REAP_MAX_SEC='3',
@@ -374,6 +375,21 @@ class Stream(StreamFixture):
         p, out = self.start(env=env)
         self.assertEqual(p.wait(timeout=5), 2)
         self.assertIn('STREAM-REFUSED not-monitor', out.read_text())
+        self.assertFalse(self.path('stream').exists())
+        self.assertFalse(self.path('stream.lock').exists())
+
+    def test_arm_refuses_without_the_worker_wakes(self):
+        env = dict(self.env)
+        env.pop('CHIEF_WAIT_STREAM_NO_WORKER_WAKES_OK')
+        p, out = self.start(env=env)
+        try:
+            code = p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.fail('the stream armed: ' + out.read_text())
+        self.assertEqual(code, 2)
+        self.assertIn('STREAM-REFUSED no-worker-wakes', out.read_text())
+        for name in ('worker-doc-missing', 'worker-ready', 'worker-blocked', 'worker-finding', 'drop --stream'):
+            self.assertIn(name, out.read_text())
         self.assertFalse(self.path('stream').exists())
         self.assertFalse(self.path('stream.lock').exists())
 
@@ -1504,7 +1520,8 @@ class StreamBounds(StreamFixture):
         path.write_text(script)
         out = self.root / 'bounds-probe.out'
         env = {k: v for k, v in self.env.items() if not k.startswith('CHIEF_WAIT_STREAM_')}
-        env.update(CHIEF_WAIT_STREAM_STDOUT_OK='1', CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', **setting)
+        env.update(CHIEF_WAIT_STREAM_STDOUT_OK='1', CHIEF_WAIT_STREAM_NO_WORKER_WAKES_OK='1',
+                   CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', **setting)
         with out.open('w') as f:
             p = subprocess.Popen([sys.executable, '-I', str(path), str(HERE / 'chief-wait-stream.py'), *args], env=env,
                                  stdout=f, stderr=subprocess.STDOUT, start_new_session=True)

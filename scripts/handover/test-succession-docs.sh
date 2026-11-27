@@ -274,7 +274,7 @@ for r in "step9:$retired_step9" "starts:$retired_starts" "step4:$retired_step4";
 done
 
 absent 'ACTION ZERO step 9 does not tell the successor to mint a fresh token per worker' "$step9" "$stale_rotate"
-contains 'ACTION ZERO step 9: a relay MAY carry a fresh token but need not' "$(flat "$step9")" 'MAY also carry a fresh'
+contains 'ACTION ZERO step 9: a relay MAY carry a fresh token but need not' "$(flat "$step9")" 'MAY carry a fresh token from'
 contains 'ACTION ZERO step 9: rotation is not a precondition of succession' "$(flat "$step9")" 'rotation is not a precondition'
 contains 'ACTION ZERO step 9 defers to the preface as the authority' "$step9" 'worker-preface.md'
 contains 'ACTION ZERO step 9: only the chain form always rotates' "$(flat "$step9")" 'the token chain always rotates'
@@ -504,6 +504,37 @@ absent 'chief template: no worker WRAPPED/MERGED message to file by hand' "$(cat
 contains 'pin: decisions, questions and blockers still go by SendMessage' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'decision, question, blocker and permission problem by `SendMessage`'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'pin: a token quote-back still goes only by SendMessage' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'quote-back goes only in your `SendMessage` reply'
+
+r12="$(flat "$running")"
+s9="$(flat "$step9")"
+contains 'running-a-chief: --fresh takes a label only' "$r12" '--fresh <label>'
+absent 'running-a-chief: the old --fresh <label>=<token> form is gone' "$running" '--fresh <label>=<token>'
+absent 'running-a-chief: no fresh token by direct message after the relay' "$running" 'goes to its worker by direct message'
+contains 'running-a-chief: the current token comes from the record' "$r12" 'worker-token.sh current'
+contains 'running-a-chief: the chain rotates to the successor itself' "$r12" 'rotate <doc> --to <itself>'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-chief: gen runs before any hand relay' "$r12" 'Before any hand relay, run `worker-token.sh gen <doc>`'
+recovery="$(flat "$(printf '%s\n' "$running" | awk '/^\*\*A refused quote\.\*\*/ { f = 1 } f && /^[[:space:]]*$/ { exit } f')")"
+contains 'running-a-chief recovery: learned from WAKE silent-go' "$recovery" 'WAKE silent-go'
+contains 'running-a-chief recovery: lists the candidates with tokens' "$recovery" 'worker-token.sh tokens <doc>'
+contains 'running-a-chief recovery: one probe per generation' "$recovery" 'LIVE — PROBE <g> ok'
+contains 'running-a-chief recovery: records the answer with set' "$recovery" 'worker-token.sh set <doc> <g>'
+contains 'chief-template step 9: --fresh <label>' "$s9" '--fresh <label>'
+contains 'chief-template step 9: the current token comes from the record' "$s9" 'worker-token.sh current'
+contains 'chief-template step 9: the chain rotates to the successor itself' "$s9" 'rotate <doc> --to <itself>'
+absent 'chief-template step 9: no hand-minted fresh token' "$step9" 'token you mint'
+contains 'successor-start: fresh tokens come from --fresh <label>' "$succ_start" '--fresh <label>'
+contains 'successor-start: the current token comes from the record' "$succ_start" 'worker-token.sh current'
+contains 'successor-start: the chain rotates to the successor itself' "$succ_start" 'rotate <doc> --to <itself>'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-chief: a worker with no record keeps the hand-minted chain' "$r12" 'A worker with no record (`worker-token.sh gen <doc>` reads `state=none`) is outside it: take the current token from its span or brief and mint the fresh one by hand'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-chief: a keymismatch warns that the span or brief can be stale' "$r12" '`state=keymismatch` (the GO key changed or is missing: check it first) is chained the same way, but the span or brief can be stale for a rotated worker'
+contains 'chief-template step 9: a worker with no record keeps the hand-minted chain' "$s9" 'no record: mint by hand'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'successor-start: a worker with no record keeps the hand-minted chain' "$succ_start" 'a worker with no record (`gen` reads `state=none`, or `keymismatch` after a key change)'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'preface: a probe quoting the current token is answered, any other ignored' "$(flat "$(cat "$PREFACE")")" 'A `PROBE <g>` quoting your token: bullet `LIVE — PROBE <g> ok`; else ignore.'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'

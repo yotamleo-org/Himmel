@@ -1100,8 +1100,8 @@ jobs:
   # sees STAGED files at commit time, over the whole PR range — so a commit
   # that changes a marketplace/plugins/<p>/ file without bumping that plugin's
   # plugin.json version is caught even when pre-commit was skipped/bypassed.
-  # Fetch the current base tip, not the stored event base SHA: against the
-  # stored one, two PRs from the same base that bump the same version both pass.
+  # Judged against the live base tip: a version below it, unraised, or equal to it after a release cut is refused;
+  # an equal one the PR raised from the same old version is accepted.
   # Check the PR head, not a merge ref that may include a sibling's bump.
   # Only pull_request runs have a PR's changes to gate.
   plugin-version-bump:

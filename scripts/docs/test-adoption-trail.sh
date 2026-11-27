@@ -14,9 +14,6 @@
 # data file fails here.
 #
 #   1. SYNC     — each page is exactly what render.mjs builds.
-#   2. NOJS     — with every script removed, each level is a <details id="lvl-N">
-#                 and each component's detail text sits inside its own
-#                 <details>; a copy missing its first component block fails.
 #   3. LINKS    — every relative href/src resolves: a file under docs/, or a site
 #                 route whose page is in site/allowlist.txt; every #fragment is
 #                 an id on the page.
@@ -81,11 +78,11 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/adoption-trail.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 
 have_data=1
-if [ -f "$DATA" ] && jq -e '.levels | length > 0' "$DATA" >/dev/null 2>&1; then
-  ok "the level data file exists and lists levels"
+if [ -f "$DATA" ] && jq -e '(.modules | length > 0) and (.tracks | length > 0)' "$DATA" >/dev/null 2>&1; then
+  ok "the trail data file exists and lists tracks and modules"
 else
   have_data=0
-  bad "site/src/trail/levels.json must exist and list the trail's levels"
+  bad "site/src/trail/levels.json must exist and list the trail's tracks and modules"
 fi
 
 # --- 1. SYNC ------------------------------------------------------------------
@@ -98,10 +95,8 @@ fi
 
 # --- 2. NOJS ------------------------------------------------------------------
 
-# Prints one line per level or component whose text a reader without JavaScript
-# would not see (empty = all present).
 nojs_missing() {
-  python3 -I - "$1" "$2" <<'PY'
+  python3 -I - "$1" "$2" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html, json, re, sys
 page = open(sys.argv[1], encoding="utf-8").read()
 data = json.load(open(sys.argv[2], encoding="utf-8"))
@@ -110,21 +105,21 @@ page = re.sub(r"<(script|style|template)\b.*?</\1\s*>", "", page, flags=re.S | r
 def text(s):
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", s))).strip()
 blocks = [text(b) for b in re.findall(r'<details class="comp"[^>]*>(.*?)</details>', page, flags=re.S)]
-for lvl in data["levels"]:
-    if not re.search(r'<details\b[^>]*\bid="lvl-%d"' % lvl["n"], page):
-        print("level %d is not a <details id=\"lvl-%d\">" % (lvl["n"], lvl["n"]))
-    for c in lvl.get("components", []):
+for mod in data["modules"]:
+    if not re.search(r'<details\b[^>]*\bid="m-%s"' % re.escape(mod["id"]), page):
+        print("module %s is not a <details id=\"m-%s\">" % (mod["id"], mod["id"]))
+    for c in mod.get("components", []):
         name, detail = text(c["name"]), text(c["detail"])
         if not any(b.startswith(name) and detail in b for b in blocks):
-            print("level %d component %r: detail not in a <details> block" % (lvl["n"], name))
+            print("module %s component %s: detail not in a <details> block" % (mod["id"], c.get("id", repr(name))))
 PY
 }
 
 if [ "$have_data" = 1 ]; then
-  n_comp="$(jq '[.levels[].components[]?] | length' "$DATA")"
+  n_comp="$(jq '[.modules[].components[]?] | length' "$DATA")"
   missing="$(nojs_missing "$LEVELS" "$DATA")"
   if [ "$n_comp" -gt 0 ] && [ -z "$missing" ]; then
-    ok "without JavaScript every level is a <details> and all $n_comp component details are in the page"
+    ok "without JavaScript every module is a <details> and all $n_comp component details are in the page"
   else
     bad "text a reader without JavaScript cannot see (components in data: $n_comp)" "$(printf '%s\n' "$missing" | head -5)"
   fi
@@ -214,14 +209,20 @@ if [ "$have_data" = 1 ]; then
   if grep -q -F "Scheduled jobs: pick from $n_shown<" "$LEVELS" 2>/dev/null; then ok "the cadence count on the page ($n_shown) = shown cadences"; else bad "the page must say 'Scheduled jobs: pick from $n_shown'"; fi
 
   bad_plugins=""
-  for p in $(jq -r '[.levels[].components[]?.plugin // empty] | unique[]' "$DATA"); do
+  for p in $(jq -r '[.modules[].components[]?.plugin // empty] | unique[]' "$DATA"); do
     jq -e --arg p "$p" '.catalog | index($p) != null' "$CATALOG" >/dev/null || bad_plugins="$bad_plugins $p"
   done
-  n_plugins="$(jq '[.levels[].components[]?.plugin // empty] | unique | length' "$DATA")"
+  n_plugins="$(jq '[.modules[].components[]?.plugin // empty] | unique | length' "$DATA")"
   if [ "$n_plugins" -gt 0 ] && [ -z "$bad_plugins" ]; then ok "all $n_plugins plugin ids in levels.json are in the plugin-profiles.json catalog"; else bad "plugin ids in levels.json not in the plugin-profiles.json catalog (named: $n_plugins)" "$bad_plugins"; fi
 
-  bad_status="$(jq -r '.levels[].components[]? | select(.status | IN("shipped","beta","roadmap") | not) | .name' "$DATA" | tr '\n' ' ')"
+  bad_status="$(jq -r '.modules[].components[]? | select(.status | IN("shipped","beta","roadmap") | not) | .name' "$DATA" | tr '\n' ' ')"
   if [ -z "$bad_status" ]; then ok "every component status is shipped, beta or roadmap"; else bad "components with an unknown status" "$bad_status"; fi
+
+  no_id="$(jq -r '.modules[].components[] | select(((.id | type) == "string" and (.id | test("^[a-z0-9]+(-[a-z0-9]+)*$"))) | not) | .name' "$DATA" | tr '\n' ' ')"
+  dup_id="$(jq -r '[.modules[].components[].id // empty] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$DATA" | tr '\n' ' ')"
+  if [ -z "$no_id$dup_id" ]; then ok "every component has a slug id, unique in the data file"; else bad "components without a slug id, or sharing one" "no id: ${no_id:-none}; shared: ${dup_id:-none}"; fi
+  num_id="$(jq '.modules[0].components[0].id = 123' "$DATA" | jq -r '.modules[].components[] | select(((.id | type) == "string" and (.id | test("^[a-z0-9]+(-[a-z0-9]+)*$"))) | not) | .name')"
+  if [ -n "$num_id" ]; then ok "control: a numeric component id is reported"; else bad "control: the slug-id check accepted a numeric component id"; fi
 fi
 
 all_n="$(jq '.items | length' "$MANIFEST")"
@@ -241,9 +242,9 @@ else
 fi
 
 if grep -q -E '<b>lane</b>|Parallel lanes' "${all_pages[@]}"; then
-  bad "Level 7 defines 'lane' as a work session; docs/glossary.md calls that a worker" "$(grep -n -E '<b>lane</b>|Parallel lanes' "${all_pages[@]}" | head -3)"
+  bad "Command a fleet defines 'lane' as a work session; docs/glossary.md calls that a worker" "$(grep -n -E '<b>lane</b>|Parallel lanes' "${all_pages[@]}" | head -3)"
 else
-  ok "Level 7 uses the glossary's words for a work session"
+  ok "Command a fleet uses the glossary's words for a work session"
 fi
 
 # adopt.sh's install_precommit_hooks runs for every profile, so the git gates
@@ -475,7 +476,7 @@ fi
 # answer is an element with id what / where / undo, outside any <details>.
 SCREEN=1400
 first_screen_gaps() {
-  python3 -I - "$1" "$SCREEN" <<'PY'
+  python3 -I - "$1" "$SCREEN" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html.parser, re, sys
 page = open(sys.argv[1], encoding="utf-8").read()
 screen = int(sys.argv[2])
@@ -552,6 +553,251 @@ if [ -z "$no_term" ]; then
   ok "the questions page defines each of the ten newcomer terms"
 else
   bad "the questions page has no glossary entry (<dt id=\"g-<term>\">) for" "$no_term"
+fi
+
+order_gaps() {
+  python3 -I - "$1" <<'PY' || echo "checker exited non-zero (rc=$?)"
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+mods, tracks = d.get("modules") or [], d.get("tracks") or []
+if not mods or not tracks:
+    print("no tracks or modules"); sys.exit()
+by = {m["id"]: m for m in mods}
+if len(by) != len(mods):
+    print("duplicate module id")
+tids = [t["id"] for t in tracks]
+for m in mods:
+    if m.get("track") not in tids:
+        print("%s names an unknown track %r" % (m["id"], m.get("track")))
+    for r in m.get("requires", []):
+        if r not in by:
+            print("%s requires an unknown module %s" % (m["id"], r))
+state = {}
+def visit(i, path):
+    if state.get(i) == 1:
+        print("cycle: %s" % " to ".join(path + [i])); return
+    if state.get(i) == 2:
+        return
+    state[i] = 1
+    for r in by[i].get("requires", []):
+        if r in by:
+            visit(r, path + [i])
+    state[i] = 2
+for m in mods:
+    visit(m["id"], [])
+def closure(i):
+    out, todo = set(), list(by[i].get("requires", []))
+    while todo:
+        r = todo.pop()
+        if r in by and r not in out:
+            out.add(r); todo.extend(by[r].get("requires", []))
+    out.discard(i)
+    return out
+for t in tids:
+    ms = [m["id"] for m in mods if m.get("track") == t]
+    for a, b in zip(ms, ms[1:]):
+        if a not in closure(b):
+            print("%s sits after %s in track %s, which it does not need" % (b, a, t))
+brain = {m["id"] for m in mods if m.get("track") == "brain"}
+for m in mods:
+    if m.get("track") != "brain" and closure(m["id"]) & brain:
+        print("%s (track %s) needs %s of the Second brain track" % (m["id"], m.get("track"), " ".join(sorted(closure(m["id"]) & brain))))
+PY
+}
+
+gaps="$(order_gaps "$DATA")"
+if [ -z "$gaps" ]; then
+  ok "the module edges have no cycle, follow the order inside each track, and no other track needs Second brain"
+else
+  bad "the trail order states a dependency the module edges do not have" "$(printf '%s\n' "$gaps" | tr '\n' ';')"
+fi
+if [ "$have_data" = 1 ]; then
+  jq '.tracks = [{"id": "ladder"}] | .modules |= (sort_by(.legacy_n) | map(.track = "ladder"))' "$DATA" > "$tmp/ladder.json"
+  ladder="$(order_gaps "$tmp/ladder.json")"
+  case "$ladder" in
+    *"review sits after reach"*"spend sits after review"*)
+      ok "control: the old 0-to-7 ladder is reported (review after reach, spend after review)" ;;
+    *) bad "control: the ORDER check accepted the old ladder" "$ladder" ;;
+  esac
+  jq '.modules |= map(if .id == "install" then .requires = ["guardrails"] else . end)' "$DATA" > "$tmp/cycle.json"
+  jq '.modules |= map(if .id == "fleet" then .requires += ["reach"] else . end)' "$DATA" > "$tmp/fleet-reach.json"
+  cyc="$(order_gaps "$tmp/cycle.json" | grep -E '^cycle: ')"
+  fr="$(order_gaps "$tmp/fleet-reach.json" | grep -E '^fleet .* needs .*reach')"
+  if [ -n "$cyc" ] && [ -n "$fr" ]; then
+    ok "control: a cycle and a fleet edge to reach are each reported"
+  else
+    bad "control: the ORDER check missed a cycle or a fleet edge to reach"
+  fi
+fi
+
+needs_gaps() {
+  python3 -I - "$1" "$2" <<'PY' || echo "checker exited non-zero (rc=$?)"
+import html, json, re, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+page = open(sys.argv[2], encoding="utf-8").read()
+mods, tracks = d.get("modules") or [], d.get("tracks") or []
+if not mods or not tracks:
+    print("no tracks or modules"); sys.exit()
+by = {m["id"]: m for m in mods}
+def closure(i):
+    out, todo = set(), list(by[i].get("requires", []))
+    while todo:
+        r = todo.pop()
+        if r in by and r not in out:
+            out.add(r); todo.extend(by[r].get("requires", []))
+    return out
+for t in tracks:
+    reach = set()
+    for m in mods:
+        if m["track"] == t["id"]:
+            reach |= {by[r]["track"] for r in closure(m["id"])}
+    want = [x for x in tracks if x["id"] in reach and x["id"] != t["id"]]
+    want_attr = " ".join(x["id"] for x in want)
+    want_text = "Needs: " + (" and ".join(x["name"] for x in want) if want else "nothing")
+    h = re.search(r'<div\b[^>]*\bid="t-%s"[^>]*>(.*?)</div>' % re.escape(t["id"]), page, flags=re.S)
+    if not h:
+        print("track %s has no header id=\"t-%s\"" % (t["id"], t["id"])); continue
+    attr = re.search(r'\bdata-needs="([^"]*)"', h.group(0))
+    if not attr or attr.group(1) != want_attr:
+        print("track %s data-needs is %r, its edges reach %r" % (t["id"], attr.group(1) if attr else None, want_attr))
+    p = re.search(r'<p class="needs">(.*?)</p>', h.group(1), flags=re.S)
+    got = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", p.group(1)))).strip() if p else None
+    if got != want_text:
+        print("track %s says %r, its edges reach %r" % (t["id"], got, want_text))
+PY
+}
+
+gaps="$(needs_gaps "$DATA" "$LEVELS")"
+if [ -z "$gaps" ]; then
+  ok "every track header's Needs line and data-needs equal what its modules' edges reach"
+else
+  bad "a track header states needs its edges do not derive" "$(printf '%s\n' "$gaps" | tr '\n' ';')"
+fi
+if [ "$have_data" = 1 ]; then
+  perl -0777 -pe 's/(<p class="needs">Needs: [^<]*?) and [^<]*<\/p>/$1<\/p>/' "$LEVELS" > "$tmp/needs.html"
+  if [ -n "$(needs_gaps "$DATA" "$tmp/needs.html")" ]; then
+    ok "control: a header whose Needs text names one track fewer than its edges is reported"
+  else
+    bad "control: the TRACK-NEEDS check accepted a header missing a needed track"
+  fi
+  trk_cols=""
+  no_col=""
+  for t in $(jq -r '.tracks[].id' "$DATA"); do
+    col="$(grep -o -E "\.trk-$t \{ --trk: var\(--[a-z]+\)" "$ROOT/site/src/trail/trail.css" | sed -E 's/.*var\((--[a-z]+)\)/\1/')"
+    if [ -n "$col" ]; then trk_cols="$trk_cols$col"$'\n'; else no_col="$no_col $t"; fi
+  done
+  n_tracks="$(jq '.tracks | length' "$DATA")"
+  n_cols="$(printf '%s' "$trk_cols" | sort -u | grep -c .)"
+  if [ -z "$no_col" ] && [ "$n_cols" -eq "$n_tracks" ]; then
+    ok "each of the $n_tracks tracks has its own colour in trail.css"
+  else
+    bad "every track needs its own --trk colour rule in trail.css" "no rule:${no_col:- none}; distinct colours $n_cols of $n_tracks"
+  fi
+fi
+
+alias_gaps() {
+  python3 -I - "$1" "$2" "$3" <<'PY' || echo "checker exited non-zero (rc=$?)"
+import json, re, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+page = open(sys.argv[2], encoding="utf-8").read()
+main = open(sys.argv[3], encoding="utf-8").read()
+for m in d.get("modules") or []:
+    n = m.get("legacy_n")
+    if n is None:
+        continue
+    if len(re.findall(r'\bid="lvl-%d"' % n, page)) != 1:
+        print("lvl-%d is not exactly one id on the levels page" % n)
+    s = re.search(r'<details\b[^>]*\bid="m-%s"[^>]*>\s*<summary>(.*?)</summary>' % re.escape(m["id"]), page, flags=re.S)
+    if not s or not re.search(r'\bid="lvl-%d"' % n, s.group(1)):
+        print("lvl-%d is not inside the summary of card m-%s" % (n, m["id"]))
+OLD = {0: "install", 1: "guardrails", 2: "second-brain", 3: "reach", 4: "review", 5: "spend", 6: "always-on", 7: "fleet"}
+got = {}
+for m in d.get("modules") or []:
+    n = m.get("legacy_n")
+    if type(n) is int:
+        got.setdefault(n, []).append(m["id"])
+    elif n is not None:
+        print("legacy_n of %s is %r, not an integer" % (m["id"], n))
+for n in sorted(set(OLD) | set(got), key=str):
+    if got.get(n) != [OLD.get(n)]:
+        print("legacy_n %s was %s on the old numbered page, the data gives it to %s" % (n, OLD.get(n), got.get(n)))
+f = re.search(r"if \(/\^#\((.*?)\)\$/\.test\(h\)\) location\.replace\('adoption-trail-levels\.html'", main)
+for h in ("lvl-4", "m-review", "t-core"):
+    if not f or not re.fullmatch("(?:%s)" % f.group(1), h):
+        print("the main page does not forward #%s to the levels page" % h)
+PY
+}
+
+gaps="$(alias_gaps "$DATA" "$LEVELS" "$PAGE")"
+if [ -n "$gaps" ] || [ "$have_data" != 1 ]; then
+  bad "an old #lvl-N anchor no longer lands on its module" "$(printf '%s\n' "${gaps:-no modules in the data file}" | tr '\n' ';')"
+else
+  ok "every old #lvl-N anchor lands on its module's summary, and the main page forwards old and new ids"
+fi
+if [ "$have_data" = 1 ]; then
+  perl -0777 -pe 's/<span class="alias" id="lvl-4"><\/span>//; s/<\/main>/<span class="alias" id="lvl-4"><\/span><\/main>/' "$LEVELS" > "$tmp/alias.html"
+  moved="$(alias_gaps "$DATA" "$tmp/alias.html" "$PAGE" | grep -F 'lvl-4 is not inside')"
+  if [ -n "$moved" ]; then
+    ok "control: a lvl-4 anchor outside its card is reported"
+  else
+    bad "control: the ALIASES check accepted a lvl-4 anchor outside its card"
+  fi
+  jq '.modules |= map(if .id == "install" then .legacy_n = 1 elif .id == "guardrails" then .legacy_n = 0 else . end)' "$DATA" > "$tmp/swap.json"
+  jq '.modules |= map(if .id == "review" then del(.legacy_n) else . end)' "$DATA" > "$tmp/drop.json"
+  swapped="$(alias_gaps "$tmp/swap.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 0 was install')"
+  dropped="$(alias_gaps "$tmp/drop.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 4 was review')"
+  jq '.modules |= map(if .id == "install" then .legacy_n = false else . end)' "$DATA" > "$tmp/bool.json"
+  boolean="$(alias_gaps "$tmp/bool.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 0 was install')"
+  if [ -n "$swapped" ] && [ -n "$dropped" ] && [ -n "$boolean" ]; then
+    ok "control: a swapped legacy_n (install and guardrails) and a dropped one (review) are each reported"
+  else
+    bad "control: the ALIASES check missed a swapped or dropped legacy_n" "swap: ${swapped:-none}; drop: ${dropped:-none}"
+  fi
+fi
+
+vocab_hits() {
+  python3 -I - "$@" <<'PY' || echo "checker exited non-zero (rc=$?)"
+import html, json, re, sys
+WORDS = re.compile(r"\bbase camp\b|\bclimb\w*|\blevels?\b", re.I)
+def strings(v):
+    if isinstance(v, str):
+        yield v
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            yield k; yield from strings(x)
+    elif isinstance(v, list):
+        for x in v:
+            yield from strings(x)
+for path in sys.argv[1:]:
+    t = open(path, encoding="utf-8").read()
+    if path.endswith(".json"):
+        parts = list(strings(json.loads(t)))
+    elif path.endswith(".js"):
+        parts = [m.group(0)[1:-1] for m in re.finditer(r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"", t)]
+    else:
+        t = re.sub(r"<!--.*?-->", "", t, flags=re.S)
+        t = re.sub(r"<(script|style)\b.*?</\1\s*>", "", t, flags=re.S | re.I)
+        parts = re.findall(r'\b(?:content|aria-label|title)="([^"]*)"', t)
+        parts.append(re.sub(r"<[^>]+>", " ", t))
+    for s in parts:
+        s = html.unescape(s).replace("himmel-trail-level", "")
+        for w in WORDS.finditer(s):
+            print("%s: %r in %r" % (path.rsplit("/", 1)[-1], w.group(0), s[max(0, w.start() - 30):w.end() + 30].strip()))
+PY
+}
+
+hits="$(vocab_hits "${all_pages[@]}" "$ROOT/site/src/trail/trail.js" "$DATA")"
+if [ -z "$hits" ]; then
+  ok "no Base camp, climb or level frame in the trail pages, the trail script or the data file"
+else
+  bad "the old ladder vocabulary is still on the trail" "$(printf '%s\n' "$hits" | head -8 | tr '\n' ';')"
+fi
+printf '<p>Take a practice climb</p>\n<a aria-label="Level 3: Reach" href="#x">3</a>\n' > "$tmp/vocab.html"
+printf "var s = 'They join a level once';\n" > "$tmp/vocab.js"
+if [ "$(vocab_hits "$tmp/vocab.html" "$tmp/vocab.js" | grep -c .)" -ge 3 ]; then
+  ok "control: a practice climb, a Level 3 label and a script string naming a level are each reported"
+else
+  bad "control: the VOCAB check missed a fixture" "$(vocab_hits "$tmp/vocab.html" "$tmp/vocab.js")"
 fi
 
 echo

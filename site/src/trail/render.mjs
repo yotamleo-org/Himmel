@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Builds the three trail pages, each from layout.html and its own body
-// template: docs/adoption-trail.html (hero.html), docs/adoption-trail-levels.html
-// (levels.html, with the levels from levels.json and trail.js) and
-// docs/adoption-trail-questions.html (questions.html). Each page is
-// self-contained (no request to another file or host) because the docs site
-// copies it through unchanged (HTML_PASSTHROUGH in site/astro.config.mjs).
-//
 // Usage: node site/src/trail/render.mjs           write the pages
 //        node site/src/trail/render.mjs --check   exit 1 when a page differs
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -82,29 +75,49 @@ function component(c) {
   ].join('\n');
 }
 
-function level(l) {
+const byId = new Map(data.modules.map((m) => [m.id, m]));
+const inTrack = (t) => data.modules.filter((m) => m.track === t.id);
+
+function closure(m) {
+  const out = new Set();
+  const todo = [...m.requires];
+  while (todo.length) {
+    const r = todo.pop();
+    if (!byId.has(r)) throw new Error(`${m.id} requires an unknown module: ${r}`);
+    if (!out.has(r)) { out.add(r); todo.push(...byId.get(r).requires); }
+  }
+  return out;
+}
+
+function trackNeeds(t) {
+  const owners = new Set();
+  for (const m of inTrack(t)) for (const r of closure(m)) owners.add(byId.get(r).track);
+  return data.tracks.filter((x) => x.id !== t.id && owners.has(x.id));
+}
+
+function moduleCard(m, pos) {
   const counts = { beta: 0, roadmap: 0 };
-  for (const c of l.components) if (c.status in counts) counts[c.status] += 1;
+  for (const c of m.components) if (c.status in counts) counts[c.status] += 1;
   const chips = [
     counts.beta ? `<span class="badge b-beta">${counts.beta} preview</span>` : '',
     counts.roadmap ? `<span class="badge b-road">${counts.roadmap} planned</span>` : '',
   ].join('');
-  const list = (xs) => `<ul>${xs.map((x) => `<li>${x}</li>`).join('')}</ul>`;
-  const docs = l.docs.map((d) => `<a href="${esc(d.href)}">${esc(d.label)}</a>`).join(' · ');
+  const list = (xs) => (xs.length ? `<ul>${xs.map((x) => `<li>${x}</li>`).join('')}</ul>` : '<p>Nothing beyond what its track needs.</p>');
+  const docs = m.docs.map((d) => `<a href="${esc(d.href)}">${esc(d.label)}</a>`).join(' · ');
   return [
-    `<details class="lvl ${l.band}" id="lvl-${l.n}">`,
-    `<summary><span class="lk">${l.n}</span><span class="lt"><strong>${esc(l.title)}</strong><span>${l.summary}</span></span><span class="lc">${chips}</span></summary>`,
+    `<details class="lvl trk-${m.track}" id="m-${m.id}" data-track="${m.track}">`,
+    `<summary>${Number.isInteger(m.legacy_n) ? `<span class="alias" id="lvl-${m.legacy_n}"></span>` : ''}<span class="lk">${pos}</span><span class="lt"><strong>${esc(m.title)}</strong><span>${m.summary}</span></span><span class="lc">${chips}</span></summary>`,
     '<div class="lvl-body">',
-    `<p class="outcome">${l.outcome}</p>`,
+    `<p class="outcome">${m.outcome}</p>`,
     '<dl class="schema">',
-    `<dt>Turn it on</dt><dd><p>${l.turn_on.charAt(0).toUpperCase()}${l.turn_on.slice(1)}</p></dd>`,
-    `<dt>What you get</dt><dd><ul class="comps">\n${l.components.map(component).join('\n')}\n</ul></dd>`,
-    `<dt>Try it</dt><dd class="example"><p><b>${esc(l.example.title)}</b></p>\n${l.example.blocks.map(block).join('\n')}</dd>`,
-    `<dt>You need</dt><dd>${list(l.prereqs)}</dd>`,
-    `<dt>Setup time</dt><dd><p>${l.setup_time === null ? 'Not measured yet.' : esc(l.setup_time)}</p></dd>`,
-    `<dt>What it costs</dt><dd>${list(l.cost)}</dd>`,
-    `<dt>Turn it off</dt><dd><p>${l.turn_off}</p></dd>`,
-    `<dt>Who it is for</dt><dd><p>${esc(l.audience)}</p></dd>`,
+    `<dt>Turn it on</dt><dd><p>${m.turn_on.charAt(0).toUpperCase()}${m.turn_on.slice(1)}</p></dd>`,
+    `<dt>What you get</dt><dd><ul class="comps">\n${m.components.map(component).join('\n')}\n</ul></dd>`,
+    `<dt>Try it</dt><dd class="example"><p><b>${esc(m.example.title)}</b></p>\n${m.example.blocks.map(block).join('\n')}</dd>`,
+    `<dt>You need</dt><dd>${list(m.prereqs)}</dd>`,
+    `<dt>Setup time</dt><dd><p>${m.setup_time === null ? 'Not measured yet.' : esc(m.setup_time)}</p></dd>`,
+    `<dt>What it costs</dt><dd>${list(m.cost)}</dd>`,
+    `<dt>Turn it off</dt><dd><p>${m.turn_off}</p></dd>`,
+    `<dt>Who it is for</dt><dd><p>${esc(m.audience)}</p></dd>`,
     `<dt>Read more</dt><dd><p>${docs}</p></dd>`,
     '</dl>',
     '</div>',
@@ -113,30 +126,30 @@ function level(l) {
 }
 
 function trail() {
-  const bands = data.bands;
-  const railLink = (l, cls) => `<li class="${cls}"><a href="#lvl-${l.n}"><span class="knot">${l.n}</span><span>${esc(l.title)}</span></a></li>`;
-  const rail = bands.map((b) => [
-    `<li class="band ${b.id}">${esc(b.name)}</li>`,
-    ...data.levels.filter((l) => l.band === b.id).map((l) => railLink(l, b.id === 'camp' ? 'camp-l' : 'climb-l')),
+  const rail = data.tracks.map((t) => [
+    `<li class="band trk-${t.id}">${esc(t.name)}</li>`,
+    ...inTrack(t).map((m, i) => `<li class="trk-${t.id}"><a href="#m-${m.id}"><span class="knot">${i + 1}</span><span>${esc(m.title)}</span></a></li>`),
   ].join('\n')).join('\n');
-  const stepper = data.levels.map((l) => `<li class="${l.band === 'camp' ? 'camp-l' : 'climb-l'}"><a href="#lvl-${l.n}" aria-label="Level ${l.n}: ${esc(l.title)}">${l.n}</a></li>`).join('');
-  const nCamp = data.levels.filter((l) => l.band === 'camp').length;
-  const cards = bands.map((b) => [
-    `<div class="bandhead ${b.id}"><span class="bn">${esc(b.name)}</span><h3>${esc(b.title)}</h3><p>${esc(b.lede)}</p></div>`,
-    ...data.levels.filter((l) => l.band === b.id).map(level),
-  ].join('\n')).join('\n');
+  const stepper = data.tracks.map((t) => `<li class="trk-${t.id}"><a href="#t-${t.id}" aria-label="${esc(t.name)}">${esc(t.short)}</a></li>`).join('');
+  const cards = data.tracks.map((t) => {
+    const needs = trackNeeds(t);
+    return [
+      `<div class="bandhead trk-${t.id}" id="t-${t.id}" data-needs="${needs.map((x) => x.id).join(' ')}"><span class="bn">${esc(t.name)}</span><h3>${esc(t.title)}</h3><p>${esc(t.lede)}</p><p class="needs">Needs: ${needs.length ? needs.map((x) => esc(x.name)).join(' and ') : 'nothing'}</p></div>`,
+      ...inTrack(t).map((m, i) => moduleCard(m, i + 1)),
+    ].join('\n');
+  }).join('\n');
   return [
     '<p class="legend"><span>No badge: shipped and supported</span><span><span class="badge b-beta">preview</span> works, still changing</span><span><span class="badge b-road">planned</span> not built yet</span></p>',
     '<p class="resume" id="resume" hidden></p>',
     '<div class="trail">',
-    `<nav class="rail" aria-label="Levels"><ol>\n${rail}\n</ol></nav>`,
-    `<nav class="stepper" aria-label="Levels"><ol>${stepper}</ol><div class="bands" aria-hidden="true" style="grid-template-columns:${nCamp}fr ${data.levels.length - nCamp}fr"><i></i><i></i></div></nav>`,
+    `<nav class="rail" aria-label="Tracks"><ol>\n${rail}\n</ol></nav>`,
+    `<nav class="stepper" aria-label="Tracks"><ol style="grid-template-columns:repeat(${data.tracks.length}, minmax(0, 1fr))">${stepper}</ol></nav>`,
     `<div class="cards">\n${cards}\n</div>`,
     '</div>',
     '<div class="testing">',
     '<h3>Being tried out</h3>',
     `<ul>${data.experimental.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`,
-    '<p>Experiments, not on the trail yet. They join a level once they work for someone other than us.</p>',
+    '<p>Experiments, not on the trail yet. They join a track once they work for someone other than us.</p>',
     '</div>',
     '<figure class="placeholder" id="fleet-recording"><figcaption>Placeholder: a short recording of a fleet at work goes here. Not recorded yet.</figcaption></figure>',
     '<p class="trail-foot"><a href="getting-started/">Getting started</a><a href="setup/profiles/">Install profiles</a><a href="cadences/">Scheduled jobs</a><a href="orchestration-patterns/">Orchestration patterns</a></p>',
@@ -167,7 +180,7 @@ const PAGES = [
     script: [
       '<script>',
       "var h = location.hash;",
-      "if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
+      "if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|m-[a-z-]+|t-[a-z]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
       "else if (h === '#control' || h === '#control-h') location.replace('adoption-trail-questions.html#q-control');",
       '</script>',
     ].join('\n'),
@@ -176,7 +189,7 @@ const PAGES = [
     out: 'docs/adoption-trail-levels.html',
     body: 'levels.html',
     title: 'The adoption trail',
-    description: 'A practice climb on a spare project, then each level of himmel with its cost and its off switch.',
+    description: 'A practice run on a spare project, then the Guarded Core and each track of himmel with its cost and its off switch.',
     parts: { TRAIL: trail() },
     script: `<script>\n${read('site/src/trail/trail.js').trimEnd()}\n</script>`,
   },

@@ -3428,27 +3428,17 @@ EOF
 }
 
 # ─── same-version plugin cache refresh ─────────────────────────
-# Claude Code caches a plugin by version, and plugin versions change only in a
-# release cut, so a merged hooks change reaches the checkout but not the cached
-# copy of the SAME version: `marketplace update` and `plugin update` both
-# report "nothing to update". `plugin uninstall` then `plugin install` re-copies
-# the checkout bytes into that version dir. This reinstalls an enabled,
-# checkout-sourced @himmel plugin whose installed version equals its plugin.json
-# version and whose cached hooks or skills differ from the checkout (the version-lag case
-# is update_installed_plugins' job). A url-sourced or source-less plugin has no
-# checkout tree to compare, so it is never touched. Runs BEFORE reconcile_plugins
-# (a reinstall re-enables), and a failed install after the uninstall is loud and
-# fails the run: a plugin must never be left uninstalled silently.
+# Reinstalls an enabled checkout-sourced @himmel plugin whose same-version cache differs anywhere in its tree: a shipped file differing or
+# missing, or a cache file neither shipped, excluded nor ignored (scripts/lib/plugin-cache-drift.sh); an incomplete compare counts as drift.
 
-# _plugin_cache_drift <checkout plugin tree> <installPath> — prints each file
-# under hooks/, hooks.json or skills/ that differs between the two (or exists in only one).
-_plugin_cache_drift() {
-    local tree="$1" cache="$2" f
-    { ( cd "$tree" && find hooks hooks.json skills -type f 2>/dev/null ) || true
-      ( cd "$cache" && find hooks hooks.json skills -type f 2>/dev/null ) || true
-    } | sort -u | while IFS= read -r f; do
-        cmp -s "$tree/$f" "$cache/$f" 2>/dev/null || printf '%s\n' "$f"
-    done
+_remove_cache_extras() {
+    local tree="$1" cache="$2" line rel
+    while IFS= read -r line; do
+        case "$line" in "X "?*) rel="${line#X }" ;; *) continue ;; esac
+        case "/$rel/" in //*|*/../*) continue ;; esac
+        [ -f "$cache/$rel" ] && [ ! -L "$cache/$rel" ] && [ ! -e "$tree/$rel" ] || continue
+        rm -f -- "$cache/$rel" || echo "    could not remove $cache/$rel" >&2
+    done <<<"$3"
 }
 
 refresh_drifted_plugin_caches() {
@@ -3470,7 +3460,15 @@ refresh_drifted_plugin_caches() {
         echo "    skip: marketplace manifest, settings or installed-plugins state not found."
         return 0
     fi
-    local name src row have path want drift n=0
+    if [ ! -f "$ROOT/scripts/lib/plugin-cache-drift.sh" ]; then
+        echo "    ERROR: scripts/lib/plugin-cache-drift.sh is missing; same-version caches were not checked" >&2
+        chain_rc=1
+        return 0
+    fi
+    # shellcheck source=lib/plugin-cache-drift.sh
+    # shellcheck disable=SC1091
+    . "$ROOT/scripts/lib/plugin-cache-drift.sh"
+    local name src row have path want tree drift failed after n=0
     while IFS=' ' read -r name src; do
         [ -n "$name" ] || continue
         row="$(jq -r --arg k "$name@himmel" '[.plugins[$k][]? | select(.scope == "user")][0] | "\(.version // "") \(.installPath // "")"' "$installed" 2>/dev/null)" || row=""
@@ -3478,14 +3476,24 @@ refresh_drifted_plugin_caches() {
         [ -n "$have" ] && [ -n "$path" ] && [ -d "$path" ] || continue
         want="$(jq -r '.version // empty' "$ROOT/marketplace/$src/.claude-plugin/plugin.json" 2>/dev/null)" || want=""
         [ -n "$want" ] && [ "$want" = "$have" ] || continue
-        drift="$(_plugin_cache_drift "$ROOT/marketplace/$src" "$path")" || drift=""
-        [ -n "$drift" ] || continue
+        tree="$ROOT/marketplace/$src"
+        failed=0
+        drift="$(plugin_cache_drift "$tree" "$path")" || failed=1
+        [ "$failed" -eq 1 ] || [ -n "$drift" ] || continue
         n=$((n + 1))
         if [ "$mode" = "check" ]; then
-            echo "    would reinstall $name@himmel (cache differs: $(printf '%s' "$drift" | tr '\n' ' '))"
+            if [ "$failed" -eq 1 ]; then
+                echo "    would reinstall $name@himmel (compare failed)"
+            else
+                echo "    would reinstall $name@himmel (cache differs: $(printf '%s\n' "$drift" | cut -c3- | tr '\n' ' '))"
+            fi
             continue
         fi
-        echo "    ==> reinstall $name@himmel (cache differs from the checkout at $have)"
+        if [ "$failed" -eq 1 ]; then
+            echo "    compare failed for $name@himmel; reinstalling"
+        else
+            echo "    ==> reinstall $name@himmel (cache differs from the checkout at $have)"
+        fi
         if ! "$claude_bin" plugin uninstall --keep-data "$name@himmel" </dev/null; then
             echo "    ERROR: uninstall of $name@himmel failed; it stays installed with the stale cache." >&2
             chain_rc=1
@@ -3494,7 +3502,16 @@ refresh_drifted_plugin_caches() {
         if ! "$claude_bin" plugin install "$name@himmel" </dev/null; then
             echo "    ERROR: $name@himmel was uninstalled but the reinstall failed — run: claude plugin install $name@himmel" >&2
             chain_rc=1
-        elif [ -n "$(_plugin_cache_drift "$ROOT/marketplace/$src" "$path")" ]; then
+            continue
+        fi
+        failed=0
+        if after="$(plugin_cache_drift "$tree" "$path")"; then
+            _remove_cache_extras "$tree" "$path" "$after"
+            after="$(plugin_cache_drift "$tree" "$path")" || failed=1
+        else
+            failed=1
+        fi
+        if [ "$failed" -eq 1 ] || [ -n "$after" ]; then
             echo "    ERROR: $name@himmel still differs from the checkout after the reinstall (the marketplace clone may be older) — run: claude plugin marketplace update himmel, then re-run this step" >&2
             chain_rc=1
         fi

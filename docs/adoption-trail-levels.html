@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The adoption trail · himmel</title>
-<meta name="description" content="A practice climb on a spare project, then each level of himmel with its cost and its off switch.">
+<meta name="description" content="A practice run on a spare project, then the Guarded Core and each track of himmel with its cost and its off switch.">
 <script>try { var t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
 /* Design tokens shared by the docs site and the himmel UI (mockup v4, frame 9). Byte-identical twin of
@@ -150,6 +150,11 @@ p.ok b { color: var(--ship); font-weight: 600; }
 .footnote { font-size: var(--fs-xs); color: var(--muted); border-top: 1px solid var(--rule); padding-top: var(--s3); margin-top: var(--s5); }
 
 /* trail */
+.trk-core { --trk: var(--camp); --trk-soft: var(--camp-soft); }
+.trk-review { --trk: var(--accent); --trk-soft: var(--accent-soft); }
+.trk-shifts { --trk: var(--alpha); --trk-soft: var(--alpha-soft); }
+.trk-fleet { --trk: var(--road); --trk-soft: var(--road-soft); }
+.trk-brain { --trk: var(--note); --trk-soft: var(--note-soft); }
 .legend { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); font-size: var(--fs-sm); color: var(--muted); align-items: center; margin-top: var(--s4); }
 .legend span { display: inline-flex; gap: var(--s2); align-items: center; }
 .resume { margin-top: var(--s3); font-size: var(--fs-sm); }
@@ -157,36 +162,32 @@ p.ok b { color: var(--ship); font-weight: 600; }
 .rail { position: sticky; top: var(--s4); font-size: var(--fs-sm); }
 .rail ol { list-style: none; padding: 0; margin: 0; }
 .rail .band { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: var(--s3) 0 var(--s2) 34px; }
-.rail .band.camp { color: var(--camp); }
-.rail .band.climb { color: var(--accent); }
+.rail .band { color: var(--trk); }
 .rail a { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: center; padding: 5px 0; color: var(--ink); text-decoration: none; position: relative; }
 .rail a::before { content: ""; position: absolute; left: 11px; top: 0; bottom: 0; border-left: 1px solid var(--rule-strong); }
 .rail .knot { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule-strong); background: var(--surface); display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; transition: background .2s, color .2s; }
-.rail .camp-l .knot { border-color: var(--camp); color: var(--camp); }
+.rail li .knot { border-color: var(--trk); color: var(--trk); }
 .rail a:hover .knot { background: var(--accent-soft); }
 .rail a[aria-current="true"] .knot { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .rail a[aria-current="true"] { font-weight: 600; }
 .stepper { display: none; }
-.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .stepper a { display: grid; place-items: center; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 4px; text-decoration: none; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink); background: var(--surface); font-variant-numeric: tabular-nums; }
-.stepper .camp-l a { border-color: var(--camp); color: var(--camp); }
+.stepper li a { border-color: var(--trk); color: var(--trk); }
 .stepper a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.stepper .bands { display: grid; grid-template-columns: 2fr 6fr; gap: 4px; margin-top: 4px; }
-.stepper .bands i { display: block; height: 3px; border-radius: 2px; background: var(--accent); }
-.stepper .bands i:first-child { background: var(--camp); }
 .cards { display: grid; gap: var(--s3); min-width: 0; }
 .bandhead { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: baseline; margin-top: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--rule); }
 .bandhead h3 { font-size: var(--fs-md); font-weight: 600; }
 .bandhead .bn { font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; }
-.bandhead.camp .bn { color: var(--camp); }
-.bandhead.climb .bn { color: var(--accent); }
+.bandhead .bn { color: var(--trk); }
 .bandhead p { font-size: var(--fs-sm); color: var(--muted); flex-basis: 100%; }
+.bandhead .needs { color: var(--ink); font-weight: 600; }
 .lvl { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); scroll-margin-top: 72px; }
-.lvl > summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
+.lvl > summary { position: relative; cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
 .lvl > summary::-webkit-details-marker { display: none; }
+.lvl .alias { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }
 .lvl .lk { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--rule-strong); display: grid; place-items: center; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lvl.camp .lk { border-color: var(--camp); color: var(--camp); background: var(--camp-soft); }
-.lvl.climb .lk { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.lvl .lk { border-color: var(--trk); color: var(--trk); background: var(--trk-soft); }
 .lvl .lt { display: grid; gap: 2px; min-width: 0; }
 .lvl .lt strong { font-size: var(--fs-md); font-weight: 600; }
 .lvl .lt span { font-size: var(--fs-sm); color: var(--muted); }
@@ -286,13 +287,13 @@ p.ok b { color: var(--ship); font-weight: 600; }
 <section class="sec-block" aria-labelledby="page-h">
   <div class="wrap">
     <h1 class="sec" id="page-h">The trail</h1>
-    <p class="sec-lede">Two parts. First, a practice climb: you install himmel on a spare project, see what it does, and remove it again. Then the levels: each one adds a part of himmel, says what it costs, and says how to turn it off. You need a Claude account to sign in to Claude Code. What himmel changes on your machine, and how to undo it: <a href="adoption-trail.html#where">Start here</a>. Words you have not met before: <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
+    <p class="sec-lede">Two parts. First, a practice run: you install himmel on a spare project, see what it does, and remove it again. Then the Guarded Core and the tracks: each module adds a part of himmel, says what it costs, and says how to turn it off. You need a Claude account to sign in to Claude Code. What himmel changes on your machine, and how to undo it: <a href="adoption-trail.html#where">Start here</a>. Words you have not met before: <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
   </div>
 </section>
 
 <section class="sec-block" id="trial" aria-labelledby="trial-h">
   <div class="wrap">
-    <h2 class="sec" id="trial-h">Your first steps: a practice climb</h2>
+    <h2 class="sec" id="trial-h">Your first steps: a practice run</h2>
     <p class="sec-lede">Ten steps on a spare project you can delete afterwards. You install himmel, watch a guardrail stop a risky move, keep the install, make one change in its own worktree, and then remove everything again. Each output below comes from one real run on a clean machine; paths and commit hashes that differ on yours are shortened to "…".</p>
     <p class="legend"><span><code>$</code> you type it in your terminal</span><span><code>›</code> you type it to Claude</span><span>dashed box: what you see</span><span>✓ what success looks like</span></p>
     <ol class="steps">
@@ -439,32 +440,35 @@ DRY: Reconcile report - ledger …, 96 units
 
 <section class="sec-block" id="trail" aria-labelledby="trail-h">
   <div class="wrap">
-    <h2 class="sec" id="trail-h">The levels</h2>
-    <p class="sec-lede">Eight levels, each optional. Base camp is a complete result on its own; climb only as far as it pays. Each level says what you get, what it costs, and how you turn it off.</p>
+    <h2 class="sec" id="trail-h">The Guarded Core and the tracks</h2>
+    <p class="sec-lede">The Guarded Core is a complete result on its own. Then turn on any track whose needs you have, in any order: each track header says which others it needs. Each module says what you get, what it costs, and how you turn it off.</p>
 <p class="legend"><span>No badge: shipped and supported</span><span><span class="badge b-beta">preview</span> works, still changing</span><span><span class="badge b-road">planned</span> not built yet</span></p>
 <p class="resume" id="resume" hidden></p>
 <div class="trail">
-<nav class="rail" aria-label="Levels"><ol>
-<li class="band camp">Base camp</li>
-<li class="camp-l"><a href="#lvl-0"><span class="knot">0</span><span>Install &amp; stay current</span></a></li>
-<li class="camp-l"><a href="#lvl-1"><span class="knot">1</span><span>Ship with guardrails</span></a></li>
-<li class="band climb">The climb</li>
-<li class="climb-l"><a href="#lvl-2"><span class="knot">2</span><span>Second brain</span></a></li>
-<li class="climb-l"><a href="#lvl-3"><span class="knot">3</span><span>Reach</span></a></li>
-<li class="climb-l"><a href="#lvl-4"><span class="knot">4</span><span>Review depth</span></a></li>
-<li class="climb-l"><a href="#lvl-5"><span class="knot">5</span><span>Spend &amp; context</span></a></li>
-<li class="climb-l"><a href="#lvl-6"><span class="knot">6</span><span>Always-on</span></a></li>
-<li class="climb-l"><a href="#lvl-7"><span class="knot">7</span><span>Command a fleet</span></a></li>
+<nav class="rail" aria-label="Tracks"><ol>
+<li class="band trk-core">Guarded Core</li>
+<li class="trk-core"><a href="#m-install"><span class="knot">1</span><span>Install &amp; stay current</span></a></li>
+<li class="trk-core"><a href="#m-guardrails"><span class="knot">2</span><span>Ship with guardrails</span></a></li>
+<li class="band trk-review">Cross-model review</li>
+<li class="trk-review"><a href="#m-review"><span class="knot">1</span><span>Review depth</span></a></li>
+<li class="band trk-shifts">Autonomous shifts &amp; spend protection</li>
+<li class="trk-shifts"><a href="#m-spend"><span class="knot">1</span><span>Spend &amp; context</span></a></li>
+<li class="trk-shifts"><a href="#m-always-on"><span class="knot">2</span><span>Always-on</span></a></li>
+<li class="band trk-fleet">Parallel fleet</li>
+<li class="trk-fleet"><a href="#m-fleet"><span class="knot">1</span><span>Command a fleet</span></a></li>
+<li class="band trk-brain">Second brain &amp; mobile</li>
+<li class="trk-brain"><a href="#m-second-brain"><span class="knot">1</span><span>Second brain</span></a></li>
+<li class="trk-brain"><a href="#m-reach"><span class="knot">2</span><span>Reach</span></a></li>
 </ol></nav>
-<nav class="stepper" aria-label="Levels"><ol><li class="camp-l"><a href="#lvl-0" aria-label="Level 0: Install &amp; stay current">0</a></li><li class="camp-l"><a href="#lvl-1" aria-label="Level 1: Ship with guardrails">1</a></li><li class="climb-l"><a href="#lvl-2" aria-label="Level 2: Second brain">2</a></li><li class="climb-l"><a href="#lvl-3" aria-label="Level 3: Reach">3</a></li><li class="climb-l"><a href="#lvl-4" aria-label="Level 4: Review depth">4</a></li><li class="climb-l"><a href="#lvl-5" aria-label="Level 5: Spend &amp; context">5</a></li><li class="climb-l"><a href="#lvl-6" aria-label="Level 6: Always-on">6</a></li><li class="climb-l"><a href="#lvl-7" aria-label="Level 7: Command a fleet">7</a></li></ol><div class="bands" aria-hidden="true" style="grid-template-columns:2fr 6fr"><i></i><i></i></div></nav>
+<nav class="stepper" aria-label="Tracks"><ol style="grid-template-columns:repeat(5, minmax(0, 1fr))"><li class="trk-core"><a href="#t-core" aria-label="Guarded Core">Core</a></li><li class="trk-review"><a href="#t-review" aria-label="Cross-model review">Review</a></li><li class="trk-shifts"><a href="#t-shifts" aria-label="Autonomous shifts &amp; spend protection">Shifts</a></li><li class="trk-fleet"><a href="#t-fleet" aria-label="Parallel fleet">Fleet</a></li><li class="trk-brain"><a href="#t-brain" aria-label="Second brain &amp; mobile">Brain</a></li></ol></nav>
 <div class="cards">
-<div class="bandhead camp"><span class="bn">Base camp</span><h3>Guardrails for any project</h3><p>Levels 0 and 1. You can stop here, and that is a complete result.</p></div>
-<details class="lvl camp" id="lvl-0">
-<summary><span class="lk">0</span><span class="lt"><strong>Install &amp; stay current</strong><span><code>himmelctl status</code> reads what is installed, armed and working on your machine.</span></span><span class="lc"></span></summary>
+<div class="bandhead trk-core" id="t-core" data-needs=""><span class="bn">Guarded Core</span><h3>Guardrails for any project</h3><p>Install and guardrails. You can stop here, and that is a complete result.</p><p class="needs">Needs: nothing</p></div>
+<details class="lvl trk-core" id="m-install" data-track="core">
+<summary><span class="alias" id="lvl-0"></span><span class="lk">1</span><span class="lt"><strong>Install &amp; stay current</strong><span><code>himmelctl status</code> reads what is installed, armed and working on your machine.</span></span><span class="lc"></span></summary>
 <div class="lvl-body">
 <p class="outcome">You know exactly what himmel put on your machine, and one command reports whether each part is still there.</p>
 <dl class="schema">
-<dt>Turn it on</dt><dd><p><code>node ~/himmel/scripts/himmelctl/bin.js install</code> and press Enter for the starter answers. The <a href="#trial">practice climb</a> walks it end to end; <a href="setup/profiles/">install profiles</a> explains the other answers.</p></dd>
+<dt>Turn it on</dt><dd><p><code>node ~/himmel/scripts/himmelctl/bin.js install</code> and press Enter for the starter answers. The <a href="#trial">practice run</a> walks it end to end; <a href="setup/profiles/">install profiles</a> explains the other answers.</p></dd>
 <dt>What you get</dt><dd><ul class="comps">
 <li><details class="comp">
 <summary><span class="cn">himmelctl install and status</span></summary>
@@ -494,8 +498,8 @@ DRY: Reconcile report - ledger …, 96 units
 </dl>
 </div>
 </details>
-<details class="lvl camp" id="lvl-1">
-<summary><span class="lk">1</span><span class="lt"><strong>Ship with guardrails</strong><span>Edits and commits on your main branch, direct pushes to main and reads of secret files are refused. A guard against destructive shell commands is on by default.</span></span><span class="lc"></span></summary>
+<details class="lvl trk-core" id="m-guardrails" data-track="core">
+<summary><span class="alias" id="lvl-1"></span><span class="lk">2</span><span class="lt"><strong>Ship with guardrails</strong><span>Edits and commits on your main branch, direct pushes to main and reads of secret files are refused. A guard against destructive shell commands is on by default.</span></span><span class="lc"></span></summary>
 <div class="lvl-body">
 <p class="outcome">Every change Claude makes lands on its own branch in its own worktree, and the moves that can hurt a project are refused before they run.</p>
 <dl class="schema">
@@ -519,7 +523,7 @@ DRY: Reconcile report - ledger …, 96 units
 </details></li>
 <li><details class="comp">
 <summary><span class="cn"><code>/pr-check</code> review panel</span></summary>
-<div class="cd"><p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you add one at Level 4), you rule on each finding, and a round repeats until nothing blocking is left.</p></div>
+<div class="cd"><p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you turn on the <a href="#t-review">Cross-model review</a> track), you rule on each finding, and a round repeats until nothing blocking is left.</p></div>
 </details></li>
 </ul></dd>
 <dt>Try it</dt><dd class="example"><p><b>Three refusals you will meet</b></p>
@@ -531,7 +535,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <p class="sayline"><span class="p">›</span> Ask Claude to run rm -rf build</p>
 <div class="io out"><span class="lab">You see</span><pre><code>block-destructive-commands: destructive command refused (recursive rm); bypass: DESTRUCTIVE_OK=1 in the launching shell (per run)</code></pre></div>
 <p>Each of Claude's refusals names a one-session bypass, which you set when you start Claude (for example <code>READ_SECRETS_OK=1 claude</code>), never per command. The push-to-main gate has no bypass: changes reach main through a pull request.</p></dd>
-<dt>You need</dt><dd><ul><li>Level 0.</li><li>A git repository with a <code>main</code> branch.</li></ul></dd>
+<dt>You need</dt><dd><ul><li>A git repository with a <code>main</code> branch.</li></ul></dd>
 <dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
 <dt>What it costs</dt><dd><ul><li>No model usage for the guards and gates.</li><li><code>/pr-check</code> uses your Claude usage for each review round.</li></ul></dd>
 <dt>Turn it off</dt><dd><p>For one session: start Claude Code as <code>EDIT_ON_MAIN_OK=1 claude</code>, or with <code>READ_SECRETS_OK=1</code> or <code>DESTRUCTIVE_OK=1</code> in the same place. For good: <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code>.</p></dd>
@@ -540,9 +544,193 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </dl>
 </div>
 </details>
-<div class="bandhead climb"><span class="bn">The climb</span><h3>The full stack</h3><p>Levels 2 to 7. Each card says what you can turn on, what it costs you, and how you turn it off.</p></div>
-<details class="lvl climb" id="lvl-2">
-<summary><span class="lk">2</span><span class="lt"><strong>Second brain</strong><span>Your notes vault fills and links itself on a schedule, and Claude's lessons land in it.</span></span><span class="lc"></span></summary>
+<div class="bandhead trk-review" id="t-review" data-needs="core"><span class="bn">Cross-model review</span><h3>A second model family reads every diff</h3><p>Needs a ChatGPT or Codex login, and no notes vault or chat bot.</p><p class="needs">Needs: Guarded Core</p></div>
+<details class="lvl trk-review" id="m-review" data-track="review">
+<summary><span class="alias" id="lvl-4"></span><span class="lk">1</span><span class="lt"><strong>Review depth</strong><span>A second model family (OpenAI GPT, on your ChatGPT/Codex subscription) reviews every diff alongside Claude, and its track record tunes the review.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
+<div class="lvl-body">
+<p class="outcome">Every <code>/pr-check</code> round is read by two model families, and you can see which reviewer's findings hold up.</p>
+<dl class="schema">
+<dt>Turn it on</dt><dd><p>Answer <code>codex</code> to the installer's lanes question (after <code>codex login</code>), or run the install again with <code>--with-codex</code>.</p></dd>
+<dt>What you get</dt><dd><ul class="comps">
+<li><details class="comp">
+<summary><span class="cn">OpenAI GPT critic, via hermes</span></summary>
+<div class="cd"><p>A <em>critic</em> is one reviewer model; hermes is the open-source agent runtime himmel uses to call it. With hermes installed and your ChatGPT/Codex login in place, <code>/pr-check</code> calls the GPT critic beside Claude.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn"><code>/cr-scores</code> critic scorecard</span></summary>
+<div class="cd"><p>Every <code>/pr-check</code> round records its findings and verdicts in a review ledger on your machine. <code>/cr-scores</code> shows, for each critic, how many of its findings held up and how often it was available, and says when a critic is worth dropping.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn"><code>/cr-tune</code> tuning proposals</span></summary>
+<div class="cd"><p>Drafts tuning proposals from the findings that were disproved, each citing its ledger rows, and never applies them itself.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn"><code>/cr-learnings-refresh</code> known findings</span></summary>
+<div class="cd"><p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Multi-model front end</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>One place to drive Claude and the other model families side by side. Not built yet.</p></div>
+</details></li>
+</ul></dd>
+<dt>Try it</dt><dd class="example"><p><b>Read the reviewers' scorecard</b></p>
+<div class="io say"><span class="lab">After a few reviews, in a Claude session</span><pre><code><span class="p">› </span>/cr-scores</code></pre></div>
+<div class="io out"><span class="lab">You see, before any review has run</span><pre><code>no critic scores recorded yet (ledger: …)</code></pre></div>
+<p>Once reviews have run, it shows one row per critic: how many of its findings held up, and how often it was available.</p></dd>
+<dt>You need</dt><dd><ul><li>hermes installed.</li><li>A signed-in ChatGPT/Codex subscription (<code>codex login</code>).</li></ul></dd>
+<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
+<dt>What it costs</dt><dd><ul><li>The GPT critic draws on your ChatGPT/Codex subscription, one call per review round.</li><li>The scorecard and tuning commands use your Claude usage when you run them.</li></ul></dd>
+<dt>Turn it off</dt><dd><p>Run the installer again and leave <code>codex</code> out of the lanes answer; <code>/pr-check</code> then reviews with Claude alone.</p></dd>
+<dt>Who it is for</dt><dd><p>Anyone with a ChatGPT or Codex subscription.</p></dd>
+<dt>Read more</dt><dd><p><a href="setup/codex/">Codex lane</a> · <a href="hermes-runbook/">hermes runbook</a></p></dd>
+</dl>
+</div>
+</details>
+<div class="bandhead trk-shifts" id="t-shifts" data-needs="core"><span class="bn">Autonomous shifts &amp; spend protection</span><h3>Work that runs while you are away, within your usage</h3><p>Always-on needs a place for handover notes. Neither module needs a notes vault or chat bot.</p><p class="needs">Needs: Guarded Core</p></div>
+<details class="lvl trk-shifts" id="m-spend" data-track="shifts">
+<summary><span class="alias" id="lvl-5"></span><span class="lk">1</span><span class="lt"><strong>Spend &amp; context</strong><span>Heavy work checks your remaining usage first, and each session can read its own context fill.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
+<div class="lvl-body">
+<p class="outcome">You see how full each session's context is, and scheduled work waits instead of eating the usage you need for your own sessions.</p>
+<dl class="schema">
+<dt>Turn it on</dt><dd><p>The status line comes with the starter install; the usage check runs by itself before scheduled work.</p></dd>
+<dt>What you get</dt><dd><ul class="comps">
+<li><details class="comp">
+<summary><span class="cn">claude-hud status line</span></summary>
+<div class="cd"><p>Shows the model, the context fill and your usage under every prompt. The install backs up your old <code>statusLine</code> and uninstall restores it.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Usage preflight</span></summary>
+<div class="cd"><p>One word before a heavy run: go, or wait and why. Scheduled runs check it before they start, because they spend the same usage as your own sessions.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Self-read context fill</span></summary>
+<div class="cd"><p><code>bash ~/himmel/scripts/context-fill.sh</code> prints how full the current session's context window is, read from the status line's own snapshot, so a session can hand off before it fills.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">rtk output trimming</span></summary>
+<div class="cd"><p>rtk filters long command output before Claude reads it, so a noisy build log does not fill the context.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Headless runs with a budget guard</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>Unattended runs that stop at a spend limit you set. Not built yet.</p></div>
+</details></li>
+</ul></dd>
+<dt>Try it</dt><dd class="example"><p><b>Ask before a heavy run</b></p>
+<div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>bash ~/himmel/scripts/lib/usage-preflight.sh</code></pre></div>
+<div class="io out"><span class="lab">You see one word</span><pre><code>PROCEED</code></pre></div>
+<p>Or <code>SKIPPED-BANK</code> when your 5-hour or weekly Claude usage is too high, <code>SKIPPED-FLEET</code> when too many sessions already run, and <code>BANK-STALE</code> or <code>BANK-UNKNOWN</code> when the usage reading is old or missing.</p></dd>
+<dt>You need</dt><dd><p>Nothing beyond what its track needs.</p></dd>
+<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
+<dt>What it costs</dt><dd><ul><li>No model usage: these read numbers Claude Code already reports.</li></ul></dd>
+<dt>Turn it off</dt><dd><p><code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code> restores your old status line; the preflight only ever answers, it never runs anything.</p></dd>
+<dt>Who it is for</dt><dd><p>Anyone who runs Claude Code for long or unattended.</p></dd>
+<dt>Read more</dt><dd><p><a href="token-economy/">Token economy</a> · <a href="configuration/">Configuration</a></p></dd>
+</dl>
+</div>
+</details>
+<details class="lvl trk-shifts" id="m-always-on" data-track="shifts">
+<summary><span class="alias" id="lvl-6"></span><span class="lk">2</span><span class="lt"><strong>Always-on</strong><span>Work continues while you are away, and you read one morning report.</span></span><span class="lc"><span class="badge b-road">2 planned</span></span></summary>
+<div class="lvl-body">
+<p class="outcome">A session that ends leaves a note the next one resumes from, and a shift while you sleep ends in one report you read over coffee.</p>
+<dl class="schema">
+<dt>Turn it on</dt><dd><p><code>/handover-setup</code> once in your project. Shifts while you are away: <code>/afk-shift</code>.</p></dd>
+<dt>What you get</dt><dd><ul class="comps">
+<li><details class="comp">
+<summary><span class="cn">Session handover</span></summary>
+<div class="cd"><p><code>/handover</code> at the end of a session saves what you did and where you left off; a fresh session resumes from it.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Shifts while you are away: <code>/afk-shift</code></span></summary>
+<div class="cd"><p>Starts a shift that keeps working through the queue you leave it, within the usage the preflight allows, and stops when the queue is empty or the usage runs low.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Morning report</span></summary>
+<div class="cd"><p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Monitoring set up for you</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">A morning report sent where you choose</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>Choose where the report goes. Not built yet.</p></div>
+</details></li>
+</ul></dd>
+<dt>Try it</dt><dd class="example"><p><b>End a session so the next one can pick up</b></p>
+<div class="io say"><span class="lab">Once, in a Claude session in your project</span><pre><code><span class="p">› </span>/handover-setup</code></pre></div>
+<p>Choose where notes live: a <code>handovers/</code> folder in the repo, or a separate git repo.</p>
+<div class="io say"><span class="lab">At the end of each session</span><pre><code><span class="p">› </span>/handover</code></pre></div>
+<p>It saves what you did and where you left off, and confirms the saved note. A fresh session resumes from it.</p></dd>
+<dt>You need</dt><dd><ul><li>A place for the notes: a folder in the repo or a separate git repo.</li></ul></dd>
+<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
+<dt>What it costs</dt><dd><ul><li>A shift uses your Claude usage while you are away; the preflight stops it before your own budget runs out.</li></ul></dd>
+<dt>Turn it off</dt><dd><p>Nothing runs until you start a shift; <code>/stop</code> ends one.</p></dd>
+<dt>Who it is for</dt><dd><p>Anyone who leaves work running overnight.</p></dd>
+<dt>Read more</dt><dd><p><a href="handover/afk-mode/">Shifts while you are away</a> · <a href="internals/handover-system/">The handover system</a></p></dd>
+</dl>
+</div>
+</details>
+<div class="bandhead trk-fleet" id="t-fleet" data-needs="core shifts"><span class="bn">Parallel fleet</span><h3>Many workers under one chief</h3><p>For many tickets at once. Needs a ticket tracker, and no notes vault or chat bot.</p><p class="needs">Needs: Guarded Core and Autonomous shifts &amp; spend protection</p></div>
+<details class="lvl trk-fleet" id="m-fleet" data-track="fleet">
+<summary><span class="alias" id="lvl-7"></span><span class="lk">1</span><span class="lt"><strong>Command a fleet</strong><span>Many workers ship tickets in parallel under one chief, and you watch them live.</span></span><span class="lc"><span class="badge b-beta">2 preview</span><span class="badge b-road">1 planned</span></span></summary>
+<div class="lvl-body">
+<p class="outcome">You hand the chief a list of tickets, and workers ship them in parallel, each through the same review and merge gate as your own changes.</p>
+<dl class="schema">
+<dt>Turn it on</dt><dd><p><code>/chief new</code> starts a chief; <code>himmelctl ui</code> opens the fleet view.</p></dd>
+<dt>What you get</dt><dd><ul class="comps">
+<li><details class="comp">
+<summary><span class="cn">Written briefs for each worker</span></summary>
+<div class="cd"><p>A <em>worker</em> is one Claude session that owns one ticket, one worktree and one pull request. The chief writes each worker a brief with its scope and the files it may touch.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Parallel workers, started in waves</span></summary>
+<div class="cd"><p>The <em>chief</em> is the session you talk to: it hands out the tickets, starts workers in parallel waves, and keeps them off each other's files.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Coordination in writing, not memory</span></summary>
+<div class="cd"><p>Every worker reports in its handover note and by message, so a chief that hands over its shift loses nothing.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Merge only on the chief's approval</span></summary>
+<div class="cd"><p>A worker merges only when CI is green at its exact commit, every review point is decided, and the chief has approved that commit.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Session run view</span></summary>
+<div class="cd"><p><code>himmelctl ui</code> serves a local page on <code>127.0.0.1</code> behind a per-launch key. Its Fleet page lists every live Claude session; click one to follow it as it runs.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Fleet board</span><span class="badge b-beta">preview</span></summary>
+<div class="cd"><p>With a chief running, the same page groups the workers under it and shows each one's stage and whether it waits on you. Works, still changing.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Release manager</span><span class="badge b-beta">preview</span></summary>
+<div class="cd"><p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Trends over days and weeks</span></summary>
+<div class="cd"><p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p></div>
+</details></li>
+<li><details class="comp">
+<summary><span class="cn">Installable chief module</span><span class="badge b-road">planned</span></summary>
+<div class="cd"><p>The chief and its scripts as one installable part for your own project. Not built yet.</p></div>
+</details></li>
+</ul></dd>
+<dt>Try it</dt><dd class="example"><p><b>Open the fleet view</b></p>
+<div class="io cmd"><span class="lab">Run from your own terminal, not inside Claude</span><pre><code><span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js ui</code></pre></div>
+<div class="io out"><span class="lab">You see one link</span><pre><code>http://127.0.0.1:37931/agui/#t=…</code></pre></div>
+<p>Open it in your browser. The port and the key after <code>#t=</code> change each launch, and the page only answers on your own machine. It stops after 30 idle minutes or on Ctrl-C.</p></dd>
+<dt>You need</dt><dd><ul><li>bun; the first launch builds the fleet page.</li><li>A ticket tracker the chief can read.</li></ul></dd>
+<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
+<dt>What it costs</dt><dd><ul><li>Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low.</li></ul></dd>
+<dt>Turn it off</dt><dd><p>Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.</p></dd>
+<dt>Who it is for</dt><dd><p>Anyone running many tickets at once; most adopters never turn this track on.</p></dd>
+<dt>Read more</dt><dd><p><a href="ui/">The local UI</a> · <a href="handover/running-a-chief/">Running a chief</a> · <a href="orchestration-patterns/">Orchestration patterns</a></p></dd>
+</dl>
+</div>
+</details>
+<div class="bandhead trk-brain" id="t-brain" data-needs="core"><span class="bn">Second brain &amp; mobile</span><h3>A notes vault, and your phone</h3><p>Needs a notes vault, and a Telegram bot for mobile. Nothing else on this page needs this track.</p><p class="needs">Needs: Guarded Core</p></div>
+<details class="lvl trk-brain" id="m-second-brain" data-track="brain">
+<summary><span class="alias" id="lvl-2"></span><span class="lk">1</span><span class="lt"><strong>Second brain</strong><span>Your notes vault fills and links itself on a schedule, and Claude's lessons land in it.</span></span><span class="lc"></span></summary>
 <div class="lvl-body">
 <p class="outcome">A link you drop into your vault at midnight is a connected, summarized note by morning, and search over it stays fresh.</p>
 <dl class="schema">
@@ -595,7 +783,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <dt>Try it</dt><dd class="example"><p><b>Check a scheduled job</b></p>
 <div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>bash ~/himmel/scripts/luna/qmd-cadence.sh status</code></pre></div>
 <p>You see whether the job is armed, its schedule and its last run. <code>arm</code> refuses to arm it twice, and <code>disarm</code> removes exactly what <code>arm</code> added.</p></dd>
-<dt>You need</dt><dd><ul><li>Levels 0 and 1.</li><li>A vault made from <code>templates/luna-second-brain/</code>.</li><li>bun, for qmd search (about 2.1 GB of models).</li><li>cron on Linux or macOS.</li></ul></dd>
+<dt>You need</dt><dd><ul><li>A vault made from <code>templates/luna-second-brain/</code>.</li><li>bun, for qmd search (about 2.1 GB of models).</li><li>cron on Linux or macOS.</li></ul></dd>
 <dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
 <dt>What it costs</dt><dd><ul><li>Disk: about 2.1 GB for search models.</li><li>Search re-indexing and the graph's structural refresh: no model usage.</li><li>The pipeline's summaries and the graph's semantic pass: your Claude usage, per run.</li></ul></dd>
 <dt>Turn it off</dt><dd><p>One command per job; every job script takes <code>arm</code>, <code>status</code> and <code>disarm</code>, for example <code>bash ~/himmel/scripts/luna/pipeline-cadence.sh disarm</code>.</p></dd>
@@ -604,8 +792,8 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </dl>
 </div>
 </details>
-<details class="lvl climb" id="lvl-3">
-<summary><span class="lk">3</span><span class="lt"><strong>Reach</strong><span>Your phone joins: capture to the vault from chat, and alerts reach you.</span></span><span class="lc"><span class="badge b-beta">1 preview</span></span></summary>
+<details class="lvl trk-brain" id="m-reach" data-track="brain">
+<summary><span class="alias" id="lvl-3"></span><span class="lk">2</span><span class="lt"><strong>Reach</strong><span>Your phone joins: capture to the vault from chat, and alerts reach you.</span></span><span class="lc"><span class="badge b-beta">1 preview</span></span></summary>
 <div class="lvl-body">
 <p class="outcome">You send your bot a message or a link, and Claude answers in the chat or files it into the vault.</p>
 <dl class="schema">
@@ -638,7 +826,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <div class="io cmd"><span class="lab">Start the bridge</span><pre><code><span class="p">$ </span>cd ~/himmel/scripts/telegram
 <span class="p">$ </span>bun supervisor.ts</code></pre></div>
 <p>Then message your bot. Each message starts one short Claude run, and the reply comes back to the chat.</p></dd>
-<dt>You need</dt><dd><ul><li>Level 2 for capture to the vault.</li><li>bun.</li><li>A Telegram bot token from BotFather, and your own Telegram user id.</li></ul></dd>
+<dt>You need</dt><dd><ul><li>bun.</li><li>A Telegram bot token from BotFather, and your own Telegram user id.</li></ul></dd>
 <dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
 <dt>What it costs</dt><dd><ul><li>Each message is one short Claude run on your usage.</li></ul></dd>
 <dt>Turn it off</dt><dd><p><code>cd ~/himmel/scripts/telegram &amp;&amp; bun supervisor.ts --kill</code> stops the bridge.</p></dd>
@@ -647,193 +835,12 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </dl>
 </div>
 </details>
-<details class="lvl climb" id="lvl-4">
-<summary><span class="lk">4</span><span class="lt"><strong>Review depth</strong><span>A second model family (OpenAI GPT, on your ChatGPT/Codex subscription) reviews every diff alongside Claude, and its track record tunes the review.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
-<div class="lvl-body">
-<p class="outcome">Every <code>/pr-check</code> round is read by two model families, and you can see which reviewer's findings hold up.</p>
-<dl class="schema">
-<dt>Turn it on</dt><dd><p>Answer <code>codex</code> to the installer's lanes question (after <code>codex login</code>), or run the install again with <code>--with-codex</code>.</p></dd>
-<dt>What you get</dt><dd><ul class="comps">
-<li><details class="comp">
-<summary><span class="cn">OpenAI GPT critic, via hermes</span></summary>
-<div class="cd"><p>A <em>critic</em> is one reviewer model; hermes is the open-source agent runtime himmel uses to call it. With hermes installed and your ChatGPT/Codex login in place, <code>/pr-check</code> calls the GPT critic beside Claude.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn"><code>/cr-scores</code> critic scorecard</span></summary>
-<div class="cd"><p>Every <code>/pr-check</code> round records its findings and verdicts in a review ledger on your machine. <code>/cr-scores</code> shows, for each critic, how many of its findings held up and how often it was available, and says when a critic is worth dropping.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn"><code>/cr-tune</code> tuning proposals</span></summary>
-<div class="cd"><p>Drafts tuning proposals from the findings that were disproved, each citing its ledger rows, and never applies them itself.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn"><code>/cr-learnings-refresh</code> known findings</span></summary>
-<div class="cd"><p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Multi-model front end</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>One place to drive Claude and the other model families side by side. Not built yet.</p></div>
-</details></li>
-</ul></dd>
-<dt>Try it</dt><dd class="example"><p><b>Read the reviewers' scorecard</b></p>
-<div class="io say"><span class="lab">After a few reviews, in a Claude session</span><pre><code><span class="p">› </span>/cr-scores</code></pre></div>
-<div class="io out"><span class="lab">You see, before any review has run</span><pre><code>no critic scores recorded yet (ledger: …)</code></pre></div>
-<p>Once reviews have run, it shows one row per critic: how many of its findings held up, and how often it was available.</p></dd>
-<dt>You need</dt><dd><ul><li>Level 1 (<code>/pr-check</code>).</li><li>hermes installed.</li><li>A signed-in ChatGPT/Codex subscription (<code>codex login</code>).</li></ul></dd>
-<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
-<dt>What it costs</dt><dd><ul><li>The GPT critic draws on your ChatGPT/Codex subscription, one call per review round.</li><li>The scorecard and tuning commands use your Claude usage when you run them.</li></ul></dd>
-<dt>Turn it off</dt><dd><p>Run the installer again and leave <code>codex</code> out of the lanes answer; <code>/pr-check</code> then reviews with Claude alone.</p></dd>
-<dt>Who it is for</dt><dd><p>Anyone with a ChatGPT or Codex subscription.</p></dd>
-<dt>Read more</dt><dd><p><a href="setup/codex/">Codex lane</a> · <a href="hermes-runbook/">hermes runbook</a></p></dd>
-</dl>
-</div>
-</details>
-<details class="lvl climb" id="lvl-5">
-<summary><span class="lk">5</span><span class="lt"><strong>Spend &amp; context</strong><span>Heavy work checks your remaining usage first, and each session can read its own context fill.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
-<div class="lvl-body">
-<p class="outcome">You see how full each session's context is, and scheduled work waits instead of eating the usage you need for your own sessions.</p>
-<dl class="schema">
-<dt>Turn it on</dt><dd><p>The status line comes with the starter install; the usage check runs by itself before scheduled work.</p></dd>
-<dt>What you get</dt><dd><ul class="comps">
-<li><details class="comp">
-<summary><span class="cn">claude-hud status line</span></summary>
-<div class="cd"><p>Shows the model, the context fill and your usage under every prompt. The install backs up your old <code>statusLine</code> and uninstall restores it.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Usage preflight</span></summary>
-<div class="cd"><p>One word before a heavy run: go, or wait and why. Scheduled runs check it before they start, because they spend the same usage as your own sessions.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Self-read context fill</span></summary>
-<div class="cd"><p><code>bash ~/himmel/scripts/context-fill.sh</code> prints how full the current session's context window is, read from the status line's own snapshot, so a session can hand off before it fills.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">rtk output trimming</span></summary>
-<div class="cd"><p>rtk filters long command output before Claude reads it, so a noisy build log does not fill the context.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Headless runs with a budget guard</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>Unattended runs that stop at a spend limit you set. Not built yet.</p></div>
-</details></li>
-</ul></dd>
-<dt>Try it</dt><dd class="example"><p><b>Ask before a heavy run</b></p>
-<div class="io cmd"><span class="lab">Run</span><pre><code><span class="p">$ </span>bash ~/himmel/scripts/lib/usage-preflight.sh</code></pre></div>
-<div class="io out"><span class="lab">You see one word</span><pre><code>PROCEED</code></pre></div>
-<p>Or <code>SKIPPED-BANK</code> when your 5-hour or weekly Claude usage is too high, <code>SKIPPED-FLEET</code> when too many sessions already run, and <code>BANK-STALE</code> or <code>BANK-UNKNOWN</code> when the usage reading is old or missing.</p></dd>
-<dt>You need</dt><dd><ul><li>Level 0.</li></ul></dd>
-<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
-<dt>What it costs</dt><dd><ul><li>No model usage: these read numbers Claude Code already reports.</li></ul></dd>
-<dt>Turn it off</dt><dd><p><code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code> restores your old status line; the preflight only ever answers, it never runs anything.</p></dd>
-<dt>Who it is for</dt><dd><p>Anyone who runs Claude Code for long or unattended.</p></dd>
-<dt>Read more</dt><dd><p><a href="token-economy/">Token economy</a> · <a href="configuration/">Configuration</a></p></dd>
-</dl>
-</div>
-</details>
-<details class="lvl climb" id="lvl-6">
-<summary><span class="lk">6</span><span class="lt"><strong>Always-on</strong><span>Work continues while you are away, and you read one morning report.</span></span><span class="lc"><span class="badge b-road">2 planned</span></span></summary>
-<div class="lvl-body">
-<p class="outcome">A session that ends leaves a note the next one resumes from, and a shift while you sleep ends in one report you read over coffee.</p>
-<dl class="schema">
-<dt>Turn it on</dt><dd><p><code>/handover-setup</code> once in your project. Shifts while you are away: <code>/afk-shift</code>.</p></dd>
-<dt>What you get</dt><dd><ul class="comps">
-<li><details class="comp">
-<summary><span class="cn">Session handover</span></summary>
-<div class="cd"><p><code>/handover</code> at the end of a session saves what you did and where you left off; a fresh session resumes from it.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Shifts while you are away: <code>/afk-shift</code></span></summary>
-<div class="cd"><p>Starts a shift that keeps working through the queue you leave it, within the usage the preflight allows, and stops when the queue is empty or the usage runs low.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Morning report</span></summary>
-<div class="cd"><p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Monitoring set up for you</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">A morning report sent where you choose</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>Choose where the report goes. Not built yet.</p></div>
-</details></li>
-</ul></dd>
-<dt>Try it</dt><dd class="example"><p><b>End a session so the next one can pick up</b></p>
-<div class="io say"><span class="lab">Once, in a Claude session in your project</span><pre><code><span class="p">› </span>/handover-setup</code></pre></div>
-<p>Choose where notes live: a <code>handovers/</code> folder in the repo, or a separate git repo.</p>
-<div class="io say"><span class="lab">At the end of each session</span><pre><code><span class="p">› </span>/handover</code></pre></div>
-<p>It saves what you did and where you left off, and confirms the saved note. A fresh session resumes from it.</p></dd>
-<dt>You need</dt><dd><ul><li>Levels 1 and 5.</li><li>A place for the notes: a folder in the repo or a separate git repo.</li></ul></dd>
-<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
-<dt>What it costs</dt><dd><ul><li>A shift uses your Claude usage while you are away; the preflight stops it before your own budget runs out.</li></ul></dd>
-<dt>Turn it off</dt><dd><p>Nothing runs until you start a shift; <code>/stop</code> ends one.</p></dd>
-<dt>Who it is for</dt><dd><p>Anyone who leaves work running overnight.</p></dd>
-<dt>Read more</dt><dd><p><a href="handover/afk-mode/">Shifts while you are away</a> · <a href="internals/handover-system/">The handover system</a></p></dd>
-</dl>
-</div>
-</details>
-<details class="lvl climb" id="lvl-7">
-<summary><span class="lk">7</span><span class="lt"><strong>Command a fleet</strong><span>Many workers ship tickets in parallel under one chief, and you watch them live.</span></span><span class="lc"><span class="badge b-beta">2 preview</span><span class="badge b-road">1 planned</span></span></summary>
-<div class="lvl-body">
-<p class="outcome">You hand the chief a list of tickets, and workers ship them in parallel, each through the same review and merge gate as your own changes.</p>
-<dl class="schema">
-<dt>Turn it on</dt><dd><p><code>/chief new</code> starts a chief; <code>himmelctl ui</code> opens the fleet view.</p></dd>
-<dt>What you get</dt><dd><ul class="comps">
-<li><details class="comp">
-<summary><span class="cn">Written briefs for each worker</span></summary>
-<div class="cd"><p>A <em>worker</em> is one Claude session that owns one ticket, one worktree and one pull request. The chief writes each worker a brief with its scope and the files it may touch.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Parallel workers, started in waves</span></summary>
-<div class="cd"><p>The <em>chief</em> is the session you talk to: it hands out the tickets, starts workers in parallel waves, and keeps them off each other's files.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Coordination in writing, not memory</span></summary>
-<div class="cd"><p>Every worker reports in its handover note and by message, so a chief that hands over its shift loses nothing.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Merge only on the chief's approval</span></summary>
-<div class="cd"><p>A worker merges only when CI is green at its exact commit, every review point is decided, and the chief has approved that commit.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Session run view</span></summary>
-<div class="cd"><p><code>himmelctl ui</code> serves a local page on <code>127.0.0.1</code> behind a per-launch key. Its Fleet page lists every live Claude session; click one to follow it as it runs.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Fleet board</span><span class="badge b-beta">preview</span></summary>
-<div class="cd"><p>With a chief running, the same page groups the workers under it and shows each one's stage and whether it waits on you. Works, still changing.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Release manager</span><span class="badge b-beta">preview</span></summary>
-<div class="cd"><p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Trends over days and weeks</span></summary>
-<div class="cd"><p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p></div>
-</details></li>
-<li><details class="comp">
-<summary><span class="cn">Installable chief module</span><span class="badge b-road">planned</span></summary>
-<div class="cd"><p>The chief and its scripts as one installable part for your own project. Not built yet.</p></div>
-</details></li>
-</ul></dd>
-<dt>Try it</dt><dd class="example"><p><b>Open the fleet view</b></p>
-<div class="io cmd"><span class="lab">Run from your own terminal, not inside Claude</span><pre><code><span class="p">$ </span>node ~/himmel/scripts/himmelctl/bin.js ui</code></pre></div>
-<div class="io out"><span class="lab">You see one link</span><pre><code>http://127.0.0.1:37931/agui/#t=…</code></pre></div>
-<p>Open it in your browser. The port and the key after <code>#t=</code> change each launch, and the page only answers on your own machine. It stops after 30 idle minutes or on Ctrl-C.</p></dd>
-<dt>You need</dt><dd><ul><li>Levels 1, 5 and 6.</li><li>bun; the first launch builds the fleet page.</li><li>A ticket tracker the chief can read.</li></ul></dd>
-<dt>Setup time</dt><dd><p>Not measured yet.</p></dd>
-<dt>What it costs</dt><dd><ul><li>Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low.</li></ul></dd>
-<dt>Turn it off</dt><dd><p>Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.</p></dd>
-<dt>Who it is for</dt><dd><p>Anyone running many tickets at once; most adopters stop below this level.</p></dd>
-<dt>Read more</dt><dd><p><a href="ui/">The local UI</a> · <a href="handover/running-a-chief/">Running a chief</a> · <a href="orchestration-patterns/">Orchestration patterns</a></p></dd>
-</dl>
-</div>
-</details>
 </div>
 </div>
 <div class="testing">
 <h3>Being tried out</h3>
 <ul><li>Skill eval and optimization loops</li><li>Self-evolving workflows</li></ul>
-<p>Experiments, not on the trail yet. They join a level once they work for someone other than us.</p>
+<p>Experiments, not on the trail yet. They join a track once they work for someone other than us.</p>
 </div>
 <figure class="placeholder" id="fleet-recording"><figcaption>Placeholder: a short recording of a fleet at work goes here. Not recorded yet.</figcaption></figure>
 <p class="trail-foot"><a href="getting-started/">Getting started</a><a href="setup/profiles/">Install profiles</a><a href="cadences/">Scheduled jobs</a><a href="orchestration-patterns/">Orchestration patterns</a></p>
@@ -855,30 +862,34 @@ Open a PR from a worktree branch instead.</code></pre></div>
   </div>
 </footer>
 <script>
-// Enhancement only: with this script removed every level and component is
-// still a native <details> with its full text. It opens the level a rail link
-// points at, highlights the level in view, remembers the last level opened,
-// and on wide screens shows a component's detail in a side panel.
 (function () {
   var KEY = 'himmel-trail-level';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var wide = window.matchMedia('(min-width: 1100px)');
-  var levels = Array.prototype.slice.call(document.querySelectorAll('details.lvl'));
-  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a[href^="#lvl-"], .stepper a[href^="#lvl-"]'));
+  var mods = Array.prototype.slice.call(document.querySelectorAll('details.lvl'));
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a[href^="#m-"]'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.stepper a[href^="#t-"]'));
 
-  function store(n) { try { localStorage.setItem(KEY, n); } catch (e) { /* storage off */ } }
+  function store(id) { try { localStorage.setItem(KEY, id); } catch (e) { /* storage off */ } }
   function stored() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
 
-  function current(id) {
-    links.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + id ? 'true' : 'false'); });
+  function card(id) {
+    var el = document.getElementById(id);
+    if (el && /^lvl-[0-9]+$/.test(id)) el = el.closest('details.lvl');
+    return el && el.classList.contains('lvl') ? el : null;
   }
 
-  function openLevel(id, scroll) {
-    var d = document.getElementById(id);
-    if (!d || !d.classList.contains('lvl')) return;
+  function current(d) {
+    links.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + d.id ? 'true' : 'false'); });
+    chips.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#t-' + d.dataset.track ? 'true' : 'false'); });
+  }
+
+  function openModule(id, scroll) {
+    var d = card(id);
+    if (!d) return;
     d.open = true;
-    store(d.id.slice(4));
-    current(id);
+    store(d.id.slice(2));
+    current(d);
     if (scroll) d.scrollIntoView({ behavior: reduce.matches ? 'auto' : 'smooth', block: 'start' });
   }
 
@@ -886,36 +897,38 @@ Open a PR from a worktree branch instead.</code></pre></div>
     a.addEventListener('click', function (e) {
       e.preventDefault();
       var id = a.getAttribute('href').slice(1);
-      openLevel(id, true);
+      openModule(id, true);
       history.replaceState(null, '', '#' + id);
     });
   });
 
-  levels.forEach(function (d) {
+  mods.forEach(function (d) {
     d.addEventListener('toggle', function () {
-      if (d.open) { store(d.id.slice(4)); current(d.id); }
+      if (d.open) { store(d.id.slice(2)); current(d); }
     });
   });
 
+  var ANCHOR = /^(m-[a-z-]+|lvl-[0-9]+)$/;
   window.addEventListener('hashchange', function () {
     var h = location.hash.slice(1);
-    if (/^lvl-[0-9]+$/.test(h)) openLevel(h, true);
+    if (ANCHOR.test(h)) openModule(h, true);
   });
 
   var hash = location.hash.slice(1);
-  if (/^lvl-[0-9]+$/.test(hash)) {
-    openLevel(hash, true);
-  } else {
-    var n = stored();
-    var d = n === null ? null : document.getElementById('lvl-' + n);
+  if (ANCHOR.test(hash)) {
+    openModule(hash, true);
+  } else if (!/^t-[a-z]+$/.test(hash)) {
+    var v = stored();
+    var d = v === null ? null : card(/^[0-9]+$/.test(v) ? 'lvl-' + v : 'm-' + v);
     var note = document.getElementById('resume');
     if (d && note) {
       d.open = true;
-      current(d.id);
+      current(d);
+      var head = document.getElementById('t-' + d.dataset.track);
       var a = document.createElement('a');
       a.href = '#' + d.id;
-      a.textContent = 'Level ' + n + ', ' + d.querySelector('.lt strong').textContent;
-      a.addEventListener('click', function (e) { e.preventDefault(); openLevel(d.id, true); });
+      a.textContent = d.querySelector('.lt strong').textContent + (head ? ', in ' + head.querySelector('.bn').textContent : '');
+      a.addEventListener('click', function (e) { e.preventDefault(); openModule(d.id, true); });
       note.textContent = 'Welcome back. You were on ';
       note.appendChild(a);
       note.appendChild(document.createTextNode('.'));
@@ -925,9 +938,9 @@ Open a PR from a worktree branch instead.</code></pre></div>
 
   if ('IntersectionObserver' in window) {
     var seen = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) current(en.target.id); });
+      entries.forEach(function (en) { if (en.isIntersecting) current(en.target); });
     }, { rootMargin: '-35% 0px -60% 0px' });
-    levels.forEach(function (d) { seen.observe(d); });
+    mods.forEach(function (d) { seen.observe(d); });
   }
 
   var panel = document.createElement('aside');
