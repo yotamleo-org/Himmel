@@ -2498,7 +2498,7 @@ A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
 payload whose `agent_id` is present and not `null`) a Bash command that matches
 either of two co-occurrence pairs, so a subagent cannot run the jira commands
 that write an operator-chain row (the residuals at the end of this section are
-what it cannot see). A pair 1 match that fits one of two read-only grammars
+what it cannot see). A pair 1 match that fits one of two allow grammars
 (below) is allowed. Pair 1 is the word `release` together with the word `operator`
 (`jira release operator …`); `spec-review` is one of those verbs, so a critic
 subagent cannot record its own verdict. Pair 2 is, in its basic case (the full
