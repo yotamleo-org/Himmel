@@ -2132,7 +2132,7 @@ def snapshot_load():
         with open(snap_path, encoding='utf-8') as f:
             d = json.load(f)
         at = float(d['at'])
-        if d['schema'] != 1 or d['repo'] != gh_repo:
+        if d['schema'] != 1 or d['repo'] != gh_repo or not isinstance(d['prs'], list):
             return None
         for p in d['prs']:
             if not (isinstance(p['number'], int) and isinstance(p['title'], str) and isinstance(p['head'], str)

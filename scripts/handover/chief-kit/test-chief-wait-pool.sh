@@ -850,6 +850,7 @@ st_repool() {
 }
 check "(stale-deadline-env) a repool probe passes 100" "100" "$(st_repool dl-repool 120)"
 check "(stale-deadline-env) a one-second repool bound passes 1, never 0" "1" "$(st_repool dl-one 1)"
+check "(stale-deadline-env) an unbounded probe (bound 0) passes none" "unset" "$(st_repool dl-nobound 0)"
 rm -f "$STUB/pool.rows" "$STUB/deadlines"
 
 st_tag="cwf$$"

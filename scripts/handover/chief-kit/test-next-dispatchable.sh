@@ -3438,8 +3438,8 @@ q7_never snap-noresume
 has "10222 snap-overlap: the snapshot's files overlap" "$Q6_OUT" "# overlap HIMMEL-9812 scripts/q7/b.sh with open PR 4602"
 has "10222 snap-overlap: a PR with unread files is named" "$Q6_OUT" "# overlap unknown for PR 4603"
 lacks "10222 snap-overlap: no blanket unknown with a fresh file" "$Q6_OUT" "# overlap unknown for open PRs"
-for q7case in old future corrupt repo; do
-    case "$q7case" in old) snapput 1801 ;; future) snapput -600 ;; corrupt) printf '{nope\n' > "$SNAP" ;; repo) snapput 60 other/repo ;; esac
+for q7case in old future corrupt repo noprs; do
+    case "$q7case" in old) snapput 1801 ;; future) snapput -600 ;; corrupt) printf '{nope\n' > "$SNAP" ;; repo) snapput 60 other/repo ;; noprs) printf '{"schema":1,"at":%s,"repo":"yotamleo-org/Himmel","prs":{}}\n' "$(date +%s)" > "$SNAP" ;; esac
     q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
     has "10222 snap-old $q7case: no snapshot is used" "$Q6_OUT" "# overlap unknown for open PRs (no PR snapshot younger than 1800s)"
     has "10222 snap-old $q7case: prs=none" "$(q7line 2)" "prs=none"

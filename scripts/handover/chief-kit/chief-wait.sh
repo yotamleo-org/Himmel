@@ -1508,7 +1508,7 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live workers' files must reach the collision check
     pool_paused=""
     case "$budget" in
-        ''|*[!0-9]*) ;;
+        ''|0|*[!0-9]*) ;;
         *)  secs=$((10#$budget / 2)); [ "$((10#$budget))" -le 40 ] || secs=$((10#$budget - 20))
             [ "$secs" -ge 1 ] || secs=1
             case "${NEXT_DISPATCH_DEADLINE:-}" in ''|*[!0-9]*) ;; *) [ "$((10#$NEXT_DISPATCH_DEADLINE))" -eq 0 ] || [ "$((10#$NEXT_DISPATCH_DEADLINE))" -ge "$secs" ] || secs=$((10#$NEXT_DISPATCH_DEADLINE)) ;; esac
