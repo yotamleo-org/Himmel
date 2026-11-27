@@ -6,7 +6,8 @@
   "tool_map": {
     "mcp_prefix": null,
     "tools": {
-      "Shell": { "claude": "Bash" },
+      "Shell": { "claude": "Bash", "empty": ["cwd"],
+        "allow": ["command", "cwd", "timeout", "description", "run_in_background", "dangerouslyDisableSandbox"] },
       "Read": { "claude": "Read" },
       "Write": { "claude": "Write" }
     }
