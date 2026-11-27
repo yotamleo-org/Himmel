@@ -705,7 +705,7 @@ CALLER25="$WS/checkout"
 CORPUS25="$CALLER25/corpus 25"
 OUT25="$CORPUS25/graphify-out"
 BIN25="$WS/bin25"
-mkdir -p "$OUT25" "$BIN25" "$WS/corpus 25"
+mkdir -p "$OUT25" "$BIN25/fallback" "$WS/corpus 25"
 touch "$CALLER25/deleted.sh" "$CORPUS25/deleted.sh" "$CORPUS25/kept.sh"
 cat > "$OUT25/graph.json" <<'JSON'
 {"nodes":[{"id":"deleted","source_file":"deleted.sh"},{"id":"kept","source_file":"kept.sh"}],"links":[]}
@@ -726,13 +726,16 @@ with open(path, "w") as f:
 print(len(graph["nodes"]))
 PY
 STUB
-chmod +x "$BIN25/graphify"
+printf '#!/usr/bin/env bash\nexit 99\n' > "$BIN25/fallback/graphify"
+chmod +x "$BIN25/graphify" "$BIN25/fallback/graphify"
 touch "$CALLER25/kept.sh"
 rm "$CORPUS25/deleted.sh"
-out25=$(cd "$CALLER25" && CDPATH="$WS" PATH="$BIN25:$PATH" bash "$SCRIPT" "corpus 25" 2>&1); rc25=$?
+out25=$(cd "$CALLER25" && CDPATH="$WS" PATH="../bin25:$BIN25/fallback:$PATH" bash "$SCRIPT" "corpus 25" 2>&1); rc25=$?
 n25=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["nodes"]))' "$OUT25/graph.json")
 [ "$rc25" -eq 0 ] && [ "$n25" -eq 1 ] && pass "T25 deleted source evicted (2 -> $n25 nodes)" \
   || fail "T25 expected 2 -> 1 nodes after deletion, got 2 -> $n25 (exit $rc25): $out25"
+grep -Eq '"id":[[:space:]]*"kept"' "$OUT25/graph.json" && pass "T25 surviving node kept" \
+  || fail "T25 expected the kept node in graph.json"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
