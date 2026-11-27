@@ -1321,7 +1321,7 @@ reap_two
 echo "ok (z14): a healthy named index reads its own pidfile and leaves the default index's over-ceiling server alone"
 
 two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
-kill "$gm_pid" 2>/dev/null; wait "$gm_pid" 2>/dev/null || true
+kill -KILL "$gm_pid" 2>/dev/null; wait "$gm_pid" 2>/dev/null || true
 rm -f "$state/alive" "$state/qmd-argv.log"
 UNWIND=0 QMD_MOCK_STATE="$state" bash "$fake_daemon" &
 gm_pid=$!
