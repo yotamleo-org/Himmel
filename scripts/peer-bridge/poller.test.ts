@@ -3,8 +3,8 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain, readChain, signTap, submitSpool } from "./chain";
-import { readNotifyCursor } from "./poller";
+import { Chain, readChain, signTap, startIdentity, submitSpool } from "./chain";
+import { readDmSent, readNotifyCursor } from "./poller";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
 import { ConfigError, cardMessage, readPeersFile, type Config } from "./config";
@@ -840,7 +840,7 @@ test("a second poller exits non-zero but not 78, and never reads the operator en
   const home = processEnv();
   const holder = spawn("sleep", ["30"], { stdio: "ignore" });
   await new Promise(r => holder.once("spawn", r));
-  const { startIdentity } = await import("./chain");
+
   writeFileSync(join(home, ".himmel/peer-bridge/poller.pid"), JSON.stringify({ pid: holder.pid, start: startIdentity(holder.pid!) }), { mode: 0o600 });
   const r = runPoller(home);
   holder.kill("SIGKILL");
@@ -1576,14 +1576,14 @@ test("a DM send is recorded with its chat id and is not echoed into the other st
   expect(w.bravo.inbox.map(u => u.message.text)).toEqual(["to the group"]);
 });
 
-test.skip("end to end: our card request, their admission, their offer and one Approve tap leave our key in their peers.json", async () => {
+test("end to end: our card request, their admission, their offer and one Approve tap leave our key in their peers.json", async () => {
   const w = await offered();
   tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id);
   await w.step("bravo");
   expect(theirKeys(w.bravo)).toEqual([w.alpha.key.pub]);
 });
 
-test.skip("end to end paired check: the same tap from a user who is not the operator leaves their peers.json bytes", async () => {
+test("end to end paired check: the same tap from a user who is not the operator leaves their peers.json bytes", async () => {
   const w = await offered();
   const before = readFileSync(w.bravo.peersPath);
   tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id, { from: 999 });
@@ -1899,4 +1899,160 @@ test("the fingerprint reaches the operator's chat and nowhere else, at the offer
   await send(e, KEY_B);
   noFingerprintOutsideDm(e, KEY_A);
   noFingerprintOutsideDm(e, KEY_B);
+});
+
+function offerMessage(e: PairEnv): number {
+  const ids = readdirSync(join(e.stateDir, "notify", "sent")).map(Number).filter(id => (readDmSent(e.stateDir, id) as any)?.type === "pair-offer");
+  return Math.max(...ids);
+}
+type TapOver = { verb?: "ok" | "no"; from?: number; chat?: number; inline?: boolean; messageId?: number; offer?: string };
+function pairTapUpdate(e: PairEnv, over: TapOver = {}) {
+  const offer = over.offer ?? offersOf(e).at(-1)!.offer;
+  return { update_id: ++uid, callback_query: { id: `cb${uid}`, data: `pair:${over.verb ?? "ok"}:example:${offer}`, from: { id: over.from ?? 4242 }, ...(over.inline ? {} : { message: { message_id: over.messageId ?? offerMessage(e), chat: { id: over.chat ?? 4242 } } }) } };
+}
+const pairTap = (e: PairEnv, over: TapOver = {}) => e.poller.processBatch([pairTapUpdate(e, over)]);
+const peersBytesOf = (e: Env) => readFileSync(e.deps.peersPath);
+const trustedIn = (e: Env) => readPeersFile(e.deps.peersPath).peers.example.theirs.keys.map(k => k.pub);
+const stateOfLast = (e: Env) => closesOf(e).map(r => [r.state, r.rule ?? null]);
+async function open(over: Parameters<typeof setup>[0] = {}, deps: Partial<PollerDeps> = {}) {
+  const e = await pairEnv(over);
+  if (Object.keys(deps).length) {
+    const poller = await Poller.create({ ...e.deps, ...deps, log: l => e.logs.push(l) });
+    await poller.recover();
+    e.poller = poller;
+  }
+  await send(e);
+  return e;
+}
+async function refusedTap(e: PairEnv, over: TapOver, answer: string, closes: unknown[] = []) {
+  const before = peersBytesOf(e);
+  await pairTap(e, over);
+  expect(e.answers.at(-1)).toBe(answer);
+  expect(peersBytesOf(e).equals(before)).toBe(true);
+  expect(stateOfLast(e)).toEqual(closes as any);
+}
+const lockdownFile = (e: PairEnv) => join(e.cfg.bridgeRoot, "lockdown");
+
+test("a pair tap from anyone but the operator, outside the operator's chat, inline, or on another message writes nothing", async () => {
+  const e = await open();
+  await refusedTap(e, { from: 777 }, "Not authorized.");
+  await refusedTap(e, { chat: CHAT }, "Not authorized.");
+  await refusedTap(e, { inline: true }, "Not authorized.");
+  await refusedTap(e, { messageId: 123 }, "Unknown offer.");
+  await refusedTap(e, { offer: "ffffffff" }, "Unknown offer.");
+  mkdirSync(join(e.stateDir, "notify", "sent"), { recursive: true });
+  writeFileSync(join(e.stateDir, "notify", "sent", "555"), JSON.stringify({ n: 1, chat: 4242, type: "draft", peer: "example", draft: offersOf(e)[0].offer, ts: e.c.t }));
+  await refusedTap(e, { messageId: 555 }, "Unknown offer.");
+});
+
+test("a tap after the expiry closes the offer EXPIRED, for Approve and for Reject", async () => {
+  for (const verb of ["ok", "no"] as const) {
+    const e = await open();
+    e.c.t += 31 * MIN;
+    await refusedTap(e, { verb }, "Already expired.", [["EXPIRED", null]]);
+    expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["EXPIRED"]);
+  }
+});
+
+test("lockdown keeps the offer open, a tap after it lifts trusts, and a Reject during it still rejects", async () => {
+  const e = await open();
+  writeFileSync(lockdownFile(e), "");
+  await refusedTap(e, {}, "locked, reset at the station");
+  rmSync(lockdownFile(e));
+  await pairTap(e);
+  expect([e.answers.at(-1), trustedIn(e)]).toEqual(["Trusted.", [KEY_A]]);
+  const r = await open();
+  writeFileSync(lockdownFile(r), "");
+  await refusedTap(r, { verb: "no" }, "Rejected.", [["REJECTED", null]]);
+  expect(pairNotes(r, "pair-result").map(n => n.state)).toEqual(["REJECTED"]);
+});
+
+test("lockdown or a kill that lands under the lock, before the rename, writes nothing", async () => {
+  let at: PairEnv;
+  const locked = at = await open({}, { peersHooks: { afterRead: () => writeFileSync(lockdownFile(at), "") } });
+  await refusedTap(locked, {}, "locked, reset at the station");
+  const killed = at = await open({}, { peersHooks: { afterRead: () => writeFileSync(join(at.configDir, "example.killed"), "") } });
+  await refusedTap(killed, {}, "Refused (killed).", [["REFUSED", "killed"]]);
+  expect(pairNotes(killed, "pair-result").map(n => [n.state, n.rule])).toEqual([["REFUSED", "killed"]]);
+});
+
+test("a peer killed before the tap is refused, and a terminal trust of another key before the reload is refused by the writer", async () => {
+  const k = await open();
+  writeFileSync(join(k.configDir, "example.killed"), "");
+  await refusedTap(k, {}, "Refused (killed).", [["REFUSED", "killed"]]);
+  const e = await open();
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.theirs.keys = [keyEntry(KEY_B, e.c.t)];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await refusedTap(e, {}, "Refused (already-paired).", [["REFUSED", "already-paired"]]);
+  expect(trustedIn(e)).toEqual([KEY_B]);
+});
+
+test("a held lock answers Busy, and any other writer error leaves the offer open and the poller running", async () => {
+  let at: PairEnv;
+  const busy = at = await open({}, { lockSleep: async ms => { at.c.t += ms; } });
+  const child = Bun.spawn(["cat"], { stdin: "pipe", stdout: "ignore" });
+  try {
+    writeFileSync(join(busy.configDir, "peers.json.lock"), JSON.stringify({ pid: child.pid, start: startIdentity(child.pid) }), { mode: 0o600 });
+    await refusedTap(busy, {}, "Busy, tap again.");
+  } finally { child.kill(); }
+  const e = await open();
+  chmodSync(e.deps.peersPath, 0o644);
+  await refusedTap(e, {}, "Could not record the tap.");
+  expect(e.logs.some(l => l.includes("must be mode 0600"))).toBe(true);
+  chmodSync(e.deps.peersPath, 0o600);
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Trusted.");
+});
+
+test("an offer record of every spool type drained while an offer is open writes no trust", async () => {
+  const e = await open();
+  const before = peersBytesOf(e);
+  const recs: any[] = [
+    { type: "tap", verb: "ok", draft: offersOf(e)[0].offer, by: OP, ts: e.c.t },
+    { type: "draft", source: "send.ts", kind: "info", text: "pair:ok" },
+    { type: "ack", sid: "abc", token: "def" },
+    { type: "confirm", chatId: CHAT },
+    { type: "card" },
+    { type: "pair-tap", verb: "ok", offer: offersOf(e)[0].offer },
+  ];
+  for (const r of recs) submitSpool(e.peerDir, r);
+  await e.poller.drainSpool();
+  expect(peersBytesOf(e).equals(before)).toBe(true);
+  expect(closesOf(e)).toEqual([]);
+});
+
+test("an Approve trusts the key, the poller holds it right after the batch, and pairing.json shows it", async () => {
+  const e = await open();
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Trusted.");
+  expect(trustedIn(e)).toEqual([KEY_A]);
+  expect((e.poller as any).cfg.peers.example.theirs.keys.map((k: any) => k.pub)).toEqual([KEY_A]);
+  expect(readPeersFile(e.deps.peersPath).peers.example.theirs.stationName).toBe("example");
+  expect(JSON.parse(readFileSync(join(process.env.HOME!, ".himmel", "remote-setup", "pairing.json"), "utf8")).peers[0].theirKey).toBe(true);
+  expect(closesOf(e).map(r => [r.state, r.by])).toEqual([["APPROVED", OP]]);
+  expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["APPROVED"]);
+  noFingerprintOutsideDm(e, KEY_A);
+});
+
+test("a station-name write that lands during the tap is kept and the tap still trusts", async () => {
+  let at: PairEnv, n = 0;
+  const e = at = await open({}, { peersHooks: { afterRead: () => {
+    if (n++) return;
+    const doc = JSON.parse(readFileSync(at.deps.peersPath, "utf8"));
+    doc.self = { stationName: "renamed" };
+    writeFileSync(at.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  } } });
+  await pairTap(e);
+  expect([e.answers.at(-1), trustedIn(e), readPeersFile(e.deps.peersPath).self.stationName]).toEqual(["Trusted.", [KEY_A], "renamed"]);
+});
+
+test("two Approves in one batch leave one key and one result, and a later one changes nothing", async () => {
+  const e = await open();
+  await e.poller.processBatch([pairTapUpdate(e), pairTapUpdate(e)]);
+  expect([trustedIn(e), closesOf(e).length, e.answers.slice(-2)]).toEqual([[KEY_A], 1, ["Trusted.", "Already approved."]]);
+  const peers = peersBytesOf(e), recs = readFileSync(join(e.peerDir, "pairing.jsonl"));
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Already approved.");
+  expect([peersBytesOf(e).equals(peers), readFileSync(join(e.peerDir, "pairing.jsonl")).equals(recs)]).toEqual([true, true]);
 });

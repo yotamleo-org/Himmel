@@ -8,7 +8,7 @@ import { hostname as osHostname } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, readChain, signTap, startIdentity, submitSpool, sweepResults, tapSigOk, verifyChain, writeResult, type IntentRec, type SpoolRec } from "./chain";
-import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, cardMessage, clampToSchema, loadAllowlist, loadConfig, trustRefusal, type AllowEntry, type Config } from "./config";
+import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, addTrustedKey, cardMessage, clampToSchema,loadAllowlist, loadConfig, trustRefusal, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkCardOutbound, checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
@@ -68,7 +68,15 @@ const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
 const SENT_PRUNE_MS = 7 * 86_400_000;
 const MAX_CARDS_PER_DAY = 3;
-const PEER_TAP_RE =/^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
+const PAIR_TAP_RE = /^pair:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
+const CLOSING_RULES = ["unknown-peer", "already-paired", "name", "host", "key-shape", "already-trusted", "two-keys", "name-differs", "killed"];
+
+export function operatorTap(cq: any, cfg: Pick<Config, "operatorChatId" | "operatorDmChatId">): boolean {
+  const dm = cfg.operatorDmChatId ?? null;
+  return dm !== null && cq.from?.id === cfg.operatorChatId && cq.message !== undefined && cq.message?.chat?.id === dm;
+}
+
+const PEER_TAP_RE = /^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
 
 export const DRAFTING_LINE = "drafted; approve or reject it with the buttons on the draft message";
 export const OUTBOUND_REFUSAL_LINE = "a reply about our own outbound thread needs the peer desk's send.ts; nothing was sent";
@@ -451,9 +459,12 @@ export class Poller {
 
   private async onTap(cq: any, dm: number | null): Promise<void> {
     const answer = async (text: string) => { try { await this.deps.tg.answerCallbackQuery?.(String(cq.id), text); } catch {} };
-    const m = PEER_TAP_RE.exec(typeof cq.data === "string" ? cq.data : "");
+    const data = typeof cq.data === "string" ? cq.data : "";
+    const pair = PAIR_TAP_RE.exec(data);
+    if (pair) return answer(await this.pairTap(cq, pair[1] as "ok" | "no", pair[2], pair[3]));
+    const m = PEER_TAP_RE.exec(data);
     if (!m) return answer("Unknown button.");
-    if (dm === null || cq.from?.id !== this.cfg.operatorChatId || cq.message?.chat?.id !== dm) return answer("Not authorized.");
+    if (!operatorTap(cq, this.cfg)) return answer("Not authorized.");
     if (lockdownEnabled(this.cfg.bridgeRoot)) return answer(LOCKED_LINE);
     if (!this.cfg.peers[m[2]] || !fs.existsSync(join(this.dir(m[2]), "spool"))) return answer("Unknown peer.");
     try {
@@ -461,6 +472,45 @@ export class Poller {
       submitSpool(this.dir(m[2]), { type: "tap", ...rec, sig: signTap(this.deps.configDir, { ...rec, peer: m[2] }) });
     } catch { return answer("Could not record the tap."); }
     await answer("Received");
+  }
+
+  private async pairTap(cq: any, verb: "ok" | "no", peer: string, id: string): Promise<string> {
+    if (!operatorTap(cq, this.cfg)) return "Not authorized.";
+    const sent = readDmSent(this.deps.stateDir, cq.message.message_id, this.cfg.operatorDmChatId!);
+    if (sent?.type !== "pair-offer" || sent.peer !== peer || sent.offer !== id) return "Unknown offer.";
+    const recs = this.pairRecs(peer);
+    const offer = offersOf(recs).find(o => o.offer === id);
+    if (!offer || !this.cfg.peers[peer]) return "Unknown offer.";
+    const state = offerState(recs, offer, this.now());
+    if (state !== "OPEN") {
+      if (!resultOf(recs, id)) await this.closeOffer(offer, "EXPIRED");
+      return `Already ${state.toLowerCase()}.`;
+    }
+    if (verb === "no") { await this.closeOffer(offer, "REJECTED"); return "Rejected."; }
+    if (lockdownEnabled(this.cfg.bridgeRoot)) return LOCKED_LINE;
+    const refused = async (rule: string) => { await this.closeOffer(offer, "REFUSED", { rule }); return `Refused (${rule}).`; };
+    this.refreshKilled();
+    if (this.gate.killed.has(peer)) return refused("killed");
+    if (this.cfg.peers[peer].theirs.keys.length > 0) return refused("already-paired");
+    try {
+      await addTrustedKey(this.deps.peersPath, peer, offer.station, offer.key, {
+        hostname: this.hostName(), now: this.now, sleep: this.deps.lockSleep ?? sleep, firstOnly: true, hooks: this.deps.peersHooks, log: this.log,
+        guard: () => {
+          if (lockdownEnabled(this.cfg.bridgeRoot)) throw new ConfigError("lockdown");
+          if (fs.existsSync(join(this.deps.configDir, `${peer}.killed`))) throw new ConfigError("killed");
+        },
+      });
+    } catch (e) {
+      const why = (e as Error).message;
+      if (e instanceof ConfigError && why === "lockdown") return LOCKED_LINE;
+      if (e instanceof ConfigError && why === "busy") return "Busy, tap again.";
+      if (e instanceof ConfigError && CLOSING_RULES.includes(why)) return refused(why);
+      this.log(`pair-tap peer=${peer} offer=${id} not recorded: ${why}`);
+      return "Could not record the tap.";
+    }
+    await this.closeOffer(offer, "APPROVED", { by: String(cq.from.id) });
+    await this.reloadNow();
+    return "Trusted.";
   }
 
   private async dmSend(chat: number, text: string): Promise<void> {
