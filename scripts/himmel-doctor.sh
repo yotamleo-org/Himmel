@@ -3087,7 +3087,7 @@ _c33_ledger_lock() {
     ledger="$(jq -r '.ledger_path // empty' "$cfg" 2>/dev/null | tr -d '\r')"
     lock="$ledger.lock"
     [ -n "$ledger" ] && [ -d "$lock" ] || return 1
-    mtime="$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)" || return 1 # gnu-ok: the BSD stat -f is the fallback on this line
+    mtime="$(stat -c %Y "$lock" 2>/dev/null || stat -f %m "$lock" 2>/dev/null)" || return 1
     age=$(($(date -u +%s) - mtime))
     [ "$age" -gt 60 ] || return 1
     printf '%s, age %s' "$lock" "$(_c33_age_human "$age")"
