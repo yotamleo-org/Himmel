@@ -525,5 +525,14 @@ out="$(HANDOVER_DIR=/proc/nope/x run)"; rc=$?
 has "a failed lock sweep keeps a no-row worker missing, not closed" "$out" "N9 missing"
 eq "and the set stays incomplete (rc 1)" "$rc" 1
 
+# shellcheck disable=SC2016  # the backticks are literal markers in the Live state
+printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N2:Y-N2-bb:lockB:12`\n\n## Results\n' > "$CDOC"
+printf '{"schema":1,"workers":[]}\n' > "$MAN"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s/N2.md","label":"N2","lane":"native"}]}\n' "$WORK" "$WORK" > "${MAN%.json}.moved.json"
+out="$(run)"
+has "a moved row still resolves its worker doc (quoted-back)" "$out" "N1 quoted-back"
+has "a moved row with no quote-back is missing, not closed" "$out" "N2 missing"
+rm -f "${MAN%.json}.moved.json"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

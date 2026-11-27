@@ -30,8 +30,9 @@
 #           manifest names the predecessor's it was copied from (carried_from,
 #           carried_at, written by chief.sh next): each predecessor row added at or
 #           after the copy whose doc this manifest lacks (a launch that landed after
-#           the copy) is added through fleet-manifest.sh add, lane, lockless and arm
-#           kept, one `carried <label> <doc>` line each. <manifest>.carried records
+#           the copy) is saved to the predecessor's <stem>.fleet.moved.json, removed from
+#           its manifest and added through fleet-manifest.sh add, lane, lockless and arm
+#           kept (a failed add puts it back), one `carried <label> <doc>` line each. <manifest>.carried records
 #           that every row was carried, so a row removed later is never carried
 #           back; a failed add leaves no record, and the next --acquire retries it.
 #
@@ -88,6 +89,21 @@ bounded() {
     return "$brc"
 }
 
+take_late_row() {
+    local moved="${1%.json}.moved.json" have='{"schema":1,"workers":[]}'
+    [ ! -f "$moved" ] || have="$(cat "$moved")" || return 1
+    if ! { printf '%s\n' "$have" | jq --arg d "$2" --slurpfile p "$1" '.workers = [.workers[] | select(.doc != $d)] + [($p[0].workers // $p[0].legs)[] | objects | select(.doc == $d)]' > "$moved.tmp" && mv -f "$moved.tmp" "$moved"; }; then
+        rm -f "$moved.tmp"; return 1
+    fi
+    bash "$HERE/fleet-manifest.sh" remove "$1" "$2" >/dev/null 2>&1
+}
+put_back_late_row() (
+    # prim-ok: the manifest writers' own bounded lock on fd 9
+    exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
+    jq --arg d "$2" --slurpfile m "${1%.json}.moved.json" '.workers = [(.workers // [])[] | select(.doc != $d)] + [$m[0].workers[] | select(.doc == $d)]' "$1" > "$1.restore" \
+        && mv -f "$1.restore" "$1"
+)
+
 carry_late_rows() {
     local smanifest="${doc%.md}.fleet.json" pmanifest="" carried_at late ncarry nfail cdoc clabel clane cll carm cargs
     [ -f "$smanifest" ] && [ ! -e "$smanifest.carried" ] || return 0
@@ -105,10 +121,16 @@ carry_late_rows() {
             cargs=(add "$smanifest" "$cdoc" --lane "$clane")
             [ "$cll" != 1 ] || cargs+=(--lockless)
             [ "$carm" = - ] || cargs+=(--arm "$carm")
-            if bash "$HERE/fleet-manifest.sh" "${cargs[@]}" >/dev/null 2>&1; then
+            if ! take_late_row "$pmanifest" "$cdoc"; then
+                echo "NOT carried $clabel $cdoc: it could not be taken out of $pmanifest, so it was not added"
+                nfail=$((nfail + 1))
+            elif bash "$HERE/fleet-manifest.sh" "${cargs[@]}" >/dev/null 2>&1; then
                 echo "carried $clabel $cdoc"
-            else
+            elif put_back_late_row "$pmanifest" "$cdoc"; then
                 echo "NOT carried $clabel $cdoc: add it with fleet-manifest.sh add --lane $clane"
+                nfail=$((nfail + 1))
+            else
+                echo "NOT carried $clabel $cdoc: it is only in ${pmanifest%.json}.moved.json, add it with fleet-manifest.sh add --lane $clane"
                 nfail=$((nfail + 1))
             fi
             ncarry=$((ncarry + 1))

@@ -2546,6 +2546,37 @@ $2
 EOF
 }
 
+move_manifest_rows() {
+    local pred="$1" staged="$2" succ="$3" docs="$4" moved="${1%.json}.moved.json" ldoc
+    local gone=()
+    while IFS= read -r ldoc; do
+        [ -z "$ldoc" ] || gone+=("$ldoc")
+    done <<EOF
+$docs
+EOF
+    if [ "${#gone[@]}" -gt 0 ]; then
+        if ! { jq --arg d "$docs" "$JQ_W"'($d | split("\n")) as $c | {schema: 1, workers: [W[] | objects | select(.doc as $x | any($c[]; . == $x))]}' "$pred" > "$moved.tmp" && mv -f "$moved.tmp" "$moved"; }; then
+            rm -f "$moved.tmp"
+            err "could not save the outgoing rows of $pred to $moved; nothing was moved"
+            return 1
+        fi
+        bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
+            || { err "could not remove the carried rows from $pred; nothing was moved"; return 1; }
+    fi
+    if [ ! -d "$succ" ] && mv -f "$staged" "$succ"; then return 0; fi
+    err "could not write the successor's manifest $succ"
+    [ "${#gone[@]}" -eq 0 ] || restore_manifest_rows "$pred" "$moved" \
+        || err "could not put the rows back into $pred: they are in $moved"
+    return 1
+}
+
+restore_manifest_rows() (
+    # prim-ok: the manifest writers' own bounded lock on fd 9
+    exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
+    jq --slurpfile m "$2" '$m[0].workers as $b | .workers = $b + [(.workers // [])[] | select(.doc as $x | any($b[]; .doc == $x) | not)]' "$1" > "$1.restore" \
+        && mv -f "$1.restore" "$1"
+)
+
 open_notes_age_text() {
     local at="$1" t now secs
     t="$(date -u -d "$at" +%s 2>/dev/null)" || t="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$at" +%s 2>/dev/null)" || t=""  # swallow-ok: an unparseable date reads as an unknown age, said below
@@ -2611,7 +2642,7 @@ EOF_NOTES
 
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
-    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 npr=0 nop=0
+    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" rmanifest="${6:-$5}" prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 npr=0 nop=0
     local mirror f fm fv st created ver rest_ pstem pdate prio ttl fresh resume_rc
     printf '## Must disposition\n\n'
     printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
@@ -2646,7 +2677,7 @@ EOF_PRS
         if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
             rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         else
-            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
+            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${rmanifest:+--workers-from "$rmanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         fi
         if [ "$resume_rc" -ne 0 ]; then
             printf -- '- RESUME rows unavailable: next-dispatchable.sh --resume-only exited %s (124 is a timeout), so the In Progress tickets with no worker are not listed; re-run: bash %s --resume-only --workers-from %s\n' "$resume_rc" "$kit/next-dispatchable.sh" "$smanifest"
@@ -2734,7 +2765,7 @@ superseded_direction_paras() {
         END { flush() }'
 }
 
-# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
+# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc> [<manifest>]]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `workers:` seeds only the open workers
@@ -2753,7 +2784,7 @@ seed_live_fields() {
     if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then wkey=legs; fi
     workers="$(seeded_live_field "$live" "$wkey")"
     go="$(seeded_live_field "$live" "last GO")"
-    new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
+    new_legs="$(open_legs_block "$workers" "${5:-${doc%.md}.fleet.json}")"
     new_go="$(latest_go_only "$go")"
     [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/[;,] earlier [`#]?[0-9]+:[0-9a-f]{7,}.*$//')"
     if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
@@ -3050,22 +3081,32 @@ cmd_next() {
     # chief-template's own instructions already tell it to.
     # Carry the predecessor's fleet manifest to the successor's
     # stem so its waiter can start with --workers-from and keep watching the same
-    # workers. A COPY, not a rename: the outgoing chief's waiter still reads
-    # its own until that chief releases. No manifest = no-op.
-    local predecessor_manifest successor_manifest manifest_note
+    # workers. It is built at a staged path and published by move_manifest_rows,
+    # which takes the carried rows out of the predecessor's first. No manifest = no-op.
+    local predecessor_manifest successor_manifest staged_manifest manifest_note carried_docs=""
     predecessor_manifest="$predecessor_dir/${predecessor_stem}.fleet.json"
     successor_manifest="${doc%.md}.fleet.json"
+    staged_manifest="$successor_manifest.staged"
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
         local carried carried_at
         carried_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
-        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$successor_manifest")"; then
-            printf '%s\n' "$carried" > "$successor_manifest"
+        trap 'rm -f "$doc" "$staged_manifest"' EXIT
+        cp "$predecessor_manifest" "$staged_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $staged_manifest"; exit 1; }
+        carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest" 2>/dev/null)" || carried_docs=""  # swallow-ok: a manifest with no readable row moves none
+        if [ -f "$successor_manifest" ] && [ "$(jq -r '.carried_from // empty' "$successor_manifest" 2>/dev/null)" = "$predecessor_manifest" ]; then  # swallow-ok: an unreadable leftover names no predecessor and is replaced, as before
+            if carried="$(jq --slurpfile e "$successor_manifest" '(.workers // []) as $w | .workers = $w + [($e[0].workers // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)]' "$staged_manifest")"; then
+                printf '%s\n' "$carried" > "$staged_manifest"
+            else
+                err "could not keep the rows already in $successor_manifest"; exit 1
+            fi
+        fi
+        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$staged_manifest")"; then
+            printf '%s\n' "$carried" > "$staged_manifest"
         else
             err "warning: could not record the predecessor's manifest in $successor_manifest; ACTION ZERO will not carry a launch that lands after this copy"
         fi
-        repoint_resume_rows "$successor_manifest"
+        repoint_resume_rows "$staged_manifest"
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
     # One Read: the tracker line keeps its pinned head (decision 286) and the Current
@@ -3149,11 +3190,13 @@ cmd_next() {
         CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
-    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc"
-    if ! check_workers_carried "$doc" "$LIVE_WORKER_ROWS"; then rm -f "$successor_manifest"; exit 1; fi
+    local seed_manifest="" read_manifest="$successor_manifest"
+    if [ -f "$staged_manifest" ]; then seed_manifest="$staged_manifest"; read_manifest="$predecessor_manifest"; fi
+    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc" "$seed_manifest"
+    check_workers_carried "$doc" "$LIVE_WORKER_ROWS" || exit 1
     local dead_rows
     dead_rows="$(dead_manifest_rows "$predecessor_manifest")"
-    must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" > "$doc.must"
+    must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" "$read_manifest" > "$doc.must"
     if grep -q '^- ' "$doc.must"; then
         if awk -v mf="$doc.must" '
             /^## Current direction/ && !d { while ((getline l < mf) > 0) print l; print ""; d = 1 }
@@ -3325,6 +3368,9 @@ cmd_next() {
     # refusal (exit 2) removes the claimed successor doc and a retry is not
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
+    if [ -f "$staged_manifest" ]; then
+        move_manifest_rows "$predecessor_manifest" "$staged_manifest" "$successor_manifest" "$carried_docs" || exit 1
+    fi
     trap - EXIT
     local load_window=1000000 load_mode="$CHIEF_CONTEXT_RESOLVED_MODE" load_record
     load_record="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs/$predecessor_stem.log"
@@ -3338,7 +3384,7 @@ cmd_next() {
         --spans-unknown "$(grep -o ':NONCE-UNKNOWN:' "$doc" | grep -c .)" \
         --reason "$REASON" --fill-percent "$fill_percent" --window "$load_window" \
         || err "warning: could not append the shift's load row to the load record in $state_dir"
-    retire_manifest_rows "$predecessor_manifest" "$dead_rows"
+    retire_manifest_rows "${predecessor_manifest%.json}.moved.json" "$dead_rows"
     retire_manifest_rows "$successor_manifest" "$dead_rows"
     console_metadata "$inbox"
     echo "launch: $launch_line"
