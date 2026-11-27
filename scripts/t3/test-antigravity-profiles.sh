@@ -631,5 +631,15 @@ for bad_env in 'false' '{playwright:"TMPDIR=/tmp"}' '{playwright:{TMPDIR:1}}' '{
     expect_eq "40 a malformed mcpEnv (case $n) exits 2" "$rc" 2
 done
 
+T3_LONG_TMPDIR="$(printf '/%066d' 0)"
+chrome_sock_len() { local s="$1/com.google.Chrome.XXXXXX/SingletonSocket"; echo "${#s}"; }
+jq --slurpfile real "$HERE/antigravity-profiles.json" '.profiles.design.mcpEnv = ($real[0].profiles.design.mcpEnv // {})' "$T/registry-mcp.json" > "$T/registry-sock.json"
+fresh
+env T3_AP_REGISTRY="$T/registry-sock.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-mcp.json" bash "$GEN" --apply --profile design >/dev/null 2>&1
+sock_tmp="$(jq -r --arg inherited "$T3_LONG_TMPDIR" '.mcpServers.playwright.env.TMPDIR // $inherited' "$(home_of)/config/mcp_config.json")"
+sock_len="$(chrome_sock_len "$sock_tmp")"
+expect_eq "41 control: T3's inherited TMPDIR overflows Chrome's socket path" "$([ "$(chrome_sock_len "$T3_LONG_TMPDIR")" -ge 107 ] && echo over || echo under)" over
+expect_eq "41 playwright's socket path stays under 107 bytes (got $sock_len)" "$([ "$sock_len" -lt 107 ] && echo under || echo over)" under
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

@@ -156,7 +156,7 @@ is_own_mcp_schema_read() {
     esac
     case "$rel" in
         */*/*) return 1 ;;
-        ?*/?*.json|?*/instructions.md) return 0 ;;
+        ?*/?*.json) return 0 ;;
         *) return 1 ;;
     esac
 }

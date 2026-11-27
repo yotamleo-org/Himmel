@@ -108,7 +108,8 @@ hook adapter denies shell commands naming `.agents` or `.gemini`. Every entry pa
 `/.gemini`. This also catches a plugin whose install path is a symlink into an Antigravity home.
 
 Besides the thread's own artifact folder, one read inside the provider home is allowed: agy's lazy MCP
-tool schemas, `<own home>/antigravity-acp/mcp/<server>/<tool>.json` and `.../<server>/instructions.md`.
+tool schemas, `<own home>/antigravity-acp/mcp/<server>/<tool>.json`, `*.json` only (the
+`instructions.md` beside them stays denied).
 `block-antigravity-read-fence.sh` derives `<own home>` from the artifact folder, which must be
 `<T3 home>/userdata/providers/antigravity/<home>/antigravity-acp/brain/<conversation>`. Only `Read` and
 `read_file` get it: shell commands, `read_resource`, `list_resources` and writes stay denied. A `..` in
