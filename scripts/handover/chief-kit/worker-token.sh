@@ -108,6 +108,12 @@ case "$bucket" in
 esac
 rec="$bucket/worker-tokens.jsonl"
 
+for f in "$rec" "$rec.lock"; do
+    if [ -L "$f" ] || ! { [ -f "$f" ] || absent "$f"; }; then
+        [ "$sub" != gen ] || echo "current=- pending=-:- state=bad"
+        die 6 "refusing a symlink or a non-regular file: $f"
+    fi
+done
 exec 9>>"$rec.lock" || die 6 "cannot open $rec.lock"
 flock -w 60 9 || die 6 "cannot lock $rec.lock"  # prim-ok: one lock spans each read, decide and append
 
