@@ -94,6 +94,18 @@ rs_launch() {
   [ "${RS_DOC_OUTSIDE:-0}" != 1 ] || { RS_DOC_DIR="$tmp/rs-outside/docs"; mkdir -p "$RS_DOC_DIR"; }
   RS_D="$RS/c$rs_n"; RS_DOC="$RS_DOC_DIR/readiness-v1.$rs_n.0.md"; RS_NAME="${RS_NAME_FIXED:-PROJ-9999-rs$rs_n}"
   mk_launch_stubs "$RS_D" "$RS_NAME"; mkdir -p "$RS_D/xdg"; chmod 700 "$RS_D/xdg"
+  case "${RS_PGREP:-}" in
+    pre)
+      printf '%s\n' '#!/usr/bin/env bash' 'exit 2' > "$RS_D/pgrep"
+      ;;
+    post)
+      cat > "$RS_D/pgrep" <<'PGREP_EOF'
+#!/usr/bin/env bash
+if [ -e "$(dirname "$0")/confirmable" ]; then exit 2; fi
+exit 1
+PGREP_EOF
+      ;;
+  esac
   [ "${RS_PRE_CONFIRM:-0}" != 1 ] || : > "$RS_D/confirmable"
   case "$RS_DOC_KIND" in
     symlink) fx_brief "# target $rs_n" > "$RS/hdir/u/r/target-$rs_n.md"; ln -s "$RS/hdir/u/r/target-$rs_n.md" "$RS_DOC" ;;
@@ -449,8 +461,8 @@ check "17s ambient takeover never reaches konsole" "$([ -e "$RS_D/record" ] && e
 check "17s ambient takeover preserves the original holder" \
   "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:foreign-readiness-token"
 
-# a session may be coming up on hand-off statuses 7 (konsole up, claude unseen) and 9 (scan indeterminate): the lease, its
-# transport and the attempt directory are KEPT for the session's own adoption
+# A session may still adopt the lease after exit 7, a wordless exit 9 or an exit 9 after a forwarded signal.
+# These cases keep the lease, its transport and the attempt directory.
 rs_kept() { # rs_kept <label>: the launcher's own token still holds the lease and its transport is still there
   local tf; tf="$(find "$RS_D/xdg/himmel-readiness" -name lease-token 2>/dev/null | head -n 1)"
   check "17s $1: the lease is kept, held by the transported token" \
@@ -463,6 +475,36 @@ for rs_rc in 7 9; do
   check "17s hand-off status $rs_rc is returned" "$RS_RC" "$rs_rc"
   rs_kept "hand-off status $rs_rc"
 done
+
+rs_last_attempt_outcome() {
+  jq -r --arg name "$RS_NAME" 'select(.name == $name) | [.outcome,.cause,.phase] | join(":")' \
+    "$RS_HOME/.himmel/launch-refusals.jsonl" | tail -n 1
+}
+
+RS_PGREP=pre rs_launch
+check "17s-11271 L1: the pre-spawn scan returns 9" "$RS_RC" "9"
+check "17s-11271 L1: konsole was never reached" "$([ ! -e "$RS_D/record" ] && echo yes)" "yes"
+check "17s-11271 L1: the lease is free" "$(rs_status)" "free"
+check "17s-11271 L1: the attempt is removed" "$(rs_attempts)" "0"
+check "17s-11271 L1: the refusal record is unchanged" "$(rs_last_attempt_outcome)" "refused:dedup-indeterminate:handoff"
+
+RS_PGREP=post rs_launch
+check "17s-11271 L2: the post-launch scan returns 9" "$RS_RC" "9"
+check "17s-11271 L2: konsole was reached" "$([ -s "$RS_D/record" ] && echo yes)" "yes"
+rs_kept "11271 L2 post-launch scan"
+check "17s-11271 L2: the refusal record is unchanged" "$(rs_last_attempt_outcome)" "refused:dedup-indeterminate:handoff"
+
+cat > "$RS/l3-target.sh" <<'L3_TARGET'
+#!/usr/bin/env bash
+trap 'sleep 0.5; exit 9' TERM
+printf '%s\n' scan-indeterminate > "$HEADED_ARM_OUTCOME_FILE"
+: > "$(dirname "$0")/l3-mark"
+while :; do sleep 0.1; done
+L3_TARGET
+chmod 755 "$RS/l3-target.sh"
+RS_SIGNAL_AFTER="$RS/l3-mark" rs_launch HEADED_ARM_WORKER_TARGET="$RS/l3-target.sh"
+check "17s-11271 L3: the signalled child wrote its word and returned 9" "$([ -e "$RS/l3-mark" ] && echo yes):$RS_RC" "yes:9"
+rs_kept "11271 L3 forwarded signal"
 
 RS_PRE_CONFIRM=1 rs_launch
 check "17s-10351 T3: already-running succeeds without reaching konsole" \
@@ -521,6 +563,18 @@ rs_free_and_gone() { # rs_free_and_gone <label>: the launcher's own lease is rel
 }
 if command -v flock >/dev/null 2>&1; then
   RS_MANAGED=1
+  cat > "$RS/l1m-target.sh" <<'L1M_TARGET'
+#!/usr/bin/env bash
+printf '%s\n' scan-indeterminate > "$HEADED_ARM_OUTCOME_FILE"
+exit 9
+L1M_TARGET
+  chmod 755 "$RS/l1m-target.sh"
+  rs_launch HEADED_ARM_WORKER_TARGET="$RS/l1m-target.sh"
+  check "17s-11271 L1m: the managed target returns 9" "$RS_RC" "9"
+  check "17s-11271 L1m: konsole was never reached" "$([ ! -e "$RS_D/record" ] && echo yes)" "yes"
+  check "17s-11271 L1m: the lease is free" "$(rs_status)" "free"
+  check "17s-11271 L1m: the attempt is removed" "$(rs_attempts)" "0"
+
   # a real fleet pause between the fleet check (before the acquire) and the hand-off (after it)
   rs_launch HEADED_ARM_WORKER_PREFLIGHT="$RS/pause-preflight.sh" RS_PAUSE_ANCHOR="$RS/hdir/m$((rs_n + 1))/fleet-control.json" HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh" RS_TARGET_MARK="$RS/target-mark-pause"
   check "17s managed pause: the wrapper refuses with 10 (fleet paused)" "$RS_RC" "10"
