@@ -302,7 +302,7 @@ if [ -n "$halted" ]; then
 fi
 
 owe_next_step() {
-    local stem key flag results stream ready since ask sha actor=chief step due id out bucket chief
+    local stem key flag results stream ready hash_re ask sha actor=chief step due id out bucket chief
     stem="${worker##*/}"; stem="${stem%.md}"
     [[ $stem =~ ^([A-Z][A-Z0-9]*-[0-9]+)- ]] || return 0
     key="${BASH_REMATCH[1]}"
@@ -310,15 +310,15 @@ owe_next_step() {
     [ "$flag" = no ] || return 0
     results="$(awk '/^## Results/ { r = 1; next } r && /^- /' "$worker")"
     stream="$results"$'\n'"$body"
-    ready="$(grep -F 'READY-TO-SIGN' <<< "$stream")" || ready=""
+    ready="$(grep -nF 'READY-TO-SIGN' <<< "$stream")" || ready=""
     step="launch the next slice, or close $key by hand when nothing remains"
-    since="$(awk '/READY-TO-SIGN/ { buf = "" } { buf = buf $0 "\n" } END { printf "%s", buf }' <<< "$stream")"
-    if [ -n "$ready" ] && ! grep -qiE '(design|spec)( was)? signed by' <<< "$since"; then
-        ask="$(grep -vE '^(- )?([0-9]{1,2}:[0-9]{2} )?WRAPPED' <<< "$ready" | tail -n 1)"
-        [ -n "$ask" ] || ask="$(tail -n 1 <<< "$ready")"
-        sha="$(grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' <<< "$ask" | tail -n 1 | grep -oE '[0-9a-f]+$' | cut -c1-12)" || sha=""
+    hash_re='spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}'
+    ask="$({ grep -iE "$hash_re" <<< "$ready"; grep -vE '^[0-9]+:(- )?([0-9]{1,2}:[0-9]{2} )?WRAPPED' <<< "$ready"; } | sort -n | tail -n 1)"
+    [ -n "$ask" ] || ask="$(tail -n 1 <<< "$ready")"
+    if [ -n "$ready" ] && ! grep -qiE '(design|spec)( was)? signed by' <<< "$(tail -n "+${ask%%:*}" <<< "$stream")"; then
+        sha="$(grep -oiE "$hash_re" <<< "$ask" | tail -n 1 | grep -oE '[0-9a-f]+$' | cut -c1-12)" || sha=""
         step="sign the design${sha:+ (spec $sha)}, then dispatch the build"
-        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ask"$'\n'"$since"; then
+        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ask"; then
             actor=operator
             step="ask the operator to sign the design${sha:+ (spec $sha)}, then dispatch the build"
         fi
