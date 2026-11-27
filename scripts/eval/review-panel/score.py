@@ -57,6 +57,13 @@ the key by default) and an --adjudications JSONL of bound finding labels give ad
 verified recall bounds, adjudicated precision with coverage and the verified false-block rate, under "verified",
 never merged into the proxy metrics. gold_revision is the sidecar's sha256, outside the stamp's confighash.
 
+  score.py misses --outputs DIR [--outputs DIR ...] [--critics a,b] [--fixtures DIR] [--key FILE] [--window N]
+                 [--validation FILE] [--adjudications FILE] [--ledger PATH] [--json OUT]
+
+misses bins every labelled defect per critic and bundle (key-hit, location-only, no-location, unscored) with score's
+parser, matcher and window, beside a null-window control (README "Miss bins"). Open defects are listed one by one;
+the sealed half is printed as whole-half totals only. Its verified row is read from the eval-runs ledger.
+
 compare-paired --baseline-scores FILE --candidate-scores FILE [--key FILE] compares two arms of execution score
 objects over the same twin pairs (repeats averaged per case, then a stratified 2,000-resample seed-0 bootstrap); it
 names the omitted cases and exits 1 when the cohort is not complete. replay.py (this directory) rescores retained
@@ -72,6 +79,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -101,6 +109,11 @@ CRITICS_REL = "scripts/cr/critics.json"
 ROSTER_TIER = "paid"  # run.sh's default --tiers: the roster a gate sweep runs
 PANEL_REL = "scripts/cr/critic-panel.sh"
 LEAK_MIN = 12  # a fix line shorter than this (fi, done, a brace) is too common to prove a leak
+NULL_SEED = 11085
+NULL_MIN_GAP = 10
+BINS = ("key-hit", "location-only", "no-location", "unscored")
+HALVES = ("open", "sealed")
+JUDGED_EVAL = "review-panel-judged"
 
 # Class keyword patterns, matched case-insensitively against a finding's text.
 # Deliberately broad: location already pins the finding to the seeded lines, so
@@ -554,15 +567,8 @@ def ratio(k, n):
     return (k / n) if n else None
 
 
-def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW, validation=None, adjudications=None):
-    key = load_key(key_path)
-    cases = key["cases"]
-    ids = sorted(cases) if not only else [c for c in only if c in cases]
-    if only and len(ids) != len(only):
-        raise ValueError("--only names cases the key lacks: %s" % sorted(set(only) - set(cases)))
-    leak_markers = (key["canary"],) + KEY_MARKERS
-
-    roster = sorted(set(critics))
+def read_cases(outputs, ids, roster, leak_markers):
+    """({scored case: (findings, participation)}, leaked ids, unscored ids, case evidence) of one outputs dir."""
     per_case, leaks, unscored, case_evidence = {}, [], [], {}
     for cid in ids:
         md = os.path.join(outputs, cid + ".md")
@@ -582,6 +588,19 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
             unscored.append(cid)
             continue
         per_case[cid] = (findings, part)
+    return per_case, leaks, unscored, case_evidence
+
+
+def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW, validation=None, adjudications=None):
+    key = load_key(key_path)
+    cases = key["cases"]
+    ids = sorted(cases) if not only else [c for c in only if c in cases]
+    if only and len(ids) != len(only):
+        raise ValueError("--only names cases the key lacks: %s" % sorted(set(only) - set(cases)))
+    leak_markers = (key["canary"],) + KEY_MARKERS
+
+    roster = sorted(set(critics))
+    per_case, leaks, unscored, case_evidence = read_cases(outputs, ids, roster, leak_markers)
     members = roster + ["panel"]
 
     metrics, ci, case_rows = {}, {}, {}
@@ -1316,6 +1335,229 @@ def compare_paired(base_runs, cand_runs, key_path):
     return out
 
 
+def null_draws(fixtures, cases):
+    """{seeded case id: (file, line)}: one added line of the seeded diff at least NULL_MIN_GAP lines from every defect
+    line (a line of another file qualifies), drawn with random.Random(NULL_SEED) over the key in id order. A diff with
+    no such line draws none, so it leaves the control's denominator."""
+    rng, out = random.Random(NULL_SEED), {}
+    for cid, c in sorted(cases.items()):
+        if c["kind"] != "seeded":
+            continue
+        name = cid + (DELTA_SUFFIX if c.get("delta") is True else ".patch")
+        with open(os.path.join(fixtures, name), encoding="utf-8") as fh:
+            files = patch_files(fh.read())
+        pool = sorted((f, n) for f, lines in files.items() for n in lines
+                      if all(f != norm_path(d["file"]) or abs(n - d["line"]) >= NULL_MIN_GAP for d in c["defects"]))
+        if pool:
+            out[cid] = rng.choice(pool)
+    return out
+
+
+def bound_labels(outputs, fixtures, cases, per_case, gold, path):
+    """({(case, finding sha): label}, number of scored cases no label can bind to) of one bundle. A label binds only
+    where the bundle's manifest records the case inputs the fixtures hold now."""
+    recorded = (read_manifest(outputs) or {}).get("inputs") or {}
+    inputs = case_inputs(fixtures, cases, sorted(per_case))
+    usable = {c: adjudication.case_input_sha256(v) for c, v in inputs.items() if recorded.get(c) == v}
+    shas = {c: {adjudication.finding_sha256(f) for f in per_case[c][0]} for c in usable}
+    labels, diags = adjudication.load_adjudications(path, usable, gold, shas)
+    clash = ["%s %s" % (d["case"], d["identity"]) for d in diags if d["reason"] == "conflict"]
+    if clash:
+        raise ValueError("conflicting adjudication labels refuse the grades: %s" % ", ".join(clash))
+    return labels["findings"], len(per_case) - len(usable)
+
+
+def miss_grade(cid, defect, near, labels):
+    """(grade, blocking) of a location-only defect from the labels of its near findings."""
+    got = [(f, labels.get((cid, adjudication.finding_sha256(f)))) for f in near]
+    right = [f for f, lab in got if lab and lab["correctness"] == "correct" and defect["id"] in lab["target_ids"]]
+    if right:
+        return "proxy-false-miss", any(f["sev"] in GATING for f in right)
+    if all(lab and lab["correctness"] in ("correct", "incorrect") for _, lab in got):
+        return "genuine-located", False
+    return "undecided", False
+
+
+def _tally():
+    return {"bins": dict.fromkeys(BINS, 0), "gating_hits": 0, "null_window": [0, 0], "clean_twin": [0, 0],
+            "grades": dict.fromkeys(("proxy-false-miss", "blocking", "genuine-located", "undecided"), 0)}
+
+
+def miss_bundle(per_case, cases, critics, members, window, draws, labels):
+    """(totals, {(case, defect id, member): (bin, cell)}) of one bundle; totals is {half: {member: tally}}."""
+    totals = {h: {w: _tally() for w in members} for h in HALVES}
+    cells = {}
+    seeded = {c.get("pair"): c for c in cases.values() if c["kind"] == "seeded"}
+    for cid, c in sorted(cases.items()):
+        for who in members:
+            t = totals[c["split"]][who]
+            mine = None
+            if cid in per_case:
+                findings, part = per_case[cid]
+                slugs = critics if who == "panel" else [who]
+                if any(part[s]["state"] == "answered" for s in slugs):
+                    mine = [f for f in findings if f["critic"] in slugs]
+            if c["kind"] == "clean":
+                twin = seeded.get(c.get("pair"))
+                if mine is not None and twin:
+                    t["clean_twin"][1] += 1
+                    t["clean_twin"][0] += any(loc_hit(f, d, window) for f in mine for d in twin["defects"])
+                continue
+            if mine is not None and cid in draws:
+                path, line = draws[cid]
+                wide = max(d.get("window", window) for d in c["defects"])
+                t["null_window"][1] += 1
+                t["null_window"][0] += any(f["file"] == path and abs(f["line"] - line) <= wide for f in mine)
+            for d in c["defects"]:
+                note = ""
+                if mine is None:
+                    got = "unscored"
+                else:
+                    near = [f for f in mine if loc_hit(f, d, window)]
+                    hits = [f for f in near if class_hit(f, d)]
+                    got = "key-hit" if hits else ("location-only" if near else "no-location")
+                    t["gating_hits"] += any(f["sev"] in GATING for f in hits)
+                    if got == "location-only" and labels is not None:
+                        grade, blocking = miss_grade(cid, d, near, labels)
+                        t["grades"][grade] += 1
+                        t["grades"]["blocking"] += blocking
+                        note = "(%s%s)" % (grade, ", blocking" if blocking else "")
+                t["bins"][got] += 1
+                cells[(cid, d["id"], who)] = (got, got + note)
+    return totals, cells
+
+
+def judged_row(ledger):
+    """The judged eval's newest ok ledger row as {run_id, model, metrics, ci}, or None."""
+    rows = [r for r in eval_runs.read_rows(ledger) if r["eval"] == JUDGED_EVAL and r["status"] == "ok"]
+    return {k: rows[-1][k] for k in ("run_id", "model", "metrics", "ci")} if rows else None
+
+
+def misses(bundles, fixtures, key_path, critics, window=DEFAULT_WINDOW, validation=None, adjudications=None,
+           ledger=None):
+    """The miss report of one or more bundles. Everything it returns about the sealed half is a whole-half total."""
+    cases, canary = (lambda k: (k["cases"], k["canary"]))(load_key(key_path))
+    if any(c.get("split") not in HALVES for c in cases.values()):
+        raise ValueError("every case of the key needs split open or sealed")
+    halves = [h for h in HALVES if any(c["split"] == h for c in cases.values())]
+    critics = sorted(set(critics))
+    members = critics + (["panel"] if len(critics) > 1 else [])
+    draws = null_draws(fixtures, cases)
+    gold = None
+    if adjudications:
+        if not validation:
+            raise ValueError("--adjudications needs a validation sidecar (--validation, or validation.json beside "
+                             "the key)")
+        _, problems, gold = adjudication.load_validation(validation, cases)
+        if problems:
+            raise ValueError("the validation sidecar fails lint: %s" % "; ".join(problems[:3]))
+    out_bundles, seen = [], {}
+    for outputs in bundles:
+        if not os.path.isdir(outputs):
+            raise ValueError("no outputs dir: %s" % outputs)
+        ran = {r["slug"] for r in run_roster_rows(outputs) or []}
+        roster = sorted(set(critics) | ran)
+        per_case, leaked, _, _ = read_cases(outputs, sorted(cases), roster, (canary,) + KEY_MARKERS)
+        per_case = {c: v for c, v in per_case.items() if c not in leaked}
+        labels, unbound = None, 0
+        if adjudications:
+            labels, unbound = bound_labels(outputs, fixtures, cases, per_case, gold, adjudications)
+        totals, cells = miss_bundle(per_case, cases, critics, members, window, draws, labels)
+        for k, v in cells.items():
+            seen.setdefault(k, []).append(v)
+        out_bundles.append({"name": os.path.basename(os.path.abspath(outputs)), "unbound_cases": unbound,
+                            "totals": {h: totals[h] for h in halves}})
+    stability = {h: {w: {"stable": 0, "flaky": 0} for w in members} for h in halves}
+    open_defects = []
+    classes = {(cid, d["id"]): d["class"] for cid, c in cases.items() for d in c["defects"]}
+    for (cid, did, who), got in sorted(seen.items()):
+        state = "stable" if len({b for b, _ in got}) == 1 else "flaky"
+        stability[cases[cid]["split"]][who][state] += 1
+        if cases[cid]["split"] == "open":
+            open_defects.append({"case": cid, "defect": did, "class": classes[(cid, did)], "critic": who,
+                                 "bins": [cell for _, cell in got], "stability": state})
+    return {"critics": critics, "members": members, "window": window, "graded": bool(adjudications),
+            "bundles": out_bundles, "open_defects": open_defects, "stability": stability,
+            "verified": judged_row(ledger),
+            "null_window": {"seed": NULL_SEED, "min_gap": NULL_MIN_GAP,
+                            "draws": {c: list(v) for c, v in sorted(draws.items()) if cases[c]["split"] == "open"}}}
+
+
+def _scored(tally):
+    return sum(tally["bins"].values()) - tally["bins"]["unscored"]
+
+
+def _proxy_cell(k, n):
+    b = wilson(k, n)
+    return "%d/%d%s" % (k, n, " [%.2f,%.2f]" % (b["lo"], b["hi"]) if b else "")
+
+
+def report_judged(row):
+    if row is None:
+        return "verified: unavailable (no ok %s row in the eval-runs ledger; the judged eval computes it)" % JUDGED_EVAL
+
+    def cell(name):
+        k, n, b = row["metrics"].get(name + ".k"), row["metrics"].get(name + ".n"), row["ci"].get(name)
+        if k is None or n is None:
+            return "unavailable"
+        return "%g/%g%s" % (k, n, " [%.2f,%.2f]" % (b["lo"], b["hi"]) if b else "")
+    return "verified (judged run %s): catch rate gating %s, any-severity %s; clean pass %s" % (
+        row["run_id"], cell("catch_rate"), cell("catch_rate_any_severity"), cell("clean_pass_rate"))
+
+
+def report_misses(res):
+    out = ["review-panel misses: bundles %s; critics %s; window %d; null-window seed %d"
+           % (",".join(b["name"] for b in res["bundles"]), ",".join(res["critics"]), res["window"], NULL_SEED),
+           "automated proxies, not verified accuracy; open defects one by one (bins in bundle order), the sealed half "
+           "as totals only"]
+    for d in res["open_defects"]:
+        out.append("%s %s [%s] %s: %s %s" % (d["case"], d["defect"], d["class"], d["critic"], ",".join(d["bins"]),
+                                             d["stability"]))
+    for b in res["bundles"]:
+        out.append("bundle %s" % b["name"])
+        if b["unbound_cases"]:
+            out.append("grades: %d scored case(s) have unrecorded or changed inputs, so no label binds there"
+                       % b["unbound_cases"])
+        for half, members in b["totals"].items():
+            for who in res["members"]:
+                t, head = members[who], "%-6s %s" % (half, who)
+                out.append("%s bins: %s" % (head, ", ".join("%s %d" % (x, t["bins"][x]) for x in BINS)))
+                out.append("%s location-only share %d/%d; null window %d/%d; clean twin at the seed line (secondary) "
+                           "%d/%d" % ((head, t["bins"]["location-only"], _scored(t)) + tuple(t["null_window"])
+                                      + tuple(t["clean_twin"])))
+                if res["graded"]:
+                    g = t["grades"]
+                    out.append("%s location-only grades: proxy-false-miss %d (blocking %d), genuine-located %d, "
+                               "undecided %d" % (head, g["proxy-false-miss"], g["blocking"], g["genuine-located"],
+                                                 g["undecided"]))
+    out.append("across %d bundle(s):" % len(res["bundles"]))
+    for half, members in res["stability"].items():
+        for who in res["members"]:
+            out.append("%-6s %s stable %d, flaky %d" % (half, who, members[who]["stable"], members[who]["flaky"]))
+    for cid, (path, line) in res["null_window"]["draws"].items():
+        out.append("null-window draw %s %s:%d" % (cid, path, line))
+    for b in res["bundles"]:
+        for who in res["members"]:
+            tallies = [m[who] for m in b["totals"].values()]
+            n = sum(_scored(t) for t in tallies)
+            out.append("proxy %s %s: key-match any-severity %s, gating %s"
+                       % (b["name"], who, _proxy_cell(sum(t["bins"]["key-hit"] for t in tallies), n),
+                          _proxy_cell(sum(t["gating_hits"] for t in tallies), n)))
+    out.append(report_judged(res["verified"]))
+    return "\n".join(out)
+
+
+def redact_sealed(text, key_path):
+    """text with every sealed case id replaced: a refusal of misses may quote a fixture path or a label."""
+    try:
+        sealed = [c for c, v in load_key(key_path)["cases"].items() if v.get("split") != "open"]
+    except (OSError, ValueError):
+        return text
+    for cid in sorted(sealed, key=len, reverse=True):
+        text = text.replace(cid, "<sealed case>")
+    return text
+
+
 def report(res):
     m = res["metrics"]
     out = ["review-panel: %d cases, %d defects, unscored=%d, leaked=%d, status=%s"
@@ -1381,14 +1623,21 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     pl = sub.add_parser("lint")
     ps = sub.add_parser("score")
-    for p in (pl, ps):
+    pm = sub.add_parser("misses")
+    pm.add_argument("--outputs", action="append", required=True, help="a sweep's outputs dir; repeat for stability")
+    pm.add_argument("--critics", default="codex")
+    pm.add_argument("--window", type=int, default=DEFAULT_WINDOW)
+    pm.add_argument("--ledger", help="the eval-runs ledger the verified row is read from")
+    pm.add_argument("--json")
+    for p in (pl, ps, pm):
         p.add_argument("--fixtures", default=os.path.join(HERE, "fixtures"))
         p.add_argument("--key", default=os.path.join(HERE, "key", "seeds.json"))
     pl.add_argument("--min-real", type=int, default=0)
     pl.add_argument("--src", help="the repo real cases' base and fix commits live in (default this checkout)")
-    for p in (pl, ps):
+    for p in (pl, ps, pm):
         p.add_argument("--validation", help="the gold sidecar (default validation.json beside --key, when present)")
     ps.add_argument("--adjudications", help="a JSONL of bound finding labels: adds the verified family")
+    pm.add_argument("--adjudications", help="a JSONL of bound finding labels: grades each location-only defect")
     tree_cmds = {}
     for name in ("cbs-paths", "cbs-hash", "confighash"):
         tree_cmds[name] = sub.add_parser(name)
@@ -1449,6 +1698,20 @@ def main(argv=None):
             print(json.dumps(ident, sort_keys=True))
         else:
             print(ident["scorer_sha256"] or "null (%s)" % ident["reason"])
+        return 0
+    if a.cmd == "misses":
+        try:
+            critics = [c for c in a.critics.split(",") if c]
+            if not critics:
+                raise ValueError("--critics names no critic")
+            res = misses(a.outputs, a.fixtures, a.key, critics, a.window, sidecar(a), a.adjudications, a.ledger)
+            if a.json:
+                with open(a.json, "w", encoding="utf-8") as fh:
+                    json.dump(res, fh, indent=2, sort_keys=True)
+        except (OSError, ValueError, KeyError) as e:
+            print("score.py misses: %s" % redact_sealed(str(e), a.key), file=sys.stderr)
+            return 2
+        print(report_misses(res))
         return 0
     if a.cmd == "compare-paired":
         try:
