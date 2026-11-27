@@ -6377,8 +6377,18 @@ _c101_owned() {
 
 _c103_field() { printf '%s\n' "$2" | sed -n "s/^$1: //p" | head -n 1; }
 
+_c103_manager_blind() {
+    local state
+    if [ "${BYPASSD_SERVICE_OS:-$(uname -s)}" = Darwin ]; then
+        "${HIMMEL_DOCTOR_LAUNCHCTL:-launchctl}" print "gui/$(id -u)" >/dev/null 2>&1 || printf 'no launchd GUI session'
+    else
+        state="$(_systemd_user_unit_state "${HIMMEL_DOCTOR_SYSTEMCTL:-systemctl}" himmel-bypass-launchd.service --reason)"
+        case "$state" in unknown*) printf '%s' "${state#unknown: }" ;; esac
+    fi
+}
+
 check_c103_bypass_launcher() {
-    local tb="" t secs out rc why unit status_cmd
+    local tb="" t secs out rc why unit status_cmd blind
     for t in ${HIMMEL_DOCTOR_TIMEOUT_BINS:-timeout gtimeout}; do
         tb="$(command -v "$t" 2>/dev/null)" && break
         tb=""
@@ -6407,7 +6417,9 @@ check_c103_bypass_launcher() {
     if [ "$(_c103_field bucket "$out")" = none ]; then
         emit INFO C103-bypass-launcher "not installed as a service (optional)"
     elif [ "$(_c103_field enabled "$out")" = no ]; then
-        emit INFO C103-bypass-launcher "off; from your own shell: himmelctl bypass on"
+        blind="$(_c103_manager_blind)"
+        if [ -n "$blind" ]; then emit WARN C103-bypass-launcher "launcher state unreadable: $blind"
+        else emit INFO C103-bypass-launcher "off; from your own shell: himmelctl bypass on"; fi
     elif [ "$(_c103_field 'stop file' "$out")" = yes ]; then
         emit WARN C103-bypass-launcher "enabled, but a stop file keeps it off; from your own shell: himmelctl bypass on"
     elif [ "$(_c103_field active "$out")" = no ]; then

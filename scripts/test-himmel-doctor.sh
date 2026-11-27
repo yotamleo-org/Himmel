@@ -2154,6 +2154,17 @@ cat "$t/block"
 exit "\$(cat "$t/rc")"
 STUB
 chmod +x "$t/status"
+cat > "$t/systemctl" <<STUB
+#!/usr/bin/env bash
+cat "$t/sctl"
+exit 1
+STUB
+cat > "$t/launchctl" <<STUB
+#!/usr/bin/env bash
+exit "\$(cat "$t/lrc")"
+STUB
+chmod +x "$t/systemctl" "$t/launchctl"
+printf 'disabled\n' > "$t/sctl"; printf '0' > "$t/lrc"
 : > "$t/argv"; : > "$t/all"
 c103_block() {
     printf '%s' "$1" > "$t/rc"; shift
@@ -2164,7 +2175,7 @@ c103_block() {
     done > "$t/block"
 }
 c103_run() {
-    out="$(env BYPASSD_SERVICE_OS=Linux HIMMEL_DOCTOR_BYPASS_STATUS="$t/status" CLAUDE_DIR="$t/claude" HOME="$t/home" "$@" bash "$DOC" --no-color --only C103 2>&1)"
+    out="$(env BYPASSD_SERVICE_OS=Linux HIMMEL_DOCTOR_BYPASS_STATUS="$t/status" HIMMEL_DOCTOR_SYSTEMCTL="$t/systemctl" HIMMEL_DOCTOR_LAUNCHCTL="$t/launchctl" CLAUDE_DIR="$t/claude" HOME="$t/home" "$@" bash "$DOC" --no-color --only C103 2>&1)"
     c103="$(printf '%s' "$out" | grep -A1 'C103-bypass-launcher')"
     printf '%s\n' "$c103" >> "$t/all"
 }
@@ -2188,6 +2199,12 @@ c103_expect "(2) not installed" INFO 'not installed as a service (optional)'
 if ! grepq "$c103" -F 'himmelctl bypass'; then pass "C103 (2) names no command"; else fail "C103 (2) recommends a command: $c103"; fi
 c103_block 1 enabled=no active=no 'stop file=yes'; c103_run
 c103_expect "(3) turned off" INFO 'off; from your own shell: himmelctl bypass on'
+printf 'Failed to connect to user scope bus via local transport: No such file or directory\n' > "$t/sctl"; c103_run
+c103_expect "(3b) enabled: no with the user bus unreachable" WARN 'launcher state unreadable: systemd user bus unreachable'
+printf 'disabled\n' > "$t/sctl"; c103_run BYPASSD_SERVICE_OS=Darwin
+c103_expect "(3c) macOS turned off in a GUI session" INFO 'off; from your own shell: himmelctl bypass on'
+printf '1' > "$t/lrc"; c103_run BYPASSD_SERVICE_OS=Darwin; printf '0' > "$t/lrc"
+c103_expect "(3d) macOS enabled: no with no GUI session" WARN 'launcher state unreadable: no launchd GUI session'
 c103_block 0 'stop file=yes'; c103_run
 c103_expect "(3) enabled with a stop file, ahead of every later row" WARN 'himmelctl bypass on'
 c103_block 1 active=no; c103_run
