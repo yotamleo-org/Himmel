@@ -50,7 +50,8 @@ const RECENT_WALK_BUDGET = 50_000;
 const SEARCH_OVERFETCH_CAP = 50;
 
 const CollectionName = z.string().regex(COLLECTION_NAME);
-const DocPath = z.string().min(1).max(1024);
+const PATH_HINT = "Path is relative to the collection root, e.g. 30-Resources/note.md (no leading /, no ..).";
+const DocPath = z.string().min(1).max(1024).describe(PATH_HINT);
 
 function defineOp<S extends z.ZodObject>(def: {
   name: string;
@@ -113,6 +114,26 @@ async function authorize(deps: OpDeps, principal: Principal, collection: string,
   };
 }
 
+const RELATIVE_HINT = "pass a path relative to the collection root";
+
+function forbiddenMessage(kind: string, path: string | null | undefined): string {
+  switch (kind) {
+    case "bad-path":
+      return path?.startsWith("/")
+        ? `absolute paths are not allowed; ${RELATIVE_HINT}`
+        : `path is not valid; ${RELATIVE_HINT}, without .. or control characters`;
+    case "bad-uri":
+      return `path is not valid; ${RELATIVE_HINT}`;
+    case "dot-segment":
+      return "dot-folders are not readable";
+    case "kernel":
+    case "role-path":
+      return "this folder is not readable with this key";
+    default:
+      return "only markdown notes are readable";
+  }
+}
+
 function deniedToOpError(e: unknown, access: Partial<Access>): OpError {
   if (!(e instanceof Denied)) throw e;
   switch (e.kind) {
@@ -122,7 +143,7 @@ function deniedToOpError(e: unknown, access: Partial<Access>): OpError {
     case "kernel":
     case "role-path":
     case "not-markdown":
-      return new OpError(403, "forbidden", "path not permitted", { ...access, reason: e.kind });
+      return new OpError(403, "forbidden", forbiddenMessage(e.kind, access.path), { ...access, reason: e.kind });
     case "too-large":
       return new OpError(413, "too_large", "document exceeds the read cap", { ...access, reason: e.kind });
     default:
@@ -211,7 +232,7 @@ const qmdSearch = defineOp({
 const readDocOp = defineOp({
   name: "read_doc",
   aliases: ["luna_read_note"],
-  description: "Read one markdown note by collection and path. Returns content, sha256, size and mtime. Capped at 512 KiB.",
+  description: "Read one markdown note by collection and path. Returns content, sha256, size and mtime. Capped at 512 KiB. " + PATH_HINT,
   input: z.object({ collection: CollectionName.optional(), path: DocPath }),
   run: async (deps, principal, args) => {
     const collection = collectionOrDefault(principal, args.collection, args.path);
@@ -227,7 +248,7 @@ const readDocOp = defineOp({
 
 const multiRead = defineOp({
   name: "multi_read",
-  description: "Read up to 10 notes in one call, 1 MiB in total. Each entry succeeds or fails on its own.",
+  description: "Read up to 10 notes in one call, 1 MiB in total. Each entry succeeds or fails on its own. " + PATH_HINT,
   input: z.object({ entries: z.array(z.object({ collection: CollectionName.optional(), path: DocPath })).min(1).max(10) }),
   run: async (deps, principal, args) => {
     let total = 0;
@@ -253,7 +274,7 @@ const multiRead = defineOp({
         accesses.push(allow(az, doc.path));
       } catch (e) {
         if (!(e instanceof OpError)) throw e;
-        results.push({ ok: false, collection: collection ?? null, path: entry.path, error: { status: e.status, code: e.code } });
+        results.push({ ok: false, collection: collection ?? null, path: entry.path, error: { status: e.status, code: e.code, message: e.message } });
         accesses.push({
           collection: e.access.collection ?? collection ?? null,
           corpus: e.access.corpus ?? az?.corpusLabel ?? null,
@@ -269,10 +290,10 @@ const multiRead = defineOp({
 
 const listDirOp = defineOp({
   name: "list_dir",
-  description: "List one directory of a collection, paginated. Pass the returned nextCursor to continue.",
+  description: "List one directory of a collection, paginated. Pass the returned nextCursor to continue. Dir is relative to the collection root, e.g. 30-Resources (no leading /, no ..); omit it for the root.",
   input: z.object({
     collection: CollectionName.optional(),
-    dir: z.string().max(1024).optional(),
+    dir: z.string().max(1024).optional().describe("Directory relative to the collection root, e.g. 30-Resources (no leading /, no ..)."),
     cursor: z.string().regex(/^[A-Za-z0-9_-]{1,512}$/).optional(),
     limit: z.number().int().min(1).max(100).default(50),
   }),
@@ -290,7 +311,7 @@ const listDirOp = defineOp({
 
 const recentDocsOp = defineOp({
   name: "recent_docs",
-  description: "List the most recently modified markdown notes of a collection, newest first.",
+  description: "List the most recently modified markdown notes of a collection, newest first. Returned paths are relative to the collection root; pass them unchanged to read_doc (no leading /, no ..).",
   input: z.object({ collection: CollectionName.optional(), limit: z.number().int().min(1).max(50).default(20) }),
   run: async (deps, principal, args) => {
     const collection = collectionOrDefault(principal, args.collection, null);

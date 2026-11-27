@@ -244,7 +244,7 @@ a session may run it, and a worktree's copy does nothing. A request that is wait
 lands is asked again with a new code, and the old code no longer works.
 
 What still needs the operator: a unit that is enabled but not running (`himmelctl bypass restart`; the sync reads
-`BEHIND:bypass_daemon-inactive` on every run until it is up), a unit that is off or has a stop file, or whose unit file
+`BEHIND:bypass_daemon-inactive` on every run until it is up; a later heal then clears it), a unit that is off or has a stop file, or whose unit file
 differs from its template (`himmelctl bypass on`), and lingering that is off (`loginctl enable-linger <user>`).
 
 Without the unit, the operator starts it from their own shell, never from a session:
@@ -336,8 +336,10 @@ safe from a Claude-run update, and the manager starts the process with the unit'
 command to run (`himmelctl bypass on` or `himmelctl bypass restart`). A request that was waiting for your go when the
 daemon restarts is asked again with a new code; one that already carried your go is moved to `.failed` and not re-run.
 On a Linux chief station the station sync runs the same step after each handled merge, and marks a unit that is enabled
-but not running `bypass_daemon-inactive` in the station state until it is up. An unchanged launcher costs one
-`is-enabled`, one `is-active`, three `git rev-parse` and one file read per sync.
+but not running `bypass_daemon-inactive` in the station state until it is up. A heal runs the step only when the state
+carries a `bypass_daemon-*` marker, and rewrites the marker from the step's fresh output, so it clears at the first
+heal after the launcher is up. That heal waits out the 30-minute heal back-off like any other. An unchanged launcher
+costs one `is-enabled`, one `is-active`, three `git rev-parse` and one file read per run of the step.
 
 **The manager's environment is not trusted.** Any process of your user can change the user manager's environment
 (`systemctl --user set-environment`, `launchctl setenv`) and a restart makes it live. So the unit starts bash as

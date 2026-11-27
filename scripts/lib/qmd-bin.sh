@@ -65,7 +65,7 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 
 # Fork config -- overridable per call (env var set before sourcing/calling).
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-823571752bbeafa7cf17bec52617a5de31f13471}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-d8e96de26f89aebfb74d7092fcb31ab78df4ceb4}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo-org/qmd (or its old name yotamleo/qmd) -- in the forms seen in the wild (with or

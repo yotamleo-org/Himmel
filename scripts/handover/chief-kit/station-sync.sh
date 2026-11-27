@@ -15,7 +15,8 @@
 #                                   calls no systemctl or launchctl itself. Prints the step's one outcome line under the
 #                                   STEP line (restarted, inactive:, not-enabled:, failed:; nothing on current). A unit that
 #                                   is enabled but not running reads BEHIND:bypass_daemon-inactive on every sync until it is
-#                                   up; an off unit is not flagged. A heal never runs it but carries the marker forward.)
+#                                   up; an off unit is not flagged. A heal runs the step only when the state carries a
+#                                   bypass_daemon-* marker, and rewrites the marker from the step's fresh output.)
 #   marketplace/                    marketplace
 #   scripts/jira/                   jira_cli
 #   scripts/config-ui/              config_ui     (rebuild the UI bundle, restart himmel-ui.service if active;
@@ -42,12 +43,13 @@
 # Heal (--heal): worker-event.sh starts it, detached, on an event wake while the state reads BEHIND:<components>.
 # It reads the state file and runs the step each behind component maps to, then re-checks with --versions and
 # rewrites the state file as a sync does (no usage build):
-#   plugins -> marketplace, jira_cli -> jira_cli, qmd_fork -> qmd_fork
+#   plugins -> marketplace, jira_cli -> jira_cli, qmd_fork -> qmd_fork, bypass_daemon-* -> bypass_daemon
 # Any other behind component (himmel, hermes, luna_template, codex, claude, cli_proxy, node, npm, bun, a probe tool,
-# unverified, a *-failed marker) has no step here and stays reported, never healed.
+# unverified, any other *-failed marker) has no step here and stays reported, never healed.
 # It takes the sync's lock without waiting (`SKIP heal sync-running` when a sync holds it) and keeps a back-off stamp
 # ~/.himmel/state/station-heal.ts (SS_HEAL_WINDOW seconds, default 1800; SS_HEAL_NOW replaces the clock): a heal that
-# ran inside the window prints `SKIP heal backoff` and runs nothing, so a broken step never loops. A failed step
+# ran inside the window prints `SKIP heal backoff` and runs nothing, so a broken step never loops (a heal for a
+# bypass_daemon-* marker alone waits too). A failed step (a launcher that is only inactive: is not one)
 # writes ONE owed row (owe.sh add, kind step, in --bucket for --chief), its identity the component list and the day,
 # so a replay returns the same row. Other skips: `SKIP heal not-behind` (ok, or no state), `SKIP heal nothing-healable`.
 #
@@ -114,6 +116,7 @@ if [ -n "$HEAL" ]; then
         case "$comp" in
             plugins) step=marketplace ;;
             jira_cli|qmd_fork) step="$comp" ;;
+            bypass_daemon-*) step=bypass_daemon ;; # t13b-ok: maps the marker to himmel-update's own step; nothing is started here
             *) continue ;;
         esac
         case " $heal_want " in *" $step "*) ;; *) heal_want="$heal_want $step" ;; esac
@@ -208,12 +211,14 @@ local_template_diff() {
     '
 }
 
-refused=""; failed=""
+refused=""; failed=""; heal_inactive=""
 for step in bypass_daemon marketplace jira_cli config_ui qmd_fork graphify luna_template; do # t13b-ok: the bypass step runs first so slow steps never keep a stale launcher holding
     case " $want " in *" $step "*) ;; *) continue ;; esac
     if [ "$step" = bypass_daemon ]; then # t13b-ok: this branch runs the existing step through bypass_step
         bypass_step
-        [ -z "$BYPASS_MARK" ] || failed="${failed:+$failed,}$BYPASS_MARK"
+        if [ -n "$HEAL" ] && [ "$BYPASS_MARK" = bypass_daemon-inactive ]; then heal_inactive="$BYPASS_MARK" # t13b-ok: holds the marker for the state; nothing is started here
+        elif [ -n "$BYPASS_MARK" ]; then failed="${failed:+$failed,}$BYPASS_MARK"
+        fi
         continue
     fi
     if [ "$step" = luna_template ]; then
@@ -276,11 +281,7 @@ fi
 # the marker outlives a step that ran (or never could): the UI is still behind, so the state must not read ok
 if [ -f "$CUI_PENDING" ]; then case ",$failed," in *",config_ui-failed,"*) ;; *) failed="${failed:+$failed,}config_ui-failed" ;; esac; fi
 [ -z "$failed" ] || behind="${behind:+$behind,}$failed"
-if [ -n "$HEAL" ]; then
-    for comp in $(printf '%s' "${cur#BEHIND:}" | tr , ' '); do
-        case "$comp" in bypass_daemon-*) behind="${behind:+$behind,}$comp" ;; esac # t13b-ok: carries the marker forward; nothing is started here
-    done
-fi
+[ -z "$heal_inactive" ] || behind="${behind:+$behind,}$heal_inactive"
 [ -z "$refused" ] || case ",$behind," in *",$refused,"*) ;; *) behind="${behind:+$behind,}$refused" ;; esac
 
 if [ -n "$HEAL" ] && [ -n "$failed" ]; then

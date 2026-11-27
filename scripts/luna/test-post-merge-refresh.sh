@@ -69,6 +69,7 @@ mkcase() {
 #!/bin/sh
 c="$PMR_CASE"
 echo "qmd $* busy=${QMD_SQLITE_BUSY_TIMEOUT:-unset} nice=$(nice)" >> "$c/calls.log"
+echo "${QMD_REINDEX_EMBED_MAX_SECS:-unset}" > "$c/embedmax"
 if [ "$1" = embed ]; then
   case "$(cat "$c/qmd.mode" 2>/dev/null)" in
     embedbusy) echo "Another embed process is already running"; exit 1 ;;
@@ -82,6 +83,7 @@ case "$(cat "$c/qmd.mode" 2>/dev/null)" in
   busy) cat "$PMR_BUSY_FIXTURE"; exit 1 ;;
   fail) echo "qmd: boom"; exit 1 ;;
   timeout) exit 124 ;;
+  hang) trap '' TERM; sleep 8; echo alive > "$c/survived"; exit 0 ;;
   breakstate) mv "$c/state" "$c/state.gone" && : > "$c/state" ;;
   shadir) rm -f "$c/state/qmd.sha"; mkdir "$c/state/qmd.sha"; chmod 555 "$c/state/qmd.sha" ;;
   move)
@@ -170,13 +172,52 @@ mk_tick_tree() {
     printf '#!/bin/sh\necho "claude $*" >> "%s/sentinel.log"\nexit 99\n' "$d" > "$d/bin/claude"
     chmod +x "$d/scripts/graphify/semantic-update.sh" "$d/bin/claude"
     : > "$d/sentinel.log"
-    if [ "${2:-}" = stub-bounded ]; then
-        rm -f "$d/scripts/lib/qmd-bounded.sh"
-        cat > "$d/scripts/lib/qmd-bounded.sh" <<'STUB'
-qmd_timeout_secs() { printf '3600\n'; }
-qmd_bounded() { echo "$1" >> "$PMR_CASE/bounded.log"; shift; "$@"; }
-STUB
-    fi
+}
+
+short_deadline_tick() {
+    local tree="$TMP_ROOT/$1-tree"
+    mk_tick_tree "$tree"
+    sed 's/^REFRESH_DEADLINE_SECS=900$/REFRESH_DEADLINE_SECS=3/' "$TICK" > "$tree/scripts/luna/post-merge-refresh.sh"
+    TICK_BIN="$tree/scripts/luna/post-merge-refresh.sh"
+    NOW=$((BASE+1000)); tick both QMD_TIMEOUT_SECS=25 QMD_KILL_GRACE_SECS=1
+    TICK_BIN="$TICK"
+}
+
+row_deadline_kills_the_whole_tree() {
+    mkcase tree; seed_both; cm $((BASE+100)) docs/a.md
+    printf 'hang' > "$C/qmd.mode"
+    short_deadline_tick tree
+    sleep 9
+    assert_eq "deadline_kills_the_whole_tree: no qmd child outlives the refresh deadline" "dead" "$([ -e "$C/survived" ] && echo alive || echo dead)"
+    assert_contains "deadline_kills_the_whole_tree: the run is a deadline failure" "keyword fail rc=124" "$TICK_OUT"
+    assert_eq "deadline_kills_the_whole_tree: the watermark holds" "$W0" "$(sha_of qmd)"
+}
+
+row_fast_run_under_deadline_is_clean() {
+    mkcase fast; seed_both; cm $((BASE+100)) docs/a.md
+    short_deadline_tick fast
+    assert_contains "fast_run_under_deadline_is_clean: the run is ok" "keyword ok" "$TICK_OUT"
+    assert_eq "fast_run_under_deadline_is_clean: the watermark moves" "$(head_sha)" "$(sha_of qmd)"
+}
+
+row_index_writer_lock_skips_keyword() {
+    if [ ! -r /proc/locks ]; then echo "  SKIP: index_writer_lock_skips_keyword needs /proc/locks"; return 0; fi
+    mkcase writer; seed_both; cm $((BASE+100)) docs/a.md
+    : > "$C/cache/index.sqlite-shm"
+    python3 -I -c 'import fcntl,sys,time
+f=open(sys.argv[1],"r+b"); fcntl.lockf(f, fcntl.LOCK_EX, 1, 120); open(sys.argv[2],"w").close(); time.sleep(600)' \
+        "$C/cache/index.sqlite-shm" "$C/locked" >/dev/null 2>&1 &
+    local holder=$! i=0
+    echo "$holder" >> "$TMP_ROOT/bg.pids"
+    while [ ! -e "$C/locked" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+    NOW=$((BASE+1000)); tick both
+    assert_eq "index_writer_lock_skips_keyword: no qmd call while another writer holds the lock" 0 "$(ncalls qmd)"
+    assert_contains "index_writer_lock_skips_keyword: skip logged" "keyword skip=writer-lock" "$TICK_OUT"
+    assert_eq "index_writer_lock_skips_keyword: the watermark holds" "$W0" "$(sha_of qmd)"
+    assert_eq "index_writer_lock_skips_keyword: the graph half is unaffected" 1 "$(ncalls ast)"
+    kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+    NOW=$((BASE+1300)); tick both
+    assert_eq "index_writer_lock_skips_keyword: the next tick runs once the lock is free" "$(head_sha)" "$(sha_of qmd)"
 }
 
 echo "== post-merge-refresh.sh =="
@@ -689,13 +730,9 @@ row_deadline_without_signature_is_fail() {
 
 row_busy_timeout_and_deadline_passed() {
     mkcase deadl2; seed_both; cm $((BASE+100)) docs/a.md
-    local tree="$TMP_ROOT/deadl2-tree"
-    mk_tick_tree "$tree" stub-bounded
-    TICK_BIN="$tree/scripts/luna/post-merge-refresh.sh"
     NOW=$((BASE+1000)); tick both
-    assert_eq "busy_timeout_and_deadline_passed: the refresh ran under a 900 s deadline" "900" "$(cat "$C/bounded.log" 2>/dev/null)"
+    assert_eq "busy_timeout_and_deadline_passed: the embed budget sits inside the 900 s deadline" "840" "$(cat "$C/embedmax" 2>/dev/null)"
     assert_contains "busy_timeout_and_deadline_passed: the busy timeout is 30000" "busy=30000" "$(grep '^qmd ' "$C/calls.log")"
-    TICK_BIN="$TICK"
 }
 
 row_backoff_after_failure() {
@@ -888,7 +925,8 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     promote_lock_is_skip deadline_without_signature_is_fail busy_timeout_and_deadline_passed \
     backoff_after_failure backoff_caps_at_an_hour watermark_moved_before_lock_skips slow_graph_floors_hourly load_defers_then_runs primary_off_main_skips \
     runs_at_low_priority code_only_skips_keyword dot_dir_md_skips_keyword usage decide \
-    refuses_outside_runner refuses_stale_marker runner_parent_runs runner_emits_marker; do
+    refuses_outside_runner refuses_stale_marker runner_parent_runs runner_emits_marker \
+    deadline_kills_the_whole_tree fast_run_under_deadline_is_clean index_writer_lock_skips_keyword; do
     echo "-- $row"
     "row_$row"
 done

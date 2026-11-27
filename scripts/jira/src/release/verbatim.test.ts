@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkWords, decisionsDirFor, GLOSS_OPENERS, namesKey, resolveDecision } from './verbatim.js';
+import { checkWords, decisionsDirFor, GLOSS_OPENERS, namesKey, parseQuestion, renderQuestion, resolveDecision, shortAnswer } from './verbatim.js';
 
 const FILE = 'Operator, verbatim:\n\n"Approved one more round"\n\nAnswering the ask on HIMMEL-1: stop and park.\n';
 
@@ -122,5 +122,92 @@ describe('namesKey', () => {
   it('the key parts are escaped', () => {
     expect(namesKey('ship AXB-1', 'A.B-1', bare)).toBe(false);
     expect(namesKey('ship A.B-1', 'A.B-1', bare)).toBe(true);
+  });
+});
+
+const ASKED = {
+  subject: 'HIMMEL-1 round-critical C1', asked: '2026-11-27T06:10:00Z by chief',
+  ask: ['the spec grants a spend; sign it as it stands, or revise it?'],
+  options: [{ answer: 'a1', meaning: 'sign the spec exactly as it stands today' }, { answer: 'a2', meaning: 'revise the spec and run the critic again' }],
+};
+const blockFile = (answer: string, opts = ASKED.options) => `${renderQuestion({ ...ASKED, options: opts })}\n${answer}\n`;
+
+describe('question block', () => {
+  it('a rendered block parses and round-trips', () => {
+    const r = parseQuestion(renderQuestion(ASKED));
+    expect(r).toMatchObject({ ok: true, q: { ...ASKED, answer: null } });
+  });
+
+  it('a file without a block is none', () => {
+    expect(parseQuestion(FILE)).toEqual({ none: true });
+  });
+
+  it('a malformed block is refused with a reason', () => {
+    const b = renderQuestion(ASKED);
+    const bad = [
+      b.replace('Ask: ', 'Why: '),
+      b.replace(/Option: a2.*\n/, ''),
+      b.replace('Option: a2 =', 'Option: A1 ='),
+      b.replace('Option: a2 =', `Option: ${'x'.repeat(20)} =`),
+      b.replace('Option: a2 =', 'Option: a=b ='),
+      `${b}\na1\n\nsomething the chief added later on\n`,
+    ];
+    for (const t of bad) expect(parseQuestion(t), t).toMatchObject({ ok: false, why: expect.any(String) });
+  });
+
+  it('blank lines of spaces and CRs end the block and the answer', () => {
+    const t = `${renderQuestion(ASKED)} \t\na1\n  \r\nContext: a note\n`;
+    expect(parseQuestion(t)).toMatchObject({ ok: true, q: { answer: 'a1' } });
+    expect(shortAnswer(t, 'a1')).toEqual({ ok: true });
+  });
+
+  it('shortAnswer passes the answer paragraph in its norm variants', () => {
+    for (const w of ['a1', 'A1.', '"a1"', '“a1”']) expect(shortAnswer(blockFile('a1'), w, 'HIMMEL-1'), w).toEqual({ ok: true });
+    expect(shortAnswer(blockFile('yes 1.1.3', [{ answer: 'yes 1.1.3', meaning: 'place it in v1.1.3' }, { answer: 'no', meaning: 'leave it out' }]), 'yes 1.1.3')).toEqual({ ok: true });
+  });
+
+  it('shortAnswer refuses what is not the listed answer', () => {
+    const mac = [{ answer: 'mac-ci no', meaning: 'skip the mac run' }, { answer: 'mac-ci yes', meaning: 'run it' }];
+    expect(shortAnswer(blockFile('a1'), 'a3')).toMatchObject({ ok: false });
+    expect(shortAnswer(blockFile('a1'), 'a2')).toMatchObject({ ok: false });
+    expect(shortAnswer(blockFile('yes'), 'yes')).toMatchObject({ ok: false });
+    expect(shortAnswer(blockFile('mac-ci no for now.', mac), 'mac-ci no for now.')).toMatchObject({ ok: false });
+    expect(shortAnswer(blockFile('a1').replace('HIMMEL-1 round', 'HIMMEL-2 round'), 'a1', 'HIMMEL-1')).toMatchObject({ ok: false });
+  });
+
+  it('a1 on a bound file passes', () => {
+    expect(checkWords(blockFile('a1'), 'a1')).toEqual({ ok: true });
+  });
+
+  it("words of the block's Option meaning are refused", () => {
+    expect(checkWords(blockFile('a1'), 'sign the spec exactly as it stands today')).toMatchObject({ ok: false });
+  });
+
+  it('words of a Context note are refused', () => {
+    expect(checkWords(`${blockFile('a1')}\nContext: the operator wants a longer test run\n`, 'the operator wants a longer test run')).toMatchObject({ ok: false });
+  });
+
+  it('words from a Question paragraph refused', () => {
+    const f = 'Operator:\n\nok\n\nQuestion it answers: should the long migration run this week?\n';
+    expect(checkWords(f, 'should the long migration run this week?'))
+      .toMatchObject({ ok: false, why: expect.stringMatching(/sits only in a paragraph opening "Question"/) });
+  });
+
+  it('yes refused on an a1/a2 block answered yes', () => {
+    expect(checkWords(blockFile('yes'), 'yes')).toMatchObject({ ok: false });
+  });
+
+  it("decision 1230's text passes with 10651 v1.1.3", () => {
+    const f = `Operator, typed in chief console HIMMEL-nextleg-2026-11-22AY-recovery-chief, 2026-11-22 (file mtime is the true time), binding:\n\n10651 v1.1.3\n\nQuestion it answers (asked by the AY chief in the same console): the release manager refused R-v1.1.3-4978 placing HIMMEL-10651 (a refused guard-bypass launch after the operator's go reaches the operator's own chat, as a tamper signal) because the operator-directed ticket's source words ("tamper signal if possible") name no placement; reply "10651 v1.1.3" to place it in v1.1.3 or "10651 backlog" to leave it unplaced.\n\nReading: HIMMEL-10651 goes into v1.1.3.\n`;
+    expect(checkWords(f, '10651 v1.1.3')).toEqual({ ok: true });
+  });
+
+  it('bare yes with no block still passes', () => {
+    expect(checkWords('Operator:\n\nyes\n', 'yes')).toEqual({ ok: true });
+  });
+
+  it('a malformed block refuses every words string', () => {
+    const t = `${renderQuestion(ASKED).replace('Ask: ', 'Why: ')}\nthe operator approves one more review round\n`;
+    for (const w of ['the operator approves one more review round', 'a1']) expect(checkWords(t, w), w).toMatchObject({ ok: false });
   });
 });

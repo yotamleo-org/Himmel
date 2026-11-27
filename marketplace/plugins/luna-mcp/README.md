@@ -74,6 +74,11 @@ missing file, a symlink, a salus note) answers the same 404, so the API does not
 QMD down answers 503 for search while reads keep working; the search timeout answers 504 and the
 per-key search rate cap answers 429.
 
+Every `path` (and `dir`) is relative to the collection root, for example `30-Resources/note.md`, with
+no leading `/` and no `..`. A 403 message names the reason class (absolute paths are not allowed,
+dot-folders are not readable, this folder is not readable with this key) and never says whether the
+refused target exists. Error codes and audit `reason` values do not change.
+
 ## Configuration
 
 Everything comes from the environment. Nothing is hard-coded.
@@ -91,7 +96,7 @@ Everything comes from the environment. Nothing is hard-coded.
 | `LUNA_MCP_HOST` | Bind address; loopback only (`127.0.0.1`, `::1`, `localhost`). | `127.0.0.1` |
 | `LUNA_MCP_PORT` | Bind port. | `8190` |
 | `LUNA_MCP_SEARCH_RATE_PER_MIN` | Searches per key per minute. | `10` |
-| `LUNA_MCP_SEARCH_TIMEOUT_MS` | QMD search timeout. | `15000` |
+| `LUNA_MCP_SEARCH_TIMEOUT_MS` | QMD search timeout. | `45000` |
 
 ## Install
 

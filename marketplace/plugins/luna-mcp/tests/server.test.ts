@@ -690,7 +690,7 @@ describe("configuration", () => {
     assert.equal(c.auditFile, "/srv/state/himmel/luna-mcp-audit.jsonl");
     assert.equal(c.qmdUrl, "http://localhost:8181");
     assert.equal(c.qmdTokenFile, "/srv/cfg/qmd/http-token");
-    assert.deepEqual([c.host, c.port, c.searchPerMinute, c.searchTimeoutMs], ["127.0.0.1", 8190, 10, 15000]);
+    assert.deepEqual([c.host, c.port, c.searchPerMinute, c.searchTimeoutMs], ["127.0.0.1", 8190, 10, 45000]);
   });
 
   it("takes every path and limit from the environment", () => {
@@ -1041,5 +1041,47 @@ describe("audit lines for refusals and protocol calls", () => {
     const res = await rawMcp(world, token, { jsonrpc: "2.0", id: 1, method: "subscriptions/listen", params: {} });
     assert.equal(res.status, 400);
     assert.deepEqual((await lines(world)).map((r) => [r.tool, r.verdict, r.reason]), [["subscriptions/listen", "deny", "listen-unsupported"]]);
+  });
+});
+
+describe("path tools say what they expect and why a path was refused", () => {
+  it("states in each path tool description that path is relative to the collection root", () => {
+    for (const name of ["read_doc", "multi_read", "list_dir", "recent_docs"]) {
+      const op = OPERATIONS.find((o) => o.name === name);
+      assert.ok(op?.description.includes("relative to the collection root"), name);
+    }
+  });
+
+  it("names the reason class in the client message and keeps code and audit reason", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const cases: Array<[string, RegExp, string]> = [
+      ["/etc/hosts", /absolute paths are not allowed.*relative to the collection root/, "bad-path"],
+      [".obsidian/app.json", /dot-folders are not readable/, "dot-segment"],
+      ["sessions/2026/07/2026-07-15-0821-salus-master.md", /this folder is not readable with this key/, "role-path"],
+      ["scripts/x.md", /this folder is not readable with this key/, "kernel"],
+    ];
+    for (const [path, message, reason] of cases) {
+      const res = await world.ops("read_doc", { collection: "luna", path }, token);
+      assert.equal(res.status, 403, path);
+      assert.equal(res.body.error.code, "forbidden", path);
+      assert.match(res.body.error.message, message, path);
+      assert.ok((await lines(world)).some((r) => r.reason === reason), reason);
+    }
+  });
+
+  it("gives the same message for a hidden folder that exists and one that does not", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const a = await world.ops("read_doc", { collection: "luna", path: "sessions/2026/07/2026-07-15-0821-salus-master.md" }, token);
+    const b = await world.ops("read_doc", { collection: "luna", path: "sessions/none/none.md" }, token);
+    assert.equal(a.body.error.message, b.body.error.message);
+  });
+
+  it("repeats the reason in a multi_read entry", async (t) => {
+    const world = await makeWorld(t);
+    const { token } = await world.mint({ collections: ["luna"] });
+    const multi = await world.ops("multi_read", { entries: [{ collection: "luna", path: "/etc/hosts" }] }, token);
+    assert.match(multi.body.result.results[0].error.message, /absolute paths are not allowed/);
   });
 });
