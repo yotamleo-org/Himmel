@@ -213,6 +213,8 @@ assert_deny "denies an in-tree symlink reached through an alias to the server di
 assert_deny "denies a schema reached through an alias to the server dir" "provider home" \
     "$(mk_read "$TMP/alias-server/browser_navigate.json")"
 mkdir -p "$OWN_MCP/playwright/dir.json"
+if [ -d "$OWN_MCP/playwright/dir.json" ]; then ok "fixture: the schema-named directory exists"
+else bad "fixture: the schema-named directory exists"; fi
 assert_deny "denies a directory named like a schema" "provider home" "$(mk_read "$OWN_MCP/playwright/dir.json")"
 assert_deny "denies .. traversal out of mcp/" "provider home" \
     "$(mk_read "$OWN_MCP/playwright/../../../config/hooks.json")"
