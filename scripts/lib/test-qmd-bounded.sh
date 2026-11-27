@@ -289,6 +289,51 @@ assert_eq "T8d a question with no fleet word and no filler runs as given" "searc
 assert_eq "T8e a natural question passes through to qmd's own expansion, a dash word quoted" "query|--|how does the waiter wake \"-p\"|query|how does the waiter wake|" "$(t8 query "how does the waiter wake -p")$(t8 query "how does the waiter wake")"
 assert_eq "T8f a search naming no fleet word keeps its verb and words, a dash word quoted" "search|--|how does the waiter wake \"-p\"|search|how does the waiter wake|" "$(t8 search "how does the waiter wake -p")$(t8 search "how does the waiter wake")"
 
+mkdir -p "$TMP/t10bin"
+printf '%s\n' '#!/bin/sh' \
+    'if [ -n "$T10_WRITER_PID" ] && kill -0 "$T10_WRITER_PID" 2>/dev/null; then' \
+    '  cat >&2 <<DDL' \
+    '25 |     CREATE TABLE IF NOT EXISTS processor_outputs (' \
+    '26 |       collection TEXT NOT NULL, source TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, current INTEGER NOT NULL DEFAULT 1,' \
+    '30 |   `)).immediate();' \
+    '           ^' \
+    'SQLiteError: database is locked' \
+    '       code: "SQLITE_BUSY"' \
+    'DDL' \
+    '  exit 1' \
+    'fi' \
+    'case "$1" in boom) echo "qmd: some other failure" >&2; exit 3 ;; esac' \
+    'echo "result: doc.md"' >"$TMP/t10bin/qmd"
+chmod +x "$TMP/t10bin/qmd"
+t10() { PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" "$@" </dev/null 2>&1 | grep -v '^qmd-jina-gate:'; return "${PIPESTATUS[0]}"; }
+sleep 30 &
+T10_WRITER_PID=$!
+export T10_WRITER_PID
+for verb in query search; do
+    out=$(t10 "$verb" -c luna x); rc=$?
+    assert_eq "T10 $verb on a busy index -> rc 75" "75" "$rc"
+    case "$out" in
+        *processor_outputs* | *CREATE\ TABLE* | *SQLITE_BUSY*) shown=schema-sql ;;
+        *) shown=clean ;;
+    esac
+    assert_eq "T10 $verb on a busy index never prints the schema SQL" "clean" "$shown"
+    case "$out" in
+        *"qmd-bounded: qmd index busy"*) named=yes ;;
+        *) named=no ;;
+    esac
+    assert_eq "T10 $verb on a busy index names the busy index" "yes" "$named"
+done
+assert_eq "T10 the busy message is one line" "1" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+kill "$T10_WRITER_PID" 2>/dev/null
+wait "$T10_WRITER_PID" 2>/dev/null
+out=$(t10 query -c luna x); rc=$?
+assert_eq "T10 control: the same query once the writer is gone returns its result, rc 0" "result: doc.md|0" "$out|$rc"
+out=$(t10 boom); rc=$?
+assert_eq "T10 control: an ordinary failure keeps its rc and text" "qmd: some other failure|3" "$out|$rc"
+out=$(PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" query -c luna x </dev/null 2>/dev/null); rc=$?
+assert_eq "T10 control: a success keeps its result on stdout" "result: doc.md|0" "$out|$rc"
+unset T10_WRITER_PID
+
 if command -v qmd >/dev/null 2>&1; then
     T9="$TMP/t9"
     mkdir -p "$T9/corpus" "$T9/cfg/qmd" "$T9/cache"
