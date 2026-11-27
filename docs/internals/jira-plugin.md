@@ -16,6 +16,13 @@ For Jira ops in this repo, use the local CLI at
 `scripts/jira/dist/index.js`. The Atlassian MCP server
 (`mcp__plugin_atlassian_atlassian__*`) is denied for Jira, reads included.
 
+`release sign-check --keys <K[,K]> --spec <spec> [--plan <plan>] --verdict <return>
+[--verdict <return>] [--route spec|spec-review] [--source-root <dir>]` runs the
+signing verb's byte checks and writes nothing: it prints `SIGN-CHECK OK
+spec-sha=<sha> plan-sha=<sha|none>` (exit 0) or `SIGN-CHECK REFUSED: <the signing
+message>` (exit 1); a usage error, `--source-root` with `--route spec-review`
+included, exits 2.
+
 `release operator spec <release>` accepts optional `--source-root <path>` when
 source citations refer to work in an unmerged branch. The physical directory
 must be primary or a currently registered live linked worktree sharing primary's

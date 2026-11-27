@@ -1,4 +1,3 @@
-// The signer's trace lint and the spec gate's plan and estimate-line rules, shared by every caller that checks spec bytes.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -19,10 +18,6 @@ export const scriptOutput = (e: unknown): string => {
 
 export type Lint = { ok: true } | { ok: false; lines: string[] } | { unavailable: string };
 
-/**
- * The shell trace lint as the signer runs it: the script from the primary checkout, cwd the source root, the spec's own
- * git top level as the second citation root. A null plan runs the spec-only rules.
- */
 export function traceLint(spec: string, plan: string | null, sourceRoot?: string): Lint {
   let own: string[] = [];
   try {
@@ -41,7 +36,6 @@ const isFile = (path: string): boolean => {
   try { return statSync(path).isFile(); } catch { return false; }
 };
 
-/** The spec gate's `planref` rule (minerva-spec-gate.sh), held equal to it by a parity row; its paths are joined as it joins them. */
 export function planOf(spec: string): string | null {
   const lines = readFileSync(spec, 'utf8').split('\n');
   if (lines[0] !== '---') return null;
@@ -58,7 +52,6 @@ export function planOf(spec: string): string | null {
     .find((c) => (c.startsWith('/') || c.startsWith(`${dir}/`)) && isFile(c)) ?? null;
 }
 
-/** The spec gate's `Estimate record:` grep (minerva-spec-gate.sh), held equal to it by a parity row. */
 export function estimateLine(text: string): boolean {
   return text.split('\n').some((line) => /^[ \t\r\f\v]*estimate record:/i.test(line));
 }

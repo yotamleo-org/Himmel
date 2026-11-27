@@ -538,7 +538,6 @@ interface SignedBytes {
   checkInputs: () => void; checkSource: () => void;
 }
 
-/** Every check a signing verb makes on the bytes it is given: the one function the signing verbs and sign-check run. */
 function signBytes(o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; sourceRoot?: string }, route: SignRoute): SignedBytes {
   return route === 'spec' ? specBytes(o) : reviewBytes(o);
 }
@@ -636,7 +635,6 @@ function reviewBytes(o: { keys: string[]; spec: string; plan?: string; verdicts:
   };
 }
 
-/** `release sign-check`: the signing verb's byte checks alone. No fence, no signer or release record, nothing written. */
 export function signCheck(o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; route?: SignRoute; sourceRoot?: string }):
   { specSha: string; planSha: string | null } {
   const { specSha, planSha } = signBytes(o, o.route ?? 'spec');

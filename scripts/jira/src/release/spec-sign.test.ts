@@ -3225,8 +3225,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       }
     }
 
-    /** What the signing verb says to the same files: null when it accepts them. */
-    async function signingRun(route: 'spec' | 'spec-review', args: string[]): Promise<string | null> {
+    async function signingRefusal(route: 'spec' | 'spec-review', args: string[]): Promise<string | null> {
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       try {
         await cli('operator', route, 'R1', ...args,
@@ -3244,7 +3243,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
 
     async function sameRefusal(route: 'spec' | 'spec-review', args: string[], expected: RegExp): Promise<void> {
       const checked = await signCheckRun(...args, ...(route === 'spec' ? [] : ['--route', route]));
-      const signed = await signingRun(route, args);
+      const signed = await signingRefusal(route, args);
       expect(signed).toMatch(expected);
       expect(checked).toEqual({ code: 1, out: [`SIGN-CHECK REFUSED: ${signed}`] });
     }
@@ -3275,7 +3274,7 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       const p = spec();
       const args = fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]);
       const checked = await signCheckRun(...args);
-      expect(await signingRun('spec', args)).toBeNull();
+      expect(await signingRefusal('spec', args)).toBeNull();
       expect(checked).toEqual({ code: 0, out: [expect.stringMatching(/ plan-sha=none$/)] });
     });
 

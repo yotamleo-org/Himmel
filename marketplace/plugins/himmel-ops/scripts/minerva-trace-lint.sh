@@ -26,7 +26,7 @@ spec_only=0
 if [ "${1:-}" = "--spec-only" ]; then spec_only=1; shift; fi
 spec="${1:-}"; plan=""
 if [ "$spec_only" -eq 0 ]; then plan="${2:-}"; fi
-alt="${3:-}"  # alt: the spec's own repo root, a second place a cited path may exist
+alt="${3:-}"
 if [ "$spec_only" -eq 1 ]; then alt="${2:-}"; fi
 if [ ! -f "$spec" ] || { [ "$spec_only" -eq 0 ] && [ ! -f "$plan" ]; }; then
   echo "minerva-trace-lint: usage: minerva-trace-lint.sh <spec.md> <plan.md> [<alt-root>], or --spec-only <spec.md> [<alt-root>] (every named file must exist)" >&2
