@@ -509,12 +509,24 @@ fi
 
 if want D36; then
     reset D36
-    g='DUTY guard-refusal block-x:rule-1:main :: x :: next: x'
+    g='DUTY guard-refusal guard=block-x rule=rule-1 instance=main :: x :: next: x'
     lists "$g" ""
     woke 1 'a once-printed guard-refusal'
-    contains 'D36 the first list wakes' "$OUT" 'WAKE chief-duty 1 new=guard-refusal:block-x:rule-1:main'
+    contains 'D36 the first list wakes' "$OUT" 'WAKE chief-duty 1 new=guard-refusal:guard=block-x:rule=rule-1:instance=main'
     contains 'D36 the wake carries the line' "$OUT" "$g"
     quiet 2 'the line is gone'
+fi
+
+if want D37; then
+    reset D37
+    g1='DUTY guard-refusal guard=block-x rule=rule-1 instance=main :: x :: next: x'
+    g2='DUTY guard-refusal guard=block-x rule=rule-2 instance=main :: x :: next: x'
+    lists "$g1" "$g2" ""
+    woke 1 'the first class of a guard'
+    woke 2 'a second class of the same guard'
+    contains 'D37 the second class wakes with its own id' "$OUT" 'WAKE chief-duty 1 new=guard-refusal:guard=block-x:rule=rule-2:instance=main'
+    check 'D37 both classes keep their own state line, marked shown' 2 "$(state | awk 'NF == 6 && $1 == "guard-refusal" && $6 == 1' | grep -c .)"
+    quiet 3 'both lines are gone'
 fi
 
 if [ "$fails" -ne 0 ]; then printf '%s FAILED\n' "$fails"; exit 1; fi

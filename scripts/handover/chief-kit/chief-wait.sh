@@ -812,10 +812,12 @@ duty_run() {
     fi
     return 0
 }
+# shellcheck disable=SC2016  # awk source, not shell
+duty_id_awk='function duty_id(   i, s) { s = $3; if ($2 == "guard-refusal") for (i = 4; i <= NF && $i != "::"; i++) s = s ":" $i; return s }'
 duty_state_update() {
     local old="$duty_state" new
     [ -f "$old" ] || old=/dev/null
-    new="$(awk -v t="$1" '
+    new="$(awk -v t="$1" "$duty_id_awk"'
         FILENAME == ARGV[1] { if (NF == 6) { k = $1 " " $2; ph[k] = $3; first[k] = $4; last[k] = $5; shown[k] = $6 } next }
         $1 == "DUTY?" || $1 == "DUTY" {
             p = "-"
@@ -824,7 +826,7 @@ duty_state_update() {
                 for (i = 3; i < NF; i++) id = id ":" $i
                 k = "? " id
             } else {
-                k = $2 " " $3
+                k = $2 " " duty_id()
                 why = substr($0, index($0, " :: ") + 4)
                 if ((c = index(why, " :: next: ")) > 0) why = substr(why, 1, c - 1)
                 if ($2 == "ci-masked") {
@@ -883,8 +885,8 @@ duty_carry() {
         printf 'chief-duty %s as of %sZ%s:\n%s\n' "$(grep -c '^DUTY ' "$duty_file")" \
             "$(date -u -d "@$at" +%Y-%m-%dT%H:%M:%S)" "$stale" "$body" || return 1  # gnu-ok: Linux-only kit
         if [ -f "$duty_state" ]; then
-            marked="$(awk '
-                FILENAME == ARGV[1] { if ($1 == "DUTY" && $2 != "owed-stale") printed[$2 " " $3] = 1; next }
+            marked="$(awk "$duty_id_awk"'
+                FILENAME == ARGV[1] { if ($1 == "DUTY" && $2 != "owed-stale") printed[$2 " " duty_id()] = 1; next }
                 { if (($1 " " $2) in printed) $6 = 1; print }' "$duty_file" "$duty_state")" || return 1
             printf '%s' "${marked:+$marked
 }" | atomic_write "$duty_state"
