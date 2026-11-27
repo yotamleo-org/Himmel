@@ -85,7 +85,7 @@ check 'W4: a fresh inbox holds while the newest PR is young' '1 ' "$(wr d4 'TICK
 check 'W4: the same set wakes once it has settled' '0 WAKE dependabot #3201,#3202,#3203 oldest=12m' "$(wr d4 'TICK dependabot=3:12m:6m:#3201,#3202,#3203')"
 dep_marker="$W/d5.wait.rule-dependabot"
 check 'W5 control: the set wakes' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d5 "$dep_two")"
-dep_state() { printf '%s %s' "$(stat -c %Y "$1")" "$(cat "$1")"; }  # gnu-ok: Linux-only kit
+dep_state() { printf '%s %s' "$(stat -c %Y "$1")" "$(cat "$1")"; }  # gnu-ok: Linux-only kit; read-sink-ok: the suite's own marker under its temp dir
 touch -d '1 hour ago' "$dep_marker"  # gnu-ok: Linux-only kit
 dep_before="$(dep_state "$dep_marker")"
 for dep_bad in '?' skip garbled '2:12m:#3101'; do
