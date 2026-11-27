@@ -537,8 +537,10 @@ r_deadline() {
         if pgrep -f "$C/marker-child" >/dev/null 2>&1 || pgrep -f "$C/seam/NOT_READY_JIRA_CLI" >/dev/null 2>&1; then
             fail "$mode: a stand-in process outlived the run"
         fi
-        local pg; pg="$(cat "$C/NOT_READY_JIRA_CLI.pgid" 2>/dev/null)"
-        if [ -z "$pg" ] || pgrep -g "$pg" >/dev/null 2>&1; then fail "$mode: the stand-in's group [$pg] is unread or still alive"; fi
+        local pg live; pg="$(cat "$C/NOT_READY_JIRA_CLI.pgid" 2>/dev/null)"
+        if [[ ! $pg =~ ^[0-9]+$ ]] || ! live="$(ps -eo pgid=,stat= | awk -v g="$pg" '$1 == g && $2 !~ /^Z/')" || [ -n "$live" ]; then
+            fail "$mode: the stand-in's group [$pg] is unread or still alive"
+        fi
     done
     newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432
     echo escape > "$C/NOT_READY_JIRA_CLI.slow"
