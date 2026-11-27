@@ -147,8 +147,9 @@ limitation notes and review still sees them.
 - **Reading it in review.** `/pr-check` prints a `CEILINGS:` header on stderr with
   the open rows for the files a diff touches, and the judge agents and the API
   judge read the same lookup, `scripts/ledger/ceiling-lookup.sh --range
-  <base>...<head>`. Row text is shown only in a Claude session; any other session
-  sees `CEILINGS: withheld`. A verdict record carries row ids only.
+  <base>...<head>`. Row text is shown only in a Claude session. A Codex build
+  worker gets each row's id, file, anchor and ticket, the `--ids` lines; any
+  other session sees `CEILINGS: withheld`. A verdict record carries row ids only.
 - **Citing a row.** A review finding that restates an open row at its anchor is
   answered with the row id. A ceiling never excuses a defect the change
   introduces, and a row that no longer matches the code is itself a finding.
