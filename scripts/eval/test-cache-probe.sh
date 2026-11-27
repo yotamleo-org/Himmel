@@ -86,6 +86,12 @@ has "idle-compaction-lookalike: the compaction pair is excluded" "$LAST_OUT" "co
 scenario ttl-last-write ttl-consistent 0 idle-gap
 has "ttl-last-write: the TTL comes from the last cache write" "$LAST_OUT" "session	300	2	2	3	0"
 
+scenario idle-restart-cause inconclusive 2 idle-gap
+has "idle-restart-cause: a removed tool is named" "$LAST_OUT" "rewrite-cause	tools	2026-01-01T00:06:05Z	gap_s=245	entrypoint=t3-code	restart=yes	cause=tools-removed:Artifact	drop=prefix_mismatch:66@2"
+has "idle-restart-cause: a changed history message is named" "$LAST_OUT" "rewrite-cause	message	2026-01-01T00:06:05Z	gap_s=245	entrypoint=t3-code	restart=yes	cause=message-changed:1	drop=prefix_mismatch:26@3"
+has "idle-restart-cause: no request rows is said, not guessed" "$LAST_OUT" "rewrite-cause	norows	2026-01-01T00:06:05Z	gap_s=245	entrypoint=t3-code	restart=no	cause=no-request-rows	drop=none"
+has "idle-restart-cause: the cause lines are not counted as sessions" "$LAST_OUT" "warm-expected=6 warm-rewrote=3"
+
 # --- first-turn: does a new session start warm ------------------------------
 scenario first-turn-warm warm-start 0 first-turn
 scenario first-turn-cold cold-start 1 first-turn

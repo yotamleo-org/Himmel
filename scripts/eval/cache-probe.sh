@@ -27,6 +27,12 @@
 #       The TTL is per session: 3600s when the last cache write used the 1h
 #       tier (usage.cache_creation.ephemeral_1h_input_tokens), else 300s.
 #         exit 0 ttl-consistent | 1 ttl-inconsistent | 2 inconclusive
+#       Each in-TTL rewrite also prints a `rewrite-cause` line: entrypoint,
+#       restart=yes when a SessionStart:resume sits between the two turns, what
+#       the new request changed against the previous one (tools-removed/added/
+#       changed, system-changed, message-changed:<first index>, from the
+#       transcript's api-request rows; no-request-rows when it has none), and
+#       the thinking_drop as <reason>:<blocks>@<first message index>.
 #   cache-probe.sh first-turn <session.jsonl>...
 #       Does a session's first request read a warm shared prefix
 #       (cache_read_input_tokens > 0), or start cold?
@@ -42,7 +48,7 @@
 set -u
 
 usage() {
-  sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 64
 }
 die() { echo "cache-probe: $*" >&2; exit 64; }
@@ -94,8 +100,39 @@ def cls($p; $c; $comp; $ttl):
   elif ($c.t - $p.t) >= $ttl then "ttl"
   else "invalidated" end;
 def mean(k): if length == 0 then 0 else ((map(.[k]) | add) / length | floor) end;
+def history($byid):
+  if .base == null then .tail
+  else . as $r | $byid[.base] as $b
+    | if $b == null then null
+      else ($b | history($byid)) as $m
+        | if $m == null then null else $m[:$r.keep] + $r.tail end
+      end
+  end;
+def changes($a; $b; $shapes; $byid):
+  if $a == null or $b == null or $a.id == $b.id then ["no-request-rows"]
+  else
+    ( if $a.shapeHash == $b.shapeHash then []
+      else $shapes[$a.shapeHash // ""] as $x | $shapes[$b.shapeHash // ""] as $y
+        | if $x == null or $y == null then ["shape-changed"]
+          else (INDEX($x.tools[]?; .name)) as $xt | (INDEX($y.tools[]?; .name)) as $yt
+            | [ ["tools-removed", (($xt | keys) - ($yt | keys))],
+                ["tools-added", (($yt | keys) - ($xt | keys))],
+                ["tools-changed", [ $xt | keys[] | select($yt[.] != null and $yt[.] != $xt[.]) ]]
+                | select(.[1] | length > 0) | .[0] + ":" + (.[1] | join(",")) ]
+              + (if $x.system != $y.system then ["system-changed"] else [] end)
+              | if length == 0 then ["shape-changed"] else . end
+          end
+      end )
+    + ( ($a | history($byid)) as $m | ($b | history($byid)) as $n
+        | if $m == null or $n == null then ["history-unreadable"]
+          else [ first(range(0; [($m | length), ($n | length)] | min) | select($m[.] != $n[.])) ]
+               | map("message-changed:\(.)")
+          end )
+    | if length == 0 then ["no-shape-or-message-change"] else . end
+  end;
 
-[ .[] | select(.type == "assistant" and .message.usage != null and .message.id != null)
+. as $raw
+| [ .[] | select(.type == "assistant" and .message.usage != null and .message.id != null)
   | select(.message.model != "<synthetic>" and any(.message.usage | .input_tokens, .cache_read_input_tokens, .cache_creation_input_tokens, .cache_creation; . != null))
   | { id: .message.id, t: secs,
       in: (.message.usage.input_tokens // 0),
@@ -118,8 +155,28 @@ def mean(k): if length == 0 then 0 else ((map(.[k]) | add) / length | floor) end
       | map(. + { gap: (.c.t - .p.t), comp: (comp(.p; .c) or ((.c | ctx) < 0.75 * (.p | ctx))) } | select(.comp | not))) as $P
     | ($P | map(select(.gap >= $ttl))) as $cold
     | ($P | map(select(.gap >= 60 and .gap < $ttl))) as $warm
-    | [ $sid, $ttl, ($cold | length), ($cold | map(select(rewrite(.p; .c))) | length),
-        ($warm | length), ($warm | map(select(rewrite(.p; .c))) | length), $sumcr, $sumall ] | @tsv
+    | ($warm | map(select(rewrite(.p; .c)))) as $bad
+    | ([ $sid, $ttl, ($cold | length), ($cold | map(select(rewrite(.p; .c))) | length),
+         ($warm | length), ($bad | length), $sumcr, $sumall ] | @tsv),
+      ( select($bad | length > 0)
+        | ([ $raw | to_entries[] | select(.value.type == "api-request" and .value.querySource == "sdk") ]) as $R
+        | (INDEX($R[].value; .id)) as $byid
+        | (INDEX($raw[] | select(.type == "api-request-shape"); .shapeHash) | map_values(.shape)) as $shapes
+        | (reduce ($raw | to_entries[] | select(.value.type == "assistant" and .value.message.id != null)) as $e
+             ({}; .[$e.value.message.id] //= $e.key)) as $at
+        | def request($i): [ $R[] | select(.key < $i) | .value ] | last;
+          $bad[]
+        | $at[.p.id] as $i | $at[.c.id] as $j
+        | $raw[$i:$j] as $between
+        | ([ $between[] | select(.type == "attachment" and .attachment.type == "thinking_drop")
+             | .attachment.newlyDropped | select(. != null)
+             | "\(.reason):\(.blockCount)@\(.first.messageIndex)" ] | first // "none") as $drop
+        | [ "rewrite-cause", $sid, (.c.t | todateiso8601), "gap_s=\(.gap)",
+            "entrypoint=\($raw[$j].entrypoint // "unknown")",
+            "restart=" + (if any($between[]; .type == "attachment" and .attachment.hookName == "SessionStart:resume") then "yes" else "no" end),
+            "cause=" + (changes(request($i); request($j); $shapes; $byid) | join(";")),
+            "drop=\($drop)" ]
+        | @tsv )
   else
     ($T | map(select(.t < $event)) | .[-$n:]) as $B
     | ($T | map(select(.t >= $event)) | .[:$n]) as $A
@@ -172,9 +229,10 @@ case "$MODE" in
   idle-gap)
     echo "cache-probe idle-gap (cold expected at gap >= session TTL, warm expected at 60s <= gap < TTL)"
     printf 'session\tttl_s\tcold_expected\tcold_rewrote\twarm_expected\twarm_rewrote\n'
-    printf '%s' "$ROWS" | awk -F'\t' 'NF { print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 }'
+    printf '%s' "$ROWS" | awk -F'\t' 'NF && $1 != "rewrite-cause" { print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 }'
+    printf '%s' "$ROWS" | awk -F'\t' '$1 == "rewrite-cause"'
     printf '%s' "$ROWS" | awk -F'\t' '
-      NF { ce += $3; cw += $4; we += $5; ww += $6; cr += $7; all += $8 }
+      NF && $1 != "rewrite-cause" { ce += $3; cw += $4; we += $5; ww += $6; cr += $7; all += $8 }
       END {
         # consistent: >= 80% of expected-cold gaps rewrote and <= 20% of expected-warm did
         if (ce == 0) word = "inconclusive"
