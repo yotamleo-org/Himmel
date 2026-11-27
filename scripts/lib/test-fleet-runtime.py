@@ -580,6 +580,20 @@ exit 1''')
             self.assertNotIn('\tCASE-201\t', p.stdout)
             self.assertIn('unverified', p.stderr)
 
+    def test_unverified_siblings_print_one_count_line(self):
+        siblings = []
+        for letter in 'ABC':
+            sibling = self.bucket / ('sibling-' + letter + '.fleet.json')
+            sibling.write_text(json.dumps({'schema': 1, 'workers': [{'doc': str(self.bucket / (letter + '.md'))}]}))
+            siblings.append(str(sibling))
+        code = ('import sys; sys.path.insert(0, sys.argv[1]); from fleet_runtime import owned_rows\n'
+                'for path in sys.argv[2:] * 2:\n    assert owned_rows(path)[0]["ownership"] == "unverified"\n')
+        p = subprocess.run(['python3', '-I', '-B', '-c', code, str(ENTRYPOINTS / 'scripts/lib'), *siblings],
+                           env=self.env, capture_output=True, text=True, timeout=35)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(len(p.stderr.splitlines()), 1, p.stderr)
+        self.assertIn('unverified sibling family reference in 3 manifest(s)', p.stderr)
+
     def real_census_env(self):
         env = self.launch_env()
         env.pop('FLEET_PS_CMD', None)

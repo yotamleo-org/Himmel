@@ -5,6 +5,7 @@ The anchor is current state; launch-refusals.jsonl remains the receipt history.
 No PID, elapsed-time, role or caller-supplied held flag proves an outcome.
 """
 import argparse
+import atexit
 from contextlib import contextmanager
 import fcntl
 import json
@@ -311,6 +312,14 @@ def receipt(record, outcome, **extra):
         os.fsync(stream.fileno())
 
 
+_UNVERIFIED_SIBLINGS = set()
+
+
+def _report_unverified_siblings():
+    print('fleet-runtime: unverified sibling family reference in %d manifest(s); preserving legacy ownership, e.g. %s'
+          % (len(_UNVERIFIED_SIBLINGS), min(_UNVERIFIED_SIBLINGS)), file=sys.stderr)
+
+
 def owned_rows(manifest):
     """Include unknown ownership even after legacy manifest removal."""
     manifest = Path(manifest)
@@ -320,7 +329,9 @@ def owned_rows(manifest):
     if anchor.exists():
         control = read(anchor)
         if read(manifest).get('control') != {'family': control['family'], 'anchor': str(anchor)}:
-            print('fleet-runtime: unverified sibling family reference; preserving legacy ownership: ' + str(manifest), file=sys.stderr)
+            if not _UNVERIFIED_SIBLINGS:
+                atexit.register(_report_unverified_siblings)
+            _UNVERIFIED_SIBLINGS.add(str(manifest))
             return [dict(row, ownership='unverified') for row in rows]
         for record in control.get('attempts', {}).values():
             matching = [row for row in rows if row['doc'] == record['doc']]
