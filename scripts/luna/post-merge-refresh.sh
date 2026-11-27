@@ -192,10 +192,69 @@ collect_times() {
     printf '%s' "${acc%$'\n'}"
 }
 
+pmr_index() { printf '%s\n' "${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"; }
+
+index_writer_pid() {
+    local ino
+    [ -r /proc/locks ] || return 0
+    ino=$(stat -c %i "$(pmr_index)-shm" 2>/dev/null) || return 0  # gnu-ok: past the /proc/locks guard, so Linux
+    [ -n "$ino" ] || return 0
+    awk -v ino="$ino" '$4 == "WRITE" && $7 == 120 && $6 ~ (":" ino "$") { print $5; exit }' /proc/locks 2>/dev/null
+}
+
+pmr_tree() {
+    ps -A -o pid= -o ppid= | PMR_ROOTS="$*" awk '
+        { live[$1] = 1; kids[$2] = kids[$2] " " $1 }
+        END {
+            q = ENVIRON["PMR_ROOTS"]
+            while (q != "") {
+                n = split(q, a, " "); q = ""
+                for (i = 1; i <= n; i++) if (live[a[i]] && !seen[a[i]]++) { print a[i]; q = q kids[a[i]] }
+            }
+        }'
+}
+
+pmr_signal() { printf '%s\n' "$2" | xargs kill "-$1" 2>/dev/null; }
+
+pmr_bounded() {
+    local secs="$1" pid wd rc fired="$PMR_STATE/keyword.deadline.$$"
+    shift
+    rm -f "$fired"
+    "$@" &
+    pid=$!
+    (
+        sleep "$secs"
+        marked=1
+        : > "$fired" || marked=0
+        tree=$(pmr_tree "$pid")
+        if [ "$marked" -eq 0 ]; then pmr_signal KILL "$tree"; exit 0; fi
+        pmr_signal TERM "$tree"
+        left="${QMD_KILL_GRACE_SECS:-5}"
+        case "$left" in ''|*[!0-9]*) left=5 ;; esac
+        left=$((10#$left))
+        while [ "$left" -gt 0 ]; do
+            sleep 1
+            tree=$(pmr_tree "$tree")
+            left=$((left - 1))
+        done
+        pmr_signal KILL "$tree"
+    ) >/dev/null 2>&1 &
+    wd=$!
+    wait "$pid"
+    rc=$?
+    if [ -e "$fired" ]; then
+        wait "$wd"
+        rm -f "$fired"
+        return 124
+    fi
+    pmr_signal TERM "$(pmr_tree "$wd")"
+    return "$rc"
+}
+
 run_keyword() {
     local args=(--update-collection himmel)
     [ -z "${PMR_QMD:-}" ] || args=(--qmd-bin "$PMR_QMD" "${args[@]}")
-    qmd_bounded "$REFRESH_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 \
+    pmr_bounded "$REFRESH_DEADLINE_SECS" env QMD_SQLITE_BUSY_TIMEOUT=30000 \
         QMD_REINDEX_EMBED_MAX_SECS=$((REFRESH_DEADLINE_SECS - 60)) \
         "${LOWPRIO[@]}" bash "$PMR_REINDEX" "${args[@]}"
 }
@@ -270,6 +329,10 @@ pmr_half_step() {
 
     if wait_gate_holds "$half" "$now"; then return 0; fi
     if [ "$half" = keyword ] && reindex_lock_is_live; then pmr_skip "$half" reindex-lock; return 0; fi
+    if [ "$half" = keyword ]; then
+        local writer; writer=$(index_writer_pid)
+        if [ -n "$writer" ]; then log "$half index write lock held by pid $writer"; pmr_skip "$half" writer-lock; return 0; fi
+    fi
     if load_is_high; then
         first=$(st_get "$half.defer")
         if [ -z "$first" ]; then first="$now"; st_put "$half.defer" "$now"; fi
@@ -338,7 +401,8 @@ pmr_half_step() {
 }
 
 pmr_sample() {
-    local idx="${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}" rc
+    local idx rc
+    idx=$(pmr_index)
     if [ ! -f "$PMR_LAG" ]; then printf 'post-merge-refresh: ERR keyword-lag.py absent at %s\n' "$PMR_LAG" >&2; return 3; fi
     if [ ! -f "$idx" ]; then log "no index at $idx, sampler not run"; return 0; fi
     PMR_PRIMARY="$PMR_PRIMARY" PMR_NOW="$(pmr_now)" python3 -I "$PMR_LAG" tick --index "$idx" --state "$PMR_STATE"
