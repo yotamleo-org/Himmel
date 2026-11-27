@@ -253,8 +253,8 @@
 # docs/handover/running-a-chief.md):
 # a worker arm whose HIMMEL_CONSOLE_NAME is set opens as a tab in that
 # chief's one konsole window instead of a --separate window of its own; see
-# tab_launch below (`join`: join only). HEADED_ARM_QDBUS (default qdbus6) pins
-# the D-Bus client that opens the tab, so a suite can shim it.
+# tab_launch below. HEADED_ARM_QDBUS (default qdbus6) pins the D-Bus client
+# that opens the tab, so a suite can shim it.
 #
 # --role: an optional
 # leading `--role chief` flag, ahead of the positionals, for the chief arm
@@ -1807,8 +1807,8 @@ fi
 # arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
 # window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
 # the window this arm opens, or adopts from a live konsole predecessor, becomes
-# the chief's window; `join`, the bypass value, only reads records: TAB_RECORD=0,
-# so its window is never adopted). A D-Bus failure returns 1 too, with a WARN.
+# the chief's window). A D-Bus failure also returns 1, with a WARN:
+# a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
 # with `env -i`, keeping only the tab's own terminal variables. That script
@@ -1872,7 +1872,7 @@ tab_launch() {
     [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
-    wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it unless it is join-only
+    wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
     case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
     [ "$record" = 1 ] || wpid="$(tab_live_window "$HIMMEL_CONSOLE_NAME")" || wpid=""
     if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
