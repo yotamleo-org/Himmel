@@ -1463,6 +1463,14 @@ else
   dry53 "$blocked53/.cache/himmel/verdicts/q-wt/scratch"
   check "53q inaccessible judge scratch dry-run exits 0" "$rc53" 0
   contains "53q inaccessible judge scratch leaves the session folder derived" "$out53" "$derived53"
+  dry53 "$blocked53/.cache/himmel/verdicts/q/worktrees/gone/scratch"
+  refused53 q 'inaccessible nested scratch path'
+  ln -s "$blocked53" "$shaped53/blocked" || exit 1
+  cwd53="$PWD"
+  cd "$shaped53" || exit 1
+  dry53 blocked/gone
+  cd "$cwd53" || exit 1
+  refused53 q 'inaccessible path relative to worktrees'
 fi
 chmod 700 "$blocked53" || exit 1
 trap 'rm -rf "$tmp"' EXIT

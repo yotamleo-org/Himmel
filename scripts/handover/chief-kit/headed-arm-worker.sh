@@ -1393,8 +1393,18 @@ _worker_rc_scratch=0 _worker_rc_claude=0 _worker_rc_top=""
 if [ -n "$_worker_rcwd" ]; then
     _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_failed=1
     _worker_rcwd_shape="$_worker_rcwd_phys"
-    [ "$_worker_rcwd_failed" -eq 0 ] || _worker_rcwd_shape="/${_worker_rcwd#/}"
-    case "$_worker_rcwd_shape" in */.cache/himmel/verdicts/*/scratch) _worker_rc_scratch=1 ;; esac
+    if [ "$_worker_rcwd_failed" -eq 1 ]; then
+        case "$_worker_rcwd" in
+            /*) _worker_rcwd_shape="$_worker_rcwd" ;;
+            *) _worker_rcwd_shape="$PWD/$_worker_rcwd" ;;
+        esac
+    fi
+    case "$_worker_rcwd_shape" in
+        */.cache/himmel/verdicts//scratch|*/.cache/himmel/verdicts/*/*/scratch)
+            [ "$_worker_rcwd_failed" -ne 0 ] || _worker_rc_scratch=1
+            ;;
+        */.cache/himmel/verdicts/*/scratch) _worker_rc_scratch=1 ;;
+    esac
     case "$_worker_rcwd" in */.claude/worktrees/*) _worker_rc_claude=1 ;; esac
 fi
 _worker_vroot="${HANDOVER_DIR:-}"
