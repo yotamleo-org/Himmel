@@ -704,9 +704,10 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 
 # The nested scan is linear: padding with shell words must not push the hook
 # past the chain's budget, where it would be skipped instead of deciding.
-# A fixed wall-clock budget failed on loaded CI: the faster of two padded runs
-# may take 3x the sum of two quarter-size runs interleaved with them, plus slack,
-# so load scales both sides; neither past run-hook-with-bash.js's 15 s timeout.
+LOAD_FACTOR=3
+SLACK_MS=300
+WHOLE_SECOND_SLACK_MS=5000
+RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS=15000
 run_ms() {
     local input t0 t1 rc
     input=$(j_bash "$1")
@@ -719,21 +720,21 @@ run_ms() {
         echo "$rc $(( (t1 - t0) * 1000 ))"
     fi
 }
-within_bound() {
-    local c1 p p2 c2 slow bound slack=300
-    [ -n "${EPOCHREALTIME:-}" ] || slack=5000
-    c1=$(run_ms "$2"); p=$(run_ms "$1"); c2=$(run_ms "$2"); p2=$(run_ms "$1")
-    bound_rc=${p%% *} p=${p#* } c1=${c1#* } c2=${c2#* }
-    [ "${p2%% *}" = "$bound_rc" ] || bound_rc="$bound_rc then ${p2%% *}"
-    p2=${p2#* } slow=$p
-    if [ "$p2" -lt "$p" ]; then p=$p2; else slow=$p2; fi
-    bound=$(( 3 * (c1 + c2) + slack ))
-    bound_why="${p}ms (slower run ${slow}ms of at most 15000ms, controls ${c1}ms and ${c2}ms, bound ${bound}ms)"
-    [ "$p" -le "$bound" ] && [ "$slow" -le 15000 ]
+within_bound_of_quarter_size_controls() {
+    local control1 padded1 control2 padded2 faster slower bound slack=$SLACK_MS
+    [ -n "${EPOCHREALTIME:-}" ] || slack=$WHOLE_SECOND_SLACK_MS
+    control1=$(run_ms "$2"); padded1=$(run_ms "$1"); control2=$(run_ms "$2"); padded2=$(run_ms "$1")
+    bound_rc=${padded1%% *}
+    [ "${padded2%% *}" = "$bound_rc" ] || bound_rc="$bound_rc then ${padded2%% *}"
+    control1=${control1#* } control2=${control2#* } faster=${padded1#* } slower=${padded2#* }
+    if [ "$slower" -lt "$faster" ]; then faster=$slower slower=${padded1#* }; fi
+    bound=$(( LOAD_FACTOR * (control1 + control2) + slack ))
+    bound_why="${faster}ms (slower run ${slower}ms of at most ${RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS}ms, controls ${control1}ms and ${control2}ms, bound ${bound}ms)"
+    [ "$faster" -le "$bound" ] && [ "$slower" -le "$RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS" ]
 }
 timed() {
     local ok=0
-    within_bound "$3" "$4" || ok=1
+    within_bound_of_quarter_size_controls "$3" "$4" || ok=1
     assert_rc "$2" "$1" "$bound_rc"
     if [ "$ok" = 0 ]; then
         echo "PASS $2 in $bound_why"
@@ -751,16 +752,21 @@ timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu
 timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}" "qmd status; echo ${pad_shq}"
 timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"
 timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" "qmd status; bash -c 'echo \$0' ${pad_wq}"
-# Stubs that never load the station: loaded.sh is a 3x slower runner and passes;
-# slow.sh adds a slow path quadratic in the input (6 s at full size) and fails.
+QUADRATIC_SLOW_PATH_MS_AT_PAD_W=6000
+write_hook_run_three_times() {
+    printf '#!/usr/bin/env bash\nin=$(cat)\nfor _ in 1 2 3; do printf "%%s" "$in" | bash "%s"; rc=$?; done\nexit $rc\n' "$HOOK" >"$1"
+}
+write_hook_then_sleep_quadratic_in_input() {
+    printf '#!/usr/bin/env bash\nin=$(cat)\nprintf "%%s" "$in" | bash "%s"; rc=$?\nms=$(( ${#in} * ${#in} * %s / (%s * %s) ))\nsleep "$((ms / 1000)).$(printf %%03d $((ms %% 1000)))"\nexit $rc\n' "$HOOK" "$QUADRATIC_SLOW_PATH_MS_AT_PAD_W" "${#pad_w}" "${#pad_w}" >"$1"
+}
 STUBS=$(mktemp -d "${TMPDIR:-/tmp}/block-bare-qmd-stubs.XXXXXX") || exit 1
 trap 'rm -rf "$STUBS"' EXIT
-printf '#!/usr/bin/env bash\nin=$(cat)\nfor _ in 1 2 3; do printf "%%s" "$in" | bash "%s"; rc=$?; done\nexit $rc\n' "$HOOK" >"$STUBS/loaded.sh"
-printf '#!/usr/bin/env bash\nin=$(cat)\nprintf "%%s" "$in" | bash "%s"; rc=$?\nms=$(( ${#in} * ${#in} * 6000 / (%s * %s) ))\nsleep "$((ms / 1000)).$(printf %%03d $((ms %% 1000)))"\nexit $rc\n' "$HOOK" "${#pad_w}" "${#pad_w}" >"$STUBS/slow.sh"
-HOOK=$STUBS/loaded.sh timed 0 'allow: qmd status, then 2000 words on a 3x slower runner' "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"
+write_hook_run_three_times "$STUBS/three-x-slower-runner.sh"
+write_hook_then_sleep_quadratic_in_input "$STUBS/quadratic-slow-path.sh"
+HOOK=$STUBS/three-x-slower-runner.sh timed 0 'allow: qmd status, then 2000 words on a 3x slower runner' "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"
 if [ -z "${EPOCHREALTIME:-}" ]; then
     echo "SKIP a slow path that grows with the input: whole-second clock, its slack hides 6 s"
-elif HOOK=$STUBS/slow.sh within_bound "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"; then
+elif HOOK=$STUBS/quadratic-slow-path.sh within_bound_of_quarter_size_controls "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"; then
     echo "FAIL a slow path that grows with the input passed the bound: $bound_why"
     FAILED=$((FAILED + 1))
 else
@@ -1065,8 +1071,8 @@ run_case "$(j_bash "echo hi$pad_a; qmd query x")" >/dev/null
 t1=$(now_ms)
 deny "echo hi$pad_o; qmd query x"
 t2=$(now_ms)
-if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ] || [ $((t2 - t1)) -gt 15000 ]; then
-    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms, at most 15000ms)"; FAILED=$((FAILED + 1)); fi
+if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ] || [ $((t2 - t1)) -gt "$RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS" ]; then
+    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms, at most ${RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS}ms)"; FAILED=$((FAILED + 1)); fi
 # A `(` or `)` inside the path must still reach the program name.
 deny '/tmp/a(b)/qmd query x'
 deny '"/tmp/a(b)/qmd" query x'
