@@ -1965,6 +1965,16 @@ hh_calls="$(grep -c . "$hh/gitlog" 2>/dev/null)"  # swallow-ok: no log yet count
 out="$(PATH="$hh/shim:$PATH" TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
 contains '(10944 C4) a tick that does not rebuild prints the cached line' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
 hh_same '(10944 C4) the rebuild ran git log and the second tick ran none' "$([ "${hh_calls:-0}" -gt 0 ] && echo ran):$(grep -c . "$hh/gitlog" 2>/dev/null)" "ran:${hh_calls:-0}"
+mkdir -p "$hh/shim-order" "$hh/shim-dead"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c6/tick-pool-*.rows" > /dev/null; then echo published; else echo held-back; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/order" "$(command -v git)" > "$hh/shim-order/git"
+# shellcheck disable=SC2016  # the stub expands its own variable
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) kill -TERM "$PPID"; exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v git)" > "$hh/shim-dead/git"
+chmod +x "$hh/shim-order/git" "$hh/shim-dead/git"
+PATH="$hh/shim-order:$PATH" hh_tick c6 "$hh/c.rows" > /dev/null
+hh_same '(10944 C6) the snapshot rows are published before the git scan starts' "$(LC_ALL=C sort -u "$hh/order" 2>/dev/null)" 'published'
+out="$(PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows")"
+not_contains '(10944 C7) a scan that dies leaves no older candidate beside the new rows' "$out" 'close-cand'
+contains '(10944 C7) control: the rows were still published' "$out" ' pool=3/'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
