@@ -21,6 +21,10 @@
 # Every other guardrail outcome passes through
 # unchanged, so the guardrails stay single-sourced and keep working verbatim under
 # Claude Code (which never invokes this adapter — only .codex/hooks.json does).
+#
+# The adapter also names the lane inside the payload (himmel_lane), over whatever
+# it held: lane-grants.sh reads that key and no environment value. If jq fails the
+# input stays as read, so no lane is named and nothing is granted.
 set -u
 
 # emit_deny <reason> [event] — print Codex's JSON deny on stdout and exit 0 (fail
@@ -136,6 +140,9 @@ IFS="$oldifs"
 input="$(cat)"
 nl='
 '
+if named="$(printf '%s' "$input" | jq -c '. + {himmel_lane: "codex"}' 2>/dev/null)" && [ -n "$named" ]; then
+  input="$named"
+fi
 
 # Inbound lifecycle event, parsed once. SessionStart / UserPromptSubmit are
 # advisory CONTEXT events with no permission gate. Under Codex a hook feeds the

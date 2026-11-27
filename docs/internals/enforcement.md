@@ -4322,6 +4322,89 @@ unparseable payload.
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-chief-dispatch.sh`. Spec: `scripts/hooks/test-guard-chief-foreground.sh`.
 
+### Lane capability grants
+
+`scripts/hooks/block-terminal-write-fence.sh` (the Codex Bash chain) denies a
+push, a PR and a network fetch. The operator can lift **one exact command
+shape** of each for a non-Claude lane. Default off: with no `lane_grants` key a
+lane is denied exactly what it was denied before. The operator edits the file by
+hand; there is no `himmelctl config set` verb.
+
+```json
+{
+  "lane_grants": { "codex": ["git-push-branch", "gh-pr-create", "net-read"] },
+  "lane_grants_origin": "github.com/yotamleo-org/Himmel"
+}
+```
+
+`scripts/lib/lane-grants.sh` reads `config.json` in the account's `.himmel`
+(`_himmel_policy_dir`) and grants nothing unless `$HOME/.himmel/config.json` is
+the same file, the file and its directory are not symlinks, are owned by you and
+are not group- or world-writable, and the file is one JSON object of the right
+types. `git-push-branch` and `gh-pr-create` also need `lane_grants_origin`.
+
+**The Codex lane only, so far.** `.codex/codex-hook-adapter.sh` writes
+`himmel_lane: "codex"` into the payload, over whatever it held. No environment
+variable names a lane, and a Claude payload never carries the key. The
+`antigravity` name is read but nothing sets it yet. A grant lifts the hook, not a
+sandbox. On the Codex **exec lane** the `workspace-write` sandbox keeps the
+network off and the checkout's git directory read-only, so a granted push or
+fetch still fails there. A full-access T3 Codex thread runs `dangerFullAccess`,
+with no such sandbox, so do not treat a Codex grant as inert there.
+The Codex sandbox follow-up ticket owns the sandbox side and re-asks the
+operator whether Codex gets the fetch grant.
+
+| Grant | The one shape |
+|---|---|
+| `git-push-branch` | `git push origin B`, `git push -u origin B` or `git push --set-upstream origin B`; `B` is the cwd's current branch and not protected |
+| `gh-pr-create` | `gh pr create` with `--head B`, and at most once each: `--title`, `--body`, `--base`, `--draft`, `--fill` (or their short forms); `origin` is the only remote |
+| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Every host is allowed; there is no host allow or deny list yet |
+
+The command must be one simple command of literal words: no expansion,
+operator, redirect, glob or continuation. Push and PR need every fetch and push
+URL of `origin` (after `insteadOf` and `pushurl`) to name the pinned repo, no
+`remote.origin.push` and no mirror mode.
+
+**Scope.** A grant acts only on work inside the checkout the adapter resolves:
+the checkout holding `.codex` for Codex (the himmel checkout, or a
+himmel-adopter project). The payload cwd and `CLAUDE_PROJECT_DIR` must resolve
+to the same primary checkout.
+
+```mermaid
+flowchart LR
+  A[lane tool call] --> B[adapter writes himmel_lane]
+  B --> C{one literal simple command, one of the three fence shapes?}
+  C -->|yes| D{trusted config grants it; scope, branch, origin pin hold?}
+  D -->|yes| E[skip only that arm; the rewrite arm still runs]
+  B -->|jq fails: no lane| Z[today's deny arms decide]
+  C -->|no| Z
+  D -->|no| Z
+  E -->|any other arm or hook matches| Z
+```
+
+**What no grant lifts:** a push to main, master or the default branch; a force
+push or a refspec; another remote or a URL; `--no-verify`; `gh pr merge` or any
+other `gh` mutation; the remote-URL and `insteadOf` rewrite arm; the
+write-on-main lock; every other hook in the chain, including the review-marker
+check on `gh pr create`; and the pre-push hooks.
+
+**Threat model.** Like the fence, a grant is built against a cooperative lane's
+mistakes. A lane set on escaping can already write `push.sh` and run it. An
+env-prefixed push (`SKIP_CR=1 git push …`) is the fence's own ceiling: it is
+allowed with or without a grant, because the verb is not in command position.
+Two accepted ceilings are rows in the ceilings ledger: **config write route** (a
+lane that writes the operator's config past the write guard's text match grants
+itself a capability) and **runtime steering** (git, gh or ssh config,
+environment, shell state, a per-call workdir or the branch's own pre-push
+config can send a granted command elsewhere). Each ledger row names the ticket
+for its structural fix. A granted
+push, PR or fetch can publish whatever the lane can read, including in a URL.
+
+**Doctor** (`C102-lane-grants`) lists what each lane holds with its wiring
+state, and warns on each config problem. When `HOME` is not the account home it
+reads only the `$HOME` config and never the account-home file: it warns if that
+file holds `lane_grants`, and otherwise reports that grants were not checked.
+
 ### `block-worker-write-fence.sh` — dispatched-worker write fence
 
 Fires on `Bash|PowerShell|mcp__.*`. Keyed on `HIMMEL_WORKER=1`, the

@@ -22,7 +22,9 @@
 #       view/diff/checks/status/list, gh run view/list/watch); and network CLIs
 #       (curl/wget/iwr/irm/Invoke-WebRequest/Invoke-RestMethod). FAIL-CLOSED:
 #       denied UNLESS the named opt-in CODEX_EXTERNAL_WRITES_OK=1 is set (mirrors
-#       HERMES_EXTERNAL_WRITES_OK semantics).
+#       HERMES_EXTERNAL_WRITES_OK semantics), or the operator's config.json
+#       grants the payload's lane that one exact command shape
+#       (scripts/lib/lane-grants.sh; the rewrite arm takes no grant).
 #
 #   (b) WRITE-ON-MAIN — DESTINATION-based rather than
 #       cwd-only: a write-shaped terminal command (redirect > / >>, tee,
@@ -166,7 +168,19 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
         return $r
     }
 
-    if [ "$(count_either "$gp_shape")" -gt 0 ]; then
+    grant=''
+    if [ "$LIB_OK" = 1 ]; then
+        grant_libs=1
+        for lib in load-dotenv.sh nwo.sh lane-grants.sh; do
+            # shellcheck disable=SC1090
+            { [ -r "$SCRIPT_DIR/../lib/$lib" ] && . "$SCRIPT_DIR/../lib/$lib"; } 2>/dev/null || grant_libs=0
+        done
+        if [ "$grant_libs" = 1 ]; then
+            grant=$(lane_grant_shape "$input") || grant=''
+        fi
+    fi
+
+    if [ "$grant" != git-push-branch ] && [ "$(count_either "$gp_shape")" -gt 0 ]; then
         deny_ext "git push is refused (external-write class)."
     fi
     # Flat decode: ONE position-free pass over the whole command, no quote
@@ -318,10 +332,10 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
        [ "$(count_either "$gu_shape")" -gt 0 ]; then
         deny_ext "rewriting a git remote / push URL is refused (external-write class)."
     fi
-    if gh_over; then
+    if [ "$grant" != gh-pr-create ] && gh_over; then
         deny_ext "gh is limited (external-write class): issue ops + pr/run reads only; PR mutations belong to the operator / trusted lane."
     fi
-    if [ "$(count_either "$net_shape")" -gt 0 ]; then
+    if [ "$grant" != net-read ] && [ "$(count_either "$net_shape")" -gt 0 ]; then
         deny_ext "network CLIs are refused (external-write class); chores are repo-local."
     fi
 fi
