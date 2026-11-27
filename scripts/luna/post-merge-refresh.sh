@@ -203,16 +203,18 @@ index_writer_pid() {
 }
 
 pmr_tree() {
-    ps -A -o pid= -o ppid= | awk -v roots="$*" '
+    ps -A -o pid= -o ppid= | PMR_ROOTS="$*" awk '
         { live[$1] = 1; kids[$2] = kids[$2] " " $1 }
         END {
-            q = roots
+            q = ENVIRON["PMR_ROOTS"]
             while (q != "") {
                 n = split(q, a, " "); q = ""
                 for (i = 1; i <= n; i++) if (live[a[i]] && !seen[a[i]]++) { print a[i]; q = q kids[a[i]] }
             }
         }'
 }
+
+pmr_signal() { printf '%s\n' "$2" | xargs kill "-$1" 2>/dev/null; }
 
 pmr_bounded() {
     local secs="$1" pid wd rc fired="$PMR_STATE/keyword.deadline.$$"
@@ -225,21 +227,17 @@ pmr_bounded() {
         marked=1
         : > "$fired" || marked=0
         tree=$(pmr_tree "$pid")
-        # shellcheck disable=SC2086
-        if [ "$marked" -eq 0 ]; then kill -KILL $tree; exit 0; fi
-        # shellcheck disable=SC2086
-        kill -TERM $tree 2>/dev/null
+        if [ "$marked" -eq 0 ]; then pmr_signal KILL "$tree"; exit 0; fi
+        pmr_signal TERM "$tree"
         left="${QMD_KILL_GRACE_SECS:-5}"
         case "$left" in ''|*[!0-9]*) left=5 ;; esac
         left=$((10#$left))
         while [ "$left" -gt 0 ]; do
             sleep 1
-            # shellcheck disable=SC2086
-            tree=$(pmr_tree $tree)
+            tree=$(pmr_tree "$tree")
             left=$((left - 1))
         done
-        # shellcheck disable=SC2086
-        kill -KILL $tree 2>/dev/null
+        pmr_signal KILL "$tree"
     ) >/dev/null 2>&1 &
     wd=$!
     wait "$pid"
@@ -249,8 +247,7 @@ pmr_bounded() {
         rm -f "$fired"
         return 124
     fi
-    # shellcheck disable=SC2046
-    kill $(pmr_tree "$wd") 2>/dev/null
+    pmr_signal TERM "$(pmr_tree "$wd")"
     return "$rc"
 }
 
