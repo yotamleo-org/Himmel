@@ -5552,7 +5552,7 @@ for n in '> <file> 2>&1; echo "rc=$?"' 'rounded up' 'enforcement.md'; do
 done
 
 SG="$WORK/git10944"; mkdir -p "$SG/scripts/handover/chief-kit" "$SG/scripts/a" "$SG/scripts/b"
-for f in handover/chief-kit/zz-arm-worker.sh handover/chief-kit/tick.sh a/dup.sh b/dup.sh; do : > "$SG/scripts/$f"; done
+for f in handover/chief-kit/zz-arm-worker.sh handover/chief-kit/tick.sh a/dup.sh b/dup.sh a/dup.c b/dup.c; do : > "$SG/scripts/$f"; done
 git -C "$SG" init -q -b main && git -C "$SG" add -A && git -C "$SG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q -m "init" \
     || fail "10944: could not build the fixture tree"
 M44="$WORK/m10944/HIMMEL"; mkdir -p "$M44"
@@ -5584,6 +5584,8 @@ t44 4421 $'Writes: specs/audits/x.md\n\nWrites: dup.sh'
 t44 4422 "The reader holds this ticket too, as well."
 printf '\n## Comments\n\n### chief — 2026-11-27T13:00\n\nreadiness: ruled Writes: specs/audits/x.md\nWrites: dup.sh\n' >> "$M44/$KP-4422.md"
 t44 4423 "Writes: specs/audits/x.md, e.g. the v1.1.3 audit"
+t44 4424 "Writes: specs/audits/x.md and new-tool.go"
+t44 4425 "Writes: specs/audits/x.md and dup.c"
 M="$WORK/jira-mirror/HIMMEL"
 s44() { NEXT_DISPATCH_GIT_DIR="${GD44:-$SG}" NEXT_DISPATCH_MIRROR="$M44" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" "$@" 2>/dev/null; }
 l44="$(s44 --top 100)"
@@ -5618,6 +5620,8 @@ has "10944 N12: a longer extension is not cut back to a shorter file name" "$(no
 has "10944 N11.new: a not-yet-existing file beside a specs/ path stays held" "$(note44 4420 "$l44")" "$KP-4420"
 has "10944 N11.split: an unresolved name on a second Writes: line stays held" "$(note44 4421 "$l44")" "$KP-4421"
 has "10944 N11.rd2: and so does one on a second readiness line" "$(note44 4422 "$l44")" "$KP-4422"
+has "10944 N11.ext: a name of any extension beside a specs/ path stays held" "$(note44 4424 "$l44")" "$KP-4424"
+has "10944 N11.amb: an ambiguous one-letter-extension name stays held" "$(note44 4425 "$l44")" "$KP-4425"
 has "10944 N11.ctl: prose dots on a specs/ line leave it a state-repo write" "$(w44 4423)" "# scope $KP-4423 Writes: line (state repo): - reads=-"
 has "10944 N11.git: with git failing, a name beside a specs/ path still holds" "$(note44 4417 "$l44bad")" "$KP-4417"
 B44="$WORK/b10944"

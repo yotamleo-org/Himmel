@@ -491,11 +491,11 @@ def marker(line):
     m = EXPLICIT_RE.match(line) or MID_MARKER_RE.search(line)
     return (m.group(1)[0].lower(), line[m.end():]) if m else None
 
-NAMED_FILE_RE = re.compile(r'\.(?:sh|bash|py|ts|tsx|js|mjs|cjs|json|jsonl|tsv|yml|yaml|toml|md|html|css|txt|ps1)$')
+LONG_EXT_RE = re.compile(r'\.[A-Za-z][A-Za-z0-9]{1,7}$')  # leaves out `e.g` and a version number
 
 def bare_name(value):
     # a file named outside specs/: on a line with no repo path it may be a repo file, so no state-repo-only verdict
-    return any(not t.startswith('specs/') and NAMED_FILE_RE.search(t) for t in PATH_TOKEN_RE.findall(value))
+    return any(not t.startswith('specs/') and (LONG_EXT_RE.search(t) or t in suffix_index()) for t in PATH_TOKEN_RE.findall(value))
 
 def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
