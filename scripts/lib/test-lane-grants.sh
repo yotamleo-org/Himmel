@@ -231,6 +231,21 @@ refuse_payload 'no himmel_lane' "$(payload 'git push origin feat/x' | jq -c 'del
 git -C "$WT" checkout -q --detach
 refuse 'detached HEAD' 'git push origin feat/x'
 git -C "$WT" checkout -q feat/x
+git -C "$WT" checkout -q -b trunk
+git -C "$PRIMARY" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+refuse 'a push of the default branch when it is not main or master' 'git push origin trunk'
+refuse 'a pr whose head is that default branch' 'gh pr create -H trunk -t a'
+git -C "$PRIMARY" symbolic-ref --delete refs/remotes/origin/HEAD
+accept 'the same branch once it is not the default' git-push-branch 'git push origin trunk'
+git -C "$WT" checkout -q feat/x
+git -C "$WT" tag feat/x
+refuse 'a tag with the branch name' 'git push origin feat/x'
+git -C "$WT" update-ref -d refs/tags/feat/x
+git -C "$PRIMARY" config --add remote.origin.url 'https://github.com/acme/fixture.git'
+refuse 'two origin URLs, both the pin' 'git push origin feat/x'
+git -C "$PRIMARY" config --unset-all remote.origin.url
+git -C "$PRIMARY" config remote.origin.url 'https://github.com/acme/fixture.git'
+accept 'push again after the fixture is restored' git-push-branch 'git push origin feat/x'
 
 echo "== origin pin =="
 git -C "$PRIMARY" remote set-url origin 'transport::https://github.com/acme/fixture.git'
