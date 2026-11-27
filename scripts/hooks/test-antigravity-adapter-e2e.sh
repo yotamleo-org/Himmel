@@ -834,7 +834,9 @@ assert_deny "S20 a hung classifier is a must-run deny" "must-run" "$(make_pre se
     PATH="$TMP/slowgit:$PATH" RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=1000
 if [ -e "$TMP/touch-s20" ]; then ok "S20 the classifier reached the stub git"; else bad "S20 the stub git never ran"; fi
 NOMR="$TMP/nomustrun"
-if mk_fixture_root "$NOMR" && grep -qF "'block-agy-salus-egress.sh'," "$NOMR/scripts/hooks/run-hook-with-bash.js"; then
+if ! mk_fixture_root "$NOMR"; then
+    bad "S20b the fixture root build failed"
+elif grep -qF "'block-agy-salus-egress.sh'," "$NOMR/scripts/hooks/run-hook-with-bash.js"; then
     sed -i.bak "/^  'block-agy-salus-egress.sh',\$/d" "$NOMR/scripts/hooks/run-hook-with-bash.js"
     printf '#!/usr/bin/env bash\n: > "%s"\nsleep 5\n' "$TMP/touch-s20b" > "$TMP/slowgit/git"
     out20b="$(run_adapter "$(make_pre search_web '{"query":"x"}' "$WT_REPO")" PATH="$TMP/slowgit:$PATH" RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=1000 HIMMEL_ANTIGRAVITY_PROJECT_DIR="$NOMR")"

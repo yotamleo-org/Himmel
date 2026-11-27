@@ -1,24 +1,11 @@
 #!/usr/bin/env bash
 # PreToolUse gate for Antigravity (agy) sessions: the network egress floor in a salus (patient-data) vault.
-#
-# A salus vault's own floor, .claude/hooks/block-cloud-egress.sh, is a Claude settings.json hook and never runs for
-# agy. antigravity-hook-adapter.sh runs this hook first on every arm that can send text off the station
-# (search_web, send_message, ask_question, list_resources, read_resource, every MCP call) and on run_command.
-#
-# - Not Bash: every call is egress-class. This hook keeps no tool list; being wired into an arm is what floors it.
-# - Bash: egress-class when the command holds one of the vault floor's ten substrings, the same list in the same
-#   order as block-cloud-egress.sh (test-block-agy-salus-egress.sh U1 pins it). Any other command exits 0 after
-#   one jq read, with no python or git.
-# - Scope: one call to chief-kit/salus_marked.py over the cwd and every workspace path. A scope it cannot decide
-#   counts as salus: a crash or missing classifier, an empty or relative path, more than 8 workspace paths, or a
-#   workspace_paths that is not an array of strings.
+# A security fence: it fails closed, and a scope it cannot decide counts as salus.
 #
 # No bypass variable, unlike the single-run bypass scripts/hooks/CLAUDE.md asks of a deny: egress-matrix.json
 # rules salus x * x * a hard deny ("No override exists"), and the adapter unsets every *_OK name anyway.
-# A timeout or crash refuses: the hook is on run-hook-with-bash.js MUST_RUN_CHAIN_MEMBERS, and the EXIT trap
-# maps any status other than 0 or 2 to 2.
 #
-# Exit: 0 allow, 2 refuse (reason on stderr). bash 3.2-safe; builtins only, apart from jq and python3.
+# Exit: 0 allow, 2 refuse (reason on stderr).
 set -u
 # shellcheck disable=SC2154  # rc is assigned by rc=$? inside the same trap string
 trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT

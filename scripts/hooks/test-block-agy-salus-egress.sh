@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Suite for block-agy-salus-egress.sh: the hook's own rows, and the structural rows that pin it to the vault
-# floor's pattern list (U1), the adapter's arm table (U2a, U2-drive, U2c), the egress matrix (U2b) and the
-# adapter's self-protect of the PHI root lists (U6).
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -269,7 +266,6 @@ def fn_body(name):
     return src[starts[0] + 1:end]
 
 
-# run_mcp_gate: one base array, appends only, and one chain call that runs the array then a tail.
 mcp_base, mcp_tail = None, []
 for line in fn_body('run_mcp_gate'):
     m = re.match(r'^\s*local -a chain=\(((?:%s ?)+)\)\s*$' % NAME, line)
@@ -428,30 +424,25 @@ u6_expected() {
         printf '%s\n' "$1/.config/claude-glm/phi-roots" "$1/.config/claude-glm/egress-denylist"
     fi
 }
-u6_env() {
-    if [ -n "$2" ]; then printf 'HOME=%s CLAUDE_GLM_CONFIG_DIR=%s' "$1" "$2"; else printf 'HOME=%s' "$1"; fi
-}
 u6_round() {
     local tag="$1" glm="$2" h="$TMP/u6-home-$1" lists list root="$TMP/u6-root" k=0
     mkdir -p "$h/.himmel" "$root"
+    U6ENV=(HOME="$h")
+    [ -z "$glm" ] || U6ENV+=(CLAUDE_GLM_CONFIG_DIR="$glm")
     lists="$(u6_expected "$h" "$glm")"
-    # shellcheck disable=SC2046
-    got="$(env $(u6_env "$h" "$glm") python3 -I "$CLASSIFIER" lists)"
+    got="$(env "${U6ENV[@]}" python3 -I "$CLASSIFIER" lists)"
     if [ "$got" = "$lists" ]; then ok "U6 $tag: lists prints the expected four paths"; else bad "U6 $tag: lists printed <$got>"; fi
     while IFS= read -r list; do
         k=$((k+1))
         rm -rf "$h/.config" "$GLM_OUT"
         mkdir -p "$(dirname "$list")"
         printf '%s\n' "$root" > "$list"
-        # shellcheck disable=SC2046
-        env $(u6_env "$h" "$glm") python3 -I "$CLASSIFIER" salus "$root"; rc=$?
+        env "${U6ENV[@]}" python3 -I "$CLASSIFIER" salus "$root"; rc=$?
         if [ "$rc" -eq 0 ]; then ok "U6 $tag list $k seeded alone marks its root"; else bad "U6 $tag list $k seeded alone gave rc=$rc"; fi
-        # shellcheck disable=SC2046
         adapter_deny "U6 $tag edit_file of list $k denied" "self-protect" \
-            "$(make_pre edit_file "$(jq -cn --arg p "$list" '{Path:$p,Target:"a",Replacement:"b"}')" "$PLAIN_DIR")" $(u6_env "$h" "$glm")
-        # shellcheck disable=SC2046
+            "$(make_pre edit_file "$(jq -cn --arg p "$list" '{Path:$p,Target:"a",Replacement:"b"}')" "$PLAIN_DIR")" "${U6ENV[@]}"
         adapter_deny "U6 $tag write_file of list $k's directory denied" "self-protect" \
-            "$(make_pre write_file "$(jq -cn --arg p "$(dirname "$list")" '{Path:$p,Content:""}')" "$PLAIN_DIR")" $(u6_env "$h" "$glm")
+            "$(make_pre write_file "$(jq -cn --arg p "$(dirname "$list")" '{Path:$p,Content:""}')" "$PLAIN_DIR")" "${U6ENV[@]}"
     done <<EOF
 $lists
 EOF
@@ -462,12 +453,10 @@ EOF
         [ -n "$d" ] || continue
         rm -rf "$d" "$TMP/u6-target"; mkdir -p "$(dirname "$d")" "$TMP/u6-target"
         ln -s "$TMP/u6-target" "$d"
-        # shellcheck disable=SC2046
         adapter_deny "U6 $tag symlinked ${d##*/}: edit of the target list denied" "self-protect" \
-            "$(make_pre edit_file "$(jq -cn --arg p "$TMP/u6-target/phi-roots" '{Path:$p,Target:"a",Replacement:"b"}')" "$PLAIN_DIR")" $(u6_env "$h" "$glm")
-        # shellcheck disable=SC2046
+            "$(make_pre edit_file "$(jq -cn --arg p "$TMP/u6-target/phi-roots" '{Path:$p,Target:"a",Replacement:"b"}')" "$PLAIN_DIR")" "${U6ENV[@]}"
         adapter_deny "U6 $tag symlinked ${d##*/}: write to the target directory denied" "self-protect" \
-            "$(make_pre write_file "$(jq -cn --arg p "$TMP/u6-target" '{Path:$p,Content:""}')" "$PLAIN_DIR")" $(u6_env "$h" "$glm")
+            "$(make_pre write_file "$(jq -cn --arg p "$TMP/u6-target" '{Path:$p,Content:""}')" "$PLAIN_DIR")" "${U6ENV[@]}"
         rm -f "$d"
     done <<EOF
 $(printf '%s\n' "$lists" | sed 's#/[^/]*$##' | sort -u)

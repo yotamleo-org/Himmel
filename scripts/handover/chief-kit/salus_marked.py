@@ -4,7 +4,6 @@
 # entry: the check scripts/claude-codex runs (its own lists and claude-glm's), and the salus cell of scripts/guardrails/egress-matrix.json. The same
 # test runs on the directory and on the primary checkout of its repo (a linked worktree can sit outside a marked primary). Anything that cannot be
 # read or run fails closed (marked): a list that exists but is unreadable, a git that fails on a directory holding .git, any exception.
-# The marker walk runs on the raw (absolute) path as well as the realpath: a symlinked subdirectory under a marker stays marked.
 # CLI: python3 salus_marked.py salus <dir> [<dir> ...] | adapter <dir> | primary <dir>   exit 0 = yes (salus: any dir marked), 10 = no;
 # any other code is a crash and the caller refuses. primary prints the checkout root on stdout when the answer is yes.
 # CLI: python3 salus_marked.py lists   prints every list file _lists() reads, one absolute path per line, exit 0.
