@@ -302,7 +302,7 @@ printf '%s\n' '#!/bin/sh' \
     'DDL' \
     '  exit 1' \
     'fi' \
-    'case "$1" in boom) echo "qmd: some other failure" >&2; exit 3 ;; esac' \
+    'case "$*" in *boom*) echo "qmd: some other failure" >&2; exit 3 ;; esac' \
     'echo "result: doc.md"' >"$TMP/t10bin/qmd"
 chmod +x "$TMP/t10bin/qmd"
 t10() { PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" "$@" </dev/null 2>&1 | grep -v '^qmd-jina-gate:'; return "${PIPESTATUS[0]}"; }
@@ -328,7 +328,7 @@ kill "$T10_WRITER_PID" 2>/dev/null
 wait "$T10_WRITER_PID" 2>/dev/null
 out=$(t10 query -c luna x); rc=$?
 assert_eq "T10 control: the same query once the writer is gone returns its result, rc 0" "result: doc.md|0" "$out|$rc"
-out=$(t10 boom); rc=$?
+out=$(t10 query -c luna boom); rc=$?
 assert_eq "T10 control: an ordinary failure keeps its rc and text" "qmd: some other failure|3" "$out|$rc"
 out=$(PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB_EXPAND=0 bash "$LIB_DIR/qmd-bounded.sh" query -c luna x </dev/null 2>/dev/null); rc=$?
 assert_eq "T10 control: a success keeps its result on stdout" "result: doc.md|0" "$out|$rc"
