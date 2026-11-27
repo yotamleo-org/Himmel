@@ -2864,7 +2864,7 @@ superseded_direction_paras() {
         END { flush() }'
 }
 
-# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc> [<manifest> [<successor letter>]]]: replace each
+# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `workers:` seeds only the open workers
