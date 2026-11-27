@@ -90,6 +90,7 @@ export type SpoolRec =
   | { type: "tap"; verb: "ok" | "no"; draft: string; by: string; ts: number; sig?: string }
   | { type: "ack"; sid: string; token: string }
   | { type: "confirm"; chatId: number }
+  | { type: "card" }
   | { type: "env-out"; kind: (typeof SPOOL_ENV_KINDS)[number]; body: Record<string, unknown> }
   | { type: "job-event"; job: number; event: { type: (typeof SPOOL_JOB_EVENTS)[number]; [k: string]: unknown } };
 export type SendResult = { ok: true; message_id?: number; job?: number; draft?: string; deadline?: number } | { ok: false; rule: string; shape?: string; why?: string };
@@ -134,6 +135,7 @@ function spoolFault(r: any): string | null {
     return typeof r.token === "string" && /^[A-Za-z0-9]+$/.test(r.token) ? null : "ack: bad token";
   }
   if (r.type === "confirm") return Number.isSafeInteger(r.chatId) ? null : "confirm: bad chatId";
+  if (r.type === "card") return Object.keys(r).length === 1 ? null : "card: takes no field";
   return "unknown type";
 }
 
@@ -257,7 +259,7 @@ export function startIdentity(pid: number, platform: string = process.platform):
   return r.status === 0 && out ? out : null;
 }
 
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e: any) { return e.code === "EPERM"; }
 }
 
