@@ -294,6 +294,25 @@ before="$(cat "$WORK/planted-rec")"
 wt rotate "$D" --to "$S" >/dev/null; eq "WT17: a record that is a symlink to a regular file is refused (rc 6)" "$?" 6
 eq "WT17: and nothing is written through it" "$(cat "$WORK/planted-rec")" "$before"
 
+LSHIM="$WORK/lshim"; mkdir -p "$LSHIM"; mkfifo "$WORK/atlock"
+printf '#!/usr/bin/env bash\necho at > %q\nexec %q "$@"\n' "$WORK/atlock" "$(command -v flock)" > "$LSHIM/flock"
+chmod +x "$LSHIM/flock"
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null
+exec 8>>"$REC.lock"; flock 8
+PATH="$LSHIM:$PATH" bash "$SUT" rotate "$D" --to "$S" >/dev/null 2>&1 8>&- &
+waiter=$!
+eq "WT18: the run reached the lock wait" "$(timeout 30 cat "$WORK/atlock")" at
+mv "$REC" "$WORK/swapped-rec"; ln -s "$WORK/swapped-rec" "$REC"
+before="$(cat "$WORK/swapped-rec")"
+exec 8>&-
+wait "$waiter"; eq "WT18: a record swapped for a symlink during the lock wait is refused (rc 6)" "$?" 6
+eq "WT18: and nothing is written through it" "$(cat "$WORK/swapped-rec")" "$before"
+
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null; mv "$REC" "$WORK/linked-rec"; ln "$WORK/linked-rec" "$REC"
+before="$(cat "$WORK/linked-rec")"
+wt rotate "$D" --to "$S" >/dev/null; eq "WT19: a record hard-linked to another name is refused (rc 6)" "$?" 6
+eq "WT19: and nothing is written through it" "$(cat "$WORK/linked-rec")" "$before"
+
 wt >/dev/null; eq "no arguments is a usage error (rc 2)" "$?" 2
 wt frob "$D" >/dev/null; eq "an unknown subcommand is a usage error (rc 2)" "$?" 2
 wt rotate "$D" >/dev/null; eq "rotate without --to is a usage error (rc 2)" "$?" 2
