@@ -1372,7 +1372,6 @@ def bound_labels(outputs, fixtures, cases, per_case, gold, path):
 
 
 def miss_grade(cid, defect, near, labels):
-    """(grade, blocking) of a location-only defect from the labels of its near findings."""
     got = [(f, labels.get((cid, adjudication.finding_sha256(f)))) for f in near]
     right = [f for f, lab in got if lab and lab["correctness"] == "correct" and defect["id"] in lab["target_ids"]]
     if right:
@@ -1432,7 +1431,6 @@ def miss_bundle(per_case, cases, critics, members, window, draws, labels):
 
 
 def judged_row(ledger):
-    """The judged eval's newest ok ledger row as {run_id, model, metrics, ci}, or None."""
     rows = [r for r in eval_runs.read_rows(ledger) if r["eval"] == JUDGED_EVAL and r["status"] == "ok"]
     return {k: rows[-1][k] for k in ("run_id", "model", "metrics", "ci")} if rows else None
 
@@ -1556,7 +1554,6 @@ def report_misses(res):
 
 
 def redact_ids(text, cases):
-    """text with every sealed case id and sealed defect id of the key's cases replaced, the longest first."""
     names = {}
     for cid, c in cases.items():
         if c.get("split") != "open":
@@ -1568,7 +1565,6 @@ def redact_ids(text, cases):
 
 
 def redact_sealed(text, key_path):
-    """redact_ids over the key file: a refusal of misses may quote a fixture path or a label."""
     try:
         return redact_ids(text, load_key(key_path)["cases"])
     except (OSError, ValueError):
