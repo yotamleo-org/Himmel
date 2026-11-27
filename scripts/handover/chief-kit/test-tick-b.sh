@@ -1035,6 +1035,11 @@ STUB
     cut_crf="$(STUB_PR_FAIL=1 cut_tick)"
     cut_exit 'a tick whose pr read fails'
     not_contains '(8843) a failed pr read leaves crfirst= off' "$cut_crf" 'crfirst='
+    cut_rows="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\\n' 3101 dependabot/pip/x-1.0 false app/dependabot false "$(iso_ago 20)" 0 deadbeef01 "$(iso_ago 20)" '')"
+    cut_dep="$(cut_tick)"
+    cut_exit 'a tick over a Dependabot PR'
+    contains 'D11 a Dependabot PR keeps its CR-first row' "$cut_dep" ' crfirst=#3101:cheap-red:'
+    contains 'D11 the same PR is named in dependabot=' "$cut_dep" ' dependabot=1:20m:20m:#3101 '
     rm -rf "$W/repo/.git" "$W/cut" "$W/cut-bin" "$W/handover/cut-chief.md"
 else
     skip '(8843) cut-read rows: no timeout binary'

@@ -93,7 +93,7 @@ are still owed. Offline fixtures do not establish them.
 
 Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
 entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
-RM queue older than twice its launch gap, and `mon-down` once per down streak.
+RM queue older than twice its launch gap, `mon-down` once per down streak, and a settled new Dependabot PR set, once per set, with a 24 h reminder.
 Open-count/residual-cap and persistent underfill retain their existing semantics.
 `rm-blocked=` is a plain key field: one wake per distinct set of blocked unfinished
 rulings, `?` keeps the last known set, and the wake is the shared `WAKE tick` line

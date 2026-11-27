@@ -76,6 +76,42 @@ check 'crash: a crash returning right after the repair wake wakes again' '0 WAKE
 check 'X11-23: the table names rm-blocked as a whole-retain-unknown change key row' \
     "rm-blocked	whole-retain-unknown	change	0	key	absent" "$(awk -F'\t' '$1 == "rm-blocked"' "$TABLE")"
 
+dep_two='TICK workers=0 dependabot=2:12m:6m:#3101,#3102'
+check 'W1: a settled set wakes with its PRs and oldest age' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d1 "$dep_two")"
+check 'W2: the same set does not wake again' '1 ' "$(wr d1 "$dep_two")"
+check 'W3: a smaller set does not wake' '1 ' "$(wr d1 'TICK dependabot=1:12m:12m:#3102')"
+check 'W3: a PR that left and came back, with a new one, wakes with all' '0 WAKE dependabot #3101,#3102,#3103 oldest=20m' "$(wr d1 'TICK dependabot=3:20m:6m:#3101,#3102,#3103')"
+check 'W4: a fresh inbox holds while the newest PR is young' '1 ' "$(wr d4 'TICK dependabot=3:12m:2m:#3201,#3202,#3203')"
+check 'W4: the same set wakes once it has settled' '0 WAKE dependabot #3201,#3202,#3203 oldest=12m' "$(wr d4 'TICK dependabot=3:12m:6m:#3201,#3202,#3203')"
+dep_marker="$W/d5.wait.rule-dependabot"
+check 'W5 control: the set wakes' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d5 "$dep_two")"
+dep_state() { printf '%s %s' "$(stat -c %Y "$W/$1.wait.rule-dependabot")" "$(cat "$W/$1.wait.rule-dependabot")"; }  # gnu-ok: Linux-only kit
+touch -d '1 hour ago' "$dep_marker"
+dep_before="$(dep_state d5)"
+for dep_bad in '?' skip garbled '2:12m:#3101'; do
+    check "W5: dependabot=$dep_bad does not wake" '1 ' "$(wr d5 "TICK dependabot=$dep_bad")"
+    check "W5: dependabot=$dep_bad leaves the marker" "$dep_before" "$(dep_state d5)"
+done
+check 'W5: an absent field does not wake' '1 ' "$(wr d5 'TICK workers=0')"
+check 'W5: an absent field clears the marker' gone "$([ -e "$dep_marker" ] && echo there || echo gone)"
+check 'W5: the next settled sight wakes' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d5 "$dep_two")"
+check 'W6 control: the set wakes' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d6 "$dep_two" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=1)"
+touch -d '2 minutes ago' "$W/d6.wait.rule-dependabot"
+check 'W6: past the reminder the same set wakes again' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d6 "$dep_two" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=1)"
+touch -d '2 minutes ago' "$W/d6.wait.rule-dependabot"
+dep_one='TICK dependabot=1:12m:12m:#3102'
+check 'W7: past the reminder a smaller set wakes' '0 WAKE dependabot #3102 oldest=12m' "$(wr d6 "$dep_one" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=1)"
+check 'W7: and only once' '1 ' "$(wr d6 "$dep_one" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=1)"
+dep_marker="$W/d8.wait.rule-dependabot"
+check 'W8 control: the set wakes' '0 WAKE dependabot #3101,#3102 oldest=12m' "$(wr d8 "$dep_two" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=3)"
+touch -d '2 minutes ago' "$dep_marker"
+dep_mtime="$(stat -c %Y "$dep_marker")"  # gnu-ok: Linux-only kit
+check 'W8: a smaller set inside the reminder does not wake' '1 ' "$(wr d8 "$dep_one" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=3)"
+check 'W8: the shrink keeps the reminder clock and records the smaller set' "$dep_mtime #3102" "$(dep_state d8)"
+touch -d '4 minutes ago' "$dep_marker"
+check 'W8: past the reminder the smaller set wakes' '0 WAKE dependabot #3102 oldest=12m' "$(wr d8 "$dep_one" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=3)"
+check 'W8: and only once' '1 ' "$(wr d8 "$dep_one" CHIEF_WAIT_DEPENDABOT_REWAKE_MIN=3)"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-chief-wait-rules.sh'
     exit 0
