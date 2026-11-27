@@ -426,7 +426,36 @@
 # so a later move to STALE wakes again. A sample where board moves to ok AND
 # another action field changes still wakes, naming only the other field(s).
 #
+# Chief duties (needs --doc and --workers-from): after each successful sample's tick the waiter runs
+# chief-duty-sweep.sh under `timeout -k 2 <bound>` with CHIEF_DUTY_AUTORUN=0, so it sends no rerun
+# unless CHIEF_WAIT_DUTY_AUTORUN=1. Only an exit 0 replaces the list and state; a hang, crash or exit 2
+# never fails the sample. When the last list holds a DUTY or DUTY-RAN line, or a source unread for 15
+# minutes, a wake ends with that list under
+#   chief-duty <n> as of <time>Z[ stale]:   (stale: a list older than 900 s)
+# A wake also carries `chief-duty sweep failing rc=<rc> since <time>Z` while the sweep fails, and
+# `chief-duty off: <reason>` when an input a named sweep needs is missing. The owed-stale lines are
+# folded into one `DUTY owed-stale x<n> (not listed; run the sweep by hand)`; every other line printed
+# is marked shown. A sample that no earlier rule woke on prints
+#   WAKE chief-duty <n> new=<kind>:<id>[,...]
+# when an id in its list is not shown, was on an earlier fresh list in the same phase and is past its
+# kind's minimum age; guard-refusal, printed once, counts on its first list. An id that only leaves
+# never wakes; one absent from every fresh list for 10 minutes is forgotten.
+# Phase, read from the why text (first match wins):
+#   ci-masked   `rerun sent` or `reserved by another sweep` = sent; `held: drain` = drain;
+#               any other `held:` = held
+#   judge-owed  `judge-pending:` = pending
+#   anything else = -
+# Minimum age:
+#   go-owed 30 min; answer-owed 20 min; guard-refusal 0 (first list); ci-masked 0, never in phase
+#   sent or drain; dispatch-owed, judge-running, owed-stale and an unread source never wake;
+#   merge-owed, judge-owed and any other kind 0.
+#
 # Files next to the inbox:
+#   <inbox>.wait.duty        the last fresh duty list, verbatim.
+#   <inbox>.wait.duty-state  `<kind> <id> <phase> <first seen> <last seen> <shown 0|1>` per listed id
+#                        and unread source (kind ?).
+#   <inbox>.wait.duty-fail   `<rc> <first failure epoch>` while the sweep fails.
+#   <inbox>.wait.duty-out, <inbox>.wait.duty-err  the last sweep's stdout and stderr.
 #   <inbox>.wait       heartbeat, rewritten every poll:
 #                      `hb=<epoch> pid=<pid> key=<sha16> tick=<ok|fail|-> state=waiting`,
 #                      `state=sampling` while a tick runs, then on every
@@ -437,7 +466,8 @@
 #                      Telegram line waits for it. The relay adds at most one
 #                      wrap attempt (240 s +5 s kill grace), refreshing the heartbeat
 #                      before its call; a READY wake's three checks (165 + 30 + 90 s by default,
-#                      +5 s kill grace each) refresh it before each one. Older than those bounds plus a few polls,
+#                      +5 s kill grace each) refresh it before each one. The duty sweep adds at most
+#                      CHIEF_WAIT_DUTY_TIMEOUT +2 s and refreshes it first. Older than those bounds plus a few polls,
 #                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
 #                        line 3 `failwoke` once a failure streak has woken).
@@ -492,7 +522,12 @@
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
 # 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
-# Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
+# Env: CHIEF_WAIT_DUTY_CMD names the duty sweep (empty: off; unset: chief-duty-sweep.sh, or off
+# beside a CHIEF_WAIT_TICK replacement);
+# CHIEF_WAIT_DUTY_TIMEOUT bounds one sweep in seconds (default 60);
+# CHIEF_WAIT_DUTY_AUTORUN=1 lets that sweep send its CI rerun (the waiter's own CHIEF_DUTY_AUTORUN is
+# not passed through).
+# CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
 # CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_IDLE_PASSES (default 10) and
 # CHIEF_WAIT_IDLE_POLL_SEC (default 1, never below the poll; a value that is not a plain decimal number is the
 # default): in stream mode the loop sleeps the idle poll
@@ -642,6 +677,16 @@ awk -v a="$idle_poll" -v b="$poll" 'BEGIN { exit !(a + 0 > b + 0) }' || idle_pol
 idle_passes=0
 tick_timeout="${CHIEF_WAIT_TICK_TIMEOUT:-120}"
 tick_cmd="${CHIEF_WAIT_TICK:-$HERE/tick.sh}"
+duty_default="$HERE/chief-duty-sweep.sh"
+[ -z "${CHIEF_WAIT_TICK:-}" ] || duty_default=""
+duty_cmd="${CHIEF_WAIT_DUTY_CMD-$duty_default}"
+duty_timeout="${CHIEF_WAIT_DUTY_TIMEOUT:-60}"
+case "$duty_timeout" in ''|*[!0-9]*|??????????*) duty_timeout=60 ;; esac
+[ $((10#$duty_timeout)) -gt 0 ] || duty_timeout=60
+duty_autorun=0
+[ "${CHIEF_WAIT_DUTY_AUTORUN:-}" != 1 ] || duty_autorun=1
+duty_file="$inbox.wait.duty"; duty_state="$inbox.wait.duty-state"; duty_fail="$inbox.wait.duty-fail"
+duty_t=""
 
 # One waiter per inbox: a second would double every wake. flock is atomic and
 # the lock dies with the waiter; every child runs with fd 9 closed, so a killed
@@ -746,8 +791,113 @@ nap() {
     wait "$child_pid"
     child_pid=""
 }
+duty_run() {
+    duty_t=""
+    [ -n "$duty_cmd" ] && [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 0
+    local rc t since
+    heartbeat sampling
+    stoppable "$hb_file.duty-out" "$hb_file.duty-err" env CHIEF_DUTY_AUTORUN="$duty_autorun" \
+        timeout -k 2 "$duty_timeout" bash "$duty_cmd" --doc "$console_doc" --workers-from "$legs_from"  # gnu-ok: Linux-only kit (timeout)
+    rc=$?
+    t="$(date +%s)"
+    if [ "$rc" -eq 0 ]; then
+        atomic_write "$duty_file" < "$hb_file.duty-out" || return 0
+        duty_state_update "$t" && duty_t="$t"
+        rm -f "$duty_fail"
+    else
+        since=""
+        [ ! -f "$duty_fail" ] || since="$(awk 'NR == 1 { print $2 }' "$duty_fail")"
+        case "$since" in ''|*[!0-9]*) since="$t" ;; esac
+        printf '%s %s\n' "$rc" "$since" | atomic_write "$duty_fail"
+    fi
+    return 0
+}
+# shellcheck disable=SC2016  # awk source, not shell
+duty_id_awk='function duty_id(   i, s) { s = $3; if ($2 == "guard-refusal") for (i = 4; i <= NF && $i != "::"; i++) s = s ":" $i; return s }'
+duty_state_update() {
+    local old="$duty_state" new
+    [ -f "$old" ] || old=/dev/null
+    new="$(awk -v t="$1" "$duty_id_awk"'
+        FILENAME == ARGV[1] { if (NF == 6) { k = $1 " " $2; ph[k] = $3; first[k] = $4; last[k] = $5; shown[k] = $6 } next }
+        $1 == "DUTY?" || $1 == "DUTY" {
+            p = "-"
+            if ($1 == "DUTY?") {
+                id = $2
+                for (i = 3; i < NF; i++) id = id ":" $i
+                k = "? " id
+            } else {
+                k = $2 " " duty_id()
+                why = substr($0, index($0, " :: ") + 4)
+                if ((c = index(why, " :: next: ")) > 0) why = substr(why, 1, c - 1)
+                if ($2 == "ci-masked") {
+                    if (index(why, "rerun sent") || index(why, "reserved by another sweep")) p = "sent"
+                    else if (index(why, "held: drain")) p = "drain"
+                    else if (index(why, "held:")) p = "held"
+                } else if ($2 == "judge-owed" && index(why, "judge-pending:")) p = "pending"
+            }
+            if (!(k in ph) || ph[k] != p) { ph[k] = p; first[k] = t; shown[k] = 0 }
+            last[k] = t
+        }
+        $1 == "DUTY-RAN" && / rc=0$/ { done_id[$2 " " $3] = 1 }
+        END {
+            for (k in done_id) if (k in ph) shown[k] = 1
+            for (k in ph) if (t - last[k] < 600) print k, ph[k], first[k], last[k], shown[k]
+        }' "$old" "$duty_file" | LC_ALL=C sort)" || return 1
+    printf '%s' "${new:+$new
+}" | atomic_write "$duty_state"
+}
+duty_wake() {
+    [ -n "$duty_t" ] || return 1
+    local ids
+    ids="$(awk -v t="$duty_t" '
+        $5 == t && $6 == 0 && ($4 < t || $1 == "guard-refusal") {
+            age = 0
+            if ($1 == "go-owed") age = 1800
+            else if ($1 == "answer-owed") age = 1200
+            else if ($1 == "dispatch-owed" || $1 == "judge-running" || $1 == "owed-stale" || $1 == "?") age = -1
+            else if ($1 == "ci-masked" && ($3 == "sent" || $3 == "drain")) age = -1
+            if (age >= 0 && t - $4 >= age) print $1 ":" $2
+        }' "$duty_state" | LC_ALL=C sort)"
+    [ -n "$ids" ] || return 1
+    printf 'WAKE chief-duty %s new=%s\n' "$(printf '%s\n' "$ids" | grep -c .)" "$(printf '%s\n' "$ids" | paste -sd, -)"
+}
+duty_carry() {
+    case "$exit_reason" in wake-*) ;; *) return 0 ;; esac
+    [ -n "$duty_cmd" ] || return 0
+    if [ -z "$console_doc" ]; then printf 'chief-duty off: no --doc\n'; return 0; fi
+    if [ -z "$legs_from" ]; then printf 'chief-duty off: no --workers-from\n'; return 0; fi
+    local state="$duty_state" at stale="" body marked rc since
+    [ -f "$state" ] || state=/dev/null
+    if [ -f "$duty_file" ] && awk '
+        FILENAME == ARGV[1] { if ($1 == "?" && $5 - $4 >= 900) old[$2] = 1; next }
+        $1 == "DUTY" || $1 == "DUTY-RAN" { found = 1 }
+        $1 == "DUTY?" { id = $2; for (i = 3; i < NF; i++) id = id ":" $i; if (id in old) found = 1 }
+        END { exit !found }' "$state" "$duty_file"; then
+        at="$(stat -c %Y "$duty_file")" || return 1  # gnu-ok: Linux-only kit
+        [ $(( $(date +%s) - at )) -le 900 ] || stale=" stale"
+        body="$(awk '
+            $1 == "DUTY" && $2 == "owed-stale" { n++; if (!slot) slot = ++m; next }
+            $1 == "DUTY?" || $1 == "DUTY" || $1 == "DUTY-RAN" { out[++m] = $0 }
+            END {
+                if (slot) out[slot] = "DUTY owed-stale x" n " (not listed; run the sweep by hand)"
+                for (i = 1; i <= m; i++) print out[i]
+            }' "$duty_file")" || return 1
+        printf 'chief-duty %s as of %sZ%s:\n%s\n' "$(grep -c '^DUTY ' "$duty_file")" \
+            "$(date -u -d "@$at" +%Y-%m-%dT%H:%M:%S)" "$stale" "$body" || return 1  # gnu-ok: Linux-only kit
+        if [ -f "$duty_state" ]; then
+            marked="$(awk "$duty_id_awk"'
+                FILENAME == ARGV[1] { if ($1 == "DUTY" && $2 != "owed-stale") printed[$2 " " duty_id()] = 1; next }
+                { if (($1 " " $2) in printed) $6 = 1; print }' "$duty_file" "$duty_state")" || return 1
+            printf '%s' "${marked:+$marked
+}" | atomic_write "$duty_state"
+        fi
+    fi
+    [ -f "$duty_fail" ] || return 0
+    read -r rc since < "$duty_fail" || return 0
+    printf 'chief-duty sweep failing rc=%s since %sZ\n' "$rc" "$(date -u -d "@$since" +%Y-%m-%dT%H:%M:%S)"  # gnu-ok: Linux-only kit
+}
 child_stop() { [ -z "$child_pid" ] || kill "$child_pid" 2>/dev/null; return 0; }  # swallow-ok: a child that already ended needs no kill
-trap '[ -z "${marker_carry_on:-}" ] || marker_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
+trap '[ -z "${marker_carry_on:-}" ] || marker_carry; duty_carry; lookonly_carry; digest_flush; heartbeat exited "$exit_reason"' EXIT
 trap "exit_reason='signal-TERM'; child_stop; exit 143" TERM
 trap "exit_reason='signal-INT'; child_stop; exit 130" INT
 trap "exit_reason='signal-HUP'; child_stop; exit 129" HUP
@@ -3463,6 +3613,7 @@ while :; do
         focus_rebuild
         if quota_step; then exit_reason='wake-quota-back'; exit 0; fi
         if [ -n "$key" ]; then
+            duty_run
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
             station_heal_step "$(field station "$tick_line")"
@@ -3716,6 +3867,10 @@ while :; do
             if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && rmm_out="$(ready_mismatch_wake "$(field ready-mismatch "$tick_line")")"; then
                 printf '%s\n%s\n' "$rmm_out" "$tick_line"
                 exit_reason='wake-ready-mismatch'; exit 0
+            fi
+            if duty_out="$(duty_wake)"; then
+                printf '%s\n%s\n' "$duty_out" "$tick_line"
+                exit_reason='wake-chief-duty'; exit 0
             fi
         else
             pending=""

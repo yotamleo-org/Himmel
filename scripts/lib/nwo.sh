@@ -76,8 +76,13 @@ _cmg_nwo_eq() {
 # namesake. The output feeds straight back into _cmg_canon_nwo (a HOST/OWNER/NAME
 # is its 3-segment case), so both sides are canonicalized the same way.
 _cmg_local_nwo() {
-    local url rest host_nwo host path
+    local url
     url=$(git config --get remote.origin.url 2>/dev/null) || return 1
+    _cmg_url_nwo "$url"
+}
+
+_cmg_url_nwo() {
+    local url="${1:-}" rest host_nwo host path
     [ -n "$url" ] || return 1
     rest=${url%.git}
     case "$url" in

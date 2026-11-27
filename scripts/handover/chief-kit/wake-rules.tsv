@@ -26,6 +26,7 @@ denials	raised!	enter	0	key	expiry-silent
 closable	whole	change	0	key	absent
 deadwin	whole	change	0	key	absent
 owed	stale-count-retain-unknown	positive	0	owed	fall-silent
+chief-duty	duty-ids-two-lists-kind-age	enter	0	duty-state	absent-10m-or-phase
 unowned	whole-retain-unknown	change	0	key	absent
 usage	verdict	change	0	key	read-failure-keeps
 unowned-prs	pr-set	enter	60	unowned	two-none-samples
