@@ -29,6 +29,7 @@ export interface Ctx {
   jira: JiraPort;
   mirrorRoot: string | null;
   deliveredPr?: (key: string) => number | undefined;
+  signal?: AbortSignal;
   procRoot?: string;
   hostNsPath?: string;
 }
