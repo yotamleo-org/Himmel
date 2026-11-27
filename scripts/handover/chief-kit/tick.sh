@@ -3230,7 +3230,7 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
             stale_live="$(drift_stale "$stale_drift")" || stale_live=""
             if [ -n "$stale_live" ]; then
                 stale_summary="${stale_live%%$'\n'*}"
-                stale_all="${stale_live#*$'\n'}"
+                case "$stale_live" in *$'\n'*) stale_all="${stale_live#*$'\n'}" ;; esac
             fi
         fi
     fi
@@ -3247,10 +3247,15 @@ if [ -n "$console_doc" ] && [ -n "$stale_summary" ]; then
             *) unowned_keys="$(printf '%s' "${stale_summary##*:}" | tr ',' ' ')" ;;
         esac
     fi
+    un_count="${stale_summary#partial:}"; un_count="${un_count%%:*}"
+    un_bad=""
+    for un_key in $unowned_keys; do
+        [[ $un_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || un_bad=1
+    done
     case "$stale_summary" in
-        0:*) ;;
+        0:) ;;
         *)
-            if [ -z "$unowned_keys" ]; then
+            if [ -n "$un_bad" ] || [ -z "$unowned_keys" ] || [ "$(wc -w <<< "$unowned_keys")" -ne "$un_count" ]; then
                 unowned_summary='?'
             elif ! unowned_queued="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}")"; then
                 unowned_summary='?'
@@ -3258,7 +3263,7 @@ if [ -n "$console_doc" ] && [ -n "$stale_summary" ]; then
                 unowned_queued="$(printf '%s\n' "$unowned_queued" | cut -f4,6; grep '^queue:' "$console_doc")"
                 unowned_list="" unowned_n=0
                 for un_key in $unowned_keys; do
-                    grep -qE "(^|[^A-Za-z0-9-])$un_key([^0-9]|$)" <<< "$unowned_queued" && continue
+                    grep -qE "(^|[^A-Za-z0-9_-])$un_key([^A-Za-z0-9_-]|$)" <<< "$unowned_queued" && continue
                     unowned_n=$((unowned_n + 1))
                     unowned_list="${unowned_list:+$unowned_list,}$un_key"
                 done

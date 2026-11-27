@@ -1184,6 +1184,18 @@ contains '11376 an unreadable stale feed reads unowned=?' "$(un_tick)" ' unowned
 printf 'status=ok\ngen=1\ndirty=\nstale=1:HIMMEL-9102\n' > "$un_dir/focus-state"
 printf 'not json\n' > "$un_dir/owed.jsonl"
 contains '11376 an unreadable owed ledger reads unowned=?, never a wake on a guess' "$(un_tick)" ' unowned=?'
+rm -f "$un_dir/owed.jsonl"
+printf 'status=ok\ngen=1\ndirty=\nstale=2:HIMMEL-9101\n' > "$un_dir/focus-state"
+contains '11376 a stale line whose count disagrees with its keys reads unowned=?' "$(un_tick)" ' unowned=?'
+printf '# chief\n\nfocus-version: v9.9.9\nqueue: wake=done:HIMMEL-9102-S1 and HIMMEL-9101x\n' > "$un_dir/chief.md"
+printf 'status=ok\ngen=1\ndirty=\nstale=2:HIMMEL-9101,HIMMEL-9102\n' > "$un_dir/focus-state"
+contains '11376 a longer token that starts with the key does not queue it' "$(un_tick)" ' unowned=2:HIMMEL-9101,HIMMEL-9102'
+touch -d '-1 hour' "$un_dir/focus-state"
+printf 'sdrift=unknown\n' > "$un_dir/focus-drift.txt"
+un_partial="$(un_tick)"
+contains '11376 control: the newer drift file is the stale feed' "$un_partial" ' stale=partial:0:'
+contains '11376 a partial drift with no keys reads unowned=?, never a made-up key' "$un_partial" ' unowned=?'
+not_contains '11376 and names no key from the summary itself' "$un_partial" 'unowned=1:'
 grep -q "^unowned	whole-retain-unknown	change	0	key	" "$HERE/wake-rules.tsv" && pass "11376 unowned is in the waiter's action key" || fail "11376 unowned is not in the waiter's action key"
 
 wo_doc="HIMMEL-10572-N5801-wrapped-open-2026-11-26-RESUME"

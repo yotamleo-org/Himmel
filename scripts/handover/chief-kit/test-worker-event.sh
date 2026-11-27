@@ -1011,6 +1011,14 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 
 run21 "WRAPPED N6021"
 contains "21e an already signed design: the next step is the build slice" "$(owed21 "$step21 | .text")" "launch the next slice"
 
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:05 LIVE — HIMMEL-21 design signed by chief DY' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+contains "21e2 a signature recorded before a plain WRAPPED bullet still counts" "$(owed21 "$step21 | .text")" "launch the next slice"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design not yet signed by chief DY'
+run21 "WRAPPED N6021"
+contains "21e3 not yet signed is not signed" "$(owed21 "$step21 | .text")" "sign the design"
+
 doc21 yes '- 10:00 LIVE — x' '- 10:10 WRAPPED — done'
 run21 "WRAPPED N6021"
 check "21f control: Completes ticket yes writes no owed row" "$(owed21 'length')" none
