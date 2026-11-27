@@ -46,6 +46,12 @@
 #   7  bucket-gitleaks.sh finds a secret in the bullet - nothing written
 #   8  a PROOF / LIVE-PROOF bullet is not `<KEY> <row-id> PASS|FAIL <date> <artifact>` - nothing written
 #   9  its PROOF line could not be put on the ticket - nothing written
+#  10  a worker bullet holding READY-TO-SIGN lacks a field, sign-check refuses its
+#      files, or its two shas are not the ones sign-check printed - nothing written.
+#      The bullet carries spec= plan= spec-return= plan-return= (absolute paths)
+#      keys=<K[,K]> spec-sha= plan-sha=, and route=spec-review when that signs it
+#  11  sign-check gave neither answer (no Jira CLI, or a build without the verb) -
+#      nothing written
 #
 # Platform guard: POSIX bash 3.2+, no GNU-only flags.
 set -u
@@ -95,6 +101,73 @@ case "$is_worker:$lead" in
         esac ;;
 esac
 
+sign_field() {
+    local re="(^|[[:space:]])$1=([^[:space:]]+)"
+    if [[ $TEXT =~ $re ]]; then printf '%s' "${BASH_REMATCH[2]}"; fi
+}
+sign_gate() {
+    local name value spec="" plan="" r1="" r2="" keys="" spec_sha="" plan_sha="" route out rc
+    local ok_re='^SIGN-CHECK OK spec-sha=([0-9a-f]{64}) plan-sha=([0-9a-f]{64}|none)$'
+    for name in spec plan spec-return plan-return keys spec-sha plan-sha; do
+        value="$(sign_field "$name")"
+        if [ -z "$value" ]; then
+            echo "append-results: a READY-TO-SIGN bullet carries spec= plan= spec-return= plan-return= (absolute paths) keys= spec-sha= plan-sha=; '$name=' is missing - nothing written (to only mention it, write 'ready to sign')" >&2
+            exit 10
+        fi
+        case "$name" in
+            spec) spec="$value" ;;
+            plan) plan="$value" ;;
+            spec-return) r1="$value" ;;
+            plan-return) r2="$value" ;;
+            keys) keys="$value" ;;
+            spec-sha) spec_sha="$value" ;;
+            plan-sha) plan_sha="$value" ;;
+        esac
+    done
+    for value in "$spec" "$plan" "$r1" "$r2"; do
+        case "$value" in
+            /*) ;;
+            *) echo "append-results: READY-TO-SIGN takes absolute paths, not '$value' - nothing written" >&2; exit 10 ;;
+        esac
+    done
+    route="$(sign_field route)"
+    case "$route" in
+        ''|spec|spec-review) ;;
+        *) echo "append-results: READY-TO-SIGN route= is spec or spec-review, not '$route' - nothing written" >&2; exit 10 ;;
+    esac
+    set -- release sign-check --keys "$keys" --spec "$spec" --plan "$plan" --verdict "$r1" --verdict "$r2"
+    [ -z "$route" ] || set -- "$@" --route "$route"
+    out=""; rc=127
+    # shellcheck source=scripts/lib/jira-cli-path.sh
+    if . "$(dirname "${BASH_SOURCE[0]}")/../../lib/jira-cli-path.sh"; then
+        out="$(jira_cli_run "${keys%%,*}" "$@")"; rc=$?
+    fi
+    if [ "$rc" -eq 0 ] && [[ $out =~ $ok_re ]]; then
+        if [ "${BASH_REMATCH[1]}" != "$spec_sha" ] || [ "${BASH_REMATCH[2]}" != "$plan_sha" ]; then
+            echo "$out" >&2
+            echo "append-results: the bullet's spec-sha/plan-sha are not the ones sign-check printed - nothing written" >&2
+            exit 10
+        fi
+        return 0
+    fi
+    if [ "$rc" -eq 1 ]; then
+        case $'\n'"$out" in
+            *$'\n'"SIGN-CHECK REFUSED: "*)
+                echo "$out" >&2
+                echo "append-results: sign-check refuses these files - nothing written; fix them, or write BLOCKED with the refusal (without the READY-TO-SIGN word)" >&2
+                exit 10 ;;
+        esac
+    fi
+    [ -z "$out" ] || echo "$out" >&2
+    echo "append-results: sign-check unavailable: rebuild the primary checkout's scripts/jira (npm run build) - nothing written" >&2
+    exit 11
+}
+if [ "$is_worker" -eq 1 ]; then
+    case "$TEXT" in
+        *READY-TO-SIGN*) sign_gate ;;
+    esac
+fi
+
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
 
@@ -131,12 +204,13 @@ if [ -n "$adopt_to" ]; then
     else
         kit="$(dirname "${BASH_SOURCE[0]}")"
         bus="$kit/../../../marketplace/plugins/himmel-bus/bin/bus"; via="worktree"
-        common=""
-        if . "$kit/../../lib/git-clean.sh" 2>/dev/null; then
-            common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no git, or an old git, keeps the worktree copy
+        primary=""
+        # shellcheck source=scripts/lib/jira-cli-path.sh
+        if . "$kit/../../lib/jira-cli-path.sh" 2>/dev/null; then
+            primary="$(himmel_primary_root)" || primary=""
         fi
-        if [ "${common##*/}" = ".git" ] && [ -x "${common%/.git}/marketplace/plugins/himmel-bus/bin/bus" ]; then
-            bus="${common%/.git}/marketplace/plugins/himmel-bus/bin/bus"; via="anchor"
+        if [ -n "$primary" ] && [ -x "$primary/marketplace/plugins/himmel-bus/bin/bus" ]; then
+            bus="$primary/marketplace/plugins/himmel-bus/bin/bus"; via="anchor"
         fi
     fi
     limit="${APPEND_RESULTS_BUS_TIMEOUT:-15}"

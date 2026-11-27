@@ -269,7 +269,7 @@ check "12: a worker with no bus identity runs no re-adopt" "$(cat "$tmp/bus.log"
 anc13="$tmp/anchor13"
 mkdir -p "$anc13/scripts/handover/chief-kit" "$anc13/scripts/lib" "$anc13/marketplace/plugins/himmel-bus/bin"
 for f13 in append-results.sh bucket-gitleaks.sh worker-doc-lock.sh; do cp "$HERE/$f13" "$anc13/scripts/handover/chief-kit/$f13"; done
-cp "$HERE/../../lib/git-clean.sh" "$anc13/scripts/lib/git-clean.sh"
+cp "$HERE/../../lib/git-clean.sh" "$HERE/../../lib/jira-cli-path.sh" "$anc13/scripts/lib/"
 # shellcheck disable=SC2016  # $2 expands in the stub, not here
 printf '#!/bin/sh\necho "adopted: legx chief CON-A-chief -> $2"\n' > "$anc13/marketplace/plugins/himmel-bus/bin/bus"
 chmod +x "$anc13/marketplace/plugins/himmel-bus/bin/bus"
@@ -346,6 +346,93 @@ rc=0; bash "$SCRIPT" "$d15" "PROOF VERDICT CLOSE evidence=specs/audits/x.md" >/d
 check "15: a PROOF VERDICT bullet is not a result line and appends" "$rc" 0
 rc=0; bash "$SCRIPT" "$d15" "MERGED PROOF in a free text" >/dev/null 2>&1 || rc=$?
 check "15: a bullet that does not lead with PROOF is not mirrored" "$(cat "$tmp/calls.log" 2>/dev/null)" ""
+unset OWE_JIRA_CLI STUB_DIR
+
+JIRA16="$tmp/jira16"
+cat > "$JIRA16" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$STUB_DIR/calls.log"
+echo "JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY:-}" >> "$STUB_DIR/calls.log"
+a=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+b=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+case "$STUB_SIGN" in
+    ok) echo "SIGN-CHECK OK spec-sha=$a plan-sha=$b" ;;
+    refuse) echo "SIGN-CHECK REFUSED: x"; exit 1 ;;
+    stale) echo "error: unknown command 'sign-check'" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$JIRA16"
+export OWE_JIRA_CLI="$JIRA16" STUB_DIR="$tmp"
+sha_a="$(printf 'a%.0s' {1..64})"; sha_b="$(printf 'b%.0s' {1..64})"; sha_c="$(printf 'c%.0s' {1..64})"
+d16="$tmp/HIMMEL-9-N16-fixture-2026-11-27.md"
+printf '# worker\n\nYour RETASK token is X-16.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d16"
+cp "$d16" "$tmp/d16.before"
+files16="spec=/s/spec.md plan=/s/plan.md spec-return=/s/r1.md plan-return=/s/r2.md keys=$K1"
+ready16="LIVE — READY-TO-SIGN $files16 spec-sha=$sha_a plan-sha=$sha_b"
+run16() { rm -f "$tmp/calls.log"; rc=0; err="$(STUB_SIGN="$1" WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$2" "$3" 2>&1 >/dev/null)" || rc=$?; }
+calls16() { cat "$tmp/calls.log" 2>/dev/null; }
+refused16() {
+    check "16: $1: exit $2" "$rc" "$2"
+    cmp -s "$d16" "$tmp/d16.before" && echo "ok - 16: $1: doc unchanged" || { echo "FAIL - 16: $1: doc unchanged"; fails=$((fails+1)); cp "$tmp/d16.before" "$d16"; }
+}
+run16 refuse "$d16" "$ready16"
+refused16 "refused bytes" 10
+contains "16: the refusal prints sign-check's own line" "$err" "SIGN-CHECK REFUSED: x"
+run16 ok "$d16" "LIVE — READY-TO-SIGN $files16 spec-sha=$sha_c plan-sha=$sha_b"
+refused16 "another spec-sha" 10
+run16 ok "$d16" "LIVE — READY-TO-SIGN $files16 spec-sha=$sha_a plan-sha=$sha_c"
+refused16 "another plan-sha" 10
+run16 ok "$d16" "LIVE — READY-TO-SIGN spec=/s/spec.md plan=/s/plan.md spec-return=/s/r1.md keys=$K1 spec-sha=$sha_a plan-sha=$sha_b"
+refused16 "no plan-return" 10
+contains "16: the missing field is named" "$err" "plan-return"
+check "16: a missing field calls nothing" "$(calls16)" ""
+run16 stale "$d16" "$ready16"
+refused16 "a build with no sign-check" 11
+contains "16: it says sign-check is unavailable" "$err" "sign-check unavailable"
+
+run16 ok "$d16" "$ready16"
+check "16: accepted bytes with matching shas append rc 0" "$rc" 0
+check "16: the checked bullet is in the doc" "$(tail -n 1 "$d16" | sed 's/^- [0-9:]* //')" "$ready16"
+contains "16: the CLI saw the bullet's files" "$(calls16)" "release sign-check --keys $K1 --spec /s/spec.md --plan /s/plan.md --verdict /s/r1.md --verdict /s/r2.md"
+contains "16: the CLI ran under the first key's project" "$(calls16)" "JIRA_PROJECT_KEY=HIMMEL"
+run16 ok "$d16" "RESOLVED — $ready16 route=spec-review"
+check "16: a spec-review bullet appends rc 0" "$rc" 0
+contains "16: the route reaches the CLI" "$(calls16)" "--route spec-review"
+run16 refuse "$d16" "LIVE ready to sign soon"
+check "16: a bullet without the token appends rc 0" "$rc" 0
+check "16: a bullet without the token calls nothing" "$(calls16)" ""
+d16chief="$tmp/HIMMEL-9-N16-fixture-2026-11-27-chief.md"
+cp "$d16" "$d16chief"
+run16 refuse "$d16chief" "$ready16"
+check "16: a chief doc takes the token unchecked, rc 0" "$rc" 0
+check "16: a chief doc calls nothing" "$(calls16)" ""
+
+jira_src="$(cd "$HERE/../../jira" && pwd)"
+if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
+    printf '#!/bin/sh\nexec bun "%s/src/index.ts" "$@"\n' "$jira_src" > "$tmp/jira-real"
+    chmod +x "$tmp/jira-real"
+    export OWE_JIRA_CLI="$tmp/jira-real"
+    fx="$tmp/fx16"; mkdir -p "$fx"
+    printf '{"median_seq":1,"sigma":0.5,"dod":{"passed":true}}\n' > "$fx/est.json"
+    printf -- '---\nplan: %s\n---\n# fixture\n\nKey: %s\n\nEstimate record: est.json\n\n## Alternatives considered\n\n- none other.\n\n## Invariants\n\nnone\n\n## Definition of done\n\n1. it works.\n' "$fx/plan.md" "$K1" > "$fx/spec.md"
+    printf '# plan\n' > "$fx/plan.md"
+    printf 'SPEC CLEAN\n' > "$fx/spec.md.critic-spec-r1.md"
+    printf 'PLAN CLEAN\n' > "$fx/spec.md.critic-plan-r1.md"
+    spec_sha="$(sha256sum "$fx/spec.md" | cut -d' ' -f1)"; plan_sha="$(sha256sum "$fx/plan.md" | cut -d' ' -f1)"
+    real16="LIVE — READY-TO-SIGN spec=$fx/spec.md plan=$fx/plan.md spec-return=$fx/spec.md.critic-spec-r1.md plan-return=$fx/spec.md.critic-plan-r1.md keys=$K1 spec-sha=$spec_sha plan-sha=$plan_sha"
+    cp "$d16" "$tmp/d16.before"
+    run16 unused "$d16" "$real16"
+    check "16: the real verb's OK line is read: rc 0" "$rc" 0
+    check "16: the bullet quoting the real shas is written" "$(tail -n 1 "$d16" | sed 's/^- [0-9:]* //')" "$real16"
+    grep -v '^Estimate record:' "$fx/spec.md" > "$fx/spec.tmp" && mv "$fx/spec.tmp" "$fx/spec.md"
+    cp "$d16" "$tmp/d16.before"
+    run16 unused "$d16" "$real16"
+    refused16 "the real verb on a spec with no estimate record" 10
+    contains "16: the real refusal is printed" "$err" "SIGN-CHECK REFUSED: "
+    contains "16: the real refusal names the spec gate" "$err" "minerva-spec-gate"
+else
+    echo "ok - 16: real-verb rows skipped (no bun, or no scripts/jira/node_modules)"
+fi
 unset OWE_JIRA_CLI STUB_DIR
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
