@@ -2637,7 +2637,7 @@ check_c98_wrapped_window() {
 }
 
 check_c100_fleet() {
-    local root anchor anchors=() n=0 cap=50 tb="" t secs picked kind manifest out rc a b c d h found=0 read_all=1 ackcmd=()
+    local root anchor anchors=() n=0 cap=50 tb="" t secs picked kind manifest out rc a b c d h found=0 read_all=1 ackcmd=() legacy_n legacy_docs
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
     root="$(doctor_handover_root 2>/dev/null)" || root=""
     if [ -z "$root" ] || [ ! -d "$root" ]; then
@@ -2712,7 +2712,7 @@ PY
             emit WARN C100-fleet "cannot read fleet attempts for $anchor: the read-only ack exited $rc$([ "$rc" -ne 124 ] || printf ' (no answer within %ss)' "$secs")"
             found=1; continue
         fi
-        picked="$(python3 -I - "$out" <<'PY'
+        answer_reader="$(cat <<'PY'
 import os, sys, json
 
 def clean(value):
@@ -2720,7 +2720,7 @@ def clean(value):
     return text or '-'
 
 try:
-    data = json.loads(sys.argv[1])
+    data = json.loads(sys.stdin.read())
 except ValueError as error:
     print('BAD\t' + clean('the answer is not JSON (%s)' % error))
     sys.exit(0)
@@ -2742,19 +2742,24 @@ for item in data['launched']:
     if not isinstance(doc, str) or '\x00' in doc or not os.path.isfile(doc) or not os.access(doc, os.R_OK):
         print('\t'.join(['UNREAD', clean(item.get('attempt_id')), clean(item.get('name')), clean(doc)]))
 PY
-)" || picked=$'BAD\tpython3 failed'
+)"
+        picked="$(python3 -I -c "$answer_reader" <<< "$out")" || picked=$'BAD\tpython3 failed'
+        legacy_n=0; legacy_docs=""
         while IFS=$'\t' read -r a b c d h; do
             case "$a" in
                 '') ;;
                 BAD) emit WARN C100-fleet "cannot read fleet attempts for $anchor: $b"; found=1 ;;
                 UNKNOWN) emit WARN C100-fleet "fleet attempt $b ($c, $d) is unknown: $h" \
                              "read the hint; a settle is typed by the chief, never by hand-editing $anchor"; found=1 ;;
-                LEGACY) emit WARN C100-fleet "fleet row $b ($c) in $anchor is held by a legacy registration that is not proven wrapped" \
-                            "check the worker, then retire the row with fleet-manifest.sh remove"; found=1 ;;
+                LEGACY) legacy_n=$((legacy_n + 1)); [ "$legacy_n" -gt 3 ] || legacy_docs="$legacy_docs${legacy_docs:+, }$b ($c)"; found=1 ;;
                 UNREAD) emit WARN C100-fleet "launched fleet attempt $b ($c) names a doc that cannot be read: $d" \
                             "the attempt still holds a family slot; the end refuses while the worker lives (owner, session or a process carrying the attempt id); release it by its id with: bash $(printf '%q' "$SELF_DIR/handover/chief-kit/fleet-manifest.sh") attempt end $(printf '%q' "$manifest") --attempt-id $(printf '%q' "$b") --reason <word>"; found=1 ;;
             esac
         done <<< "$picked"
+        if [ "$legacy_n" -gt 0 ]; then
+            emit WARN C100-fleet "$legacy_n fleet $([ "$legacy_n" -eq 1 ] && echo row || echo rows) in $anchor held by a legacy registration that is not proven wrapped; first: $legacy_docs" \
+                "check each worker, then retire its row with fleet-manifest.sh remove"
+        fi
     done
     if [ "$found" -eq 0 ] && [ "$read_all" -eq 1 ]; then
         emit OK C100-fleet "no fleet attempt is unknown across ${#anchors[@]} fleet(s) under $root"

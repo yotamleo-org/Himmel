@@ -2851,6 +2851,22 @@ if [ "$(id -u)" = 0 ]; then pass "C100 unreadable launched doc -> skipped as roo
 elif grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'a5' && ! grepq "$out" 'OK   C100'; then pass "C100 launched doc that exists but cannot be read -> WARN"; else fail "C100 unreadable launched doc -> $(printf '%s' "$out" | head -4)"; fi
 chmod 644 "$c100_doc"
 
+echo "== C100: many legacy rows -> exactly one WARN naming the count and the first three docs =="
+c100_legacy=""
+for c100_i in $(seq 1 60); do c100_legacy="$c100_legacy{\"doc\":\"/h/L$c100_i.md\",\"label\":\"L$c100_i\",\"phase\":\"legacy-unknown\"},"; done
+printf '{"managed":true,"unknown":[],"legacy_unknown":[%s],"launched":[]}' "${c100_legacy%,}" > "$c100_t/answer.json"
+out="$(c100_run)"
+if [ "$(grep -c 'WARN C100-fleet' <<< "$out")" = 1 ] && grepq "$out" -F '60 fleet rows' && grepq "$out" -F '/h/L1.md' && grepq "$out" -F '/h/L3.md' && ! grepq "$out" -F '/h/L4.md'; then pass "C100 60 legacy rows -> one WARN with the count and the first three docs"; else fail "C100 many legacy rows -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C100: an answer over 200000 bytes is read, not lost to the argument-size limit =="
+c100_pad="$(head -c 200000 /dev/zero | tr '\0' x)"
+printf '{"managed":true,"pad":"%s","unknown":[],"legacy_unknown":[],"launched":[]}' "$c100_pad" > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'OK   C100-fleet' && ! grepq "$out" -E 'WARN C100'; then pass "C100 200000-byte clean answer -> OK"; else fail "C100 large clean answer -> $(printf '%s' "$out" | head -3)"; fi
+printf '{"managed":true,"pad":"%s","unknown":[{"attempt_id":"a6","name":"W6","doc":"/h/W6.md","settle_hint":{"text":"read me"}}],"legacy_unknown":[],"launched":[]}' "$c100_pad" > "$c100_t/answer.json"
+out="$(c100_run)"
+if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'a6 (W6, /h/W6.md) is unknown: read me' && ! grepq "$out" -F 'python3 failed'; then pass "C100 200000-byte answer with an unknown attempt -> WARN naming it"; else fail "C100 large unknown answer -> $(printf '%s' "$out" | head -3)"; fi
+
 echo "== C100: an ack that fails, times out, is not JSON or says unmanaged is a WARN, never OK =="
 printf '%s' "$c100_clean" > "$c100_t/answer.json"
 out="$(C100_RC=1 c100_run)"
