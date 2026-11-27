@@ -75,7 +75,12 @@
 #   structural run -- hourly for himmel, DAILY for luna, so
 #   this wrapper must not promise an hour); 5 FAILED --
 #   `graphify update` itself ran and exited non-zero (its real exit code is
-#   logged to stderr, NEVER reused as this script's own exit status). Exit 3
+#   logged to stderr, NEVER reused as this script's own exit status), or the
+#   graphify or `nice` executable is missing from PATH, or graph.json could not be snapshotted,
+#   have its restored semantic nodes set aside before the rebuild, or get them
+#   back after it, or the snapshot left by an interrupted rebuild could not be
+#   restored (that snapshot is kept, and every later run exits 5 until it
+#   restores). Exit 3
 #   is deliberately DISTINCT from exit 4: a real filesystem failure must
 #   never be reported as the benign "lock held, retry next run" skip -- that
 #   is the exact false-benign failure class this lock exists to eliminate.

@@ -795,6 +795,16 @@ out27=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS27" 2>&1 ); rc27=$?
 ids27=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]))' "$OUT27/graph.json")
 [ "$rc27" -eq 0 ] && [ "$ids27" = "a1 a2 s_restored 1" ] && [ ! -e "$OUT27/.graph.pre-ast.json" ] \
   && pass "T27 the set-aside node and its edge came back, leftover removed" || fail "T27 (rc=$rc27) graph: $ids27 :: $out27"
+printf 'not json\n' > "$OUT27/.graph.pre-ast.json"
+cp "$OUT27/graph.json" "$WS/graph27.before"
+out27=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS27" 2>&1 ); rc27=$?
+[ "$rc27" -eq 5 ] && [ -f "$OUT27/.graph.pre-ast.json" ] && cmp -s "$OUT27/graph.json" "$WS/graph27.before" \
+  && pass "T27b an unrestorable leftover exits 5, keeps it and leaves graph.json alone" || fail "T27b (rc=$rc27): $out27"
+rm -f "$OUT27/.graph.pre-ast.json"
+printf 'not json\n' > "$OUT27/graph.json"
+out27=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS27" 2>&1 ); rc27=$?
+[ "$rc27" -eq 5 ] && [ "$(cat "$OUT27/graph.json")" = "not json" ] && grep -q "could not set aside" <<<"$out27" \
+  && pass "T27c a failed set-aside exits 5 with graph.json as it was" || fail "T27c (rc=$rc27): $out27"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
