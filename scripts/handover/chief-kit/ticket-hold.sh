@@ -9,7 +9,7 @@
 #        ticket-hold.sh <KEY> --release [--owner <who>]
 #        ticket-hold.sh <KEY> --release --cloud-session <session_id> --reason <text> --owner <who>
 #   The last form takes a cloud-owned ticket over: it writes one cloud-takeover row to status-events.jsonl and makes no
-#   Jira call; the dispatcher then stops counting that session as the key's owner. Nothing calls it automatically.
+#   Jira call; the dispatcher then stops counting that session as the key's owner.
 #   --owner is chief, operator or a lowercase name (a-z, 0-9, -; at most 32); --until must be a real date.
 #   The hold row records owner, reason and any until (nothing releases the hold on it; the Chains tab reads a
 #   date hold as date-gated until then); status-drift.sh flags a started ticket that is still held as stuck

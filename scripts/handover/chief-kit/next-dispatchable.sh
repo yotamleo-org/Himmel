@@ -932,7 +932,7 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
-cloud_taken = set()  # (KEY, session) pairs a chief took over with a cloud-takeover row
+cloud_taken = set()
 hold_row = {}
 merge_fields = {}
 unconfirmed = set()
@@ -1516,7 +1516,6 @@ if pool_only and not workers_from and not worker_keys:
 now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
-# a cloud session owns its ticket until its PR merges or closes or a chief takes it over: a row's age is printed, never acted on
 cloud_held = []
 CLOUD_NODE = """import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -1549,7 +1548,6 @@ def cloud_prs(key, secs):
         return None
 
 def cloud_states(reads, sessions_of, secs):
-    # one node call for every read key; a wrong count, order or state makes every read key unknown (None)
     keys = [k for k in reads if reads[k] is not None and sessions_of[k]]
     if not keys or secs <= 0:
         return {}
