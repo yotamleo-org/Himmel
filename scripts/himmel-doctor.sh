@@ -6284,7 +6284,7 @@ check_c101_guard_refusals() {
             "build the mirror (docs/internals/jira-plugin.md), then re-run"
         return 0
     fi
-    classes="$(printf '%s\n' "$rows" | LC_ALL=C sort | uniq -c | sed -E 's/^ *([0-9]+) (.*)$/\2\t\1/')"
+    classes="$(printf '%s\n' "$rows" | LC_ALL=C sort | uniq -c | awk '{ n = $1; sub(/^ *[0-9]+ /, ""); print $0 "\t" n }')"
     while IFS=$'\t' read -r guard rule inst count; do
         total=$((total + 1))
         _c101_owned "$mirror" "$guard" "$rule"; found=$?
@@ -6300,18 +6300,22 @@ check_c101_guard_refusals() {
     [ "$unowned" -gt 0 ] || emit OK C101-guard-refusals "every guard refusal class ($total) is named by an open ticket"
 }
 
+_c101_word() {
+    printf '%s' "(^|[^A-Za-z0-9_.:-]|(^|[^A-Za-z0-9_-])[.:])${1//./\\.}(\$|[^A-Za-z0-9_.:-]|[.:](\$|[^A-Za-z0-9_-]))"
+}
+
 _c101_owned() {
     local files f r rc all
     case "$2" in -|non-token) return 1 ;; esac
     case ",$3," in *,-,*|*,non-token,*|*,,*) return 1 ;; esac
-    files="$(grep -rlE --include='*.md' -- "(^|[^A-Za-z0-9_-])${2//./\\.}(\$|[^A-Za-z0-9_-])" "$1" 2>/dev/null)"; rc=$?
+    files="$(grep -rlE --include='*.md' -- "$(_c101_word "$2")" "$1" 2>/dev/null)"; rc=$?
     [ "$rc" -le 1 ] || return 2
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         grep -q '^statusCategory: "Done"' "$f" && continue
         all=1
         for r in ${3//,/ }; do
-            grep -qE -- "(^|[^A-Za-z0-9_-])${r//./\\.}(\$|[^A-Za-z0-9_-])" "$f" || { all=0; break; }
+            grep -qE -- "$(_c101_word "$r")" "$f" || { all=0; break; }
         done
         [ "$all" = 1 ] && return 0
     done <<< "$files"

@@ -2723,6 +2723,7 @@ c101_row off-narrow antigravity "Orchestrator (Neon) sk-SETTINGSVALUE"
 c101_row off-narrow antigravity "Orchestrator (Carbon)"
 c101_ticket 1 "To Do" 'guard-t3-thread-tools refuses something else (rule off-narrow-extra)'
 c101_ticket 2 "Done" 'guard-t3-thread-tools rule off-narrow, fixed'
+c101_ticket 4 "To Do" 'guard-t3-thread-tools rules off-narrow.extra and off-narrow:v2 and x.off-narrow'
 out="$(c101_run)"
 if grepq "$out" -F 'WARN C101-guard-refusals: guard refusal class with no owning open ticket: guard=guard-t3-thread-tools rule=off-narrow instance=antigravity count=2'; then pass "C101 an unowned class WARNs with guard, rule, instance and count (a Done ticket and a longer rule name do not own it)"; else fail "C101 unowned -> $out"; fi
 if ! grepq "$out" -E 'Orchestrator|SETTINGSVALUE'; then pass "C101 no thread title or row text is printed"; else fail "C101 leaked row text -> $out"; fi

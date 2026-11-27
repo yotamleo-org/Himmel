@@ -496,6 +496,9 @@ sweep
 has "refusal: a field that is not a plain token is named non-token" "instance=non-token " "$OUT"
 hasnt "refusal: and its text stays out of the wake" "hunter2" "$OUT"
 check "refusal: a bad line and a keyless row add nothing" "1" "$(printf '%s\n' "$OUT" | grep -c .)"
+refusal "$(at $((NOW + 10)))" non-string-instance '{"another": "value here"}'
+SWEEP_AT=$((NOW + 20)) sweep
+has "refusal: another instance printed as non-token still wakes" "instance=non-token " "$OUT"
 
 rworld
 sweep
