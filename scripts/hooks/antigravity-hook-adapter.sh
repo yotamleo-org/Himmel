@@ -373,6 +373,7 @@ build_claude_payload() {
         | ($in.toolCall.args // {}) as $a
         | (if $mode == "bash" then {command: ($a.CommandLine // "")}
            elif $mode == "file" then {file_path: ($a.Path // "")}
+           elif $mode == "lazy" then ($a.Arguments // {})
            else $a end) as $ti
         | {
             hook_event_name: "PreToolUse",
@@ -383,6 +384,66 @@ build_claude_payload() {
             cwd: ($in.cwd // ""),
             transcript_path: ($in.transcriptPath // "")
           }'
+}
+
+in_design_profile() {
+    local sum="" t3h="" root=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum="$(printf '%s' antigravity_design | sha256sum)"
+    elif command -v shasum >/dev/null 2>&1; then
+        sum="$(printf '%s' antigravity_design | shasum -a 256)"
+    fi
+    sum="${sum%% *}"
+    [ -n "$sum" ] || return 1
+    for t3h in "$T3_HOME_1" "$T3_HOME_2"; do
+        [ -n "$t3h" ] || continue
+        root="$(canon_path "$t3h/userdata/providers/antigravity/$sum/antigravity-acp/brain")" || continue
+        case "$ARTIFACT_REAL" in
+            "$root"/*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+run_mcp_gate() {
+    local srv="$1" tool="$2" mode="$3" payload=""
+    local -a chain=(mcp-policy.sh block-backend-tier.sh)
+    [ -n "$srv" ] && [ -n "$tool" ] || emit_deny "antigravity-hook-adapter: malformed MCP tool name '$RAW_TOOL' — fail closed"
+    case "$srv" in
+        *[!A-Za-z0-9.-]*)
+            emit_deny "antigravity-hook-adapter: invalid MCP server key '$srv' — fail closed"
+            ;;
+    esac
+    case "$tool" in
+        *[!A-Za-z0-9_.-]*)
+            emit_deny "antigravity-hook-adapter: invalid MCP tool name '$tool' — fail closed"
+            ;;
+    esac
+    case "$srv" in
+        graphify|t3-code) ;;
+        context7|shadcn|playwright)
+            in_design_profile || emit_deny "antigravity-hook-adapter: MCP server '$srv' is allowlisted for the antigravity_design profile only, and this session is not in that design profile"
+            ;;
+        *)
+            emit_deny "antigravity-hook-adapter: MCP server '$srv' is not allowlisted on the Antigravity lane"
+            ;;
+    esac
+    if [ "$srv" = "playwright" ]; then
+        local class=""
+        class="$(jq -r --arg t "$tool" '.servers.plugin_playwright_playwright.tools[$t] // empty' "$PRIMARY_ROOT/scripts/guardrails/mcp-policy.json")"
+        case "$class" in
+            read|write) ;;
+            *)
+                emit_deny "antigravity-hook-adapter: playwright '$tool' is not a read or write tool in mcp-policy.json and is denied on the Antigravity lane"
+                ;;
+        esac
+    fi
+    payload="$(build_claude_payload "mcp__${srv}__${tool}" "$mode")" || emit_deny "antigravity-hook-adapter: failed to translate MCP payload"
+    if [ "$srv" = "t3-code" ]; then
+        chain+=(guard-t3-thread-tools.sh)
+        [ "$tool" != "unwatch_pull_request" ] || chain+=(block-t3code-unwatch-open-pr.sh)
+    fi
+    run_chain_with_payload gate "$payload" "${chain[@]}" peer-taint-gate.sh
 }
 
 case "$RAW_TOOL" in
@@ -496,49 +557,29 @@ case "$RAW_TOOL" in
     mcp_*)
         REST="${RAW_TOOL#mcp_}"
         case "$REST" in
-            *_*)
-                MCP_SRV="${REST%%_*}"
-                MCP_TOOL="${REST#*_}"
-                ;;
+            *_*) run_mcp_gate "${REST%%_*}" "${REST#*_}" raw ;;
             *)
                 emit_deny "antigravity-hook-adapter: malformed MCP tool name '$RAW_TOOL' — fail closed"
                 ;;
         esac
-        [ -n "$MCP_SRV" ] && [ -n "$MCP_TOOL" ] || emit_deny "antigravity-hook-adapter: malformed MCP tool name '$RAW_TOOL' — fail closed"
-        case "$MCP_SRV" in
-            *[!A-Za-z0-9.-]*)
-                emit_deny "antigravity-hook-adapter: invalid MCP server key '$MCP_SRV' — fail closed"
-                ;;
-        esac
-        case "$MCP_SRV" in
-            graphify|t3-code) ;;
-            *)
-                emit_deny "antigravity-hook-adapter: MCP server '$MCP_SRV' is not allowlisted on the Antigravity lane"
-                ;;
-        esac
-        MAPPED_MCP="mcp__${MCP_SRV}__${MCP_TOOL}"
-        PAYLOAD="$(build_claude_payload "$MAPPED_MCP" raw)" || emit_deny "antigravity-hook-adapter: failed to translate MCP payload"
-        if [ "$MCP_SRV" = "t3-code" ]; then
-            if [ "$MCP_TOOL" = "unwatch_pull_request" ]; then
-                run_chain_with_payload gate "$PAYLOAD" \
-                    mcp-policy.sh \
-                    block-backend-tier.sh \
-                    guard-t3-thread-tools.sh \
-                    block-t3code-unwatch-open-pr.sh \
-                    peer-taint-gate.sh
-            else
-                run_chain_with_payload gate "$PAYLOAD" \
-                    mcp-policy.sh \
-                    block-backend-tier.sh \
-                    guard-t3-thread-tools.sh \
-                    peer-taint-gate.sh
-            fi
-        else
-            run_chain_with_payload gate "$PAYLOAD" \
-                mcp-policy.sh \
-                block-backend-tier.sh \
-                peer-taint-gate.sh
-        fi
+        exit 0
+        ;;
+    call_mcp_tool)
+        # shellcheck disable=SC2016
+        LAZY_META="$(printf '%s' "$INPUT" | jq -r '
+            .toolCall.args as $a
+            | if ($a | type) == "object"
+                and ($a | keys - ["ServerName", "ToolName", "Arguments", "toolSummary"] == [])
+                and (($a | has("toolSummary") | not) or ($a.toolSummary | type == "string"))
+                and ($a.ServerName | type == "string" and test("\\A[ -~]+\\z"))
+                and ($a.ToolName | type == "string" and test("\\A[A-Za-z0-9_.-]+\\z") and (contains("__") | not))
+                and ($a.Arguments | type == "object" or type == "null")
+              then @sh "LAZY_SRV=\($a.ServerName) LAZY_TOOL=\($a.ToolName)"
+              else error("shape") end
+        ' 2>/dev/null)" || emit_deny "antigravity-hook-adapter: malformed call_mcp_tool args (want string ServerName and ToolName, object Arguments) — fail closed"
+        LAZY_SRV="" LAZY_TOOL=""
+        eval "$LAZY_META"
+        run_mcp_gate "$LAZY_SRV" "$LAZY_TOOL" lazy
         exit 0
         ;;
     *)

@@ -2,10 +2,10 @@
   "profiles": {
     "design": {
       "fromProfiles": ["design", "design-imagegen"],
-      "excludePlugins": ["builder-visual@himmel"],
+      "excludePlugins": ["builder-visual@himmel", "plannotator-effective-html@himmel", "domain-modeling@himmel"],
       "mcpServers": {
         "context7": {
-          "serverUrl": "https://mcp.context7.com/mcp?client=claude-code-plugin"
+          "serverUrl": "https://mcp.context7.com/mcp"
         },
         "shadcn": {
           "command": "npx",
