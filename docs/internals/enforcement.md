@@ -2495,10 +2495,17 @@ fixed text and never carries the key or the Authorization header. Spec:
 ### `block-subagent-release-operator.sh`
 
 A member of the PreToolUse `Bash` chain. It denies an in-process subagent (a
-payload whose `agent_id` is present and not `null`) any Bash command that names
-both the word `release` and the word `operator`, so a subagent never writes an
-operator-chain row with `jira release operator …`; `spec-review` is one of those
-verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
+payload whose `agent_id` is present and not `null`) a Bash command that matches
+either of two co-occurrence pairs, so a subagent cannot run the jira commands
+that write an operator-chain row (the residuals at the end of this section are
+what it cannot see). A pair 1 match that fits one of two allow grammars
+(below) is allowed. Pair 1 is the word `release` together with the word `operator`
+(`jira release operator …`); `spec-review` is one of those verbs, so a critic
+subagent cannot record its own verdict. Pair 2 is, in its basic case (the full
+rule, below, also reads `=` splits and brace lists), a word that starts with
+`--decision` together with a word that starts with `--words`, the two options
+with which `jira create`, `jira move` and `jira release request` write an
+operator-chain row without naming both words of pair 1. `operatorFence` in the
 jira CLI reads markers from the environment and the process tree (below), and a
 subagent inherits the chief's environment and ancestry, so neither tells it from
 the chief. The main session (no `agent_id`, or `null`) is allowed without reading
@@ -2572,13 +2579,53 @@ test-only bun preload. JF runs the real CLI with neither and asserts the
 refusal.
 
 The match: the command is normalised (backslash-newline pairs deleted, `$'` and
-`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
-words at every space, TAB, carriage return, newline and shell metacharacter (`;&|()<>{}` and the
-backtick), and matches when both words appear anywhere, in either order. There
-is no allow-list of read-only commands, no split into simple commands and no
-order check, so `git grep "release operator"` is denied too: a subagent searches
-for the phrase with the Grep tool. An `agent_id` of `false`, `""`, a number or an
-object counts as a subagent.
+`$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted) and split into
+words at every space, TAB, carriage return, newline and shell metacharacter
+(`;&|()<>{}` and the backtick). Pair 1 matches when both words appear anywhere,
+in either order. Pair 2 splits each word again at `=`, so `--decision=1
+--words=y` and `--words=--decision` match. It also matches a command that holds
+a `{` and whose lower-cased text holds both `decision` and `words`, with or
+without its braces and commas deleted, so a brace list (`--{decision=1,words=y}`,
+`--wo{rds,x}`) cannot split the option names. That brace rule also denies a
+quoted title such as `'{"decision":…,"words":…}'`, an accepted over-deny. Pair 2
+is read first and has no allow grammar: a quoted-heredoc write whose body holds
+both options is denied. Its refusal says to give a ticket an explicit placement
+and no `--words`, or to hand the exact command line back to the chief.
+
+A command that matches pair 1 only is still allowed when the whole command fits
+one of two closed grammars, read over the unsplit command:
+
+- **R, the plain read.** Every simple command (split at `&&`, `||`, `;`, `|` and
+  newline) starts with an unquoted program from a fixed table, with only its
+  listed options: `cd` with one operand; `grep` (`-nilLcwvEFrRHhosqxI` bundles,
+  `-A`/`-B`/`-C`/`-m` with a number, `-e`, `--include=`, `--exclude=`,
+  `--exclude-dir=`); `sed -n` whose script is only `Np` or `N,Mp` addresses;
+  `cat [-n]`; `head` and `tail` with a count; `wc -l|-c|-w`; `ls` with `-l`,
+  `-a`, `-la`, `-1` or `-d`; `cut -c|-d|-f`; `uniq [-c]` with at most one operand;
+  `echo` with any option; and `git [--no-pager] [-C <dir>]` running `grep`
+  (`-n -i -l -w -E -F -c --cached -e`), `diff` (`--stat --name-only --name-status
+  --no-ext-diff --cached -G -S -U<n>`), `log` (`--oneline --stat -n -<n> -G -S
+  --grep` and a `--format=` without `%G`) or `show` (`--stat --name-only
+  --no-ext-diff`). Outside quotes a word holds only letters, digits and
+  `_./:,+@%=*-`; inside double quotes it may hold no `$`, backtick or `!`; a glob is allowed only in an operand of `grep`, `cat`, `head`, `tail`,
+  `wc` and `ls`, and never at the start of a word; an operand that looks like an
+  assignment (`X=y`), a quoted command word and any redirect but `2>/dev/null` or
+  `2>&1` after a blank fail the grammar, and so does a command over 20000
+  characters.
+- **H, the quoted-heredoc write.** The first line is `cat > PATH <<'DELIM'`
+  (also `>>` or `>|`, a single-quoted delimiter of letters and `_`), optionally
+  after one `cd` on the same line or on the line before. The body runs to a line
+  that is exactly the delimiter. After it come only `echo`, or `wc`, `ls`,
+  `head`, `tail` or `cat` whose operands are PATH itself, each fitting R.
+
+Suite rows A1 to A10, K1e and H-sp1 to H-sp2 are the allowed shapes (A1 to A10
+and K1e each with a denied negative), and D3 to D11 and K1a to K1c are denied
+neighbours. Pair 2 is rows D1 to D2y: subagent denies with chief twins, and the
+allow controls D2i, D2m, D2q, D2x and D2y that it must not match. When both
+pairs match, the refusal opens with pair 1's text and carries pair 2's route (row D1o). A refused
+pair 1 command that only writes a file should use the Write tool where the
+session has it. An `agent_id` of `false`, `""`, a number or an object counts as
+a subagent.
 
 It is a security fence and fails CLOSED: no `jq` on `PATH` denies every Bash call
 (`cannot read the hook input without jq`), and stdin that is not one JSON object
@@ -2592,7 +2639,16 @@ corpus shape.
 What it cannot see is the fence residual, tracked as one follow-up ticket of the core-bypass spec work: text built at run time (a
 variable, an alias, a function, an expansion, an `eval`, a script written then
 run, an encoded string), a nested `claude` session started from a subagent, a
-chief session in another repo, and the Monitor tool. Bypass:
+chief session in another repo, and the Monitor tool. Two more residuals are
+open. Pair 1 does not read a brace list: in `jira {release,x} {operator,y}` the
+hook sees the words `release,x` and `operator,y`, which pair 1 does not match,
+while the shell expands them to the separate words `release`, `x`, `operator`
+and `y`, so a brace list can hide either word from pair 1. And no text rule sees an
+operator-chain write made below the shell: the jira stdio MCP server started
+from a subagent's Bash, or a direct import of an engine module such as
+`dist/release/operator-acts.js`. That one closes only when `operatorFence` can
+read the calling agent's id from the Bash tool's start-up environment, which
+Claude Code does not set today; the hook is then deleted. Bypass:
 `SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1` (launching shell). Spec:
 `scripts/hooks/test-block-subagent-release-operator.sh`.
 
@@ -4322,6 +4378,89 @@ unparseable payload.
 **Delivery:** himmel-ops plugin `hooks.json` (matcher `Bash`), the same lane as
 `guard-chief-dispatch.sh`. Spec: `scripts/hooks/test-guard-chief-foreground.sh`.
 
+### Lane capability grants
+
+`scripts/hooks/block-terminal-write-fence.sh` (the Codex Bash chain) denies a
+push, a PR and a network fetch. The operator can lift **one exact command
+shape** of each for a non-Claude lane. Default off: with no `lane_grants` key a
+lane is denied exactly what it was denied before. The operator edits the file by
+hand; there is no `himmelctl config set` verb.
+
+```json
+{
+  "lane_grants": { "codex": ["git-push-branch", "gh-pr-create", "net-read"] },
+  "lane_grants_origin": "github.com/yotamleo-org/Himmel"
+}
+```
+
+`scripts/lib/lane-grants.sh` reads `config.json` in the account's `.himmel`
+(`_himmel_policy_dir`) and grants nothing unless `$HOME/.himmel/config.json` is
+the same file, the file and its directory are not symlinks, are owned by you and
+are not group- or world-writable, and the file is one JSON object of the right
+types. `git-push-branch` and `gh-pr-create` also need `lane_grants_origin`.
+
+**The Codex lane only, so far.** `.codex/codex-hook-adapter.sh` writes
+`himmel_lane: "codex"` into the payload, over whatever it held. No environment
+variable names a lane, and a Claude payload never carries the key. The
+`antigravity` name is read but nothing sets it yet. A grant lifts the hook, not a
+sandbox. On the Codex **exec lane** the `workspace-write` sandbox keeps the
+network off and the checkout's git directory read-only, so a granted push or
+fetch still fails there. A full-access T3 Codex thread runs `dangerFullAccess`,
+with no such sandbox, so do not treat a Codex grant as inert there.
+The Codex sandbox follow-up ticket owns the sandbox side and re-asks the
+operator whether Codex gets the fetch grant.
+
+| Grant | The one shape |
+|---|---|
+| `git-push-branch` | `git push origin B`, `git push -u origin B` or `git push --set-upstream origin B`; `B` is the cwd's current branch and not protected |
+| `gh-pr-create` | `gh pr create` with `--head B`, and at most once each: `--title`, `--body`, `--base`, `--draft`, `--fill` (or their short forms); `origin` is the only remote |
+| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Every host is allowed; there is no host allow or deny list yet |
+
+The command must be one simple command of literal words: no expansion,
+operator, redirect, glob or continuation. Push and PR need `origin` to have
+exactly one fetch URL and one push URL (after `insteadOf` and `pushurl`), each
+naming the pinned repo, no `remote.origin.push` and no mirror mode.
+
+**Scope.** A grant acts only on work inside the checkout the adapter resolves:
+the checkout holding `.codex` for Codex (the himmel checkout, or a
+himmel-adopter project). The payload cwd and `CLAUDE_PROJECT_DIR` must resolve
+to the same primary checkout.
+
+```mermaid
+flowchart LR
+  A[lane tool call] --> B[adapter writes himmel_lane]
+  B --> C{one literal simple command, one of the three fence shapes?}
+  C -->|yes| D{trusted config grants it; scope, branch, origin pin hold?}
+  D -->|yes| E[skip only that arm; the rewrite arm still runs]
+  B -->|jq fails: no lane| Z[today's deny arms decide]
+  C -->|no| Z
+  D -->|no| Z
+  E -->|any other arm or hook matches| Z
+```
+
+**What no grant lifts:** a push to main, master or the default branch; a force
+push or a refspec; another remote or a URL; `--no-verify`; `gh pr merge` or any
+other `gh` mutation; the remote-URL and `insteadOf` rewrite arm; the
+write-on-main lock; every other hook in the chain, including the review-marker
+check on `gh pr create`; and the pre-push hooks.
+
+**Threat model.** Like the fence, a grant is built against a cooperative lane's
+mistakes. A lane set on escaping can already write `push.sh` and run it. An
+env-prefixed push (`SKIP_CR=1 git push …`) is the fence's own ceiling: it is
+allowed with or without a grant, because the verb is not in command position.
+Two accepted ceilings are rows in the ceilings ledger: **config write route** (a
+lane that writes the operator's config past the write guard's text match grants
+itself a capability) and **runtime steering** (git, gh or ssh config,
+environment, shell state, a per-call workdir or the branch's own pre-push
+config can send a granted command elsewhere). Each ledger row names the ticket
+for its structural fix. A granted
+push, PR or fetch can publish whatever the lane can read, including in a URL.
+
+**Doctor** (`C102-lane-grants`) lists what each lane holds with its wiring
+state, and warns on each config problem. When `HOME` is not the account home it
+reads only the `$HOME` config and never the account-home file: it warns if that
+file holds `lane_grants`, and otherwise reports that grants were not checked.
+
 ### `block-worker-write-fence.sh` — dispatched-worker write fence
 
 Fires on `Bash|PowerShell|mcp__.*`. Keyed on `HIMMEL_WORKER=1`, the
@@ -4747,7 +4886,9 @@ PreToolUse matchers must stay disjoint, as one `mcp__.*` chain
 `mcp-policy.sh+block-backend-tier.sh+guard-t3-thread-tools.sh+block-t3code-unwatch-open-pr.sh`
 (`mcp-policy.sh` first so denies still leave an audit line; backend-tier's
 fail-closed jq branches also cover non-Atlassian MCP calls, pinned in
-`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **always allows**. It classifies each
+`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **denies
+one thing**: a `destructive` call on a registered server that the server's
+`allow_destructive` does not name. It allows everything else. It classifies each
 call against the registry `scripts/guardrails/mcp-policy.json` and records what
 it *would* do:
 
@@ -4773,15 +4914,17 @@ argument is ever written. Past `audit.max_bytes` (1 MiB) the log rotates to
 
 **Mode — the gating seam.** The registry's top-level `mode` covers unknown
 servers and malformed calls; a server's own `mode` overrides it for that
-server. `observe` (the only mode shipped) records and allows. `enforce` applies
-the would-verdict: a deny exits 2 and names the registry entry to add. Enforce
-is tested (`test-mcp-policy.sh` §5) but off everywhere; switching a server on is
-an operator decision for a later PR, once the audit log shows its tools are
-fully listed.
+server. `observe` (the only `mode` shipped) records and allows. `enforce` applies
+the would-verdict: a deny exits 2 and names the registry entry to add. The
+registry's `enforce_classes` list (shipped: `["destructive"]`) applies it to
+calls of a listed class on a registered server whatever the mode, and the audit
+line records such a call as `enforce`. Unknown servers, unlisted tools and
+malformed calls stay in `observe`; switching a server to `enforce` waits until
+the audit log shows its tools are fully listed.
 
 **Fails open on every own error** — no `jq`, an unreadable or malformed
-registry, a jq error, the internal `timeout 2`, an unwritable audit dir. It is
-a tracker; it must never stall or refuse a call on its own bug. Measured p95
+registry, a jq error, the internal `timeout 2`, an unwritable audit dir. It
+must never stall or refuse a call on its own bug. Measured p95
 is recorded in the PR that added it; `test-mcp-policy.sh` §9 holds a latency
 budget (`MCP_POLICY_P95_BUDGET_MS`).
 
@@ -6202,7 +6345,7 @@ boundary an agent runs under.
 The Jira auto-transition is opt-in per merge: without `--jira-transition` `merge-on-green.sh` merges, then only records `jira-transition=skip=partial key=<KEY> status-unchanged` on the `MERGED` audit line and posts the PR body's `Remaining:` line as a Jira comment — the ticket status is never changed — so the caller decides (a worker reads its brief's `completes-ticket: yes|no` line, `docs/handover/worker-preface.md` § Shipping); with the flag it comments and transitions the ticket named by the PR title's `[PROJ-N]` tag (never an Epic — a Story is transitioned like a Task; any unreadable step degrades to a `skip=…` result, never a failed merge). It used to fire on every merge and closed a ticket whose sibling work was still owed, which no "no other open PR" heuristic can detect, so it stays opt-in rather than heuristic. A PR carrying two ticket tags transitions only the first.
 It also exits 17 (`policy-refused phase=chief-go`) when `HIMMEL_CONSOLE_LEG` is set — exported by `chief-kit/headed-arm-worker.sh` into every chief-spawned worker — and `go_gate` (`scripts/lib/go-gate.sh`, shared with `block-unresolved-cr-merge.sh`'s chief-GO gate and with `go.sh`; see there) finds `<handover_root>/.locks/go/<pr>.<certified head sha>` missing or not carrying `head=<that sha>` (a broken/truncated `go-gate.sh` refuses too: `phase=chief-go-lib-missing` / `chief-go-symbol-missing`); the gate runs before the marker clear and before `--dry-run`, so a refused worker mutates nothing and a dry run reports the refusal, and the merge itself pins `--match-head-commit` to that same certified sha; a chief-spawned worker's merge must also pass `--go <that GO file>` (same directory and basename as the file `go_gate` verified, so another PR's or head's file or a missing path exits 17 with `phase=chief-go-flag`) and prints a `GO evidence:` line, so the merge command shows the review it relies on; only the chief writes it, via `chief-kit/go.sh` (which refuses under the marker), and `scripts/chokepoints.json` registers the marker so a per-call `HIMMEL_CONSOLE_LEG=` prefix is denied. A `--judge` worker is the same `HIMMEL_CONSOLE_LEG=1` process, so it is blocked from writing its own `GO` by this exact same gate — Guard E needs no judge marker for that; the judge is a worker (design §3.2). A later change added a separate `HIMMEL_CONSOLE_JUDGE=1` marker for a different job, the write fence below.
 
-**Plugin-bump recheck.** A PR that changes files under `marketplace/plugins/<p>/` raises `<p>`'s `.claude-plugin/plugin.json` version strictly above the base's, so `himmel-update` refreshes the version-keyed install caches at once and, outside the residual window below, two contents do not ship under one version; a plugin new to the base or removed whole has no version to compare. A version edit with no other change in that plugin is refused (a manifest edit beyond `version` counts as a change). A release cut, the PR that changes the root `VERSION` file, has its own rule: no plugin it touches may end at or below the version the base already ships, a bump-only plugin included. Two PRs bumping one plugin from the same base collide on the version line or merge clean to the same number, so the second merges main and bumps above it. The checker is `scripts/check-plugin-drift.sh --bump-required`: the pre-commit hook `plugin-version-bump-required` runs it on the staged diff, judged against the branch base so a later commit needs no second bump, except a commit that changes `VERSION`, which is judged against `HEAD`; the CI job `plugin-version-bump` runs the base tip's copy over the PR range. `chief-kit/ready-check.sh` item 9 applies the same rule inline. `merge-on-green.sh` exits 23 when a PR touching `marketplace/plugins/` fails the rule against the live base, so a sibling's bump merged after CI ran still counts. It runs the checker from a freshly fetched base-tip copy (with `scripts/lib/vm-mode.sh`); a checker blob that cannot be read OR is empty refuses (an empty script exits 0), and a checker that exits 0 without one of its fixed success lines (`every changed plugin carries a version bump above the base` / `no plugin version changed outside a release cut`, kept so an older base-tip checker still reads as a verdict / `release cut: every changed plugin version is above the base` / `no plugin files changed`, whole line) refuses too, so a newline-only or unrelated-output stub is no verdict. `scripts/check-plugin-drift.sh` is in `ci-trust-paths.txt` because the gate executes it (`vm-mode.sh` is covered by `^scripts/lib/`). Residual window: a sibling PR merging between the recheck and `gh pr merge` is not seen; closing it needs a server-side merge queue or required up-to-date branch, like the base-retarget window.
+**Plugin-bump recheck.** A PR that changes files under `marketplace/plugins/<p>/` raises `<p>`'s `.claude-plugin/plugin.json` version above the base's, so `himmel-update` refreshes the version-keyed install caches at once; one equal case passes, stated below; a plugin new to the base or removed whole has no version to compare. A version edit with no other change in that plugin is refused (a manifest edit beyond `version` counts as a change). A release cut, the PR that changes the root `VERSION` file, has its own rule: no plugin it touches may end at or below the version the base already ships, a bump-only plugin included. In range mode a version equal to the base tip's passes for a non-release PR only when the plugin has a manifest at the merge-base, the PR raised it from there, every first-parent commit since the merge-base that touches that manifest carries the same old or the same new version, and none touches `VERSION`, so two PRs that raced from one base both merge without a re-push; a release cut stays strictly above the tip the gate fetched, and no PR is accepted at an equal version after a commit since its merge-base touched `VERSION`. Until a higher version of that plugin ships, the base can hold several contents under one version: `himmel-update` reinstalls such a cache (`scripts/lib/plugin-cache-drift.sh`), a marketplace install keeps the first content of that version. The merge-on-green audit line names an accepted equal version as `equal=<plugin>@<version>`. The checker is `scripts/check-plugin-drift.sh --bump-required`: the pre-commit hook `plugin-version-bump-required` runs it on the staged diff, judged against the branch base so a later commit needs no second bump, except a commit that changes `VERSION`, which is judged against `HEAD`; the CI job `plugin-version-bump` runs the base tip's copy over the PR range. `chief-kit/ready-check.sh` item 9 applies the same rule inline. `merge-on-green.sh` exits 23 when a PR touching `marketplace/plugins/` fails the rule against the live base, so a sibling's bump merged after CI ran still counts. It runs the checker from a freshly fetched base-tip copy (with `scripts/lib/vm-mode.sh`); a checker blob that cannot be read OR is empty refuses (an empty script exits 0), and a checker that exits 0 without one of its fixed success lines (`every changed plugin carries a version bump above the base` / `no plugin version changed outside a release cut`, kept so an older base-tip checker still reads as a verdict / `release cut: every changed plugin version is above the base` / `no plugin files changed`, whole line) refuses too, so a newline-only or unrelated-output stub is no verdict. `scripts/check-plugin-drift.sh` is in `ci-trust-paths.txt` because the gate executes it (`vm-mode.sh` is covered by `^scripts/lib/`). Residual window: a sibling PR merging between the recheck and `gh pr merge` is not seen; closing it needs a server-side merge queue or required up-to-date branch, like the base-retarget window.
 
 **Solo mode.** An adopted project with one person and no chief selects it with `git config himmel.mergeMode solo` in the anchor's local config; `adopt.sh` ships `merge-on-green.sh` and the files it needs (`check-pr-title.sh`, `ticket-id-internal.sh`, `ticket-id-internal-authors.txt`, `chokepoints.json`). Solo mode relaxes no gate an adopted project can run: green checks with every review thread resolved (check-ci), the trust-path, main-red and privacy gates, and `ARMAUTOMERGE` all still apply, and a PR touching a trust path still needs a trust-reviewed GO. Only a himmel chief signs that GO for an adopted project (`go.sh --repo <owner/name> --trust-reviewed <qid>`), and only for a repo listed with `merge_allowed` true in `scripts/guardrails/himmel-adopted.json` on the harness repo's default branch (shipped empty), on a judge record written with `write-verdict.sh --repo <owner/name>`. Without that GO `merge-on-green.sh` refuses such a PR for every caller; the operator merges it in the forge web UI or with a raw `gh pr merge`, both of which bypass the script and so nothing enforces the list there. The optional forge branch rules are the way to enforce it on those paths. The one skip is in the static re-check: an adopted project carries none of the harness's registries, so a check whose script is absent from the merge result is skipped and audited per check (`STATIC-RECHECK skipped check=<name> reason=solo-absent`), while a script that is present still runs and still fails closed (exit 24); outside solo mode a missing script is still exit 24. No GO file is asked for because only a worker or a caller that passes a GO file is ever bound to one. What it adds is a refusal (exit 17, `phase=solo-chief-worker` / `solo-himmel-clone`) wherever a GO is the rule, a chief-spawned worker or an anchor carrying `chief-kit/go.sh`, and any value other than `solo` fails closed (`phase=solo-invalid-mode`). A solo merge's MERGING and MERGED audit lines end in `mode=solo`; without the config nothing changes.
 

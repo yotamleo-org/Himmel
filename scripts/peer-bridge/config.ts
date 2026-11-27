@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import { constants } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join } from "node:path";
+import { alive, startIdentity } from "./chain";
 import { ALLOWANCE_S, RANGES, STATION_NAME_RE, SUITE_PATH_RE, TIMEOUT_S_MAX } from "./envelope";
+import { badHost } from "./host";
 import { BOT_ID_RE, KINDS, PEER_NAME_RE, TOKEN_RE, botIdFromToken, configDir, type OpenKind } from "./ids";
-import { keyId, type TheirKey } from "./sign";
+import { STATION_KEY, keyId, type TheirKey } from "./sign";
 
 export const EXIT_CONFIG = 78;
 
@@ -26,6 +30,38 @@ export const DEFAULT_BUDGETS: Budgets = { jobsPerDay: 10, vmMinutesPerDay: 120, 
 export const ALIAS_RE = /^[a-z0-9-]{1,32}$/;
 export const PAIR_CARD_RE = /^#pair station=([a-z0-9][a-z0-9-]{0,31}) key=([A-Za-z0-9+/]{43}=)$/;
 export const pairCard = (station: string, pub: string) => `#pair station=${station} key=${pub}`;
+export const cardMessage = (theirUsername: string, station: string, pub: string) => `/peer@${theirUsername}\n${pairCard(station, pub)}`;
+
+export const canonicalKey = (pub: string): boolean => {
+  const b = Buffer.from(pub, "base64");
+  return b.length === 32 && b.toString("base64") === pub;
+};
+
+const ADDRESS_RE = /^\/peer@([A-Za-z][A-Za-z0-9_]{2,31})$/;
+
+export function parseCard(text: string, addressedTo?: string): { station: string; pub: string } | null {
+  const lines = text.split("\n");
+  if (lines.length > 2) return null;
+  if (lines.length === 2) {
+    const a = ADDRESS_RE.exec(lines[0]);
+    if (!a || (addressedTo !== undefined && a[1] !== addressedTo)) return null;
+  }
+  const m = PAIR_CARD_RE.exec(lines[lines.length - 1]);
+  return m && canonicalKey(m[2]) ? { station: m[1], pub: m[2] } : null;
+}
+
+export function trustRefusal(cfg: Pick<Config, "peers">, peer: string, station: string, pub: string, host: string, opts: { firstOnly?: boolean }): string | null {
+  if (!Object.hasOwn(cfg.peers, peer)) return "unknown-peer";
+  const theirs = cfg.peers[peer].theirs;
+  if (opts.firstOnly && theirs.keys.length > 0) return "already-paired";
+  if (!STATION_NAME_RE.test(station)) return "name";
+  if (badHost(station, host)) return "host";
+  if (!canonicalKey(pub)) return "key-shape";
+  if (theirs.keys.some(k => k.id === keyId(pub))) return "already-trusted";
+  if (theirs.keys.length >= 2) return "two-keys";
+  if (theirs.stationName !== undefined && theirs.stationName !== station) return "name-differs";
+  return null;
+}
 
 export type Theirs = { username: string; opens: OpenKind[]; maxOpenThreads: number; maxPerMinute: number; copiedAt: string; stationName?: string; keys: TheirKey[]; imageDigest?: string };
 export type Peer = {
@@ -75,7 +111,7 @@ function theirKeys(v: unknown, what: string): TheirKey[] {
   if (!Array.isArray(v) || v.length > 2) return bad(`${what} must be a list of at most two keys`);
   return v.map((k: any, i: number) => {
     const pub = k?.pub, at = k?.addedAt;
-    if (typeof pub !== "string" || Buffer.from(pub, "base64").length !== 32 || Buffer.from(pub, "base64").toString("base64") !== pub) return bad(`${what}[${i}].pub must be a base64 32-byte key`);
+    if (typeof pub !== "string" || !canonicalKey(pub)) return bad(`${what}[${i}].pub must be a base64 32-byte key`);
     if (k.id !== keyId(pub)) return bad(`${what}[${i}].id is not the id of its pub`);
     if (typeof at !== "string" || Number.isNaN(Date.parse(at))) return bad(`${what}[${i}].addedAt must be a date`);
     return { id: k.id, pub, addedAt: at };
@@ -197,8 +233,7 @@ function parsePeer(name: string, raw: any): Peer {
   };
 }
 
-export function readPeersFile(path: string): Config {
-  let text: string;
+export function readPeersBytes(path: string): Buffer {
   try {
     const fd = fs.openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
@@ -206,14 +241,19 @@ export function readPeersFile(path: string): Config {
       if (!st.isFile()) bad("peers.json is not a regular file");
       if (st.uid !== process.getuid!()) bad("peers.json is not owned by this user");
       if ((st.mode & 0o777) !== 0o600) bad("peers.json must be mode 0600");
-      text = fs.readFileSync(fd, "utf8");
+      return fs.readFileSync(fd);
     } finally { fs.closeSync(fd); }
   } catch (e) {
     if (e instanceof ConfigError) throw e;
     throw new ConfigError(`cannot read peers.json: ${(e as NodeJS.ErrnoException).code ?? "error"}`);
   }
+}
+
+export const readPeersFile = (path: string): Config => parsePeers(readPeersBytes(path));
+
+export function parsePeers(bytes: Buffer): Config {
   let raw: any;
-  try { raw = JSON.parse(text); } catch { return bad("peers.json is not valid JSON"); }
+  try { raw = JSON.parse(bytes.toString("utf8")); } catch { return bad("peers.json is not valid JSON"); }
   if (!raw || typeof raw !== "object") bad("peers.json must be an object");
 
   const operatorBotId = str(raw.operatorBotId, "operatorBotId");
@@ -245,4 +285,151 @@ export function loadConfig(path: string, env: NodeJS.ProcessEnv = process.env): 
   if (!TOKEN_RE.test(token!)) bad("PEER_BOT_TOKEN is not a bot token");
   if (botIdFromToken(token!) === cfg.operatorBotId) bad("the peer bot token is the operator bot's token");
   return cfg;
+}
+
+
+const LOCK_WAIT_MS = 2000, LOCK_STALE_MS = 10_000, LOCK_POLL_MS = 50;
+
+type Hook = () => void | Promise<void>;
+export type LockOpts = { now: () => number; sleep: (ms: number) => Promise<unknown>; hooks?: { beforeLink?: Hook; afterRuledStale?: Hook; afterRename?: Hook } };
+
+function lockStale(text: string, mtimeMs: number, now: number): boolean {
+  if (now - mtimeMs > LOCK_STALE_MS) return true;
+  let h: { pid?: number; start?: string | null } = {};
+  try { h = JSON.parse(text) ?? {}; } catch { return false; }
+  if (!Number.isSafeInteger(h.pid) || h.pid! <= 0) return false;
+  return !alive(h.pid!) || startIdentity(h.pid!) !== h.start;
+}
+
+export async function withPeersLock<T>(dir: string, fn: () => T | Promise<T>, opts: LockOpts): Promise<T> {
+  const lock = join(dir, "peers.json.lock");
+  const deadline = opts.now() + LOCK_WAIT_MS;
+  const wait = async () => {
+    if (opts.now() >= deadline) bad("busy");
+    await opts.sleep(LOCK_POLL_MS);
+  };
+  let mine: number | null = null;
+  while (mine === null) {
+    const tmp = `${lock}.${randomBytes(4).toString("hex")}.tmp`;
+    const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, start: startIdentity(process.pid) }));
+      await opts.hooks?.beforeLink?.();
+      fs.linkSync(tmp, lock);
+      mine = fd;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    } finally {
+      if (mine === null) fs.closeSync(fd);
+      fs.rmSync(tmp, { force: true });
+    }
+    if (mine !== null) break;
+
+    let held: number;
+    try { held = fs.openSync(lock, constants.O_RDONLY | constants.O_NOFOLLOW); } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw e;
+    }
+    try {
+      const seen = fs.fstatSync(held), text = fs.readFileSync(held, "utf8");
+      if (!lockStale(text, seen.mtimeMs, opts.now())) { await wait(); continue; }
+      await opts.hooks?.afterRuledStale?.();
+      const aside = `${lock}.stale-${randomBytes(4).toString("hex")}`;
+      try { fs.renameSync(lock, aside); } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw e;
+      }
+      await opts.hooks?.afterRename?.();
+      const moved = fs.lstatSync(aside);
+      if (moved.dev === seen.dev && moved.ino === seen.ino && lockStale(text, moved.mtimeMs, opts.now())) {
+        fs.rmSync(aside, { force: true });
+        continue;
+      }
+      try { fs.linkSync(aside, lock); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+      fs.rmSync(aside, { force: true });
+      await wait();
+    } finally { fs.closeSync(held); }
+  }
+  try { return await fn(); } finally {
+    try {
+      const ours = fs.fstatSync(mine), now = fs.lstatSync(lock);
+      if (now.dev === ours.dev && now.ino === ours.ino) fs.rmSync(lock, { force: true });
+    } catch {}
+    fs.closeSync(mine);
+  }
+}
+
+export const pairingFile = (): string => {
+  const h = process.env.HOME || homedir();
+  if (!isAbsolute(h) || h === "/") bad("HOME is not a usable directory");
+  return join(h, ".himmel", "remote-setup", "pairing.json");
+};
+
+function tmpWrite(path: string, data: string): string {
+  const tmp = `${path}.${randomBytes(4).toString("hex")}.tmp`;
+  const fd = fs.openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  try { fs.writeFileSync(fd, data); } finally { fs.closeSync(fd); }
+  return tmp;
+}
+
+export function writePairingRecord(bytes: Buffer): void {
+  parsePeers(bytes);
+  const raw = JSON.parse(bytes.toString("utf8"));
+  const stationKey = fs.existsSync(join(configDir(), STATION_KEY));
+  const peers = Object.entries<any>(raw.peers ?? {}).map(([name, p]) => ({
+    name,
+    ourStationName: typeof raw.self?.stationName === "string",
+    ourStationKey: stationKey,
+    groupChat: typeof p.chatId === "number",
+    operatorChat: typeof raw.operatorDmChatId === "number",
+    theirKey: Array.isArray(p.theirs?.keys) && p.theirs.keys.length > 0,
+  }));
+  const path = pairingFile();
+  fs.mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const tmp = tmpWrite(path, JSON.stringify({ peers }, null, 2) + "\n");
+  try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+}
+
+export function dropPairingRecord(why: Error): string {
+  let dropped = false;
+  try { fs.rmSync(pairingFile(), { force: true }); dropped = !fs.existsSync(pairingFile()); } catch {}
+  return `the pairing steps record could not be updated (${why.message}); ${dropped ? "the old record was dropped, the next pairing step writes it again" : "the old record is still there and may be out of date"}`;
+}
+
+export type ReplaceOpts = { guard?: () => void; hooks?: { afterRead?: () => void }; log?: (line: string) => void };
+
+export function replacePeersJsonLocked(path: string, expected: Buffer, value: unknown, opts: ReplaceOpts = {}): void {
+  readPeersBytes(path);
+  opts.hooks?.afterRead?.();
+  if (!readPeersBytes(path).equals(expected)) bad("changed");
+  opts.guard?.();
+  const text = JSON.stringify(value, null, 2) + "\n";
+  const tmp = tmpWrite(path, text);
+  try { fs.renameSync(tmp, path); } catch (e) { fs.rmSync(tmp, { force: true }); throw e; }
+  try { writePairingRecord(Buffer.from(text)); } catch (e) { (opts.log ?? console.error)(dropPairingRecord(e as Error)); }
+}
+
+type LockHooks = NonNullable<LockOpts["hooks"]> & NonNullable<ReplaceOpts["hooks"]>;
+export type WriteOpts = Omit<ReplaceOpts, "hooks"> & Omit<LockOpts, "hooks"> & { hooks?: LockHooks };
+
+export async function replacePeersJson(path: string, expected: Buffer, value: unknown, opts: WriteOpts): Promise<void> {
+  await withPeersLock(dirname(path), () => replacePeersJsonLocked(path, expected, value, opts), opts);
+}
+
+export type AddKeyOpts = WriteOpts & { hostname: string; firstOnly?: boolean };
+
+export async function addTrustedKey(path: string, peer: string, station: string, pub: string, opts: AddKeyOpts): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const bytes = readPeersBytes(path);
+    const rule = trustRefusal(parsePeers(bytes), peer, station, pub, opts.hostname, { firstOnly: opts.firstOnly });
+    if (rule !== null) bad(rule);
+    const raw = JSON.parse(bytes.toString("utf8"));
+    const theirs = raw.peers[peer].theirs;
+    theirs.stationName = station;
+    theirs.keys = [...(theirs.keys ?? []), { id: keyId(pub), pub, addedAt: new Date(opts.now()).toISOString().replace(/\.\d{3}Z$/, "Z") }];
+    try { return await replacePeersJson(path, bytes, raw, opts); } catch (e) {
+      if (!(e instanceof ConfigError) || e.message !== "changed") throw e;
+      if (attempt > 0) bad("busy");
+    }
+  }
 }

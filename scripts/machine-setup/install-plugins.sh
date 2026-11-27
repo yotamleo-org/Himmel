@@ -30,6 +30,13 @@
 #   --himmel-path PATH   Override $HIMMEL_PATH used for <himmel-path>
 #                        placeholder expansion (defaults to repo root
 #                        inferred from script location).
+#   --strip-user-enable  With --scope project only (given scopes, spec A26): plugins
+#                        are installed at USER scope (the one scope whose record counts in
+#                        every worktree), and the user `enabledPlugins` keys this run added
+#                        are removed again, so enablement lives only in project files. The
+#                        template's true-flagged ids (the floor) go to the shared
+#                        .claude/settings.json; the marketplace entries go to the gitignored
+#                        .claude/settings.local.json. On-demand ids are not written.
 #   --settings PATH      Override the scope-resolved settings.json target
 #                        (used by the marketplace autoUpdate patch and the
 #                        force-enable step below; a hermetic-test seam,
@@ -55,6 +62,7 @@ SCOPE="user"
 TEMPLATE="$REPO_ROOT/docs/setup/settings-template.json"
 HIMMEL_PATH="$REPO_ROOT"
 SETTINGS=""
+STRIP_USER=0
 ORIG_ARGS=("$@")
 
 # ── Parse args ──────────────────────────────────────────────────────────────
@@ -64,6 +72,7 @@ while [[ $# -gt 0 ]]; do
     --scope)         [[ $# -ge 2 ]] || { echo "ERROR: --scope requires a value" >&2; exit 2; }; SCOPE="$2"; shift 2 ;;
     --template)      [[ $# -ge 2 ]] || { echo "ERROR: --template requires a value" >&2; exit 2; }; TEMPLATE="$2"; shift 2 ;;
     --himmel-path)   [[ $# -ge 2 ]] || { echo "ERROR: --himmel-path requires a value" >&2; exit 2; }; HIMMEL_PATH="$2"; shift 2 ;;
+    --strip-user-enable) STRIP_USER=1; shift ;;
     --settings)      [[ $# -ge 2 ]] || { echo "ERROR: --settings requires a value" >&2; exit 2; }; SETTINGS="$2"; shift 2 ;;
     -h|--help)
       sed -n '2,/^set -e/p' "$0" | sed 's/^# \{0,1\}//' | head -n -1
@@ -78,6 +87,11 @@ case "$SCOPE" in
   user|project|local) ;;
   *) echo "ERROR: invalid --scope: $SCOPE (expected user|project|local)" >&2; exit 2 ;;
 esac
+if [[ $STRIP_USER -eq 1 && "$SCOPE" != project ]]; then
+  echo "ERROR: --strip-user-enable needs --scope project" >&2; exit 2
+fi
+MKT_CLI_SCOPE="$SCOPE"; PLUGIN_CLI_SCOPE="$SCOPE"
+if [[ $STRIP_USER -eq 1 ]]; then MKT_CLI_SCOPE=local; PLUGIN_CLI_SCOPE=user; fi
 
 # ── Pre-flight ──────────────────────────────────────────────────────────────
 [[ -f "$TEMPLATE" ]] || { echo "ERROR: template missing: $TEMPLATE" >&2; exit 1; }
@@ -100,10 +114,15 @@ PROV_STEP="preflight"
 prov_finish() {
   local rc=$?
   if [[ $DRY_RUN -eq 0 ]]; then
+    local only_false=true
+    if [[ -n "${SHARED_PRE_ENABLED_JSON:-}" ]]; then
+      PROV_SETTINGS_FILE="$SETTINGS_FILE"; PROV_SCOPE=project; only_false=false
+      PROV_PRE_ENABLED_JSON="$SHARED_PRE_ENABLED_JSON"; EP_CONTAINER_ABSENT="$SHARED_EP_ABSENT"
+    fi
     if [[ -n "${PROV_PRE_ENABLED_JSON:-}" ]]; then
       local keys spec ptr
-      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" \
-        '(.enabledPlugins // {}) | to_entries[] | select(.value == false and (.key as $k | $pre | has($k) | not)) | .key' \
+      keys=$(jq -r --argjson pre "$PROV_PRE_ENABLED_JSON" --argjson onlyFalse "$only_false" \
+        '(.enabledPlugins // {}) | to_entries[] | select((($onlyFalse | not) or .value == false) and (.key as $k | $pre | has($k) | not)) | .key' \
         "$PROV_SETTINGS_FILE" 2>/dev/null) || keys=""
       while IFS= read -r spec; do
         [[ -n "$spec" ]] || continue
@@ -189,6 +208,10 @@ case "$SCOPE" in
 esac
 PROV_SETTINGS_FILE="$SETTINGS_FILE"   # the file `claude plugin install --scope` writes; --settings never redirects the CLI
 [[ -n "$SETTINGS" ]] && SETTINGS_FILE="$SETTINGS"
+LOCAL_FILE="$PWD/.claude/settings.local.json"
+USER_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+MKT_FILE="$SETTINGS_FILE"
+[[ $STRIP_USER -eq 1 ]] && MKT_FILE="$LOCAL_FILE"
 
 # ── Refuse a wrong-shape settings file up front ────────────────
 # Every step below reads or patches these two sections as JSON objects. A file that
@@ -211,7 +234,9 @@ bad_settings_shape() {   # <file> — prints the first offending key (or "<top l
          | select(.[$k] != null and (.[$k] | type) != "object") | $k
     end)' "$1" | tr -d '\r'
 }
-for SHAPE_FILE in "$PROV_SETTINGS_FILE" "$SETTINGS_FILE"; do
+SHAPE_FILES=("$PROV_SETTINGS_FILE" "$SETTINGS_FILE")
+[[ $STRIP_USER -eq 1 ]] && SHAPE_FILES+=("$LOCAL_FILE" "$USER_FILE")
+for SHAPE_FILE in "${SHAPE_FILES[@]}"; do
   SHAPE_BAD=$(bad_settings_shape "$SHAPE_FILE")
   if [[ -n "$SHAPE_BAD" ]]; then
     echo "ERROR: $SHAPE_FILE has a wrong-shape \"$SHAPE_BAD\" (expected a JSON object) — refusing to install; nothing was changed." >&2
@@ -233,6 +258,14 @@ PROV_SCOPE="$SCOPE"; [[ "$SCOPE" == local ]] && PROV_SCOPE=project   # the ledge
 # project/local scope (design §3.3) -- install-plugins.sh installs project/local
 # scope plugins from the CURRENT directory (see --scope's usage text above).
 PROV_PROJECT_PATH=""; [[ "$SCOPE" == project || "$SCOPE" == local ]] && PROV_PROJECT_PATH="$PWD"
+REG_SCOPE="$SCOPE"
+prov_phase() {
+  [[ $STRIP_USER -eq 1 ]] || return 0
+  case "$1" in
+    marketplaces) PROV_SETTINGS_FILE="$LOCAL_FILE"; PROV_SCOPE=project; REG_SCOPE=local; PROV_PROJECT_PATH="$PWD" ;;
+    plugins)      PROV_SETTINGS_FILE="$USER_FILE";  PROV_SCOPE=user;    REG_SCOPE=user;  PROV_PROJECT_PATH="" ;;
+  esac
+}
 
 # json_declares <file> <jq-test> <a> [<b>] — file exists and the test (over --arg a/b) holds;
 # a file that exists but cannot be read as that shape (unparseable, or valid JSON of the
@@ -251,7 +284,7 @@ settings_declares() {   # <section> <key> — key present in this scope's settin
 }
 plugin_preexisted() {   # <spec> — the scope's enabledPlugins, or (user scope) THIS scope's own install record
   settings_declares enabledPlugins "$1" && return 0
-  [[ "$SCOPE" == user ]] || return 1
+  [[ "$REG_SCOPE" == user ]] || return 1
   # Scope-filtered, mirroring _provid_plugin's own query
   # (provenance-identity.sh) — a same-round project-scope install must not
   # make the user-scope pre-check see ITS OWN registration as pre-existing.
@@ -290,7 +323,7 @@ prov_register() {
   [[ "$kind" == marketplace ]] && row=marketplaces
   local -a args=("$@") idargs=()
   local i=0 n=${#args[@]} fk fv fields_json token unit_json
-  fields_json=$(jq -nc --arg s "$SCOPE" '{cli_scope:$s}')
+  fields_json=$(jq -nc --arg s "$REG_SCOPE" '{cli_scope:$s}')
   while [ "$i" -lt "$n" ]; do
     if [ "${args[$i]}" = "--field" ]; then
       fk="${args[$((i + 1))]%%=*}"; fv="${args[$((i + 1))]#*=}"
@@ -308,13 +341,14 @@ prov_register() {
   esac
   [[ -n "$token" ]] && idargs=(--post-text "$token" --field identity_v=1)
   prov_note register "$kind" "$PROV_SETTINGS_FILE" --unit "$unit" --scope "$PROV_SCOPE" --class code --row "$row" \
-    --field "cli_scope=\"$SCOPE\"" --field "preexisted=$pre" --writer install-plugins.sh "$@" \
+    --field "cli_scope=\"$REG_SCOPE\"" --field "preexisted=$pre" --writer install-plugins.sh "$@" \
     ${idargs[@]+"${idargs[@]}"}
 }
 
 # ── Register marketplaces ───────────────────────────────────────────────────
 echo "──── Registering marketplaces ────"
 PROV_STEP="marketplaces"
+prov_phase marketplaces
 # Materialize first so a jq error cannot silently look like an empty loop, and
 # keep accounting in this shell rather than the old pipeline's subshell.
 # Each line is `<template key><TAB><source>`: the key is the marketplace name
@@ -337,7 +371,7 @@ MKT_DRIFT=()
 # elsewhere (so its register row reads preexisted and uninstall keeps it) gets
 # its own created-when-absent row -- as do the two containers, when absent.
 # shellcheck disable=SC2016  # $a is a jq variable (--arg), not a shell expansion
-AU_PRE_NAMES=$(jq -r '(.extraKnownMarketplaces // {}) | keys[]' "$SETTINGS_FILE" 2>/dev/null | tr -d '\r') || AU_PRE_NAMES=""
+AU_PRE_NAMES=$(jq -r '(.extraKnownMarketplaces // {}) | keys[]' "$MKT_FILE" 2>/dev/null | tr -d '\r') || AU_PRE_NAMES=""
 MKT_CONTAINER_ABSENT=true; settings_declares_top extraKnownMarketplaces && MKT_CONTAINER_ABSENT=false
 EP_CONTAINER_ABSENT=true; settings_declares_top enabledPlugins && EP_CONTAINER_ABSENT=false
 PROV_PRE_ENABLED_JSON='{}'
@@ -370,7 +404,7 @@ while IFS= read -r MKT_LINE; do
   EXISTING_TYPE=$(jq -r --arg n "$MKT_NAME" '(.extraKnownMarketplaces // {})[$n].source | if type == "object" then .source // empty else empty end' "$PROV_SETTINGS_FILE" 2>/dev/null | tr -d '\r') || EXISTING_TYPE=""
   if [[ -n "$EXISTING_SRC" && ( "$EXISTING_SRC" != "$SRC" || "$EXISTING_TYPE" != "$SRC_TYPE" ) ]]; then
     MKT_DRIFT+=("$MKT_NAME")
-    RECONCILE="claude plugin marketplace remove $(printf '%q' "$MKT_NAME") --scope $SCOPE && claude plugin marketplace add $(printf '%q' "$SRC") --scope $SCOPE"
+    RECONCILE="claude plugin marketplace remove $(printf '%q' "$MKT_NAME") --scope $MKT_CLI_SCOPE && claude plugin marketplace add $(printf '%q' "$SRC") --scope $MKT_CLI_SCOPE"
     echo "  DRIFT: marketplace '$MKT_NAME' source mismatch — settings has '$EXISTING_SRC', template wants '$SRC' ($PROV_SETTINGS_FILE) [source type: settings ${EXISTING_TYPE:-unknown}, template ${SRC_TYPE:-unknown}]" >&2
     if [[ "$MKT_NAME" == himmel ]]; then
       echo "         himmel's own manifest is right; reconcile: $RECONCILE" >&2
@@ -380,10 +414,10 @@ while IFS= read -r MKT_LINE; do
     continue
   fi
   echo "  marketplace add: $SRC"
-  if ! run_step claude plugin marketplace add "$SRC" --scope "$SCOPE"; then
+  if ! run_step claude plugin marketplace add "$SRC" --scope "$MKT_CLI_SCOPE"; then
     echo "  marketplace retry in 2 seconds: $SRC" >&2
     sleep 2
-    if ! run_step claude plugin marketplace add "$SRC" --scope "$SCOPE"; then
+    if ! run_step claude plugin marketplace add "$SRC" --scope "$MKT_CLI_SCOPE"; then
       echo "  ERROR: marketplace registration failed: $SRC" >&2
       FAILED_MARKETPLACES+=("$SRC")
       continue
@@ -408,7 +442,7 @@ fi
 # file, for every template entry flagged autoUpdate:true. Patch only entries that
 # already exist there, so a marketplace-name vs template-key mismatch can't
 # create an orphan entry.
-echo "──── Enabling marketplace auto-update ($SETTINGS_FILE) ────"
+echo "──── Enabling marketplace auto-update ($MKT_FILE) ────"
 # tr -d '\r': jq emits CRLF on Windows; a trailing \r would corrupt the name key.
 AUTO_NAMES=$(echo "$EXPANDED" | jq -r '
   .extraKnownMarketplaces // {}
@@ -422,20 +456,20 @@ while IFS= read -r NAME; do
   # operator's (autoUpdate is a convenience, not needed to
   # function) -- leave it exactly as it was, so uninstall has nothing to undo.
   if grep -Fqx -- "$NAME" <<<"$AU_PRE_NAMES"; then
-    echo "  skip: '$NAME' was already declared in $SETTINGS_FILE — left as it is"
+    echo "  skip: '$NAME' was already declared in $MKT_FILE — left as it is"
     continue
   fi
   if [[ $DRY_RUN -eq 1 ]]; then
-    echo "DRY: set autoUpdate=true for '$NAME' in $SETTINGS_FILE"
+    echo "DRY: set autoUpdate=true for '$NAME' in $MKT_FILE"
     continue
   fi
-  [[ -f "$SETTINGS_FILE" ]] || { echo "  skip: $NAME (no $SETTINGS_FILE)"; continue; }
-  if ! jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
-    echo "  skip: $SETTINGS_FILE not valid JSON — refusing to patch" >&2
+  [[ -f "$MKT_FILE" ]] || { echo "  skip: $NAME (no $MKT_FILE)"; continue; }
+  if ! jq -e . "$MKT_FILE" >/dev/null 2>&1; then
+    echo "  skip: $MKT_FILE not valid JSON — refusing to patch" >&2
     continue
   fi
-  if [[ "$(jq --arg n "$NAME" '(.extraKnownMarketplaces // {}) | has($n)' "$SETTINGS_FILE")" != "true" ]]; then
-    echo "  skip: '$NAME' not registered in $SETTINGS_FILE"
+  if [[ "$(jq --arg n "$NAME" '(.extraKnownMarketplaces // {}) | has($n)' "$MKT_FILE")" != "true" ]]; then
+    echo "  skip: '$NAME' not registered in $MKT_FILE"
     continue
   fi
   # if/else (not `&& mv`): a bare `jq … && mv` is a standalone statement, so a
@@ -443,38 +477,38 @@ while IFS= read -r NAME; do
   # install + verify steps for a merely-cosmetic patch. Tolerate it like the
   # `marketplace add` / `install` steps do, and clean up the temp on failure.
   #
-  # Mktemp, not a predictable "$SETTINGS_FILE.autoupdate.tmp" — a
+  # Mktemp, not a predictable "$MKT_FILE.autoupdate.tmp" — a
   # fixed name lets anyone with write access to this directory pre-plant a
   # symlink there before we get here, so the jq redirect (or the mv) writes
   # through it. mktemp creates the file itself (O_EXCL, unpredictable suffix,
   # same directory so the mv stays atomic) — there's nothing to plant onto. A
   # `-L` exists-check would still be TOCTOU-racy between check and write.
-  # Seed it as a perms-preserving copy of $SETTINGS_FILE first: mktemp creates
+  # Seed it as a perms-preserving copy of $MKT_FILE first: mktemp creates
   # at mode 0600, and this site previously had no seed (it always created a
   # brand-new file via redirect) — without the seed the mv would narrow
   # settings.json's mode to 0600.
-  AUTOUPDATE_TMP="$(mktemp "$SETTINGS_FILE.autoupdate.XXXXXX")" || {
-    echo "  skip: $NAME (mktemp failed — $SETTINGS_FILE left unchanged)" >&2
+  AUTOUPDATE_TMP="$(mktemp "$MKT_FILE.autoupdate.XXXXXX")" || {
+    echo "  skip: $NAME (mktemp failed — $MKT_FILE left unchanged)" >&2
     continue
   }
-  cp -p "$SETTINGS_FILE" "$AUTOUPDATE_TMP" 2>/dev/null || cp "$SETTINGS_FILE" "$AUTOUPDATE_TMP" || {
+  cp -p "$MKT_FILE" "$AUTOUPDATE_TMP" 2>/dev/null || cp "$MKT_FILE" "$AUTOUPDATE_TMP" || {
     # If BOTH cp attempts fail, this bare
     # statement's failure trips `set -e` and exits the script — leaving the
     # already-mktemp'd $AUTOUPDATE_TMP orphaned. Clean it up; tolerant/skip
     # (not exit), matching this site's own jq-failure branch below — a
     # cosmetic patch must not abort the installer under set -e.
     rm -f "$AUTOUPDATE_TMP"
-    echo "  skip: $NAME (cp failed — $SETTINGS_FILE left unchanged)" >&2
+    echo "  skip: $NAME (cp failed — $MKT_FILE left unchanged)" >&2
     continue
   }
   if jq --arg n "$NAME" '.extraKnownMarketplaces[$n].autoUpdate = true' \
-       "$SETTINGS_FILE" > "$AUTOUPDATE_TMP"; then
+       "$MKT_FILE" > "$AUTOUPDATE_TMP"; then
     # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
-    mv "$AUTOUPDATE_TMP" "$SETTINGS_FILE"
+    mv "$AUTOUPDATE_TMP" "$MKT_FILE"
     echo "  autoUpdate=true: $NAME"
   else
     rm -f "$AUTOUPDATE_TMP"
-    echo "  skip: $NAME (jq patch failed — $SETTINGS_FILE left unchanged)" >&2
+    echo "  skip: $NAME (jq patch failed — $MKT_FILE left unchanged)" >&2
   fi
 done <<< "$AUTO_NAMES"
 
@@ -484,6 +518,10 @@ if [[ $DRY_RUN -eq 0 ]]; then
     # shellcheck disable=SC2016  # $n is a jq variable (--arg), not a shell expansion
     prov_settings_created "/extraKnownMarketplaces/$MKT_PTR" '.extraKnownMarketplaces[$n]' "$MKT_NAME"
   done
+  if [[ $STRIP_USER -eq 1 ]]; then
+    [[ "$MKT_CONTAINER_ABSENT" == true ]] && prov_settings_created /extraKnownMarketplaces .extraKnownMarketplaces
+    MKT_CONTAINER_ABSENT=false; EP_CONTAINER_ABSENT=false; PROV_PRE_ENABLED_JSON=""
+  fi
 fi
 
 # ── Snapshot enabledPlugins BEFORE the install loop ───────────
@@ -504,10 +542,20 @@ PRE_INSTALL_ENABLED_JSON='{}'
 if [[ -f "$SETTINGS_FILE" ]] && jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
   PRE_INSTALL_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$SETTINGS_FILE")
 fi
+if [[ $STRIP_USER -eq 1 ]]; then
+  SHARED_PRE_ENABLED_JSON="$PRE_INSTALL_ENABLED_JSON"; SHARED_EP_ABSENT=true
+  jq -e 'has("enabledPlugins")' "$SETTINGS_FILE" >/dev/null 2>&1 && SHARED_EP_ABSENT=false
+fi
 
 # ── Install plugins ─────────────────────────────────────────────────────────
-echo "──── Installing plugins ($SCOPE scope) ────"
+echo "──── Installing plugins ($PLUGIN_CLI_SCOPE scope) ────"
 PROV_STEP="install"
+prov_phase plugins
+USER_PRE_ENABLED_JSON='{}'; USER_EP_ABSENT=true
+if [[ $STRIP_USER -eq 1 && -f "$USER_FILE" ]] && jq -e . "$USER_FILE" >/dev/null 2>&1; then
+  USER_PRE_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$USER_FILE")
+  jq -e 'has("enabledPlugins")' "$USER_FILE" >/dev/null 2>&1 && USER_EP_ABSENT=false
+fi
 # tr -d '\r': jq emits CRLF on Windows; a trailing \r would corrupt both the
 # install spec and the later presence comparison (INSTALLED_SPECS is \r-free).
 # two-tier profile: the install set is enabledPlugins-true (the
@@ -529,7 +577,7 @@ while IFS= read -r SPEC; do
   PLUGIN_PRE=false; plugin_preexisted "$SPEC" && PLUGIN_PRE=true
   # A failed install registered nothing, so it records nothing (the presence
   # verify below owns the failure).
-  if run_step claude plugin install "$SPEC" --scope "$SCOPE"; then
+  if run_step claude plugin install "$SPEC" --scope "$PLUGIN_CLI_SCOPE"; then
     prov_register plugin "$SPEC" "$PLUGIN_PRE" \
       --field "marketplace=$(jq -nc --arg v "${SPEC##*@}" '$v')" \
       --field "project_path=$(jq -nc --arg v "$PROV_PROJECT_PATH" '$v')"
@@ -554,6 +602,35 @@ if [[ $DRY_RUN -eq 1 ]]; then
   exit 0
 fi
 
+if [[ $STRIP_USER -eq 1 && -f "$USER_FILE" ]]; then
+  echo "──── Stripping the user-scope enablement this run wrote ($USER_FILE) ────"
+  if ! USER_STRIP_TMP="$(mktemp "$USER_FILE.strip.XXXXXX")"; then
+    echo "  ERROR: mktemp failed — $USER_FILE left unchanged" >&2; exit 1
+  fi
+  cp -p "$USER_FILE" "$USER_STRIP_TMP" 2>/dev/null || cp "$USER_FILE" "$USER_STRIP_TMP" || {
+    rm -f "$USER_STRIP_TMP"; echo "  ERROR: strip cp failed — $USER_FILE left unchanged" >&2; exit 1; }
+  USER_SPECS_JSON=$(printf '%s\n' "$SPECS" | jq -R . | jq -sc 'map(select(length > 0))')
+  if jq --argjson pre "$USER_PRE_ENABLED_JSON" --argjson absent "$USER_EP_ABSENT" --argjson specs "$USER_SPECS_JSON" '
+       reduce $specs[] as $k (.;
+         if ($pre | has($k)) then .enabledPlugins[$k] = $pre[$k] else del(.enabledPlugins[$k]) end)
+       | if $absent and ((.enabledPlugins // {}) | length) == 0 then del(.enabledPlugins) else . end
+     ' "$USER_FILE" > "$USER_STRIP_TMP"; then
+    if [[ "$(jq -cS . "$USER_FILE")" == "$(jq -cS . "$USER_STRIP_TMP")" ]]; then
+      rm -f "$USER_STRIP_TMP"
+    else
+      # prim-ok: the temp is a cp -p copy of the target, so the replace keeps its mode; atomic_write would reset it to 0600
+      mv "$USER_STRIP_TMP" "$USER_FILE"
+    fi
+    USER_POST_ENABLED_JSON=$(jq -c '.enabledPlugins // {}' "$USER_FILE")
+    prov_note noop json-key "$USER_FILE" --unit /enabledPlugins --scope user --class code --row user-settings \
+      --writer install-plugins.sh --pre-json "$USER_PRE_ENABLED_JSON" --post-json "$USER_POST_ENABLED_JSON"
+  else
+    rm -f "$USER_STRIP_TMP"
+    echo "  ERROR: user-scope strip failed — $USER_FILE left unchanged" >&2
+    exit 1
+  fi
+fi
+
 # ── Register on-demand plugins as disabled ────────────────────
 # Normalize BEFORE presence verification: a partial install or failed `plugin
 # list` must still undo successful installs' enabledPlugins=true side effects.
@@ -571,7 +648,7 @@ fi
 SETTINGS_FILE_BASENAME_LC="$(basename "$SETTINGS_FILE" | tr '[:upper:]' '[:lower:]')"
 ONDEMAND_KEYS_JSON=$(echo "$EXPANDED" | jq -c '[(.onDemandPlugins // {}) | keys[]]')
 ONDEMAND_KEYS_COUNT=$(jq 'length' <<< "$ONDEMAND_KEYS_JSON")
-if [[ "$ONDEMAND_KEYS_COUNT" -gt 0 && -f "$SETTINGS_FILE" ]]; then
+if [[ $STRIP_USER -eq 0 && "$ONDEMAND_KEYS_COUNT" -gt 0 && -f "$SETTINGS_FILE" ]]; then
   if jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
     # Keep the set as JSON end-to-end. Native jq emits CRLF on Windows; a raw
     # line round-trip would preserve each trailing CR as part of the plugin key.
@@ -662,7 +739,7 @@ if [[ ${#MISSING[@]} -gt 0 ]]; then
     echo "    $COUNT missing plugin(s) from marketplace '$NAME': $STATUS" >&2
     for SPEC in "${MISSING[@]}"; do
       [[ "${SPEC##*@}" == "$NAME" ]] || continue
-      echo "      $SPEC — retry: claude plugin install $SPEC --scope $SCOPE" >&2
+      echo "      $SPEC — retry: claude plugin install $SPEC --scope $PLUGIN_CLI_SCOPE" >&2
       for ((i = 0; i < ${#INSTALL_SPEC_LIST[@]}; i++)); do
         [[ "${INSTALL_SPEC_LIST[$i]}" == "$SPEC" && -n "${INSTALL_OUT_LIST[$i]}" ]] || continue
         echo "      install output for $SPEC:" >&2
@@ -690,6 +767,11 @@ echo "  All $(grep -c . <<< "$SPECS") enabled plugins present."
 # override input — mirrors reconcile-enabled-plugins.sh's own basename guard)
 # and when the target file doesn't exist yet (a fresh machine has nothing to
 # patch; the installs above already created it correctly).
+if [[ $STRIP_USER -eq 1 && ! -e "$SETTINGS_FILE" ]]; then
+  if ! { mkdir -p "$(dirname "$SETTINGS_FILE")" && printf '{}\n' > "$SETTINGS_FILE"; }; then
+    echo "  ERROR: cannot create $SETTINGS_FILE" >&2; exit 1
+  fi
+fi
 if [[ -f "$SETTINGS_FILE" && "$SETTINGS_FILE_BASENAME_LC" != "settings.local.json" ]]; then
   if jq -e . "$SETTINGS_FILE" >/dev/null 2>&1; then
     TRUE_SPECS_JSON=$(echo "$EXPANDED" | jq -c '[.enabledPlugins | to_entries[] | select(.value == true) | .key]')

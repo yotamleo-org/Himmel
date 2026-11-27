@@ -58,8 +58,6 @@ for marker in PARKED-USAGE PARKED-BANK; do
     check "$marker second owner is recorded as the lock holder" "$TS_OWNER_DOC" "$tmp/parked.md"
 done
 
-# A wrapped owner with no PR and no merge row: an In Progress ticket stays In Progress (D6n) only when
-# the brief says Completes ticket: no above ## Results; every other brief keeps D6 (To Do).
 brief() { # <flag-line|-> - the owner doc: the Completes ticket line (when given) above ## Results
     { [ "$1" = - ] || printf '> **Completes ticket:** %s\n\n' "$1"
       printf '## Results (newest at the bottom)\n- 10:00 WRAPPED — ended\n'; } > "$tmp/owner.md"
@@ -71,14 +69,14 @@ printf '#!/usr/bin/env bash\necho "status: HELD"; exit 11\n' > "$tmp/lock-held.s
 printf '#!/usr/bin/env bash\necho "status: STALE-DEAD"; exit 12\n' > "$tmp/lock-dead.sh"
 chmod +x "$tmp/lock-free.sh" "$tmp/lock-held.sh" "$tmp/lock-dead.sh"
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" brief no
-check "10955 completes no, the wrapped owner still holds its lock: D6n leaves In Progress alone" "$TS_RULE/$TS_DERIVED" 'D6n/In Progress'
+check "11376 completes no, the wrapped owner still holds its lock: D6n derives To Do, one rule on every wrap" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" brief no
 check "10955 completes no, no live lock: D6n derives To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-dead.sh" brief no
 check "10955 completes no, a STALE-DEAD lock is no live lock: D6n To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"; chmod +x "$tmp/lock-err.sh"
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" brief no
-check "10955 completes no, an unreadable lock answer: no-write + miss stage=lock, never a move" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
+check "11376 completes no, a wrapped owner's lock answer is not read: D6n To Do" "$TS_RULE/$TS_DERIVED" 'D6n/To Do'
 brief yes
 check "completes yes: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 brief -
@@ -106,6 +104,21 @@ check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (contr
 rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
+gonerec() {
+    jq -nc --arg doc "$1" '{doc:$doc,docs:[$doc],prs:{}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    TICKET_STATUS_QUEUE_LOCK="$2" ts_derive HIMMEL-9001
+}
+mkdir -p "$tmp/bucket11376"
+for gone in "$tmp/bucket11376/HIMMEL-9001-N1-archived.md" "$tmp/vanished-11376/pa/HIMMEL-9001-N2-relay.md"; do
+    gonerec "$gone" "$tmp/lock-free.sh"
+    check "11376 ${gone##*/}: a missing recorded doc with a free lock ends ownership" "$TS_WORKER_STATE/$TS_DERIVED" 'wrapped/To Do'
+    ts_owner HIMMEL-9001 >/dev/null
+    check "11376 ${gone##*/}: the ticket has no owner" "$TS_OWNER_ANS" none
+    check "11376 ${gone##*/}: ts_worker_state still reads it unknown, so the dispatcher holds an unreadable sibling doc" "$(TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_worker_state "$gone")" unknown
+    gonerec "$gone" "$tmp/lock-held.sh"
+    check "11376 ${gone##*/}: control, a held lock still owns the ticket" "$TS_RULE/$TS_DERIVED" 'D5/In Progress'
+done
+
 mkdir -p "$tmp/sdbin"
 cat > "$tmp/sdbin/python3" <<'EOF'
 #!/usr/bin/env bash
@@ -118,6 +131,9 @@ EOF
 chmod +x "$tmp/sdbin/python3"
 SD_REAL_PYTHON=$(command -v python3)
 export SD_REAL_PYTHON
+launched_gone="$tmp/bucket11376/HIMMEL-9001-N3-launched.md"
+PATH="$tmp/sdbin:$PATH" SD_DOC="$launched_gone" SD_WORD='"launched"' gonerec "$launched_gone" "$tmp/lock-free.sh"
+check "11376 a missing doc with a launched attempt and a free lock stays owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
 chmod +x "$tmp/lock-err.sh"
 sib() {
@@ -369,11 +385,11 @@ check "10194 an owed row with no valid due date stays D5c (no live lock: To Do, 
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge 'chief;x' 2026-11-22
 check "10194 an owed row whose owner is not chief or operator stays D5c (no live lock: To Do, 10955)" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-held.sh" owed_merge chief not-a-date
-check "10955 D5c whose wrapped owner still holds its lock leaves In Progress alone" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+check "11376 D5c whose wrapped owner still holds its lock derives To Do" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" owed_merge chief not-a-date
 check "10955 D5c with no live lock derives To Do" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
 TICKET_STATUS_QUEUE_LOCK="$tmp/lock-err.sh" owed_merge chief not-a-date
-check "10955 D5c with an unreadable lock answer: no-write + miss stage=lock" "$TS_RESULT/$TS_DERIVED/$TS_STAGE" 'miss/no-write/lock'
+check "11376 D5c: a wrapped owner's lock answer is not read: To Do" "$TS_RULE/$TS_DERIVED" 'D5c/To Do'
 rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths "$HERE/pr_remainder.py" K-1 | cut -f1; }
 check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
@@ -496,9 +512,9 @@ EOF
 chmod +x "$tmp/plock.sh"
 export TICKET_STATUS_QUEUE_LOCK="$tmp/plock.sh"
 
-OLEGACY="LEGACY-1 LEGACY-2 LEGACY-3 LEGACY-4 LEGACY-5"
+OLEGACY="LEGACY-5"
 OEXEMPT="UNSEEN HELD-STALE"
-check "ts_owner: the LEGACY list names five shapes" "$(echo "$OLEGACY" | wc -w | tr -d ' ')" 5
+check "ts_owner: the LEGACY list names one shape (the other four derive To Do since 11376)" "$(echo "$OLEGACY" | wc -w | tr -d ' ')" 1
 check "ts_owner: the exemption list names the two" "$OEXEMPT" "UNSEEN HELD-STALE"
 
 ocell() {
@@ -609,7 +625,7 @@ ochk "D1 park present" "awaiting:chief:d6n:$(iso_at 7200)"
 ocell; d6n; orow 3600 wrapped moved D6n
 ochk "D2 the moved anchor carries the rule" "awaiting:chief:d6n:$(iso_at 3600)"
 ocell; d6n; orow 7200 wrapped noop D6n; orow 3600 pr-open moved D5
-ochk "D3 an anchor of another rule after the last D6n row" none LEGACY-4
+ochk "D3 an anchor of another rule after the last D6n row" none
 ocell; d6n; orow 90000 wrapped noop D6n; orow 7200 live skip RM; orow 7200 live disabled -; orow 7200 sweep deferred - '{"stage":"lock"}'; orow 7200 sweep noop D5; orow 60 sweep noop D6n
 ochk "D4 a run interrupted by rows that are no anchor" "awaiting:chief:d6n:$(iso_at 90000)"
 ocell; d6n; orow 7200 wrapped noop D6n; orow 3600 hold moved - "$HOLDROW"; orow 60 sweep noop D6n; TS_OWNER_HELD=yes
@@ -633,15 +649,15 @@ ocell; owrap -; omerge 7200 no "$OWEDROW"; orow 3600 hold moved - "$HOLDROW"; TS
 ochk "R14 an owed row and a newer labelled hold" "awaiting:operator:hold:$(iso_at 3600)"
 ocell; owrap -; orow 7200 hold moved - "$HOLDROW"; omerge 3600 no "$OWEDROW"; TS_OWNER_HELD=yes
 ochk "R15 a labelled hold, then a newer owed row" "awaiting:operator:owed:$(iso_at 3600)"
-ocell; owrap -; omerge 7200 no; ochk "R1 remainder field absent" none LEGACY-2
-ocell; owrap -; omerge 7200 no '{"remainder":"none"}'; ochk "R2 remainder none" none LEGACY-3
-ocell; owrap -; omerge 7200 no '{"remainder":"handed-off"}'; ochk "R3 remainder handed-off" none LEGACY-3
+ocell; owrap -; omerge 7200 no; ochk "R1 remainder field absent" none
+ocell; owrap -; omerge 7200 no '{"remainder":"none"}'; ochk "R2 remainder none" none
+ocell; owrap -; omerge 7200 no '{"remainder":"handed-off"}'; ochk "R3 remainder handed-off" none
 ocell; owrap -; omerge 7200 no "$OWEDROW"; ochk "R4 remainder owed" "awaiting:operator:owed:$(iso_at 7200)"
 r5() { owrap -; omerge 100000 no '{"remainder":"remaining"}'; orow 7200 wrapped noop D5c; orow 60 sweep noop D5c; }
 ocell; r5; ochk "R5 remaining, park present" "awaiting:chief:resume:$(iso_at 7200)"
 ocell; owrap -; omerge 100000 no '{"remainder":"remaining"}'; orow 3600 wrapped moved D5c
 ochk "R6 remaining, a moved D5c anchor with nothing after it" "awaiting:chief:resume:$(iso_at 3600)"
-ocell; owrap -; orow 100000 wrapped noop D5c; omerge 7200 no '{"remainder":"remaining"}'; ochk "R7 remaining, no D5c row at or after the merge row" none LEGACY-4
+ocell; owrap -; orow 100000 wrapped noop D5c; omerge 7200 no '{"remainder":"remaining"}'; ochk "R7 remaining, no D5c row at or after the merge row" none
 ocell; owrap -; omerge 100000 no '{"remainder":"remaining"}'; orow 90000 wrapped noop D5c; orow 7200 live skip RM; orow 7200 live disabled -; orow 7200 sweep deferred - '{"stage":"lock"}'; orow 7200 sweep noop D5; orow 60 sweep noop D5c
 ochk "R8 remaining, a run interrupted by rows that are no anchor" "awaiting:chief:resume:$(iso_at 90000)"
 ocell; r5; orow 3600 hold moved - "$HOLDROW"; TS_OWNER_HELD=yes
@@ -659,7 +675,7 @@ ocell; d6n; orow 90000 wrapped noop D6n
 orow 7200 merge pending - '{"pr":"11","head":"h11","contract":"no","stage":"pre-merge"}'; orow 60 sweep noop D6n
 ochk "X1 a pre-merge row whose PR is open is no anchor" "awaiting:chief:d6n:$(iso_at 90000)"
 ocell; owrap -; orow 3600 sweep miss - '{"stage":"merged-no-row","merged_pr":"5"}'
-ochk "X2 no merge row, a merged PR (D5c merged-no-row)" none LEGACY-1
+ochk "X2 no merge row, a merged PR (D5c merged-no-row)" none
 check "ts_owner X2: the derive says merged-no-row" "$TS_STAGE/$TS_RULE" "merged-no-row/D5c"
 
 ts_oans_rows() {

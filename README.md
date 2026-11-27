@@ -220,6 +220,21 @@ himmel runs on Linux and macOS. Windows (Git Bash or WSL) is not supported.
 
 ---
 
+## Go deeper
+
+- [Why himmel](docs/why-himmel.md): the failure modes himmel guards against, where its protection stops, and what it costs you.
+- [Installing on your project](docs/setup/install.md): protect your own repo, and verify that the guards fire.
+- [The daily loop](docs/daily-loop.md): one change from task to merge, with every hook and gate at the moment it fires.
+- [The local UI](docs/ui.md): what each local surface shows and which one can change your machine.
+- [Usage and cost](docs/token-economy.md): how to read your usage gauges and what a run checks before it spends.
+- [Running a fleet](docs/jarvis-subsystems.md): a chief session that hands tickets to workers, has the results judged, and merges them.
+- [Unattended shifts](docs/handover/afk-mode.md): `/afk-shift` works a short ticket list while you are away and leaves one report.
+- [The second brain](docs/luna/README.md): a markdown vault Claude writes to and searches, so decisions outlive the session.
+- [Control from your phone](docs/telegram-bridge.md): a Telegram bridge that starts a bounded Claude run per message and relays the reply.
+- [The design](docs/system-design.md) and [the wiring](docs/architecture.md): how the parts fit, why, and the diagrams behind it.
+
+---
+
 ## Contributing
 
 Full workflow in [`docs/contributing.md`](docs/contributing.md); standing agent rules in [`CLAUDE.md`](CLAUDE.md).

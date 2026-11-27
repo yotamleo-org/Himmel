@@ -30,7 +30,8 @@
     "operator-reply": "text the operator types into the Telegram operator bot as a reply to a peer escalation, drafted for the peer and sent only after a counted Approve tap. Operator-typed only: the reply handler reads nothing of ours into it and the review message shows it verbatim before the tap",
     "peer-jobs": "typed peer-bridge envelopes (slice B): signed four-line messages that jobs.ts, the poller and runner.ts build from resolved values. Every field is a closed enum, a bounded integer, a resolved commit SHA, a hex value the receiver compares or a suite path on a public repo; no free text. Each also passes the bridge's own envelope policy (schema re-check, content rules on line 3, line 4 verified as our signature)",
     "chief-tell": "the one line of text scripts/peer-bridge/tell.ts was given by a station Claude session that is not a peer desk and not peer-tainted, after the bridge content rules. tell.ts is refused when the transcript names a salus or PHI path or phi-read-mark.sh marked the session when a tool touched one; a path neither sees (one a command builds at run time) is the residual, the same deliberate-evasion class as a same-user process that writes the bridge spool directly",
-    "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
+    "peer-pairing": "our own pairing card, built by the poller from self.stationName and the current public station key; no free text, and the fingerprint is never in it",
+    "skill-index":"the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
   },
   "providers": {
     "local-ollama": { "region": "local", "note": "zero egress; includes qmd local GGUF embeddings" },
@@ -185,6 +186,16 @@
     },
     {
       "corpus": "chief-tell", "provider": "*", "purpose": "*",
+      "verdict": "deny",
+      "why": "only the peer-message cell above is open for this corpus; placed before the `* x ollama-cloud x extraction` allow so that wildcard cannot open it"
+    },
+    {
+      "corpus": "peer-pairing", "provider": "peer-telegram", "purpose": "peer-message",
+      "verdict": "allow",
+      "why": "our own pairing card, which the poller builds from self.stationName and the current public station key; the bridge's card gate rebuilds those exact bytes before queueing and before sending, checks the station name for a host and runs redact_check with no waiver. The fingerprint is never in it."
+    },
+    {
+      "corpus": "peer-pairing", "provider": "*", "purpose": "*",
       "verdict": "deny",
       "why": "only the peer-message cell above is open for this corpus; placed before the `* x ollama-cloud x extraction` allow so that wildcard cannot open it"
     },

@@ -1014,7 +1014,7 @@ contains "9561 S1 1: its source is the D6n park" "$(drows UNOWNED)" "source=d6n"
 contains "9561 S1 1: its since is the first D6n row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
 contains "9561 S1 1: its due is 24 h after the first D6n row" "$(drows UNOWNED)" "due=$(iso_at -82800) "
 check "9561 S1 1: and the key is stuck, no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
-contains "9561 S1 1: a stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S1 1: a stuck ticket is drift: sdrift=3" "$(dlast)" "sdrift=3:"
 check "9561 S1 9: the pass wrote nothing" "$(nwrites)" 0
 check "9561 S1 9: and released no lock" "$(nrelease)" 0
 
@@ -1023,7 +1023,7 @@ drift
 check "9561 S1 2: a D6n park of 25 h is no AWAITING row" "$(dcount AWAITING)" 0
 contains "9561 S1 2: it is UNOWNED, awaiting the chief since the first D6n row" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 90000)"
 contains "9561 S1 2: and says no date makes it wait" "$(drows UNOWNED)" "a date never makes it wait"
-contains "9561 S1 2: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S1 2: and counts as drift: sdrift=3" "$(dlast)" "sdrift=3:"
 
 d6fx; lrow 90000 wrapped noop D6n; lrow 7200 live skip RM; lrow 7200 live disabled -; lrow 7200 sweep deferred - '{"stage":"lock"}'; lrow 7200 sweep noop D5; lrow 60 sweep noop D6n
 drift
@@ -1176,7 +1176,7 @@ contains "9561 S2 1: its due is the end of the until day" "$(drows UNOWNED)" "du
 contains "9561 S2 1: its what is the reason" "$(drows UNOWNED)" "what=waiting on legal "
 contains "9561 S2 1: it names the owner as the class's first word" "$(drows UNOWNED)" "UNOWNED $K In Progress with no open PR and no live owner; a date never makes it wait: awaiting operator since="
 check "9561 S2 1: and the key is stuck, no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
-contains "9561 S2 1: a stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S2 1: a stuck ticket is drift: sdrift=3" "$(dlast)" "sdrift=3:"
 
 hnow 172800
 drift
@@ -1258,7 +1258,7 @@ contains "10224 1: it names the key, the blocker and Done" "$(drows HOLD-STALE)"
 contains "10224 1: its fix is the release command" "$(drows HOLD-STALE)" "fix=bash scripts/handover/chief-kit/ticket-hold.sh $K --release"
 contains "10224 1: its writer is ticket-hold.sh" "$(drows HOLD-STALE)" "writer=ticket-hold.sh"
 check "10224 1: the key is no AWAITING and no UNOWNED row" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/0
-contains "10224 1: and sdrift counts the row" "$(dlast)" "sdrift=1:"
+contains "10224 1: and sdrift counts the row" "$(dlast)" "sdrift=3:"
 hold "$K" --release --owner operator
 hnow 0
 drift
@@ -1269,7 +1269,7 @@ onmirror "In Progress"
 hnow 0
 drift
 check "10224 2: control: an on ticket still open is a stuck row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount UNOWNED)" 0/1
-contains "10224 2: and the stuck row is drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "10224 2: and the stuck row is drift: sdrift=3" "$(dlast)" "sdrift=3:"
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)"
 onmirror Done
@@ -1466,12 +1466,12 @@ contains "9561 S5 3: it waits on the chief" "$(drows UNOWNED)" "awaiting the chi
 contains "9561 S5 3: its source is the resume" "$(drows UNOWNED)" "source=resume"
 contains "9561 S5 3: its since is the first D5c row after the merge row" "$(drows UNOWNED)" "since=$(iso_at 3600) "
 contains "9561 S5 3: its due is 6 h after it" "$(drows UNOWNED)" "due=$(iso_at -18000) "
-contains "9561 S5 3: and the stuck ticket is drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S5 3: and the stuck ticket is drift: sdrift=3" "$(dlast)" "sdrift=3:"
 d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 25200 wrapped noop D5c; lrow 60 sweep noop D5c
 drift
 check "9561 S5 3: parked 7 h it is no AWAITING row" "$(dcount AWAITING)" 0
 contains "9561 S5 3: it is UNOWNED, awaiting the chief since the first D5c row, due $(iso_at 3600)" "$(drows UNOWNED)" "awaiting the chief since=$(iso_at 25200) due=$(iso_at 3600)"
-contains "9561 S5 3: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S5 3: and counts as drift: sdrift=3" "$(dlast)" "sdrift=3:"
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=12h
 contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h moves the due= of the 7 h park, the row stays UNOWNED" "$(drows UNOWNED)" "due=$(iso_at -18000) "
 driftenv TICKET_STATUS_AWAIT_TTL_RESUME=abc
@@ -2469,7 +2469,7 @@ drift
 check "10786 1: an ownerless started ticket inside a 24 h chief park is stuck, one UNOWNED row and no wait row" "$(dcount UNOWNED)/$(dcount AWAITING)" 1/0
 contains "10786 1: the row says no live owner and that a date does not make it wait" "$(drows UNOWNED)" "no live owner; a date never makes it wait"
 contains "10786 1: and names the wait it was parked on" "$(drows UNOWNED)" "the chief since=$(iso_at 3600)"
-check "10786 1: the stuck ticket counts as drift" "$(sdn)" "sdrift=1"
+check "10786 1: the stuck ticket counts as drift, beside the To Do move the sweep owes it" "$(sdn)/$(dcount DERIVE-MISMATCH)/$(dcount WORKER-COMMENT)" "sdrift=3/1/1"
 d6fx; lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n; owned "$K" LIVE '{"state":"live"}'
 drift
 check "10786 1 control: the same ticket with a live worker is neither stuck nor waiting" "$(dcount UNOWNED)/$(dcount AWAITING)" 0/0
@@ -2509,7 +2509,7 @@ d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t
 hnow 0
 drift
 check "11050 2: a held started ticket whose thread is live is no UNOWNED row and no AWAITING row" "$(dcount UNOWNED)/$(dcount AWAITING)" 0/0
-check "11050 2: and it is no drift" "$(sdn)" "sdrift=0"
+check "11050 2: and its only drift is the To Do move the sweep owes it" "$(sdn)/$(dcount DERIVE-MISMATCH)/$(dcount WORKER-COMMENT)" "sdrift=2/1/1"
 d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread "$TID" running
 hnow 0
 drift
@@ -2519,7 +2519,7 @@ hnow 0
 drift
 check "11050 3: the same ticket once the thread settles is one UNOWNED row" "$(dcount UNOWNED)" 1
 contains "11050 3: the row names the thread and that it settled" "$(drows UNOWNED)" "thread $TID is settled"
-check "11050 3: and it is drift" "$(sdn)" "sdrift=1"
+check "11050 3: and it is drift" "$(sdn)/$(dcount DERIVE-MISMATCH)/$(dcount WORKER-COMMENT)" "sdrift=3/1/1"
 d6fx; hold "$K" --reason "a T3 thread works it" --owner chief --thread "$TID"; t3thread other-thread running
 hnow 0
 drift

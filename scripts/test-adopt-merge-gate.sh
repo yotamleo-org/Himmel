@@ -188,8 +188,8 @@ STUB
   core_check() {  # <head>: trust_path_check for PR 7 at <head> through the stand-in anchor
     GH="$work/core-gh" bash -c '. "$1"; shift; trust_path_check "$@"' _ "$repo_root/scripts/lib/go-gate.sh" adopter/project 7 "$1" main "$anchor" 2>&1
   }
-  jq -e '.env.HIMMEL_REPO | type == "string" and length > 0' "$settings" >/dev/null \
-    || fail "core/project did not record env.HIMMEL_REPO"
+  jq -e '(.env.HIMMEL_REPO // null) == null' "$settings" >/dev/null \
+    || fail "core/project wrote env.HIMMEL_REPO, an absolute clone path, into the shared file"
   HOME="$home" git -C "$target" add .claude/settings.json || exit 1
   # R6: the adopter declares its own trust path on the default branch.
   printf '^deploy/\n' >> "$trust" && mkdir -p "$target/deploy" "$target/src" \

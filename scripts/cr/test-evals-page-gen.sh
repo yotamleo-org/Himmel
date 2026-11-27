@@ -411,6 +411,31 @@ lacks "sources: the pooled page names no internal script" "$(cat "$TMP/page-v3.m
 eq "page: committed README is the render of the committed data file" \
   "$(python3 -I "$GEN" render --data "$DATA" --out "$TMP/committed.md" > /dev/null 2>&1; cmp -s "$TMP/committed.md" "$PAGE" && echo same || echo differ)" "same"
 eq "page: no bare percentage" "$(bare_pct "$PAGE")" ""
+eq "cost: the data file holds both measurement dates" "$(python3 -I -c 'import json,sys
+c=json.load(open(sys.argv[1])).get("cost") or {}
+print(" ".join("%s:%s..%s:%s" % (m["as_of"], m["window"]["from"], m["window"]["to"], m["per_pr_usd"]) for m in c.get("runs", [])))' "$DATA")" \
+  "2026-11-06:2026-10-29..2026-11-05:18.09 2026-11-26:2026-11-18..2026-11-25:35.36"
+COST_ROW="$(grep -F '| What does one merged pull request cost? |' "$PAGE")"
+has "cost: the bottom line gives both per-PR figures" "$COST_ROW" "**\$35.36** all in (\$22.44 without the T3 Code lane), against \$18.09"
+has "cost: the bottom line is dated by both measurements" "$COST_ROW" "as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs"
+has "cost: the page has its own section" "$(cat "$PAGE")" "## What a merged pull request costs"
+has "cost: the worker share sits beside its first value" "$(grep -F '| Worker share |' "$PAGE")" "| 46.7% | 30.2% (47.5% without T3 Code) |"
+has "cost: the chief share sits beside its first value" "$(grep -F '| Chief share |' "$PAGE")" "| 28.8% | 17.8% (28.0% without T3 Code) |"
+has "cost: the judge share sits beside its first value" "$(grep -F '| Judge share |' "$PAGE")" "| 13.2% | 6.2% (9.8% without T3 Code) |"
+has "cost: the reconciliation with cost-state, both measurements" "$(grep -F '| Reconciliation with cost-state |' "$PAGE")" "| 98.2% over 2,561 sessions | 98.77% over 2,768 sessions |"
+has "cost: the reconciliation row is sampled in sessions" "$(grep -F '| Reconciliation with cost-state |' "$PAGE")" "| as of 2026-11-06, n = 2,561 sessions; as of 2026-11-26, n = 2,768 sessions |"
+has "cost: the window total behind the per-PR figure sits apart from the whole-session total" "$(cat "$PAGE")" "The per-PR figure divides the window total, \$15,735.87. The reconciliation counts those sessions whole, so its totals differ"
+has "cost: the page states the list-price basis" "$(cat "$PAGE")" "All money is list price"
+has "cost: the page notes the usage store's missing day" "$(cat "$PAGE")" "The usage store misses 2026-11-22"
+cp "$DATA" "$TMP/refresh.json"
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/refresh.json" > /dev/null 2>&1; rc=$?
+eq "cost: a data refresh exits 0" "$rc" "0"
+eq "cost: a data refresh keeps the cost section" "$(jget "$TMP/refresh.json" cost)" "$(jget "$DATA" cost)"
+eq "cost: a refresh still rewrites the ledger sections" "$(jget "$TMP/refresh.json" review/pooled/n)" "60"
+eq "cost: a data file without a cost section renders no cost section" "$(grep -c 'merged pull request cost' "$R")" "0"
+printf 'not json\n' > "$TMP/broken.json"
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/broken.json" > /dev/null 2>&1; rc=$?
+eq "cost: an unreadable output file is refused, not overwritten" "$rc:$(cat "$TMP/broken.json")" "2:not json"
 eq "page: this suite runs in PR CI, so a hand edit of the page fails the PR" \
   "$(awk -F'\t' '$1 == "scripts/cr/test-evals-page-gen.sh" { print $2 " " $3 }' "$ROOT/scripts/ci/suite-tiers.tsv")" "pr static-gate"
 lacks "page: no draft marker" "$(head -5 "$PAGE")" "draft:"

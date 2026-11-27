@@ -75,6 +75,15 @@ one() { # <label> -> prints the tracker output for a chief holding just that wor
     run "${@:2}"
 }
 has "a bullet without backticks or a time stamp is accepted" "$(one N3)" "N3 quoted-back"
+
+MUT="$WORK/mut/scripts"; mkdir -p "$MUT/handover/chief-kit"
+cp -R "$HERE/../../lib" "$MUT/lib"
+cp "$HERE/../queue-lock.sh" "$MUT/handover/"
+cp "$HERE/succession-tracker.sh" "$MUT/handover/chief-kit/"
+one N3 >/dev/null
+has "ST1c setup: the copied tracker reads the quote-back" "$(bash "$MUT/handover/chief-kit/succession-tracker.sh" "$CDOC" --successor "$SUCC" 2>&1)" "N3 quoted-back"
+printf ':\n' > "$MUT/lib/succession-bullet.sh"
+lacks "ST1c: with the lib's parser removed the quote-back is not read" "$(bash "$MUT/handover/chief-kit/succession-tracker.sh" "$CDOC" --successor "$SUCC" 2>&1)" "N3 quoted-back"
 has "the LATEST bullet decides: a later bullet naming another chief reads missing" "$(one N4)" "N4 missing"
 has "a prose line mentioning SUCCESSION accepted is not a bullet" "$(one N5)" "N5 missing"
 has "an ambiguous bullet (trailing text) is missing, never accepted" "$(one N6)" "N6 missing"

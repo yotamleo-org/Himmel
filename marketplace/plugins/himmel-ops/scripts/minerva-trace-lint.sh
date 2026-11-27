@@ -17,16 +17,25 @@
 #      for it once it lists an I<n> line.
 # Paths resolve against the cwd's git top level, or <alt-root> when given (a spec kept
 # in another repo, e.g. the state repo, cites paths of either). Every miss is named on stderr.
+# `--spec-only <spec.md> [<alt-root>]` runs rules 1 and 2 alone, for a spec with no plan yet.
 # Exit 0 ok, 1 refused, 2 usage. bash 3.2-safe.
 set -u
 set -f  # backticked cells are split into words below; never glob them
 
-spec="${1:-}"; plan="${2:-}"; alt="${3:-}"  # alt: the spec's own repo root, a second place a cited path may exist
-if [ ! -f "$spec" ] || [ ! -f "$plan" ]; then
-  echo "minerva-trace-lint: usage: minerva-trace-lint.sh <spec.md> <plan.md> [<alt-root>] (both files must exist)" >&2
+spec_only=0
+if [ "${1:-}" = "--spec-only" ]; then spec_only=1; shift; fi
+spec="${1:-}"; plan=""
+if [ "$spec_only" -eq 0 ]; then plan="${2:-}"; fi
+alt="${3:-}"
+if [ "$spec_only" -eq 1 ]; then alt="${2:-}"; fi
+if [ ! -f "$spec" ] || { [ "$spec_only" -eq 0 ] && [ ! -f "$plan" ]; }; then
+  echo "minerva-trace-lint: usage: minerva-trace-lint.sh <spec.md> <plan.md> [<alt-root>], or --spec-only <spec.md> [<alt-root>] (every named file must exist)" >&2
   exit 2
 fi
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+cited(){ [ -e "$root/$1" ] || { [ -n "$alt" ] && [ -e "$alt/$1" ]; }; }
+line_ref='^(.*):([0-9]+(-[0-9]+)?)$'
 
 missing=""
 add(){ missing="${missing}  - $1
@@ -81,8 +90,14 @@ if printf '%s\n' "$prose" | grep -qiwE "$surface_words" \
         esac
         case "$t" in -*) continue;; */*|*.*|*[*?[]*) ;; *) continue;; esac  # a flag or identifier is no path
         npaths=$((npaths+1))
-        [ -e "$root/$t" ] || { [ -n "$alt" ] && [ -e "$alt/$t" ]; } \
-          || add "fact ownership: row '$fact' cites $t, which does not exist under $root${alt:+ or $alt}"
+        cited "$t" && continue
+        if [[ "$t" =~ $line_ref ]] && cited "${BASH_REMATCH[1]}"; then
+          add "fact ownership: row '$fact' cites $t; cite the file in backticks and name its function bare (no . or /): \`${BASH_REMATCH[1]}\` \`<function>\`"
+          continue
+        fi
+        bare=""
+        case "$t" in */*) ;; *) bare="; a bare file name: cite its repo-relative path";; esac
+        add "fact ownership: row '$fact' cites $t, which does not exist under $root${alt:+ or $alt}$bare"
       done
       [ "$npaths" -gt 0 ] || add "fact ownership: row '$fact' cites no backticked existing path and no 'none (grep: <pattern>)' record"
     done <<EOF
@@ -100,7 +115,9 @@ elif printf '%s\n' "$inv" | grep -qvixE '[[:space:]]*none[[:space:].]*'; then  #
   # every rule line is an I<n> line; only an indented, unbulleted continuation may sit beside one
   stray="$(printf '%s\n' "$inv" | grep -vE '^[[:space:]]*([-*][[:space:]]+)?(\*\*)?I[0-9]+([^0-9]|$)' | grep -E '^[[:space:]]*[-*][[:space:]]|^[^[:space:]]' || true)"
   [ -z "$stray" ] || add "invariants: a line is not an I<n> line, so no test can trace it: $(printf '%s\n' "$stray" | head -n1)"
-  if [ "$spec" -ef "$plan" ]; then
+  if [ "$spec_only" -eq 1 ]; then
+    :
+  elif [ "$spec" -ef "$plan" ]; then
     add "invariants: the plan is the spec itself, so no plan names a test for its I<n> lines; pass the plan file"
   else
     for id in $ids; do

@@ -23,6 +23,7 @@ T="$(mktemp -d "$_FROOT/.himmel-2526-tfixture-XXXXXX")" || exit 1; trap 'rm -rf 
 export HOME="$T"
 export GIT_CONFIG_NOSYSTEM=1
 export GIT_CONFIG_GLOBAL="$T/.gitconfig"
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 # The guard must never inherit the opt-in from the suite env.
 unset CODEX_EXTERNAL_WRITES_OK 2>/dev/null || true
 
@@ -228,6 +229,96 @@ done
 echo "== non-command payloads =="
 check "no command -> allow"              allow '{"tool_name":"Bash","tool_input":{}}'
 check "non-terminal tool -> allow"       allow '{"tool_name":"Read","tool_input":{"file_path":"/x/README.md"}}'
+
+echo "== lane grants (HIMMEL-11204) =="
+LG="$(cd "$T" && pwd -P)/lanes"
+LGH="$LG/home"; LGP="$LG/primary"; LGW="$LG/wt"; LGC="$LGH/.himmel/config.json"
+mkdir -p "$LGH/.himmel"; chmod 700 "$LGH/.himmel"
+git init -q -b main "$LGP"
+git -C "$LGP" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m init
+git -C "$LGP" remote add origin 'https://github.com/acme/fixture.git'
+git -C "$LGP" worktree add -q -b feat/x "$LGW"
+LG_ALL='["git-push-branch","gh-pr-create","net-read","manage-task-own"]'
+lg_cfg() { printf '%s\n' "$1" > "$LGC"; chmod 600 "$LGC"; }
+lg_codex() {
+    lg_cfg "{\"lane_grants\":{\"codex\":$1},\"lane_grants_origin\":\"github.com/acme/fixture\"}"
+}
+lg_all() { lg_codex "$LG_ALL"; }
+lg() {
+    local json
+    json=$(jq -cn --arg c "$3" --arg d "${4:-$LGW}" --arg l "${5-codex}" \
+        '{tool_name:"Bash",tool_input:{command:$c},cwd:$d} + (if $l == "" then {} else {himmel_lane:$l} end)')
+    check "$1" "$2" "$json" HOME="$LGH" XDG_CONFIG_HOME="$LGH/.config" CLAUDE_PROJECT_DIR="$LGP"
+}
+# shellcheck disable=SC2016  # the literal $ and backtick are the payload
+LG_PR='gh pr create -H feat/x -t '"'"'x: y'"'"' -b '"'"'body with a ` and $HOME'"'"' --base main'
+LG_CURL='curl -q -g -sS https://example.com/a'
+LG_WGET='wget --no-config --max-redirect=0 -qO- https://example.com/a'
+
+rm -f "$LGC"
+lg "T1c no config: granted push shape denied" block 'git push -u origin feat/x'
+lg "T5c no config: pr create denied" block "$LG_PR"
+lg "T7c no config: curl denied" block "$LG_CURL"
+lg "T7c no config: wget denied" block "$LG_WGET"
+lg_codex '["git-push-branch"]'
+lg "T1 grant-push allows the branch push" allow 'git push -u origin feat/x'
+lg_codex '["gh-pr-create"]'
+lg "T5 grant-pr allows pr create" allow "$LG_PR"
+lg_codex '["net-read"]'
+lg "T7 net-read allows curl" allow "$LG_CURL"
+lg "T7 net-read allows wget" allow "$LG_WGET"
+lg "T7 curl -L refused (1434)" block 'curl -q -g -sSL https://example.com/a'
+lg "T7 wget without --max-redirect=0 refused (1434)" block 'wget --no-config -qO- https://example.com/a'
+lg "T7 any https host allowed with no host key (1434)" allow 'curl -q -g https://unlisted.example.net/x'
+for c in 'curl -sS https://e/a' 'curl -q https://e/a' 'curl -q -g -o f https://e/a' \
+    'curl -q -g -d x https://e/a' 'curl -q -g -I https://e/a' 'curl -q -g http://e/a' \
+    "curl -q -g 'https://e/[1-9]'" 'wget -qO- https://e/a'; do
+    lg "T7 refused: $c" block "$c"
+done
+lg_cfg "{\"lane_grants\":{\"antigravity\":$LG_ALL},\"lane_grants_origin\":\"github.com/acme/fixture\"}"
+lg "T2 antigravity grant, codex payload" block 'git push origin feat/x'
+lg_all
+lg "T2 no himmel_lane" block 'git push origin feat/x' "$LGW" ''
+check "T2 PowerShell never granted" block \
+    "$(jq -cn --arg d "$LGW" '{tool_name:"PowerShell",tool_input:{command:"git push origin feat/x"},cwd:$d,himmel_lane:"codex"}')" \
+    HOME="$LGH" XDG_CONFIG_HOME="$LGH/.config" CLAUDE_PROJECT_DIR="$LGP"
+lg "T3 push main from main" block 'git push origin main' "$LGP"
+for c in 'git push -f origin feat/x' 'git push origin +feat/x' 'git push origin feat/x:main' \
+    'git push https://x/y feat/x' 'git push upstream feat/x' 'git -C /other push origin feat/x' \
+    'git push --no-verify origin feat/x' 'git push origin feat/x && git push origin main'; do
+    lg "T3 floor: $c" block "$c"
+done
+for c in 'gh pr merge 1' 'gh pr create --repo o/r -H feat/x -t a' 'gh pr create -F body.md -H feat/x' \
+    'gh pr create -t a -b b' 'gh pr create -t a -H feat/x; gh pr merge 1'; do
+    lg "T4 floor: $c" block "$c"
+done
+git -C "$LGP" remote add upstream 'https://github.com/acme/fixture.git'
+lg "T4 a second remote refuses pr create" block "$LG_PR"
+git -C "$LGP" remote remove upstream
+for c in 'git remote set-url origin x' 'git -c url.a.insteadof=b push origin feat/x' \
+    'git config url.a.insteadOf b'; do
+    lg "T6 floor: $c" block "$c"
+done
+lg_push_denied() { lg "T3b $1" block 'git push origin feat/x'; }
+git -C "$LGP" remote set-url origin 'https://github.com/acme/other.git'; lg_push_denied "origin names another repo"
+git -C "$LGP" remote set-url origin 'https://github.com/acme/fixture.git'
+git -C "$LGP" config remote.origin.pushurl 'https://github.com/acme/other.git'; lg_push_denied "pushurl names another repo"
+git -C "$LGP" config --unset remote.origin.pushurl
+git -C "$LGP" config url.https://evil.example/.insteadOf https://github.com/; lg_push_denied "insteadOf rewrites origin"
+git -C "$LGP" config --unset url.https://evil.example/.insteadOf
+git -C "$LGP" config remote.origin.push 'feat/x:main'; lg_push_denied "remote.origin.push set"
+git -C "$LGP" config --unset remote.origin.push
+git -C "$LGP" config remote.origin.mirror true; lg_push_denied "remote.origin.mirror true"
+git -C "$LGP" config --unset remote.origin.mirror
+git -C "$LGW" checkout -q -b heads/main
+lg "T3b a branch named heads/main" block 'git push origin heads/main'
+git -C "$LGW" checkout -q feat/x
+git -C "$LGP" remote set-url origin 'git@github.com:acme/fixture.git'
+printf '[url "https://github.com/"]\n\tinsteadOf = git@github.com:\n' > "$LGH/.gitconfig"
+lg "T3b-allow ssh-to-https rewrite of the same repo" allow 'git push origin feat/x'
+rm -f "$LGH/.gitconfig"
+git -C "$LGP" remote set-url origin 'https://github.com/acme/fixture.git'
+rm -f "$LGC"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -253,9 +253,11 @@ echo "ok: HIMMEL-3332 S4 a preserved HANDOVER_DIR is recorded as noop preexisted
 # sessionend_profile_luna_wired: a luna-profile install wires the session end hook, once, over a re-run.
 pse="$work/p4-se"; mkdir -p "$pse"
 for _run in 1 2; do HOME="$p4home" HIMMEL_PROVENANCE_DIR="$p4led" bash "$adopt" --profile luna --target "$pse" >/dev/null; done
-se_n="$(jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | test("scripts/hooks/end-session-wiki[.]sh"))] | length' "$pse/.claude/settings.json")"
-[ "$se_n" = "1" ] || fail "sessionend_profile_luna_wired: want one SessionEnd entry after two luna installs, got $se_n"
-[ "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$pse/.claude/settings.json")" = "30" ] \
+se_n="$(jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | test("scripts/hooks/end-session-wiki[.]sh"))] | length' "$pse/.claude/settings.local.json")"
+[ "$se_n" = "1" ] || fail "sessionend_profile_luna_wired: want one SessionEnd entry in the local file after two luna installs, got $se_n"
+[ "$(jq '[.hooks.SessionEnd[]?.hooks[]? | select((.command // "") | test("end-session-wiki"))] | length' "$pse/.claude/settings.json")" = "0" ] \
+  || fail "sessionend_profile_luna_wired: the clone-path SessionEnd hook must stay out of the shared file"
+[ "$(jq -r '.hooks.SessionEnd[0].hooks[0].timeout' "$pse/.claude/settings.local.json")" = "30" ] \
   || fail "sessionend_profile_luna_wired: the entry must carry timeout 30"
 echo "ok: sessionend_profile_luna_wired"
 

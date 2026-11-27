@@ -9,7 +9,8 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { Command } from 'commander';
 import * as pinned from './pinned.js';
 import { RESIDUAL_ROWS } from './test-residual-fixtures.js';
-import { checkResiduals, checkRoundResiduals, headerTickets, SPEC_CHECK_VERBS, specSigner, type SignerAlert } from './spec-sign.js';
+import { checkResiduals, checkRoundResiduals, headerTickets, lintSpec, SPEC_CHECK_VERBS, specSigner, type SignerAlert } from './spec-sign.js';
+import { estimateLine, planOf } from './sign-lint.js';
 import { readSignerState } from './engine-core.js';
 import * as ledger from './ledger.js';
 import type { IssueSnap, OperatorRow } from './types.js';
@@ -3196,6 +3197,211 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
         expect(alerts).toEqual([]);
         expect(rowsOf('spec-signer')).toEqual([]);
       });
+    });
+  });
+
+  describe('sign-check', () => {
+    const OK_LINE = /^SIGN-CHECK OK spec-sha=[0-9a-f]{64} plan-sha=([0-9a-f]{64}|none)$/;
+
+    beforeEach(() => {
+      declared();
+      for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+      writeFileSync(join(root, 'verbatim.txt'), 'approve 1-5\n');
+    });
+
+    async function signCheckRun(...args: string[]): Promise<{ code: number; out: string[] }> {
+      const out: string[] = [];
+      const log = vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        await cli('sign-check', ...args);
+        return { code: Number(process.exitCode ?? 0), out };
+      } finally {
+        process.exitCode = undefined;
+        log.mockRestore();
+        err.mockRestore();
+      }
+    }
+
+    async function signingRefusal(route: 'spec' | 'spec-review', args: string[]): Promise<string | null> {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        await cli('operator', route, 'R1', ...args,
+          ...(route === 'spec' ? ['--decision', '387', '--verbatim-file', join(root, 'verbatim.txt')] : []));
+        return null;
+      } catch (e) {
+        return (e as Error).message;
+      } finally {
+        log.mockRestore();
+      }
+    }
+
+    const fileArgs = (keys: string, p: string, verdicts: string[], plan?: string) =>
+      ['--keys', keys, '--spec', p, ...(plan ? ['--plan', plan] : []), ...verdicts.flatMap((v) => ['--verdict', v])];
+
+    async function sameRefusal(route: 'spec' | 'spec-review', args: string[], expected: RegExp): Promise<void> {
+      const checked = await signCheckRun(...args, ...(route === 'spec' ? [] : ['--route', route]));
+      const signed = await signingRefusal(route, args);
+      expect(signed).toMatch(expected);
+      expect(checked).toEqual({ code: 1, out: [`SIGN-CHECK REFUSED: ${signed}`] });
+    }
+
+    it('(a) a plan return with undispositioned findings and a refusing capped verifier gets the signing message', async () => {
+      const f = cappedFixture(undefined, false, 2);
+      await sameRefusal('spec', fileArgs('HIMMEL-10205', f.spec, f.verdicts, f.plan), /residual findings[\s\S]*capped verifier unavailable\/refused/);
+    });
+
+    it('(b) a path:line Fact ownership cell gets the signing lint refusal, with this checkout\'s new message', async () => {
+      const scripts = 'marketplace/plugins/himmel-ops/scripts';
+      const signerRoot = mkdtempSync(join(root, 'signer-root-'));
+      execFileSync('git', ['init', '-q', signerRoot]);
+      mkdirSync(join(signerRoot, scripts), { recursive: true });
+      for (const name of ['minerva-spec-gate.sh', 'minerva-trace-lint.sh']) copyFileSync(join(candidateRoot, scripts, name), join(signerRoot, scripts, name));
+      vi.stubEnv('HIMMEL_REPO', candidateRoot);
+      sourceFixture.primary = signerRoot;
+      try {
+        const { spec: p, plan } = bucketSpec(`${scripts}/minerva-spec-gate.sh:12`);
+        await sameRefusal('spec', fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')], plan),
+          /minerva-trace-lint\.sh refused the spec:[\s\S]*minerva-spec-gate\.sh:12; cite the file in backticks and name its function bare/);
+      } finally { sourceFixture.primary = null; }
+    });
+
+    it('(c) a spec-review SPEC CLEAN that reviewed other bytes gets the signing message', async () => {
+      const f = rspec();
+      await sameRefusal('spec-review', fileArgs('K-2', f.spec, [critic(f.spec, 'SPEC CLEAN', { reviewed: [`Reviewed: spec ${'a'.repeat(64)}`] })], f.plan),
+        /SPEC CLEAN reviewed a{64}, not the spec's bytes/);
+    });
+
+    it('(d) a missing spec gets the signing message', async () => {
+      const p = spec();
+      await sameRefusal('spec', fileArgs('K-1', join(root, 'absent.md'), [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]), /spec not found/);
+    });
+
+    it('(e) no --plan on a signable fixture is accepted by both, with plan-sha=none', async () => {
+      const p = spec();
+      const args = fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]);
+      const checked = await signCheckRun(...args);
+      expect(await signingRefusal('spec', args)).toBeNull();
+      expect(checked).toEqual({ code: 0, out: [expect.stringMatching(/ plan-sha=none$/)] });
+    });
+
+    it('a spec-review record spec-review accepts is accepted with --route spec-review, naming the plan sha', async () => {
+      const f = rspec();
+      const args = fileArgs('K-2', f.spec, [critic(f.spec, 'SPEC CLEAN')], f.plan);
+      const checked = await signCheckRun(...args, '--route', 'spec-review');
+      expect(await signingRefusal('spec-review', args)).toBeNull();
+      expect(checked).toEqual({ code: 0, out: [`SIGN-CHECK OK spec-sha=${sha(f.spec)} plan-sha=${sha(f.plan)}`] });
+    });
+
+    it('prints one OK line on accepted bytes, reads no signer or release record and leaves every file as it was', async () => {
+      const p = spec();
+      const args = fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]);
+      writeFileSync(join(sctx().dir, 'operator.jsonl'), 'not a record chain\n');
+      const before = fixtureHashes(root);
+      const checked = await signCheckRun(...args);
+      expect(checked).toEqual({ code: 0, out: [expect.stringMatching(OK_LINE)] });
+      expect(checked.out[0]).toContain(`spec-sha=${sha(p)} `);
+      expect(fixtureHashes(root)).toEqual(before);
+    });
+
+    it('runs in a worker context and makes no network call', async () => {
+      const p = spec();
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+      vi.stubEnv('HIMMEL_BRIDGE_SESSION', '1');
+      const net = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no network'));
+      try {
+        const checked = await signCheckRun(...fileArgs('K-1', p, [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')]));
+        expect(checked.code).toBe(0);
+        expect(net).not.toHaveBeenCalled();
+      } finally {
+        net.mockRestore();
+      }
+    });
+
+    it('a usage error exits 2 with no verdict line', async () => {
+      const p = spec();
+      const verdicts = [verdict(p, 'spec', 'SPEC CLEAN'), verdict(p, 'plan', 'PLAN CLEAN')];
+      for (const args of [
+        ['--keys', 'K-1', '--verdict', verdicts[0], '--verdict', verdicts[1]],
+        [...fileArgs('K-1', p, verdicts), '--route', 'other'],
+        [...fileArgs('K-1', p, verdicts), '--route', 'spec-review', '--source-root', root],
+      ]) expect(await signCheckRun(...args), args.join(' ')).toEqual({ code: 2, out: [] });
+    });
+  });
+
+  describe('sign-lint', () => {
+    function shim(name: string, body: string): string {
+      const bin = mkdtempSync(join(root, `${name}-bin-`));
+      writeFileSync(join(bin, name), body);
+      chmodSync(join(bin, name), 0o755);
+      return bin;
+    }
+    function gate(p: string): { args: string[]; stderr: string } {
+      const log = join(mkdtempSync(join(root, 'gate-log-')), 'argv');
+      const bin = shim('bun', `#!/bin/sh\nprintf '%s\\n' "$@" >> '${log}'\n`);
+      const r = spawnSync('bash', [join(candidateRoot, 'marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh'), p], {
+        cwd: dirname(p), encoding: 'utf8', env: { ...process.env, HIMMEL_REPO: join(root, 'no-checkout'), PATH: `${bin}:${process.env.PATH}` },
+      });
+      return { args: existsSync(log) ? readFileSync(log, 'utf8').split('\n') : [], stderr: r.stderr };
+    }
+
+    it('planOf resolves the plan the spec gate hands sign-shape, on each front-matter form', () => {
+      const designs = join(root, 'bucket', 'specs', 'designs');
+      const plan = join(root, 'bucket', 'specs', 'plans', 'p.md');
+      mkdirSync(designs, { recursive: true });
+      mkdirSync(dirname(plan), { recursive: true });
+      writeFileSync(plan, 'plan\n');
+      const forms = [
+        `---\nplan: ${plan}\n---\n`,
+        '---\nplan: ../plans/p.md\n---\n',
+        '---\nplan: specs/plans/p.md\n---\n',
+        '---\nplan: `../plans/p.md` (r3)\n---\n',
+        '# title\n---\nplan: ../plans/p.md\n---\n',
+        '---\nplan: ../plans/absent.md\n---\n',
+        '---\ntickets: K-1\n---\nplan: ../plans/p.md\n',
+      ];
+      const found = forms.map((head, i) => {
+        const p = join(designs, `s${i}.md`);
+        writeFileSync(p, `${head}\nbody\n`);
+        const { args } = gate(p);
+        expect(args, `form ${i}: the gate reached sign-shape`).toContain('sign-shape');
+        const given = args.includes('--plan') ? args[args.indexOf('--plan') + 1] : null;
+        expect(planOf(p), `form ${i}`).toBe(given);
+        return given !== null;
+      });
+      expect(found).toEqual([true, true, true, true, false, false, false]);
+    });
+
+    it('estimateLine agrees with the spec gate on each estimate-line form', () => {
+      const forms = ['Estimate record: x', '  estimate RECORD: x', 'Estimates: x', 'Estimate record:', 'Estimate record:   ', 'Estimate record: ``',
+        'Estimate record:\nEstimate record: x'];
+      const answers = forms.map((line, i) => {
+        const p = join(root, `estimate-${i}.md`);
+        writeFileSync(p, `# title\n\n${line}\n`);
+        const present = !gate(p).stderr.includes("no 'Estimate record:");
+        expect(estimateLine(readFileSync(p, 'utf8')), line).toBe(present);
+        return present;
+      });
+      expect(answers).toEqual([true, true, false, false, false, false, false]);
+    });
+
+    it('one lintSpec call runs the shell lint once while the gate really calls sign-shape', () => {
+      const p = spec();
+      writeFileSync(join(dirname(p), 'p.md'), 'plan\n\n- Task 1: build it.\n');
+      writeFileSync(p, `---\ntickets: K-1\nplan: p.md\n---\n${readFileSync(p, 'utf8')}`);
+      const log = join(root, 'lint-runs');
+      const realBash = spawnSync('which', ['bash'], { encoding: 'utf8' }).stdout.trim();
+      const bin = shim('bash', `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) printf '%s\\n' "$*" >> '${log}';; esac\nexec '${realBash}' "$@"\n`);
+      const bunLog = join(root, 'bun-runs');
+      writeFileSync(join(bin, 'bun'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${bunLog}'\nexec '${realBun}' "$@"\n`);
+      chmodSync(join(bin, 'bun'), 0o755);
+      vi.stubEnv('HIMMEL_REPO', candidateRoot);
+      vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+      lintSpec(p, join(dirname(p), 'p.md'));
+      expect(readFileSync(bunLog, 'utf8')).toMatch(/chief-route\.ts sign-shape .* --plan /);
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
     });
   });
 });
