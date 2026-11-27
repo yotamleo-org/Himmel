@@ -260,6 +260,12 @@ dispositions. Never skip it, and in `autonomous`
 mode the gate still applies (the answers go to ASSUMPTIONS, the record path stays
 in the spec). The critic reads the estimate record and may challenge sigma.
 
+**Lint before every dispatch.** Before every spec critic dispatch run `bun
+<himmel>/scripts/telegram/chief-route.ts sign-shape <spec> --lint`, and fix what
+it refuses in the same writer round. The seal runs the same trace lint: a seal it
+refuses writes no row, so fix the bytes and run the critic again for the same
+round.
+
 Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
 the written spec file; never let it inherit the parent's tier (CLAUDE.md
 subagent policy). Loop
@@ -565,7 +571,10 @@ Save each return as Stage 2 does, beside the **spec** (not the plan):
 Resolve `$S` with the resolver from the Mode section, then run
 `bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>` once before the first
 plan dispatch, so a plan-side fix spends no plan round. The lint needs the plan, so it cannot run earlier, and a
-spec-side fix it asks for is a spec edit. The files under review here are the plan
+spec-side fix it asks for is a spec edit. Then before every plan critic dispatch
+run `bun <himmel>/scripts/telegram/chief-route.ts sign-shape <spec> --plan <plan>
+--lint` and fix what it refuses in the same writer round; a seal refused on the
+lint is handled as in Stage 2. The files under review here are the plan
 and the spec, with no page. Add the Stage 2 words after the charter, without what
 they say about a page, and seal each return with `critic-seal.sh` as Stage 2 does,
 one command per file.
@@ -617,6 +626,18 @@ Do not hand off until it prints `ok`, in either mode. After the last
 dispositions are written, re-run the gate on the spec too: `bash
 "$S/minerva-spec-gate.sh" <spec-file>`, so a residual line the signer cannot
 read is fixed before the signing.
+
+**Sign check before READY-TO-SIGN.** A design leg that hands its files to the
+chief for signing runs the signer's byte checks after the last round, on the files
+it will name (`JIRA_PROJECT_KEY` set; add `--route spec-review` when that verb
+records it): `node <himmel>/scripts/jira/dist/index.js release sign-check --keys
+<K[,K]> --spec <spec> --plan <plan> --verdict <spec return> --verdict <plan
+return>`. It ends with a worker-doc bullet that `append-results.sh` checks the
+same way, quoting the two shas `sign-check` printed: `LIVE — READY-TO-SIGN
+spec=<abs> plan=<abs> spec-return=<abs> plan-return=<abs> keys=<K[,K]>
+spec-sha=<64 hex> plan-sha=<64 hex>` (plus `route=spec-review` for that route).
+When `sign-check` refuses, write `BLOCKED` with its text instead, in words that
+do not contain the upper-case ready token.
 
 - If mode is `autonomous` (Stage 0) **AND** the output contains `execute`: do NOT
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan

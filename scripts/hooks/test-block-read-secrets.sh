@@ -982,6 +982,57 @@ cp "$HOOK" "$nolib/block-read-secrets.sh"
 assert_rc "4438 missing guard-unwrap lib denies" 2 "$(printf '%s' "$(j_bash 'ls')" | bash "$nolib/block-read-secrets.sh" >/dev/null 2>&1; echo $?)"
 rm -rf "$nolib"
 
+HH=$(mktemp -d "${TMPDIR:-/tmp}/guard-harness-home.XXXXXX") || exit 1
+for rel in .grok/auth.json .grok/mcp_credentials.json .himmel/profiles/grok/p1/auth.json \
+           .cursor/auth.json .cursor/sdk/auth.json .config/cursor/auth.json \
+           .t3/userdata/provider-auth/inst1/cursor.json other/cursor.json other/auth.json; do
+    mkdir -p "$HH/${rel%/*}"; printf '{"fixture":true}\n' > "$HH/$rel"
+done
+ln -s "$HH/.t3/userdata/provider-auth/inst1" "$HH/linked-auth"
+hh_read() { printf '%s' "$(j_read "$1")" | HOME="$HH" bash "$HOOK" >/dev/null 2>&1; echo $?; }
+hh_bash() { printf '%s' "$(j_bash "$1")" | HOME="$HH" bash "$HOOK" >/dev/null 2>&1; echo $?; }
+for rel in .grok/auth.json .grok/mcp_credentials.json .himmel/profiles/grok/p1/auth.json \
+           .cursor/auth.json .cursor/sdk/auth.json .config/cursor/auth.json \
+           .t3/userdata/provider-auth/inst1/cursor.json; do
+    assert_rc "11089 Read fixture $rel"        2 "$(hh_read "$HH/$rel")"
+    assert_rc "11089 Bash cat fixture $rel"    2 "$(hh_bash "cat $HH/$rel")"
+done
+assert_rc "11089 cat ~/.grok/auth.json"                     2 "$(hh_bash 'cat ~/.grok/auth.json')"
+assert_rc "11089 cat a generated grok profile token"        2 "$(hh_bash 'cat ~/.himmel/profiles/grok/other/auth.json')"
+assert_rc "11089 cursor.json through a linked directory"    2 "$(hh_read "$HH/linked-auth/cursor.json")"
+assert_rc "11089 an unrelated cursor.json still reads"      0 "$(hh_read "$HH/other/cursor.json")"
+assert_rc "11089 an unrelated auth.json still reads"        0 "$(hh_read "$HH/other/auth.json")"
+
+HT="$HH/tree"
+mkdir -p "$HT/scripts"
+cp -R "$(dirname "$HOOK")" "$(dirname "$HOOK")/../lib" "$(dirname "$HOOK")/../guardrails" "$(dirname "$HOOK")/../harnesses" "$HT/scripts/"
+ht() { printf '%s' "$1" | HOME="$HH" bash "$HT/scripts/hooks/block-read-secrets.sh" >/dev/null 2>"$HH/ht.err"; echo $?; }
+assert_rc "11089 copied tree: a benign command passes"      0 "$(ht "$(j_bash 'ls')")"
+jq '.token_paths += ["~/.fake/session.json"]' "$HT/scripts/harnesses/codex.json" > "$HH/codex.new" && cp "$HH/codex.new" "$HT/scripts/harnesses/codex.json"
+assert_rc "11089 a token path added to a descriptor is refused" 2 "$(ht "$(j_bash 'cat ~/.fake/session.json')")"
+printf '{"id":' > "$HT/scripts/harnesses/codex.json"
+assert_rc "11089 a malformed descriptor refuses Bash"       2 "$(ht "$(j_bash 'ls')")"
+assert_rc "11089 a malformed descriptor refuses Read"       2 "$(ht "$(j_read "$HH/other/cursor.json")")"
+assert_rc "11089 the refusal names the registry"            0 "$(grep -q 'codex.json is not one JSON document' "$HH/ht.err"; echo $?)"
+assert_rc "11089 READ_SECRETS_OK=1 is the operator route"   0 "$(printf '%s' "$(j_bash 'ls')" | HOME="$HH" READ_SECRETS_OK=1 bash "$HT/scripts/hooks/block-read-secrets.sh" >/dev/null 2>&1; echo $?)"
+cp "$(dirname "$HOOK")/../harnesses/codex.json" "$HT/scripts/harnesses/codex.json"
+for f in codex antigravity; do
+    jq '.token_paths = []' "$(dirname "$HOOK")/../harnesses/$f.json" > "$HT/scripts/harnesses/$f.json"
+done
+assert_rc "11089 control: both rewrites emptied the token paths" 0 "$(jq -es 'all(.[]; .token_paths == [])' "$HT/scripts/harnesses/codex.json" "$HT/scripts/harnesses/antigravity.json" >/dev/null; echo $?)"
+assert_rc "11089 control: the tree with those paths removed still loads" 0 "$(ht "$(j_bash 'ls')")"
+for p in .codex/auth.json .gemini/oauth_creds.json .gemini/gemini-credentials.json .gemini/mcp-oauth-tokens-v2.json; do
+    assert_rc "11089 no descriptor edit unfences ~/$p"      2 "$(ht "$(j_bash "cat ~/$p")")"
+done
+cp "$(dirname "$HOOK")/../harnesses/codex.json" "$(dirname "$HOOK")/../harnesses/antigravity.json" "$HT/scripts/harnesses/"
+cp "$HT/scripts/harnesses/registry.jq" "$HH/registry.jq.keep"
+printf 'empty\n' > "$HT/scripts/harnesses/registry.jq"
+assert_rc "11089 a loader that returns nothing refuses"     2 "$(ht "$(j_bash 'ls')")"
+cp "$HH/registry.jq.keep" "$HT/scripts/harnesses/registry.jq"
+rm -f "$HT/scripts/harnesses/grok.json"
+assert_rc "11089 a missing listed descriptor refuses"       2 "$(ht "$(j_bash 'ls')")"
+rm -rf "$HH"
+
 # --- more secret files, exfil/upload verbs, env dumps ---
 # Fixture rows only: every command below is fed to the hook as JSON, never run.
 # More secret files (read by a reader):
@@ -1690,6 +1741,7 @@ mkdir -p "$p9444_dir/shim/hooks" "$p9444_dir/shim/guardrails" "$p9444_dir/tree/p
 ln -s "$HOOK" "$p9444_dir/shim/hooks/block-read-secrets.sh" || exit 1
 ln -s "${HOOK%/*}/lib" "$p9444_dir/shim/hooks/lib" || exit 1
 ln -s "${HOOK%/*}/../lib" "$p9444_dir/shim/lib" || exit 1
+ln -s "${HOOK%/*}/../harnesses" "$p9444_dir/shim/harnesses" || exit 1
 cp "${HOOK%/*}/../guardrails/lib.sh" "$p9444_dir/shim/guardrails/lib.sh" || exit 1
 # shellcheck disable=SC2016 # the shim function body is literal text, expanded when the shim runs
 printf '\nguard_canon_path() { echo x >> "%s/count"; _guard_canon_path_impl "${1:-}" 1; }\n' "$p9444_dir" >> "$p9444_dir/shim/guardrails/lib.sh"

@@ -1,0 +1,26 @@
+{
+  "id": "codex",
+  "complete": true,
+  "t3": { "driver": "codex", "instance_ids": ["codex"] },
+  "hook_config": ".codex/hooks.json",
+  "tool_map": {
+    "mcp_prefix": "mcp__<server>__<tool>",
+    "tools": {
+      "Bash": { "claude": "Bash" },
+      "apply_patch": { "claude": "Edit" }
+    }
+  },
+  "event_map": {
+    "PreToolUse": "PreToolUse",
+    "PostToolUse": "PostToolUse",
+    "SessionStart": "SessionStart",
+    "Stop": "Stop",
+    "SessionEnd": "SessionEnd"
+  },
+  "deny_dialect": "permissionDecision-json",
+  "adapter": ".codex/codex-hook-adapter.sh",
+  "token_paths": ["~/.codex/auth.json"],
+  "egress_provider": "openai-codex",
+  "lane": "codex-t3",
+  "quota_source": "pending"
+}

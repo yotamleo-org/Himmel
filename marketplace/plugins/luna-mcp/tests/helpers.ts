@@ -10,7 +10,7 @@ import { createAudit, type AuditEntry } from "../src/audit.js";
 import { hashKey, KeyStore, type KeyRecord, type Provider } from "../src/auth.js";
 import { mintKey, type MintParams } from "../src/cli/keys.js";
 import { createEgress } from "../src/egress.js";
-import { createQmdProxy, RateLimiter } from "../src/qmd-proxy.js";
+import { createQmdProxy, RateLimiter, type QmdProxy } from "../src/qmd-proxy.js";
 import { createApp, type App, type AppDeps } from "../src/server.js";
 
 export const HOST = "example-node.example-tailnet.ts.net";
@@ -19,6 +19,7 @@ export const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.ur
 export const PHI = "PHI-MARKER-7f3a91";
 export const LEAK = "LEAK-MARKER-b41c07";
 export const QMD_TOKEN = "fake-qmd-token-5d2e";
+export const GMAIL_QMD_TOKEN = "fake-gmail-qmd-token-91c4";
 
 export interface Clock {
   now(): number;
@@ -269,6 +270,7 @@ export interface WorldOptions {
   repo?: string;
   auditFile?: string;
   roots?: Map<string, string>;
+  gmail?: boolean;
 }
 
 export interface Reply {
@@ -285,8 +287,10 @@ export interface World {
   auditFile: string;
   tokenFile: string;
   qmd: FakeQmd;
+  gmailQmd: FakeQmd | null;
+  gmailRoot: string | null;
   app: App;
-  deps: AppDeps;
+  deps: AppDeps & { isolated: ReadonlyMap<string, QmdProxy> };
   mint(over?: Partial<MintParams> & { ttlMs?: number }): Promise<{ token: string; keyId: string }>;
   ops(op: string, args: unknown, token: string | null, headers?: Record<string, string>): Promise<Reply>;
   mcp(method: string, params: unknown, token: string | null, headers?: Record<string, string>): Promise<Reply>;
@@ -302,7 +306,21 @@ export async function makeWorld(t: TestContext, opts: WorldOptions = {}): Promis
   const tokenFile = join(fx.base, "qmd-http-token");
   await writeFile(tokenFile, QMD_TOKEN, { mode: 0o600 });
   const qmd = await startFakeQmd(t);
-  const deps: AppDeps = {
+  const gmailQmd = opts.gmail ? await startFakeQmd(t) : null;
+  let gmailRoot: string | null = null;
+  const roots = new Map(opts.roots ?? fx.roots);
+  const isolated = new Map<string, QmdProxy>();
+  if (gmailQmd) {
+    gmailRoot = join(fx.base, "gmail-md");
+    await put(gmailRoot, "2026/11/invoice.md", note("Invoice from ACME", "needle in mail\n"));
+    await put(gmailRoot, ".hidden/x.md", `${LEAK}\n`);
+    await symlink(join(fx.outside, "secret.md"), join(gmailRoot, "link-out.md"));
+    roots.set("gmail", gmailRoot);
+    const gmailTokenFile = join(fx.base, "qmd-http-token-gmail");
+    await writeFile(gmailTokenFile, GMAIL_QMD_TOKEN, { mode: 0o600 });
+    isolated.set("gmail", createQmdProxy({ url: gmailQmd.url, tokenFile: gmailTokenFile, timeoutMs: 5000 }));
+  }
+  const deps: AppDeps & { isolated: ReadonlyMap<string, QmdProxy> } = {
     publicUrl: new URL(PUBLIC_URL),
     keys: new KeyStore(keysFile, clock.now),
     audit: createAudit({ file: auditFile, now: clock.now }),
@@ -313,7 +331,8 @@ export async function makeWorld(t: TestContext, opts: WorldOptions = {}): Promis
       timeoutMs: 5000,
       ...(opts.timeoutSignal ? { timeoutSignal: opts.timeoutSignal } : {}),
     }),
-    roots: opts.roots ?? fx.roots,
+    roots,
+    isolated,
     limiter: new RateLimiter(opts.searchPerMinute ?? 100, 60_000, clock.now),
     newReqId: (() => {
       let n = 0;
@@ -352,6 +371,8 @@ export async function makeWorld(t: TestContext, opts: WorldOptions = {}): Promis
     auditFile,
     tokenFile,
     qmd,
+    gmailQmd,
+    gmailRoot,
     app,
     deps,
     mint: async (over = {}) => {

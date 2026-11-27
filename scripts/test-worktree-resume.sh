@@ -142,14 +142,63 @@ refused "path-exists" "path-exists"
 rmdir "$(wt_dir fix/r-pathx)"
 
 run bash "$WT" resume "$B2" --no-install
-g worktree list >/dev/null
+if [ "$rc" -eq 0 ] && grep -Fxq "RESUMED $(wt_dir $B2) $B2 $tip2 equal" "$OUT"; then _pass "registered at the path: handed back"
+else _fail "registered at the path: handed back" "rc=$rc out=[$(cat "$OUT")] err=[$(cat "$ERR")]"; fi
+
+git -C "$TMPBASE/seed2" fetch -q origin
+git -C "$TMPBASE/seed2" checkout -q -B "$B2" "origin/$B2"
+mk_commit "$TMPBASE/seed2" b3
+git -C "$TMPBASE/seed2" push -q origin "$B2"
+printf 'dirty\n' > "$(wt_dir $B2)/b1"
+printf 'new\n' > "$(wt_dir $B2)/untracked"
+rm -f "$(wt_dir $B2)/.claude/settings.local.json"
+before="$(snap; git -C "$(wt_dir $B2)" status --porcelain)"
+HIMMEL_WORKTREE_CEILING=0 run bash "$WT" resume "$B2" --no-install
+if [ "$rc" -eq 0 ] && grep -Fxq "RESUMED $(wt_dir $B2) $B2 $tip2 behind-ff" "$OUT"; then _pass "uncommitted: handed back at its own HEAD, behind-ff, ceiling not applied"
+else _fail "uncommitted: handed back" "rc=$rc out=[$(cat "$OUT")] err=[$(cat "$ERR")]"; fi
+if [ "$rc" -eq 0 ] && [ "$before" = "$(snap; git -C "$(wt_dir $B2)" status --porcelain)" ] && [ "$(cat "$(wt_dir $B2)/b1")" = dirty ] \
+    && [ "$(cat "$(wt_dir $B2)/untracked")" = new ] && [ ! -e "$(wt_dir $B2)/.claude/settings.local.json" ]; then _pass "uncommitted: files, refs and worktree list untouched"
+else _fail "uncommitted: untouched" "rc=$rc status=[$(git -C "$(wt_dir $B2)" status --porcelain)]"; fi
+
+FAKE_GH=merged run bash "$WT" resume "$B2" --no-install
+refused "registered at the path, merged PR: refused before the hand-back" "REUSE_MERGED_BRANCH_OK"
+
+rm -rf "$(wt_dir $B2)"
+mkdir -p "$(wt_dir $B2)"
 run bash "$WT" resume "$B2" --no-install
-refused "checked-out (and path exists): refused" "path-exists"
+refused "stale registration under a plain directory: path-exists" "path-exists"
+git init -q -b "$B2" "$(wt_dir $B2)"
+git -C "$(wt_dir $B2)" -c user.email=t@t.local -c user.name=T commit -q --allow-empty -m unrelated
+run bash "$WT" resume "$B2" --no-install
+refused "stale registration under another repo on the same branch name: path-exists" "path-exists"
+rm -rf "$(wt_dir $B2)"
+g worktree prune
+
+B15=fix/r-unborn
+push_branch "$B15" u1
+run bash "$WT" resume "$B15" --no-install
+g update-ref -d "refs/heads/$B15"
+run bash "$WT" resume "$B15" --no-install
+if [ "$rc" -ne 0 ] && ! grep -Fq "RESUMED " "$OUT"; then _pass "registered but no readable HEAD: no RESUMED line"
+else _fail "registered but no readable HEAD" "rc=$rc out=[$(cat "$OUT")] err=[$(cat "$ERR")]"; fi
+g worktree remove --force "$(wt_dir $B15)"
+
+g branch -q fix/r-other main
+git -C "$REPO" worktree add -q "$(wt_dir fix/r-wrong)" fix/r-other >/dev/null 2>&1
+g branch -q fix/r-wrong main
+run bash "$WT" resume fix/r-wrong --no-install
+refused "path holds another branch's worktree: path-exists" "path-exists"
+g worktree remove --force "$(wt_dir fix/r-wrong)"
+
 B5=fix/r-co
 g branch -q "$B5" main
 git -C "$REPO" worktree add -q "$TMPBASE/elsewhere" "$B5" >/dev/null 2>&1
 run bash "$WT" resume "$B5" --no-install
 refused "checked-out: a live registration elsewhere" "checked-out"
+ln -s "$TMPBASE/elsewhere" "$(wt_dir $B5)"
+run bash "$WT" resume "$B5" --no-install
+refused "symlink at the path to a registration elsewhere: path-exists" "path-exists"
+rm "$(wt_dir $B5)"
 g worktree remove --force "$TMPBASE/elsewhere"
 
 B6=fix/r-merged

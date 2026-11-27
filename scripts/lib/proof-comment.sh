@@ -29,22 +29,10 @@ case "$RESULT" in PASS|FAIL) ;; *) echo "proof-comment: the result is PASS or FA
 [[ $ART =~ ^[A-Za-z0-9._/:#@=+,%~-]+$ ]] || { echo "proof-comment: the artifact is one word (a path or doc:line), not '$ART'" >&2; exit 2; }
 LINE="PROOF $ROW $RESULT $DAY $ART"
 
-cli="${OWE_JIRA_CLI:-}"
-if [ -z "$cli" ]; then
-    kit="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-    common=""
-    if . "$kit/git-clean.sh" 2>/dev/null; then
-        if ! common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir)"; then common=""; fi
-    fi
-    [ -n "$common" ] && cli="$(dirname "$common")/scripts/jira/dist/index.js"
-fi
-[ -n "$cli" ] && [ -e "$cli" ] || { echo "proof-comment: no Jira CLI to post $LINE on $KEY" >&2; exit 5; }
-jira() {
-    case "$cli" in
-        *.js) JIRA_PROJECT_KEY="${KEY%%-*}" node "$cli" "$@" ;;
-        *) JIRA_PROJECT_KEY="${KEY%%-*}" "$cli" "$@" ;;
-    esac
-}
+# shellcheck source=scripts/lib/jira-cli-path.sh
+. "$(dirname "${BASH_SOURCE[0]}")/jira-cli-path.sh"
+jira_cli_path >/dev/null || { echo "proof-comment: no Jira CLI to post $LINE on $KEY" >&2; exit 5; }
+jira() { jira_cli_run "$KEY" "$@"; }
 
 pattern="(^|[[:space:]])$(printf '%s' "$LINE" | sed 's/[][\.*^$+?(){}|/]/\\&/g')([[:space:]]|\$)"
 present() {

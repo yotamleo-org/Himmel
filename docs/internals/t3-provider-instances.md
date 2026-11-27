@@ -106,7 +106,8 @@ bash scripts/t3/provider-instances.sh --apply --settings-file ~/.t3/userdata/set
 The default `--dry-run` prints a diff and the ids to add to
 `.t3.instance_allowlist` in `~/.himmel/config.json` (the script never writes that
 file; `guard-t3-thread-tools.sh` no longer reads that key: it refuses bypass instances, ids off the optional
-`.t3.instance_narrow`, and every id when its config or T3's settings cannot be read; see `docs/internals/enforcement.md`).
+`.t3.instance_narrow`, a launch onto a driver with no complete `scripts/harnesses` descriptor, and every id when its config,
+T3's settings or the harness registry cannot be read; see `docs/internals/enforcement.md`).
 `--apply` first copies the file to `<file>.bak.<UTC stamp>`, then replaces it
 atomically. The live T3 settings file is fenced by `block-edit-live-settings`, so
 an agent applies it only through the update step:
