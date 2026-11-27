@@ -705,13 +705,14 @@ CALLER25="$WS/checkout"
 CORPUS25="$CALLER25/corpus 25"
 OUT25="$CORPUS25/graphify-out"
 BIN25="$WS/bin25"
-mkdir -p "$OUT25" "$BIN25/fallback" "$WS/corpus 25"
-touch "$CALLER25/deleted.sh" "$CORPUS25/deleted.sh" "$CORPUS25/kept.sh"
-cat > "$OUT25/graph.json" <<'JSON'
+mkdir -p "$OUT25" "$BIN25/fallback" "$WS/corpus 25" &&
+  touch "$CALLER25/deleted.sh" "$CALLER25/kept.sh" "$CORPUS25/deleted.sh" "$CORPUS25/kept.sh" &&
+  cat > "$OUT25/graph.json" <<'JSON' || { fail "T25 could not create fixture"; exit 1; }
 {"nodes":[{"id":"deleted","source_file":"deleted.sh"},{"id":"kept","source_file":"kept.sh"}],"links":[]}
 JSON
-cat > "$BIN25/graphify" <<'STUB'
+cat > "$BIN25/graphify" <<'STUB' || { fail "T25 could not create Graphify stub"; exit 1; }
 #!/usr/bin/env bash
+[ "${1:-}" = update ] || exit 64
 python3 - "$2/graphify-out/graph.json" <<'PY'
 import json
 import os
@@ -726,10 +727,13 @@ with open(path, "w") as f:
 print(len(graph["nodes"]))
 PY
 STUB
-printf '#!/usr/bin/env bash\nexit 99\n' > "$BIN25/fallback/graphify"
-chmod +x "$BIN25/graphify" "$BIN25/fallback/graphify"
-touch "$CALLER25/kept.sh"
-rm "$CORPUS25/deleted.sh"
+printf '#!/usr/bin/env bash\nexit 99\n' > "$BIN25/fallback/graphify" &&
+  chmod +x "$BIN25/graphify" "$BIN25/fallback/graphify" &&
+  rm "$CORPUS25/deleted.sh" || { fail "T25 could not finish fixture setup"; exit 1; }
+if [ ! -f "$CALLER25/deleted.sh" ] || [ -e "$CORPUS25/deleted.sh" ]; then
+  fail "T25 expected deleted.sh in the caller and absent from the corpus"
+  exit 1
+fi
 out25=$(cd "$CALLER25" && CDPATH="$WS" PATH="../bin25:$BIN25/fallback:$PATH" bash "$SCRIPT" "corpus 25" 2>&1); rc25=$?
 n25=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["nodes"]))' "$OUT25/graph.json")
 [ "$rc25" -eq 0 ] && [ "$n25" -eq 1 ] && pass "T25 deleted source evicted (2 -> $n25 nodes)" \
