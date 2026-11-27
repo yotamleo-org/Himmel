@@ -499,6 +499,8 @@ check "refusal: a bad line and a keyless row add nothing" "1" "$(printf '%s\n' "
 refusal "$(at $((NOW + 10)))" non-string-instance '{"another": "value here"}'
 SWEEP_AT=$((NOW + 20)) sweep
 has "refusal: another instance printed as non-token still wakes" "instance=non-token " "$OUT"
+check "refusal: the stamp file keeps a digest and an epoch per class, no row text" "2" \
+    "$(grep -cE "^[0-9a-f]{40}$(printf '\t')[0-9]+\$" "$WORK/w/state/chief-duty-sweep-refusals.tsv")"
 
 rworld
 sweep

@@ -565,14 +565,17 @@ elif [ -e "$refusal_file" ]; then
         def token: if type != "string" then "non-token" elif . == "" then "-" elif test("\\A[A-Za-z0-9_.,:-]{1,120}\\z") then . else "non-token" end;
         fromjson? | objects | select(.kind == "refusal" and has("guard") and has("rule"))
         | [(.guard | token), (.rule | token), (.instance // "" | token), (.ts | try fromdateiso8601 catch 0), ([.guard, .rule, .instance // ""] | tojson | @base64)] | @tsv' "$refusal_file" 2>/dev/null); then  # swallow-ok: a failed read is named unread
-        refusal_woken=$(printf '%s\n' "$refusal_rows" | awk -F'\t' -v now="$now" -v stamps="$refusal_stamps" '
-            BEGIN { while ((getline l < stamps) > 0) if (split(l, a, "\t") == 2) woke[a[1]] = a[2] }
+        refusal_classes=$(printf '%s\n' "$refusal_rows" | awk -F'\t' '
             NF == 5 { if (!($5 in last) || $4 + 0 > last[$5]) last[$5] = $4 + 0; shown[$5] = $1 FS $2 FS $3 }
-            END { for (k in last) if (!(k in woke) || last[k] >= woke[k] + 86400) print shown[k] FS k FS now }')
-        while IFS=$'\t' read -r rguard rrule rinst _; do
+            END { for (k in last) print shown[k] FS last[k] FS k }')
+        while IFS=$'\t' read -r rguard rrule rinst rlast rkey; do
             [ -n "$rguard" ] || continue
+            rsum=$(printf '%s' "$rkey" | git hash-object --stdin)
+            rwoke=$(awk -F'\t' -v k="$rsum" '$1 == k { print $2; exit }' "$refusal_stamps" 2>/dev/null)  # swallow-ok: no stamp file means no class was woken
+            case "$rwoke" in ''|*[!0-9]*) ;; *) [ "${rlast%.*}" -ge $(( rwoke + 86400 )) ] || continue ;; esac
+            refusal_woken="$refusal_woken$(printf '%s\t%s' "$rsum" "$now")"$'\n'
             add "DUTY guard-refusal guard=$rguard rule=$rrule instance=$rinst :: a new guard refusal class :: next: find the open ticket that owns this guard and rule, or file one"
-        done <<< "$refusal_woken"
+        done <<< "$refusal_classes"
     else
         unread "guard-refusals"
     fi
@@ -585,6 +588,6 @@ if [ -n "$out" ]; then
 fi
 [ -z "$ran" ] || printf '%s' "$ran"
 if [ -n "$refusal_woken" ]; then
-    ( . "$REPO/scripts/lib/prim.sh" && { printf '%s\n' "$refusal_woken" | cut -f4,5; cat "$refusal_stamps" 2>/dev/null; } | awk -F'\t' '!seen[$1]++' | atomic_write "$refusal_stamps" ) 2>/dev/null  # swallow-ok: an unwritten stamp repeats the wake, never loses one
+    ( . "$REPO/scripts/lib/prim.sh" && { printf '%s' "$refusal_woken"; cat "$refusal_stamps" 2>/dev/null; } | awk -F'\t' '!seen[$1]++' | atomic_write "$refusal_stamps" ) 2>/dev/null  # swallow-ok: an unwritten stamp repeats the wake, never loses one
 fi
 exit 0
