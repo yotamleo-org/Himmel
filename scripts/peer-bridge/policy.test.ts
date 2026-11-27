@@ -268,7 +268,49 @@ test("git runs only in jobs.ts and runner.ts on the typed path, each with its cl
 test("an envelope can only narrow: serves, approve, budgets and the allowlist have no inbound writer", () => {
   const src = (f: string) => fs.readFileSync(join(import.meta.dir, f), "utf8");
   expect(src("poller.ts")).not.toMatch(/writeFileSync|renameSync|replaceJson|\.suites`|killed`\),? *["']|openSync\([^)]*(peers|suites|killed)/);
-  for (const f of ["gate.ts", "envelope.ts", "resolve.ts", "jobstate.ts", "jobs.ts"]) expect(src(f)).not.toMatch(/from "\.\/setup"/);
+  for (const f of ["gate.ts", "envelope.ts", "resolve.ts", "jobstate.ts", "jobs.ts", "poller.ts", "pairing.ts", "notify.ts", "host.ts", "egress.ts"]) expect(src(f)).not.toMatch(/from "\.\/setup"/);
+  expect(graphOf("scripts/peer-bridge/poller.ts")).not.toContain("scripts/peer-bridge/setup.ts");
+});
+
+const bridgeSources = () => fs.readdirSync(import.meta.dir).filter(n => /\.ts$/.test(n) && !/\.test\.ts$|^testlib-/.test(n));
+const bridgeSrc = (f: string) => fs.readFileSync(join(import.meta.dir, f), "utf8");
+const calls = (text: string, name: string): number[] => [...text.matchAll(new RegExp(`(?<!function )(?<![A-Za-z0-9_])${name}\\(`, "g"))].map(m => m.index!);
+function spans(text: string, name: string): [number, number][] {
+  return calls(text, name).map(at => {
+    let depth = 0, i = text.indexOf("(", at);
+    for (; i < text.length; i++) {
+      if (text[i] === "(") depth++;
+      else if (text[i] === ")" && --depth === 0) break;
+    }
+    return [at, i];
+  });
+}
+const outsideSpans = (text: string, name: string, within: string) => calls(text, name).filter(at => !spans(text, within).some(([a, b]) => at > a && at < b));
+const declarationsOf = (text: string, re: RegExp): string[] => [...new Set(text.split("\n").reduce<[string, string[]]>(([current, found], line) => {
+  const d = /^(?:export )?(?:async )?(?:function|const|type|class) ([A-Za-z0-9_]+)/.exec(line);
+  if (d) current = d[1];
+  if (re.test(line) && !/^import /.test(line)) found.push(current);
+  return [current, found];
+}, ["", []])[1])];
+
+test("peers.json has one trust writer and one renaming path, and pairing.json is written only under the lock", () => {
+  const writers = bridgeSources().flatMap(f => calls(bridgeSrc(f), "addTrustedKey").map(() => f));
+  expect(writers.sort()).toEqual(["poller.ts", "setup.ts"]);
+  expect(spans(bridgeSrc("poller.ts"), "addTrustedKey").map(([a, b]) => /firstOnly: true/.test(bridgeSrc("poller.ts").slice(a, b)))).toEqual([true]);
+  expect(bridgeSources().filter(f => calls(bridgeSrc(f), "replacePeersJson").length).sort()).toEqual(["config.ts", "setup.ts"]);
+  const setup = bridgeSrc("setup.ts");
+  expect(setup).not.toMatch(/replaceJson\(|writePairing\(/);
+  expect(outsideSpans(setup, "writePairingRecord", "withPeersLock")).toEqual([]);
+  expect(bridgeSources().filter(f => calls(bridgeSrc(f), "writePairingRecord").length).sort()).toEqual(["config.ts", "setup.ts"]);
+  expect(declarationsOf(bridgeSrc("config.ts"), /(?<!function )writePairingRecord\(/)).toEqual(["replacePeersJsonLocked"]);
+  expect(declarationsOf(bridgeSrc("config.ts"), /(renameSync|linkSync)\(/).sort()).toEqual(["replacePeersJsonLocked", "withPeersLock", "writePairingRecord"]);
+});
+
+test("each lexical pin fires on a planted violation", () => {
+  expect(outsideSpans("writePairingRecord(b);\nwithPeersLock(d, () => writePairingRecord(c), o);", "writePairingRecord", "withPeersLock")).toEqual([0]);
+  expect("replaceJson(pairingFile(), x)").toMatch(/replaceJson\(|writePairing\(/);
+  expect(calls("await addTrustedKey(a)\nexport async function addTrustedKey(", "addTrustedKey")).toHaveLength(1);
+  expect(declarationsOf("export function sneaky() {\n  fs.renameSync(a, b);\n}", /(renameSync|linkSync)\(/)).toEqual(["sneaky"]);
 });
 
 test("answers to a peer's asks are capped per hour, like slice A's automatic templates", async () => {

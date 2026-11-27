@@ -61,8 +61,8 @@
 #       line with `owner: KEY` or an arrow to KEY, or naming a chief step, or an `owed -> chief|operator by
 #       YYYY-MM-DD` step, read from the merge row or the PR body): To Do, the owner in TS_D5D_OWNER
 #       (`chief by 2026-11-22` for an owed step)
-#   D5c no PR, the latest merge row contract=no  To Do (a partial: work remains, nobody on it); In Progress only
-#       while the wrapped owner's doc still holds a live queue lock
+#   D5c no PR, the latest merge row contract=no  To Do (a partial: work remains, nobody on it), the wrapped
+#       owner's lock released or not
 #       or, no merge row at all, a merged PR whose first [KEY] is the ticket
 #       (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
 #       filter is no-write + miss. D5c and D5d need a wrapped owner or no worker doc at all;
@@ -70,8 +70,7 @@
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
-#       above ## Results: To Do; In Progress (no move) only while the owner's doc still holds a live
-#       queue lock: no ticket is In Progress without a live worker
+#       above ## Results: To Do, its lock released or not
 #   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
@@ -356,7 +355,12 @@ ts_marker_newest() {
     local line newest="" bullets rc dir=.
     local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
     case "$1" in */*) dir=${1%/*}; [ -n "$dir" ] || dir=/ ;; esac
-    if [ ! -e "$1" ] && [ ! -L "$1" ] && [ -d "$dir" ] && [ -x "$dir" ]; then return 2; fi
+    if [ ! -e "$1" ] && [ ! -L "$1" ]; then
+        while [ ! -e "$dir" ] && [ ! -L "$dir" ]; do
+            case "$dir" in */?*) dir=${dir%/*}; [ -n "$dir" ] || dir=/ ;; *) dir=. ;; esac
+        done
+        if [ -d "$dir" ] && [ -x "$dir" ]; then return 2; fi
+    fi
     [ -f "$1" ] && [ -r "$1" ] || return 1
     [ "$(tr -d '\000' < "$1" | wc -c)" -eq "$(wc -c < "$1")" ] 2>/dev/null || return 1 # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), only byte counts come out
     bullets=$(grep -a '^-' -- "$1" 2>/dev/null) && rc=0 || rc=$? # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), bullet lines only, only a marker word comes out
@@ -473,6 +477,11 @@ _ts_no_live_session_on() {
     return 0
 }
 
+_ts_derive_worker_state() {
+    _ts_worker_state "$1"
+    [ "$TS_DOC_GONE" != yes ] || TS_WORKER_STATE=wrapped
+}
+
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
@@ -480,7 +489,7 @@ _ts_no_live_session_on() {
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED="" TS_DOC_GONE=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
@@ -495,7 +504,7 @@ _ts_worker_state() {
     marker=$(ts_marker_newest "$1") && rc=0 || rc=$?
     case "$rc" in 0) ;; 2) doc_absent=yes ;; *) marker_unread=yes ;; esac
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
-    [ -z "$marker$marker_unread$doc_absent" ] || TS_OPEN_EVIDENCE=yes
+    [ -z "$marker$marker_unread" ] || TS_OPEN_EVIDENCE=yes
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
     else
@@ -509,6 +518,7 @@ _ts_worker_state() {
     if [ "$rc" -eq 12 ]; then
         if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_LOCK_DEAD=yes; else TS_LOCK_DEAD=no; fi
     fi
+    if [ -n "$doc_absent" ] && [ "$TS_LOCK_HELD" = no ] && [ "$attempt_protected" != '"launched"' ]; then TS_DOC_GONE=yes; fi
     # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
@@ -847,28 +857,9 @@ _ts_brief_completes_no() {
     [ "$flag" = no ]
 }
 
-_ts_by_owner_lock() {
-    local out rc
-    [ -n "$1" ] || { TS_DERIVED="To Do"; return 0; }
-    if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
-        out=$("$TICKET_STATUS_QUEUE_LOCK" status "$1" 2>/dev/null); rc=$?
-    else
-        out=$(bash "$_TS_LIB_DIR/../handover/queue-lock.sh" status "$1" 2>/dev/null); rc=$?
-    fi
-    case "$rc" in
-        0) TS_DERIVED="To Do" ;;
-        11) TS_DERIVED="In Progress" ;;
-        12) if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_DERIVED="To Do"; else TS_DERIVED="In Progress"; fi ;;
-        *) _ts_no_write miss "" lock ;;
-    esac
-}
-
 _ts_derive_d6() {
-    if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then
-        TS_RULE=D6n; _ts_by_owner_lock "$1"
-    else
-        TS_DERIVED="To Do"; TS_RULE=D6
-    fi
+    TS_DERIVED="To Do"; TS_RULE=D6
+    if [ "$TS_J_STATUS" = "In Progress" ] && _ts_brief_completes_no "$1"; then TS_RULE=D6n; fi
 }
 
 _ts_other_worker_keeps_ownership() {
@@ -899,7 +890,7 @@ ts_derive() {
     TS_GONE=$(jq -r '.lock_gone_sweeps // 0' <<<"$TS_REC")
     case "$TS_GONE" in ''|*[!0-9]*) TS_GONE=0 ;; esac
     if [ -n "$doc" ]; then
-        _ts_worker_state "$doc"
+        _ts_derive_worker_state "$doc"
         # A held lock is seen and resets the count; only a sweep counts a gone lock,
         # and only for a lock this station saw held, so a cloud worker never reaches D6.
         if [ "$TS_LOCK_HELD" = yes ]; then
@@ -913,7 +904,7 @@ ts_derive() {
         recorded=$(jq -r '(.docs // [])[]' <<<"$TS_REC")
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
-            _ts_worker_state "$other"
+            _ts_derive_worker_state "$other"
             _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$recorded"
@@ -921,7 +912,7 @@ ts_derive() {
             while IFS= read -r other; do
                 [ -n "$other" ] && [ "$other" != "$doc" ] || continue
                 grep -qxF -- "$other" <<<"$recorded" && continue
-                _ts_worker_state "$other"
+                _ts_derive_worker_state "$other"
                 _ts_unrecorded_sibling_keeps_ownership || continue
                 owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
             done <<<"$(_ts_bucket_docs "$key" "$doc")"
@@ -962,7 +953,7 @@ ts_derive() {
         return 0
     fi
     if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
-    else _ts_derive_merged "$key" "$doc" || _ts_derive_d6 "$doc"
+    else _ts_derive_merged "$key" || _ts_derive_d6 "$doc"
     fi
 }
 
@@ -972,7 +963,7 @@ _ts_derive_merged() {
     if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
     elif [ "$rc" -eq 0 ]; then
         if _ts_d5d "$1" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
-        else TS_RULE=D5c; _ts_by_owner_lock "${2:-}"
+        else TS_DERIVED="To Do"; TS_RULE=D5c
         fi
     else
         rc=0; ts_has_merge_row "$1" || rc=$?
@@ -982,7 +973,7 @@ _ts_derive_merged() {
         [ "$rc" -ne 2 ] || { _ts_no_write miss "" gh; return 0; }
         [ "$rc" -eq 0 ] || return 1
         if _ts_d5d "$1" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
-        else TS_RULE=D5c; TS_STAGE=merged-no-row; _ts_by_owner_lock "${2:-}"
+        else TS_DERIVED="To Do"; TS_RULE=D5c; TS_STAGE=merged-no-row
         fi
     fi
 }

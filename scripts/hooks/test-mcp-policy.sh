@@ -2,10 +2,6 @@
 # Tests for scripts/hooks/mcp-policy.sh: MCP call tracking plus
 # the gating seam.
 #
-#   observe (shipped): the hook NEVER denies — unknown server, unlisted tool,
-#     destructive tool, egress-denied server, malformed or ANSI input are all
-#     allowed and audited with the class and the verdict it WOULD give.
-#   enforce (test fixtures only): the same calls are denied.
 #   audit: one line per call, no argument content, size cap with rotation.
 #   latency: p95 per call under a budget.
 #
@@ -50,13 +46,26 @@ expect() {
 
 [ -f "$HOOK" ] || { echo "FAIL hook missing: $HOOK"; exit 1; }
 
-# --- 1. observe mode (the shipped registry) never denies ---------------------
 run_hook "$(call mcp__nosuchserver__do_thing)"
 expect "observe: unknown server allowed, would-deny" 0 unknown-server deny
 run_hook "$(call mcp__qmd__drop_everything)"
 expect "observe: unlisted tool on known server allowed, would-deny" 0 unlisted-tool deny
 run_hook "$(call mcp__obsidian-vault__obsidian_delete_file)"
-expect "observe: destructive tool allowed, would-deny" 0 destructive deny
+expect "shipped: destructive tool on a registered server denied" 2 destructive deny
+if [ "$(field mode)" = enforce ]; then ok "shipped: an enforced-class call is audited as enforce"; else bad "enforced-class audit mode=$(field mode)"; fi
+case "$ERR" in *allow_destructive*) ok "shipped: destructive deny names allow_destructive" ;; *) bad "destructive deny lacks allow_destructive: $ERR" ;; esac
+for t in playwright__browser_run_code_unsafe playwright__browser_evaluate plugin_playwright_playwright__browser_run_code_unsafe; do
+    run_hook "$(call "mcp__$t")"
+    expect "shipped: mcp__$t denied by the policy alone" 2 destructive deny
+done
+for t in playwright__browser_snapshot shadcn__get_audit_checklist context7__query-docs; do
+    run_hook "$(call "mcp__$t")"
+    expect "shipped: Antigravity server name mcp__$t is a listed read, allowed" 0 read allow
+done
+run_hook "$(call mcp__playwright__browser_navigate)"
+expect "shipped: Antigravity playwright write allowed" 0 write allow
+run_hook "$(call mcp__plugin_telegram-himmel_telegram__reply)"
+expect "shipped: telegram reply stays allowed (allow_destructive)" 0 destructive allow
 run_hook "$(call mcp__obsidian-vault__obsidian_put_content)"
 expect "observe: write tool allowed, would-allow" 0 write allow
 run_hook '{"tool_name": "mcp__qmd__query", "tool_input": '
@@ -103,11 +112,21 @@ if grep -q SECRET-ARG "$MCP_POLICY_AUDIT_LOG"; then bad "audit log carries argum
 if [ "$(wc -l < "$MCP_POLICY_AUDIT_LOG" | tr -d ' ')" = 1 ]; then ok "exactly one audit line per call"; else bad "audit lines per call: $(wc -l < "$MCP_POLICY_AUDIT_LOG")"; fi
 
 # --- 4. shipped registry ships nothing in enforce ----------------------------
-if jq -e '.mode=="observe" and ([.servers[] | select(has("mode") and .mode!="observe")] | length == 0)' "$REGISTRY" >/dev/null; then
-    ok "shipped registry: observe at top level and on every server"
+if jq -e '.mode=="observe" and .enforce_classes==["destructive"] and ([.servers[] | select(has("mode") and .mode!="observe")] | length == 0)' "$REGISTRY" >/dev/null; then
+    ok "shipped registry: observe everywhere, only the destructive class enforced"
 else
-    bad "shipped registry has an enforce mode"
+    bad "shipped registry mode / enforce_classes differ"
 fi
+corpus_n=0
+corpus_denied=""
+while IFS=$'\t' read -r srv tool; do
+    corpus_n=$((corpus_n + 1))
+    run_hook "$(call "mcp__${srv}__${tool}")"
+    if [ "$RC" != 0 ] && { [ "$(field verdict)" != deny ] || [ "$(field class)" != destructive ]; }; then
+        corpus_denied="$corpus_denied mcp__${srv}__${tool}"
+    fi
+done < <(jq -r '.servers | to_entries[] | .key as $s | (.value.tools // {}) | to_entries[] | [$s, .key] | @tsv' "$REGISTRY")
+if [ "$corpus_n" -gt 100 ] && [ -z "$corpus_denied" ]; then ok "corpus: zero new denies on allowed calls ($corpus_n registry calls)"; else bad "corpus ($corpus_n calls) new denies:$corpus_denied"; fi
 if jq -e '[.servers[] | (.tools // {})[] | select(. != "read" and . != "write" and . != "destructive")] | length == 0' "$REGISTRY" >/dev/null; then
     ok "every tool class is read|write|destructive"
 else
@@ -152,8 +171,12 @@ run_hook "$(call mcp__qmd__drop_everything)"
 expect "per-server enforce: that server's unlisted tool denied" 2 unlisted-tool deny
 run_hook "$(call mcp__nosuchserver__do_thing)"
 expect "per-server enforce: unknown server still observe-allowed" 0 unknown-server deny
+run_hook "$(call mcp__graphify__drop_everything)"
+expect "per-server enforce: other server still observe-allowed" 0 unlisted-tool deny
+jq 'del(.enforce_classes)' "$REGISTRY" > "$TMP/noclass.json"
+export MCP_POLICY_REGISTRY="$TMP/noclass.json"
 run_hook "$(call mcp__obsidian-vault__obsidian_delete_file)"
-expect "per-server enforce: other server still observe-allowed" 0 destructive deny
+expect "without enforce_classes a destructive call is observe-allowed" 0 destructive deny
 
 # --- 6. broken config never denies -------------------------------------------
 export MCP_POLICY_REGISTRY="$TMP/absent.json"
@@ -231,7 +254,7 @@ if [ -z "$CHAIN_ARG" ]; then
     bad ".codex/hooks.json mcp__.* chain could not be extracted"
     CHAIN_ARG="mcp-policy.sh+block-backend-tier.sh"
 fi
-for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message; do
+for t in mcp__qmd__query mcp__nosuch__thing; do
     : > "$MCP_POLICY_AUDIT_LOG"
     out=$(call "$t" | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
     rc=$?
@@ -242,6 +265,14 @@ for t in mcp__qmd__query mcp__nosuch__thing mcp__claude_ai_Gmail__send_message; 
         bad "codex chain on $t: rc=$rc audit-lines=$lines out=$(printf '%s' "$out" | head -c 200)"
     fi
 done
+
+: > "$MCP_POLICY_AUDIT_LOG"
+out=$(call mcp__claude_ai_Gmail__send_message | bash "$CHAIN_CMD" --sandbox "$CHAIN_ARG" 2>&1)
+if grep -q 'mcp-policy: refusing' <<< "$out"; then
+    ok "codex chain denies a destructive call through mcp-policy"
+else
+    bad "codex chain allowed a destructive call: $(printf '%s' "$out" | head -c 300)"
+fi
 
 # A wrapper call whose real tool name cannot be read is denied by the chain.
 : > "$MCP_POLICY_AUDIT_LOG"

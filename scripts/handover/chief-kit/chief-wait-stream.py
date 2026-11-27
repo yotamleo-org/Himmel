@@ -371,6 +371,10 @@ class Supervisor:
         raise SystemExit(0)
 
     def prepare(self):
+        if os.getenv('CHIEF_WAIT_STREAM_NO_WORKER_WAKES_OK') != '1':
+            return self.refuse('no-worker-wakes: the stream waiter prints no WAKE worker-doc-missing, '
+                               'worker-ready, worker-blocked or worker-finding line; arm the '
+                               'one-shot waiter instead: drop --stream and --since', 2)
         if '--workers' in self.pairs:
             return self.refuse('workers', 2)
         if not (self.pairs.get('--workers-from') or os.getenv('WORKERS_FROM')):

@@ -3074,6 +3074,52 @@ project_is_himmel_checkout() {
   [ "$project_common" -ef "$identity_common" ]
 }
 
+unwire_local_settings() {
+  local local_f units id=0
+  local_f="$(dirname -- "$1")/settings.local.json"
+  [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] || return 0
+  [ -e "$local_f" ] || [ -L "$local_f" ] || return 0
+  units="$(prov_read_units --path "$local_f" --kind json-key)$(prov_read_units --path "$local_f" --kind json-elem)"
+  [ -n "$units" ] || return 0
+  project_is_himmel_checkout || id=$?
+  [ "$id" -ne 0 ] || return 0
+  if [ "$id" -ne 1 ]; then
+    echo "  project settings: cannot resolve checkout identity — refusing to unwire $local_f" >&2
+    fail_step "[6/8] project settings: checkout identity unresolved"
+    return 0
+  fi
+  if [ -L "$(dirname -- "$local_f")" ] || [ -L "$local_f" ] || [ ! -f "$local_f" ]; then
+    echo "  project settings: refusing non-regular or symlinked target $local_f" >&2
+    fail_step "[6/8] project settings: unsafe target $local_f"
+    return 0
+  fi
+  unwire_settings "$local_f"
+}
+
+drop_created_local_settings() {
+  local u path
+  while IFS= read -r u; do
+    [ -n "$u" ] || continue
+    path=$(printf '%s' "$u" | jq -r '.path // empty')
+    case "$path" in */.claude/settings.local.json) ;; *) continue ;; esac
+    [ "$(printf '%s' "$u" | jq -r '.eff_pre.state? // empty')" = absent ] || continue
+    [ -f "$path" ] && [ ! -L "$path" ] && [ ! -L "$(dirname -- "$path")" ] || continue
+    jq -e '. == {}' "$path" >/dev/null 2>&1 || continue
+    if ! rh_helper_ok "ledger local settings drop" "$path"; then
+      fail_step "[7/8] ledger: skipped $path — it fails the real-home check"
+    elif [ "$DRY_RUN" -eq 1 ]; then
+      echo "DRY: would remove the now-empty $path"
+    elif guarded run rm -f -- "$path"; then
+      echo "  removed the now-empty $path"
+      prov_read_outcome removed "$u" "ours"
+    else
+      fail_step "[7/8] ledger: could not remove the now-empty $path"
+    fi
+  done <<EOF
+$(prov_read_units --row project-settings --kind file)
+EOF
+}
+
 # unwire_recorded_projects: every OTHER project the
 # ledger recorded himmel wiring into (a project-scope settings row whose path
 # is not $PWD's), unwired through the same unwire_settings pass and behind the
@@ -3085,11 +3131,11 @@ unwire_recorded_projects() {
   local _targets _t _dir _id _dir_real
   _targets=$(prov_read_units --row project-settings \
     | jq -r 'select(.scope == "project" and (.kind == "json-key" or .kind == "json-elem")) | .path // empty' \
-    | grep '/\.claude/settings\.json$' | sort -u || true)
+    | grep -E '/\.claude/settings(\.local)?\.json$' | sort -u || true)
   while IFS= read -r _t; do
     [ "$HALTED" -eq 0 ] || return 0
     [ -n "$_t" ] || continue
-    _dir="${_t%/.claude/settings.json}"
+    _dir="${_t%/.claude/*}"
     [ "$_dir" -ef "$PWD" ] && continue   # $PWD's own settings are the block above's job
     if [ ! -e "$_t" ] && [ ! -L "$_t" ]; then
       echo "  project settings: recorded target already gone: $_t"
@@ -3439,6 +3485,9 @@ else
       fi
     fi
   fi
+  if [ "$HALTED" -eq 0 ] && class_removes "$_ix_pset"; then
+    unwire_local_settings "$_project_settings"
+  fi
   # S8: the other projects the ledger recorded, same guards.
   if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && class_removes "$_ix_pset"; then
     unwire_recorded_projects
@@ -3565,6 +3614,9 @@ if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ]; then
   done <<EOF
 $(prov_read_units --kind json-key | jq -r 'select(.unit == "/extraKnownMarketplaces") | .path')
 EOF
+fi
+if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && [ "$SKIP_SETTINGS" -eq 0 ] && class_removes "$_ix_pset"; then
+  drop_created_local_settings
 fi
 echo ""
 

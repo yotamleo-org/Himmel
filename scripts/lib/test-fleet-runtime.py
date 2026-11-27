@@ -143,6 +143,46 @@ class Runtime(unittest.TestCase):
         self.call('runtime', 'stamp', '--slot', slot, '--attempt-id', 'one', '--pid', os.getpid(), ok=False)
         self.assertFalse((slot / 'managed.json').exists())
 
+    def stamp_after(self, change):
+        self.active()
+        self.rt('begin')
+        tools = self.bucket / 'stamp-tools'
+        tools.mkdir()
+        shim = tools / 'python3'
+        shim.write_text('#!/bin/sh\nif [ "$3" = stamp ]; then touch "$HOME/stamp-raced"; %s; fi\nexec %s "$@"\n'
+                        % (change, shlex.quote(shutil.which('python3'))))
+        shim.chmod(0o755)
+        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one', PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        p = self.entry('scripts/lib/usage-preflight.sh', env=env)
+        self.assertTrue((self.bucket / 'stamp-raced').exists(), p.stderr)
+        return p
+
+    def refused_as_a_lost_lock(self, change):
+        p = self.stamp_after(change)
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('reservation admission lock is not held by preflight', p.stderr)
+        self.assertNotIn('No such file', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_missing_lock_pid_refuses_the_stamp_by_name(self):
+        self.refused_as_a_lost_lock('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+
+    def test_a_lock_lost_then_released_by_its_reclaimer_refuses_the_stamp(self):
+        self.refused_as_a_lost_lock('rm -rf "$HIMMEL_FLEET_SLOTS/.admit"')
+
+    def test_a_lock_held_by_another_pid_still_refuses_the_stamp(self):
+        p = self.stamp_after('echo 1 > "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('reservation admission lock is not held by preflight', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_pause_before_the_stamp_still_refuses_with_the_lock_missing(self):
+        p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"; bash %s control set %s --mode paused --expect-gen 2 >/dev/null'
+                             % (shlex.quote(str(WRITER)), shlex.quote(str(self.m))))
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('fleet-paused or reservation generation changed', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
     def test_missing_locator_is_derived_and_conflicting_locator_refuses(self):
         self.call('runtime', 'check', '--doc', self.doc, ok=False)
         self.active()

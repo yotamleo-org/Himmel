@@ -965,6 +965,21 @@ rm -rf "${HIMMEL_FLEET_SLOTS:?}/$n51g"
 rc=0; t51 "$SKIPPED_FLEET_PREFLIGHT" "$n51g" "$doc51g" >/dev/null 2>&1 || rc=$?
 contains "51k control: a plain SKIPPED-FLEET still says fleet-size cap reached" "$(cat "$tmp/log51-$n51g" 2>/dev/null)" "fleet-size cap reached"
 
+why51() {
+  local stub="$tmp/why51-$1.sh" n="$1"; shift
+  { printf '%s\n' '#!/usr/bin/env bash' "cat >&2 <<'WHY51_EOF'" "$@" 'WHY51_EOF' 'echo SKIPPED-FLEET'; } > "$stub"
+  chmod 755 "$stub"
+  t51 "$stub" "$n" "$doc51g" >/dev/null 2>&1 || true
+  cat "$tmp/log51-$n" 2>/dev/null
+}
+log51t="$(why51 PROJ-9614-N1-paused 'bank-preflight: FLEET native=1 total=1/9' 'fleet-runtime: fleet-paused: reservation admission lock is not held by preflight' 'bank-preflight: failed to write reservation metadata (expires/pid) for worker=w — refusing admission rather than proceed with an unprotected slot')"
+contains "51t a stamp refusal is logged with its own reason" "$log51t" "refusing to launch PROJ-9614-N1-paused - fleet admission refused, not the fleet cap: fleet-runtime: fleet-paused: reservation admission lock is not held by preflight; bank-preflight: failed to write reservation metadata"
+not_contains "51u ... and not as the fleet cap" "$log51t" "fleet-size cap reached"
+log51v="$(why51 PROJ-9615-N1-lost 'bank-preflight: the fleet admission lock (x) was reclaimed before the reservation — refusing')"
+contains "51v a lost admission lock is logged as itself" "$log51v" "not the fleet cap: bank-preflight: the fleet admission lock (x) was reclaimed"
+log51w="$(why51 PROJ-9616-N1-atcap 'bank-preflight: fleet at/over cap (9/9) — skipping worker=w (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)')"
+contains "51w control: the preflight's own cap refusal still says fleet-size cap reached" "$log51w" "fleet-size cap reached"
+
 # 51l-o: the launcher returns headed-arm.sh's status; it releases what it owns on a pre-launch refusal and keeps it
 # where a session may really be coming up (7: konsole alive, claude not yet seen; 9: the scan was indeterminate)
 for rc51 in 2 16; do
@@ -1049,6 +1064,10 @@ n9625d="PROJ-9625-N3-dup"; mkdir -p "$HIMMEL_FLEET_SLOTS/$n9625d"; printf '%s\n'
 b="$(lr_n)"; rc=0; t51 "$RESV51" "$n9625d" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
 lr_expect fleet-duplicate fleet-duplicate 10 "$rc" "$b"
 rm -rf "${HIMMEL_FLEET_SLOTS:?}/$n9625d"
+b="$(lr_n)"; why51 PROJ-9625-N7-stamp 'fleet-runtime: fleet-paused: reservation admission lock is not held by preflight' 'bank-preflight: failed to write reservation metadata (expires/pid) for worker=w — refusing admission' >/dev/null
+check "9625-cause fleet-admission: a stamp refusal is not recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-admission"
+b="$(lr_n)"; why51 PROJ-9625-N8-paused 'fleet-runtime: fleet-paused: fleet-paused or reservation generation changed' >/dev/null
+check "9625-cause fleet-paused: a real pause is recorded as one" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-paused"
 b="$(lr_n)"; rc=0; t51 "$SKIPPED_BANK_PREFLIGHT" PROJ-9625-N4-bank "$doc9625_ok" >/dev/null 2>&1 || rc=$?
 lr_expect bank-exhausted bank-exhausted 11 "$rc" "$b"
 rm -rf "${HIMMEL_FLEET_SLOTS:?}/PROJ-9625-N4-bank"

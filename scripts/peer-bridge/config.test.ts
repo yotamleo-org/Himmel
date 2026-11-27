@@ -1,4 +1,6 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import * as C from "./config";
+import { startIdentity } from "./chain";
 import fs from "node:fs";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -243,4 +245,327 @@ test("ids: the bot id is the token prefix, and the session id shape is closed", 
   expect(botIdFromToken("nocolon")).toBe("");
   expect(SESSION_ID_RE.test("abc-123")).toBe(true);
   for (const bad of ["../x", "", "a/b", "a".repeat(65), "a b"]) expect(SESSION_ID_RE.test(bad)).toBe(false);
+});
+
+
+const REAL_HOME = process.env.HOME;
+const realStamp = () => { try { const s = fs.statSync(join(REAL_HOME!, ".himmel", "remote-setup", "pairing.json")); return [s.ino, s.size, s.mtimeMs].join(":"); } catch { return "absent"; } };
+const REAL_STAMP = realStamp();
+let testHome = "";
+const children: { kill(): void }[] = [];
+beforeEach(() => { testHome = mkdtempSync(join(tmpdir(), "peer-config-home-")); process.env.HOME = testHome; });
+afterEach(() => {
+  for (const c of children.splice(0)) c.kill();
+  if (REAL_HOME === undefined) delete process.env.HOME; else process.env.HOME = REAL_HOME;
+  fs.rmSync(testHome, { recursive: true, force: true });
+});
+
+const K1 = Buffer.alloc(32, 7).toString("base64"), K2 = Buffer.alloc(32, 9).toString("base64");
+
+test("canonicalKey takes 32 canonical base64 bytes only", () => {
+  expect(C.canonicalKey(K1)).toBe(true);
+  for (const bad of [Buffer.alloc(31, 7).toString("base64"), Buffer.alloc(33, 7).toString("base64"), K1.slice(0, -2) + "d=", "x"]) expect([bad, C.canonicalKey(bad)]).toEqual([bad, false]);
+});
+
+test("parseCard reads the bare line and the two-line wire form, and nothing else", () => {
+  const card = "#pair station=example key=" + K1;
+  const want = { station: "example", pub: K1 };
+  expect(C.parseCard(card)).toEqual(want);
+  expect(C.parseCard("/peer@ours_bot\n" + card, "ours_bot")).toEqual(want);
+  expect(C.parseCard("/peer@anybody_bot\n" + card)).toEqual(want);
+  expect(C.parseCard(card, "ours_bot")).toEqual(want);
+  const bads = [
+    card + "\nmore", "/peer@ours_bot\n" + card + "\nmore", card + " ", card + "\r", "/peer@ours_bot\r\n" + card, "/peer@x\n" + card, "hello\n" + card,
+    "#pair station=example key=" + Buffer.alloc(31, 1).toString("base64"), "#pair station=example key=" + K1.slice(0, -2) + "d=",
+  ];
+  for (const bad of bads) expect([bad, C.parseCard(bad)]).toEqual([bad, null]);
+  expect(C.parseCard("/peer@other_bot\n" + card, "ours_bot")).toBeNull();
+});
+
+test("cardMessage addresses the peer the way the poller addresses a root, and parses back", () => {
+  expect(C.cardMessage("example_bot", "yotam", K1)).toBe("/peer@example_bot\n#pair station=yotam key=" + K1);
+  expect(C.parseCard(C.cardMessage("example_bot", "yotam", K1), "example_bot")).toEqual({ station: "yotam", pub: K1 });
+});
+
+const trustCfg = (keys: unknown[] = [], name?: string) => C.parsePeers(Buffer.from(JSON.stringify(withTheirs(name ? { keys, stationName: name } : { keys }))));
+const rule = (cfg: any, over: Record<string, unknown> = {}) => {
+  const a = { peer: "example", station: "example", pub: K1, host: "box.lan", firstOnly: false, ...over } as any;
+  return C.trustRefusal(cfg, a.peer, a.station, a.pub, a.host, { firstOnly: a.firstOnly });
+};
+
+test("trustRefusal names the first rule that refuses", () => {
+  const cfg = trustCfg();
+  expect(rule(cfg)).toBeNull();
+  expect(rule(cfg, { peer: "nobody" })).toBe("unknown-peer");
+  expect(rule(trustCfg([key(K2)]), { firstOnly: true })).toBe("already-paired");
+  expect(rule(trustCfg([key(K2)]))).toBeNull();
+  expect(rule(cfg, { station: "Bad Name" })).toBe("name");
+  expect(rule(cfg, { station: "box" })).toBe("host");
+  expect(rule(cfg, { pub: "c2hvcnQ=" })).toBe("key-shape");
+  expect(rule(trustCfg([key(K1)]))).toBe("already-trusted");
+  expect(rule(trustCfg([key(K2), key(Buffer.alloc(32, 4).toString("base64"))]))).toBe("two-keys");
+  expect(rule(trustCfg([], "someone-else"))).toBe("name-differs");
+});
+
+test("readPeersBytes then parsePeers equals readPeersFile", () => {
+  for (const d of [base(), withTheirs({ stationName: "example", keys: [key(K1)] }), withPeer({ serves: ["run-suite"] })]) {
+    const path = write(d);
+    expect(C.parsePeers(C.readPeersBytes(path))).toEqual(C.readPeersFile(path));
+  }
+  expect(refusal(() => C.readPeersBytes(write(base(), 0o644))).message).toContain("0600");
+});
+
+function clock(onSleep?: () => unknown) {
+  let offset = 0;
+  const c = { sleeps: 0, now: () => Date.now() + offset, sleep: async (ms: number) => { c.sleeps++; offset += ms; if (onSleep) await onSleep(); } };
+  return c;
+}
+const lockDir = () => mkdtempSync(join(tmpdir(), "peer-lock-"));
+const LOCK = (d: string) => join(d, "peers.json.lock");
+const lockHolder = (d: string) => JSON.parse(fs.readFileSync(LOCK(d), "utf8"));
+const age = (path: string, ms: number) => { const t = new Date(Date.now() - ms); fs.utimesSync(path, t, t); };
+const inoOf = (path: string) => fs.lstatSync(path).ino;
+const gate = () => { let open!: () => void; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
+function liveChild() {
+  const c = Bun.spawn(["cat"], { stdin: "pipe", stdout: "ignore" });
+  children.push(c);
+  return c;
+}
+const lockAs = (d: string, pid: number, start: string | null) => writeFileSync(LOCK(d), JSON.stringify({ pid, start }), { mode: 0o600 });
+const liveLock = (d: string) => { const c = liveChild(); lockAs(d, c.pid, startIdentity(c.pid)); return c; };
+const DEAD_PID = 2_000_000_000;
+function holderChild(d: string) {
+  const script = join(lockDir(), "holder.ts");
+  writeFileSync(script, [
+    "import { withPeersLock } from " + JSON.stringify(join(import.meta.dir, "config.ts")) + ";",
+    "await withPeersLock(" + JSON.stringify(d) + ", async () => { console.log('held'); await new Promise(r => process.stdin.once('data', r)); }, { now: () => Date.now(), sleep: ms => new Promise(r => setTimeout(r, ms)) });",
+    "console.log('released');",
+    "process.exit(0);",
+  ].join("\n"));
+  const c = Bun.spawn(["bun", script], { stdin: "pipe", stdout: "pipe", stderr: "inherit" });
+  children.push(c);
+  const reader = c.stdout.getReader();
+  let buf = "";
+  const until = async (word: string) => { while (!buf.includes(word)) { const { value, done } = await reader.read(); if (done) throw new Error("holder ended before " + word); buf += new TextDecoder().decode(value); } };
+  return { pid: c.pid, until, release: async () => { c.stdin.write("go\n"); c.stdin.flush(); await until("released"); } };
+}
+
+test("the lock appears with its holder already in it", async () => {
+  const d = lockDir();
+  let before = true;
+  await C.withPeersLock(d, () => {
+    expect(lockHolder(d)).toEqual({ pid: process.pid, start: startIdentity(process.pid) });
+  }, { ...clock(), hooks: { beforeLink: () => { before = fs.existsSync(LOCK(d)); } } });
+  expect(before).toBe(false);
+  expect(fs.readdirSync(d)).toEqual([]);
+});
+
+test("a live holder's fresh lock gives busy once the clock passes 2 s", async () => {
+  const d = lockDir();
+  liveLock(d);
+  const c = clock();
+  await expect(C.withPeersLock(d, () => 1, c)).rejects.toThrow("busy");
+  expect(c.sleeps).toBeGreaterThan(0);
+  expect(fs.existsSync(LOCK(d))).toBe(true);
+});
+
+test("a dead holder, a reused pid or a lock older than 10 s is taken; a younger live one never is", async () => {
+  for (const set of [
+    (d: string) => lockAs(d, DEAD_PID, "1"),
+    (d: string) => lockAs(d, liveChild().pid, "not-its-start"),
+    (d: string) => { liveLock(d); age(LOCK(d), 11_000); },
+    (d: string) => { writeFileSync(LOCK(d), "garbage"); age(LOCK(d), 11_000); },
+  ]) {
+    const d = lockDir(); set(d);
+    const c = clock();
+    expect(await C.withPeersLock(d, () => "took", c)).toBe("took");
+    expect(c.sleeps).toBe(0);
+    expect(fs.readdirSync(d)).toEqual([]);
+  }
+  const d = lockDir(); liveLock(d); age(LOCK(d), 7_000);
+  await expect(C.withPeersLock(d, () => 1, clock())).rejects.toThrow("busy");
+});
+
+const seedPeers = (obj: unknown = base()) => {
+  const d = lockDir(), path = join(d, "peers.json");
+  writeFileSync(path, JSON.stringify(obj, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(path, 0o600);
+  return { d, path };
+};
+
+test("two processes: the second writer waits for the child, then writes; past 2 s it is busy", async () => {
+  const { d, path } = seedPeers();
+  const child = holderChild(d);
+  await child.until("held");
+  let released = false;
+  const c = clock(async () => { if (!released) { released = true; await child.release(); } });
+  const bytes = fs.readFileSync(path);
+  await C.replacePeersJson(path, bytes, { ...JSON.parse(bytes.toString()), maxTextChars: 3999 }, c);
+  expect(c.sleeps).toBeGreaterThan(0);
+  expect(JSON.parse(fs.readFileSync(path, "utf8")).maxTextChars).toBe(3999);
+
+  const other = holderChild(d);
+  await other.until("held");
+  const now = fs.readFileSync(path);
+  await expect(C.replacePeersJson(path, now, { ...JSON.parse(now.toString()), maxTextChars: 3998 }, clock())).rejects.toThrow("busy");
+  expect(fs.readFileSync(path).equals(now)).toBe(true);
+  await other.release();
+});
+
+test("break race: the breaker that ruled the dead lock stale never removes its successor's", async () => {
+  const d = lockDir(); lockAs(d, DEAD_PID, "1");
+  const ruled = gate(), resume = gate(), aHolds = gate(), aEnd = gate();
+  let first = true;
+  const b = C.withPeersLock(d, () => "b", { ...clock(), hooks: { afterRuledStale: async () => { if (!first) return; first = false; ruled.open(); await resume.p; } } });
+  const bResult = b.then(() => "took", (e: Error) => e.message);
+  await ruled.p;
+  let aIno = 0;
+  const a = C.withPeersLock(d, async () => { aIno = inoOf(LOCK(d)); aHolds.open(); await aEnd.p; }, clock());
+  await aHolds.p;
+  resume.open();
+  expect(await bResult).toBe("busy");
+  expect(inoOf(LOCK(d))).toBe(aIno);
+  aEnd.open();
+  await a;
+});
+
+test("put-back and J1: a moved newer lock is linked back; restored after its release, only age frees it", async () => {
+  const d = lockDir(); lockAs(d, DEAD_PID, "1");
+  const ruled = gate(), resume = gate(), moved = gate(), resume2 = gate(), aHolds = gate(), aEnd = gate();
+  let r1 = true, r2 = true;
+  const b = C.withPeersLock(d, () => "b", { ...clock(), hooks: {
+    afterRuledStale: async () => { if (!r1) return; r1 = false; ruled.open(); await resume.p; },
+    afterRename: async () => { if (!r2) return; r2 = false; moved.open(); await resume2.p; },
+  } });
+  const bResult = b.then(() => "took", (e: Error) => e.message);
+  await ruled.p;
+  let aIno = 0;
+  const a = C.withPeersLock(d, async () => { aIno = inoOf(LOCK(d)); aHolds.open(); await aEnd.p; }, clock());
+  await aHolds.p;
+  resume.open();
+  await moved.p;
+  expect(fs.existsSync(LOCK(d))).toBe(false);
+  aEnd.open();
+  await a;
+  resume2.open();
+  expect(await bResult).toBe("busy");
+  expect(inoOf(LOCK(d))).toBe(aIno);
+  await expect(C.withPeersLock(d, () => "c", clock())).rejects.toThrow("busy");
+  age(LOCK(d), 11_000);
+  expect(await C.withPeersLock(d, () => "c", clock())).toBe("c");
+});
+
+test("same-file break: a lock ruled stale by age is deleted although it names a live process", async () => {
+  const d = lockDir(); liveLock(d); age(LOCK(d), 11_000);
+  const c = clock();
+  let moved = 0;
+  expect(await C.withPeersLock(d, () => "took", { ...c, hooks: { afterRename: () => { moved++; } } })).toBe("took");
+  expect([moved, c.sleeps]).toEqual([1, 0]);
+  expect(fs.readdirSync(d)).toEqual([]);
+});
+
+test("a writer displaced by the age rule releases and leaves its successor's lock", async () => {
+  const d = lockDir();
+  let child: ReturnType<typeof holderChild> | null = null;
+  await C.withPeersLock(d, async () => {
+    age(LOCK(d), 11_000);
+    child = holderChild(d);
+    await child.until("held");
+  }, clock());
+  expect(lockHolder(d).pid).toBe(child!.pid);
+  await child!.release();
+  expect(fs.existsSync(LOCK(d))).toBe(false);
+});
+
+const PAIRING = () => join(testHome, ".himmel", "remote-setup", "pairing.json");
+const doc = (path: string) => JSON.parse(fs.readFileSync(path, "utf8"));
+const writeOver = (path: string, mutate: (d: any) => void) => { const v = doc(path); mutate(v); writeFileSync(path, JSON.stringify(v, null, 2) + "\n"); };
+
+test("replacePeersJson writes over the expected bytes and then rewrites pairing.json from them", async () => {
+  const { path } = seedPeers();
+  const bytes = fs.readFileSync(path);
+  const next = JSON.parse(bytes.toString());
+  next.peers.example.chatId = -100123;
+  await C.replacePeersJson(path, bytes, next, clock());
+  expect(doc(path).peers.example.chatId).toBe(-100123);
+  expect(fs.statSync(path).mode & 0o777).toBe(0o600);
+  expect(doc(PAIRING()).peers).toEqual([{ name: "example", ourStationName: false, ourStationKey: false, groupChat: true, operatorChat: false, theirKey: false }]);
+});
+
+test("replacePeersJson throws changed over a write made after the caller read, and leaves it", async () => {
+  const { path } = seedPeers();
+  const bytes = fs.readFileSync(path);
+  await expect(C.replacePeersJson(path, bytes, JSON.parse(bytes.toString()), { ...clock(), hooks: { afterRead: () => writeOver(path, v => { v.maxTextChars = 3000; }) } })).rejects.toThrow("changed");
+  expect(doc(path).maxTextChars).toBe(3000);
+});
+
+test("a pairing.json that cannot be written is logged and the peers.json write stands", async () => {
+  const { path } = seedPeers();
+  fs.mkdirSync(join(testHome, ".himmel"), { recursive: true });
+  writeFileSync(join(testHome, ".himmel", "remote-setup"), "not a directory");
+  const bytes = fs.readFileSync(path), lines: string[] = [];
+  const next = JSON.parse(bytes.toString()); next.maxTextChars = 3000;
+  await C.replacePeersJson(path, bytes, next, { ...clock(), log: (l: string) => lines.push(l) });
+  expect(doc(path).maxTextChars).toBe(3000);
+  expect(lines.join("\n")).toContain("pairing steps record could not be updated");
+});
+
+const addOpts = (over: Record<string, unknown> = {}) => ({ hostname: "box.lan", ...clock(), ...over }) as any;
+
+test("addTrustedKey appends one key and the station name and changes nothing else in the raw document", async () => {
+  const { path } = seedPeers();
+  const before = doc(path);
+  await C.addTrustedKey(path, "example", "their-box", K1, addOpts());
+  const after = doc(path);
+  const k = after.peers.example.theirs.keys[0];
+  expect([after.peers.example.theirs.keys.length, k.id, k.pub, Number.isNaN(Date.parse(k.addedAt))]).toEqual([1, keyId(K1), K1, false]);
+  expect(after.peers.example.theirs.stationName).toBe("their-box");
+  delete after.peers.example.theirs.keys; delete after.peers.example.theirs.stationName;
+  expect(after).toEqual(before);
+});
+
+test("addTrustedKey refuses each rule and leaves the bytes", async () => {
+  const cases: [string, Record<string, unknown>, string, string, string, Record<string, unknown>][] = [
+    ["already-paired", { keys: [key(K2)] }, "example", "their-box", K1, { firstOnly: true }],
+    ["unknown-peer", {}, "nobody", "their-box", K1, {}],
+    ["key-shape", {}, "example", "their-box", "c2hvcnQ=", {}],
+    ["already-trusted", { keys: [key(K1)] }, "example", "their-box", K1, {}],
+    ["two-keys", { keys: [key(K2), key(Buffer.alloc(32, 4).toString("base64"))] }, "example", "their-box", K1, {}],
+    ["name-differs", { stationName: "other-name" }, "example", "their-box", K1, {}],
+    ["name", {}, "example", "Bad Name", K1, {}],
+    ["host", {}, "example", "localhost", K1, {}],
+  ];
+  for (const [want, theirs, name, station, pub, opts] of cases) {
+    const { path } = seedPeers(withTheirs(theirs));
+    const bytes = fs.readFileSync(path);
+    await expect(C.addTrustedKey(path, name, station, pub, addOpts(opts))).rejects.toThrow(new RegExp("^" + want + "$"));
+    expect([want, fs.readFileSync(path).equals(bytes)]).toEqual([want, true]);
+  }
+});
+
+test("addTrustedKey's guard runs under the lock after the compare, and its refusal leaves the bytes", async () => {
+  for (const want of ["lockdown", "killed"]) {
+    const { d, path } = seedPeers();
+    const flag = join(d, want), bytes = fs.readFileSync(path);
+    await expect(C.addTrustedKey(path, "example", "their-box", K1, addOpts({
+      hooks: { afterRead: () => writeFileSync(flag, "") },
+      guard: () => { if (fs.existsSync(flag)) throw new ConfigError(want); },
+    }))).rejects.toThrow(want);
+    expect(fs.readFileSync(path).equals(bytes)).toBe(true);
+  }
+});
+
+test("addTrustedKey retries one concurrent write on the fresh bytes; two report busy", async () => {
+  const { path } = seedPeers();
+  let n = 0;
+  await C.addTrustedKey(path, "example", "their-box", K1, addOpts({ hooks: { afterRead: () => { if (n++ === 0) writeOver(path, v => { v.maxTextChars = 3000; }); } } }));
+  expect([doc(path).maxTextChars, doc(path).peers.example.theirs.keys.length, n]).toEqual([3000, 1, 2]);
+  const other = seedPeers();
+  let m = 0;
+  await expect(C.addTrustedKey(other.path, "example", "their-box", K1, addOpts({ hooks: { afterRead: () => writeOver(other.path, v => { v.maxTextChars = 3000 + ++m; }) } }))).rejects.toThrow("busy");
+  expect(doc(other.path).peers.example.theirs.keys).toBeUndefined();
+});
+
+test("the operator's real pairing.json is untouched by this file", () => {
+  expect(realStamp()).toBe(REAL_STAMP);
 });

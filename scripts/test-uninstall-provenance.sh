@@ -570,4 +570,45 @@ run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hoo
 check "sessionend_hooks_null: an explicit hooks null is restored to null after uninstall" \
   "$(jq -c 'if has("hooks") then .hooks else "ABSENT" end' "$CASE_SETTINGS")" 'null'
 
+seed_local_wiring() {
+  CASE_LOCAL="$CASE_DIR/cwd/.claude/settings.local.json"
+  mkdir -p "$CASE_DIR/cwd/.claude"
+  bash "$lib/wire-statusline.sh" "$CASE_LOCAL" "$repo_root" >/dev/null
+  ( prov_begin --writer adopt.sh -- seed-local >/dev/null
+    prov_record create file "$CASE_LOCAL" --scope project --class code --row project-settings \
+      --writer adopt.sh --pre-absent --post-file "$CASE_LOCAL" >/dev/null
+    prov_end ok >/dev/null )
+}
+run_local_uninstall() { run_uninstall --yes --keep-telegram-state --skip-tasks --skip-plugins --skip-hooks; }
+
+new_case localgone
+seed_local_wiring
+run_local_uninstall >/dev/null
+check "local_created_removed_without_shared: no shared file, the created local file is unwired and removed" \
+  "$([ -e "$CASE_DIR/cwd/.claude/settings.json" ] && echo shared || echo no-shared) $([ -e "$CASE_LOCAL" ] && echo left || echo gone)" "no-shared gone"
+
+new_case localuser
+seed_local_wiring
+jq '.permissions = {allow:["Bash(ls:*)"]}' "$CASE_LOCAL" > "$CASE_LOCAL.new" && mv "$CASE_LOCAL.new" "$CASE_LOCAL"
+run_local_uninstall >/dev/null
+check "local_user_content_survives: the user's own keys stay, himmel's go" \
+  "$(jq -c . "$CASE_LOCAL" 2>/dev/null || echo GONE)" '{"permissions":{"allow":["Bash(ls:*)"]}}'
+
+new_case locallink
+seed_local_wiring
+mv "$CASE_LOCAL" "$CASE_DIR/link-target.json"
+ln -s "$CASE_DIR/link-target.json" "$CASE_LOCAL"
+cp "$CASE_DIR/link-target.json" "$CASE_DIR/link-target.before"
+out_link=$(run_local_uninstall); rc_link=$?
+check "local_symlink_refused: reported, non-zero, link and target untouched" \
+  "$([ "$rc_link" -ne 0 ] && echo nonzero) $(printf '%s\n' "$out_link" | grep -c "refusing non-regular or symlinked target $CASE_LOCAL") $([ -L "$CASE_LOCAL" ] && cmp -s "$CASE_DIR/link-target.json" "$CASE_DIR/link-target.before" && echo intact)" "nonzero 1 intact"
+
+new_case localnoid
+seed_local_wiring
+mkdir "$CASE_DIR/cwd/.git"
+cp "$CASE_LOCAL" "$CASE_DIR/noid.before"
+run_local_uninstall >/dev/null; rc_noid=$?
+check "local_unresolved_identity_refused: no shared file and an unresolved checkout leaves the local file as found" \
+  "$([ "$rc_noid" -ne 0 ] && echo nonzero) $(cmp -s "$CASE_LOCAL" "$CASE_DIR/noid.before" && echo intact)" "nonzero intact"
+
 uninstall_prov_finish

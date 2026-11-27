@@ -1169,6 +1169,35 @@ contains 'an unknown attempt whose session is gone counts too: stale-attempts=1'
 same 'a tick settles and edits no record: fleet-control.json and the manifest are byte-identical' "$(cksum "$fr_root/fr-stale/fleet-control.json" "$fr_root/fr-stale/chief.fleet.json" | tr -d '\n')" "$fr_before"
 kill "$fr_live" 2>/dev/null
 
+un_dir="$W/un11376"
+mkdir -p "$un_dir"
+un_tick() { TOKEN='' bash "$SUT" --doc "$un_dir/chief.md" 2>/dev/null; }
+printf '# chief\n\nfocus-version: v9.9.9\nqueue: HIMMEL-9103 after the merge\n' > "$un_dir/chief.md"
+printf 'status=ok\ngen=1\ndirty=\nstale=4:HIMMEL-9101,HIMMEL-9102,HIMMEL-9103,HIMMEL-91040\n' > "$un_dir/focus-state"
+bash "$HERE/owe.sh" add --bucket "$un_dir" --chief chief --kind step --key HIMMEL-9101 --text 'sign the design' --metadata '{"due":"2099-01-01"}' > /dev/null
+bash "$HERE/owe.sh" add --bucket "$un_dir" --chief chief --kind ticket --text 'unrelated row naming HIMMEL-9104' > /dev/null
+contains '11376 a started ticket with no owed row and no queue entry is named in unowned=' "$(un_tick)" ' unowned=2:HIMMEL-9102,HIMMEL-91040'
+printf 'status=ok\ngen=1\ndirty=\nstale=2:HIMMEL-9101,HIMMEL-9103\n' > "$un_dir/focus-state"
+not_contains '11376 control: every stale key queued: no unowned= field' "$(un_tick)" ' unowned='
+printf 'status=ok\ngen=1\ndirty=\nstale=unknown\n' > "$un_dir/focus-state"
+contains '11376 an unreadable stale feed reads unowned=?' "$(un_tick)" ' unowned=?'
+printf 'status=ok\ngen=1\ndirty=\nstale=1:HIMMEL-9102\n' > "$un_dir/focus-state"
+printf 'not json\n' > "$un_dir/owed.jsonl"
+contains '11376 an unreadable owed ledger reads unowned=?, never a wake on a guess' "$(un_tick)" ' unowned=?'
+rm -f "$un_dir/owed.jsonl"
+printf 'status=ok\ngen=1\ndirty=\nstale=2:HIMMEL-9101\n' > "$un_dir/focus-state"
+contains '11376 a stale line whose count disagrees with its keys reads unowned=?' "$(un_tick)" ' unowned=?'
+printf '# chief\n\nfocus-version: v9.9.9\nqueue: wake=done:HIMMEL-9102-S1 and HIMMEL-9101x\n' > "$un_dir/chief.md"
+printf 'status=ok\ngen=1\ndirty=\nstale=2:HIMMEL-9101,HIMMEL-9102\n' > "$un_dir/focus-state"
+contains '11376 a longer token that starts with the key does not queue it' "$(un_tick)" ' unowned=2:HIMMEL-9101,HIMMEL-9102'
+touch -d '-1 hour' "$un_dir/focus-state"
+printf 'sdrift=unknown\n' > "$un_dir/focus-drift.txt"
+un_partial="$(un_tick)"
+contains '11376 control: the newer drift file is the stale feed' "$un_partial" ' stale=partial:0:'
+contains '11376 a partial drift with no keys reads unowned=?, never a made-up key' "$un_partial" ' unowned=?'
+not_contains '11376 and names no key from the summary itself' "$un_partial" 'unowned=1:'
+grep -q "^unowned	whole-retain-unknown	change	0	key	" "$HERE/wake-rules.tsv" && pass "11376 unowned is in the waiter's action key" || fail "11376 unowned is not in the waiter's action key"
+
 wo_doc="HIMMEL-10572-N5801-wrapped-open-2026-11-26-RESUME"
 printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$wo_doc.md"
 mkcmdline 5801 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-10572-N5801-wrapped-open-2026-11-26 work

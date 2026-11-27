@@ -1559,7 +1559,7 @@ grepq "$outR" -F 'disabling would run' || fail "case r: expected the disable evi
 # convention, same helper displayCommand() already uses for the derived:
 # line) precisely BECAUSE the target path contains a space -- an unquoted
 # 'target with space' token would be ambiguous (3 words, not 1 path).
-grepq "$outR" -E "'[^']*target with space[^']*settings\.json'" \
+grepq "$outR" -E "'[^']*target with space[^']*settings\.local\.json'" \
   || fail "case r: the disable evidence line must quote an arg containing a space so it's unambiguous/copy-pasteable (got: $outR)"
 echo "ok: case r — the disable-command evidence line quotes an argument containing a space (consent evidence stays unambiguous)"
 
@@ -1921,7 +1921,7 @@ printf '{}\n' > "$1"
 exit 0
 SH
 targetU="$work/target-u"; mkdir -p "$targetU/.claude"
-printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetU/.claude/settings.json"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetU/.claude/settings.local.json"
 cacheU="$work/cache-u"; mkdir -p "$cacheU"
 homeU="$work/home-u"; mkdir -p "$homeU/.claude"
 printf '{"statusLine":{"command":"user-level"}}\n' > "$homeU/.claude/settings.json"
@@ -1936,12 +1936,13 @@ outU2=$(runEnsureU --profile core --yes --prune --items wiring-statusline 2>&1);
 set -e
 [ "$rcU1" -eq 0 ] || fail "case u: the setup converge should exit 0 (got rc=$rcU1): $outU1"
 [ "$rcU2" -eq 0 ] || fail "case u: pruning a project-scope item whose key a user-level file also sets should exit 0 (got rc=$rcU2): $outU2"
-[ "$(cat "$targetU/.claude/settings.json")" = '{}' ] || fail "case u: the project file should be unwired (got: $(cat "$targetU/.claude/settings.json"))"
+[ "$(cat "$targetU/.claude/settings.local.json")" = '{}' ] || fail "case u: the project file should be unwired (got: $(cat "$targetU/.claude/settings.local.json"))"
 grepq "$(cat "$homeU/.claude/settings.json")" -F 'user-level' || fail "case u: the user-level file must be left alone"
 echo "ok: case u — a project-scope prune checks and reprobes only the project settings file"
 
 targetV="$work/target-v"; mkdir -p "$targetV/.claude"
 printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetV/.claude/settings.json"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetV/.claude/settings.local.json"
 git init -q "$targetV"
 git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
 git -C "$targetV" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed

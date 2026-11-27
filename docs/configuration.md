@@ -441,7 +441,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `block-bank-lift-writes` | an agent write to `~/.himmel/state/usage-lift.json` | HARD | none: the operator's own command |
 | `block-himmel-config-writes` | an agent write to `~/.himmel/config.json` (it holds the graphify salus egress opt-in) | HARD (a speed bump, not a fence) | none |
 | `guard-relay-writes` | a relay worker (`HIMMEL_CONSOLE_RELAY=1`) writing chief state | HARD (fail-closed) | none |
-| `mcp-policy` | every `mcp__*` call, classified against `scripts/guardrails/mcp-policy.json` and audited | warn-only as shipped (`observe` mode); a server set to `enforce` denies | the registry's `mode` |
+| `mcp-policy` | every `mcp__*` call, classified against `scripts/guardrails/mcp-policy.json` and audited | denies a `destructive` call on a registered server unless `allow_destructive` names it; otherwise warn-only (`observe` mode), and a server set to `enforce` denies | the registry's `mode` and `enforce_classes` |
 | `allow-thread-resolve`, `approval-grant-check` | the audited review-thread resolve call; a call the operator granted over Telegram | not a veto — only ever emits *allow* | — |
 | `stop-chief-idle-guard` | Stop: a chief session ending its turn while it still holds its queue lock (once per turn) | workflow guard (fail-open) | release the lock (wrap) or `/chief next` |
 | `stop-chief-ask-mirror` | Stop: a finished reply holding `Needs you:`, handed to `ask-mirror.sh` through the stop queue so the ask reaches Telegram | workflow nudge (fail-open) | — |

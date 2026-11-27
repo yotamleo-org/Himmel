@@ -51,7 +51,7 @@ test("10947: the unfilled HANDOFF template line is no operator item; a real ask 
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend", "<https://example.invalid/approve>"]);
 });
 
-test("10947: a HANDOFF ask is one row with its indented lines; a none line, a checked item, a struck item and an item of a closed ticket are no ask; a ledger row of a closed ticket is dropped", () => {
+test("10947/11401: a HANDOFF ask is one row with its indented lines; a none line, a checked item, a struck item and an item of a closed ticket are no ask; an open ledger row of a Done ticket stays, a closed row is dropped", () => {
   const s = scratch();
   const env = owedFixture(s, "queue: HIMMEL-2 chief step");
   writeFileSync(join(s.d, "chief-HANDOFF.md"), [
@@ -64,11 +64,14 @@ test("10947: a HANDOFF ask is one row with its indented lines; a none line, a ch
     "**None** other.", "",
   ].join("\n"));
   const add = (id: string, key: string | null, text: string) => JSON.stringify({ op: "add", id, actor: "operator", key, text, kind: "ask" });
-  writeFileSync(join(s.d, "owed.jsonl"), [add("o1", "HIMMEL-2", "approve the paid seat"), add("o2", "HIMMEL-1", "approve the paid grant of a closed ticket"), add("o3", null, "approve the account renewal")].join("\n") + "\n");
+  writeFileSync(join(s.d, "owed.jsonl"), [add("o1", "HIMMEL-2", "approve the paid seat"), add("o2", "HIMMEL-1", "approve the paid grant of a closed ticket"), add("o3", null, "approve the account renewal"), add("o4", "HIMMEL-1", "approve the answered ask of a closed ticket"), JSON.stringify({ op: "close", ref: "o4" })].join("\n") + "\n");
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["approve the held spend detail of the spend wrapped text of the spend", "HIMMEL-1 and HIMMEL-2: approve the paid billing"]);
-  expect(o.items.filter((i) => i.source === "owed ledger").map((i) => [i.key, i.title])).toEqual([["HIMMEL-2", "approve the paid seat"], [null, "approve the account renewal"]]);
+  expect(o.items.filter((i) => i.source === "owed ledger").map((i) => [i.key, i.title])).toEqual([["HIMMEL-2", "approve the paid seat"], ["HIMMEL-1", "approve the paid grant of a closed ticket"], [null, "approve the account renewal"]]);
+  const waiting = renderBoard(readRoadmap({ mirrorDir: s.mirror, workers: { state: "absent" } }), {}, { owed: o }).match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(waiting).toContain("approve the paid grant of a closed ticket");
+  expect(waiting).not.toContain("approve the answered ask");
 });
 
 test("10947: equally indented sibling HANDOFF bullets stay separate asks, so a checked one hides only itself", () => {
