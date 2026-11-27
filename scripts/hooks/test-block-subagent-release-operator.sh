@@ -180,6 +180,7 @@ expect allow "D2v twin: the chief" absent "$CLI create --title t --{decision=1,w
 expect deny "D2s over-deny accepted: a quoted JSON title that holds a brace and both words" "$SUB" "$CLI create --title '{\"decision\":\"draft\",\"words\":\"notes\"}'" "$P2O"
 expect deny "D2w both words in upper case beside a brace" "$SUB" "$CLI create --title t {x} DECISION Words" "$P2O"
 LONG=$(seq -s ' ' 1 300)
+[ "$(printf '%s' "$LONG" | wc -w | tr -d ' ')" = 300 ] || { echo "FATAL: the long-command fixture is not 300 words" >&2; exit 1; }
 expect allow "D2x a 300-word command with no brace" "$SUB" "echo $LONG"
 expect allow "D2y a brace command that holds only one of the two words" "$SUB" "$CLI create --title {a,b} decision"
 expect allow "D2q control: a literal comma without a brace" "$SUB" "$CLI create --decision 1 --title notes,--words"
