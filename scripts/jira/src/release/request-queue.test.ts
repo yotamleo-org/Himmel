@@ -12,6 +12,7 @@ import {
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as pinned from './pinned.js';
 import * as ledger from './ledger.js';
+import { renderQuestion } from './verbatim.js';
 
 const afterMinerva = vi.hoisted(() => ({ fn: null as null | (() => void) }));
 const sourceFixture = vi.hoisted(() => ({ primary: null as string | null }));
@@ -1260,5 +1261,17 @@ describe('a gated ask cites the operator record that already covers it', () => {
     expect(requestOnRecord(at(), ask())).toBeUndefined();
     const fresh = words(at(), ['K-5'], ADD_V1, OTHER_WORDS);
     expect(requestOnRecord(at(), ask())?.operator.id).toBe(fresh.id);
+  });
+});
+
+describe('decisionWords on a Question block file', () => {
+  it('decisionWords takes a1 from a helper-shaped decision file', async () => {
+    await setup();
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    const text = `${renderQuestion({ subject: 'HIMMEL-1 INTAKE', asked: null, ask: ['place it?'], options: [{ answer: 'a1', meaning: 'place it' }, { answer: 'a2', meaning: 'leave it' }] })}\na1\n`;
+    writeFileSync(join(dir, 'verbatim-decision-9-operator-11-27-EA.txt'), text);
+    expect(decisionWords(ctx(), '9', 'a1')).toMatchObject({ decision_file: 'specs/decisions/verbatim-decision-9-operator-11-27-EA.txt', words: 1 });
+    expect(() => decisionWords(ctx(), '9', 'a2')).toThrow(/release: --words for decision/);
   });
 });
