@@ -3,6 +3,7 @@ import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHas
   ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
   FINDING_LINE, FINDING_SEVERITIES, findingTags, criticRounds, parseResidualLines,
   type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
+import { isShort, namesKeyToken, normText, parseQuestion, shortAnswer } from "../jira/src/release/verbatim.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -836,7 +837,7 @@ async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum:
 
 const namesTicket = (specText: string, key: string) => {
   const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(specText.replace(/\r\n/g, "\n"))?.[1] ?? "";
-  return front.split("\n").some(l => /^tickets:/.test(l) && new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(l));
+  return front.split("\n").some(l => /^tickets:/.test(l) && namesKeyToken(l, key));
 };
 
 export type RoundState = {
@@ -951,7 +952,15 @@ function findingOf(rows: Rows, id: string, o: { restores?: boolean; round?: { ki
   return all.find(h => h.f.critical && !ruled.has(findingKey(id, h.return_sha))) ?? all[0] ?? null;
 }
 
-const normText = (s: string) => s.replace(/\s+/g, " ").trim();
+function quoteRefusal(raw: string, key: string, d: string, quote: string): string | null {
+  const noHold = `decision ${d} does not hold the quote (20 characters or more, or the answer to a Question block)`;
+  const parsed = parseQuestion(raw);
+  if ("none" in parsed) return isShort(quote) || !normText(raw).includes(normText(quote)) ? noHold : null;
+  if (!parsed.ok) return `decision ${d} has a Question block that does not hold (${parsed.why})`;
+  if (!isShort(quote)) return normText(parsed.q.answer ?? "").includes(normText(quote)) ? null : noHold;
+  const r = shortAnswer(raw, quote, key);
+  return r.ok ? null : `decision ${d} holds no recorded question for ${key} that "${quote}" answers (${r.why})`;
+}
 async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number, reader?: RoundReader, mode?: "restore"): Promise<{ error: string } | { path: string; sha: string }> {
   try { selectDecisionNames([], d); } catch (e) { return { error: (e as Error).message }; }
   const directory = join(specs, "decisions");
@@ -961,10 +970,11 @@ async function quoteRule(specs: string, key: string, d: string, quote: string, u
   const pinned = reader ? await reader.read(path) : undefined;
   const bytes = pinned?.bytes ?? await readFile(path);
   if (mode === "restore") return quote.length >= 20 && bytes.toString("utf8").includes(quote) ? { path, sha: sha256(bytes) } : { error: `decision ${d} does not hold the quote byte for byte (20 characters or more)` };
-  const text = normText(bytes.toString("utf8"));
-  if (!new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(text)) return { error: `decision ${d} does not name ${key}` };
+  const raw = bytes.toString("utf8"); const text = normText(raw);
+  if (!namesKeyToken(text, key)) return { error: `decision ${d} does not name ${key}` };
   if (used) return { error: `decision ${d} was already used for ${key}` };
-  if (normText(quote).length < 20 || !text.includes(normText(quote))) return { error: `decision ${d} does not hold the quote (20 characters or more, whitespace-normalised)` };
+  const refusal = quoteRefusal(raw, key, d, quote);
+  if (refusal) return { error: refusal };
   if ((pinned?.mtime_ms ?? (await stat(path)).mtimeMs) <= sinceTs) return { error: `decision ${d} is not newer than the latest round of ${key}` };
   return { path, sha: sha256(bytes) };
 }
