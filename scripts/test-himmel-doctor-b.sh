@@ -2158,6 +2158,42 @@ c79_setup "$c79_main"; c79_paths
 ln -s "$c79_t/nonexistent" "$c79_t/repo/.git"
 c79_want_warn "(11344-e9) dangling .git link -> WARN cannot compare" 'cannot compare'
 
+echo "== C79 (11344-e10): a plugin file with a newline in its name -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents" "$c79_cachedir/agents"
+c79_odd=$'agents/a\nb.md'
+printf 'n\n' > "$c79_tree/$c79_odd"; cp "$c79_tree/$c79_odd" "$c79_cachedir/$c79_odd"
+c79_want_warn "(11344-e10) newline in a file name -> WARN cannot compare" 'cannot compare'
+
+echo "== C79 (11344-e11): a tracked file whose name git quotes -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"
+printf 'q\n' > "$c79_tree/"$'agents/a\tb.md'
+if git init -q "$c79_t/repo" && git -C "$c79_t/repo" add -A; then
+    c79_want_warn "(11344-e11) git-quoted tracked name -> WARN cannot compare" 'cannot compare'
+else
+    fail "(11344-e11) setup: git fixture failed"; rm -rf "$c79_t"
+fi
+
+echo "== C79 (11344-e12): the compare lib missing from both places -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+c79_bare="$c79_t/bare"
+mkdir -p "$c79_bare/lib"
+for c79_e in "$(dirname "$DOC")"/*; do
+    case "${c79_e##*/}" in lib|himmel-doctor.sh) ;; *) ln -s "$c79_e" "$c79_bare/${c79_e##*/}" ;; esac
+done
+for c79_e in "$(dirname "$DOC")"/lib/*; do
+    [ "${c79_e##*/}" = plugin-cache-drift.sh ] || ln -s "$c79_e" "$c79_bare/lib/${c79_e##*/}"
+done
+cp "$DOC" "$c79_bare/himmel-doctor.sh"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$c79_bare/himmel-doctor.sh" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'plugin-cache-drift.sh missing'; then
+    pass "(11344-e12) missing lib -> WARN naming it"
+else
+    fail "(11344-e12) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a

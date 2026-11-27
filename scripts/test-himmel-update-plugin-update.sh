@@ -924,6 +924,14 @@ else
     echo "  SKIP: (11344-d9) no en_US.UTF-8 locale"
 fi
 
+echo "Test: (11344-d11) a missing compare lib is loud, fails the run and touches no plugin"
+drift_new d11
+rm -f "$CHECKOUT_DIR/scripts/lib/plugin-cache-drift.sh"
+drift_run
+assert_contains "(11344-d11) the missing lib is named" "ERROR: scripts/lib/plugin-cache-drift.sh is missing" "$out_d"
+if [ "$rc_d" -ne 0 ]; then assert_pass "(11344-d11) the run fails (rc=$rc_d)"; else assert_fail "(11344-d11) rc=0 — out: $out_d"; fi
+if [ -z "$log_d" ]; then assert_pass "(11344-d11) no plugin is uninstalled or installed"; else assert_fail "(11344-d11) claude was invoked: $log_d"; fi
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 [ "$fail" -eq 0 ]
