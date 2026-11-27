@@ -700,5 +700,39 @@ run24
   && pass "T24f a failed forced run keeps the old stamp, so the next run forces again" \
   || fail "T24f (rc=$rc24) stamp=$(cat "$STAMP24" 2>/dev/null)"
 
+echo "T25: rebuild from another checkout evicts deleted nodes even when the caller has matching files"
+CALLER25="$WS/checkout"
+CORPUS25="$CALLER25/corpus 25"
+OUT25="$CORPUS25/graphify-out"
+BIN25="$WS/bin25"
+mkdir -p "$OUT25" "$BIN25" "$WS/corpus 25"
+touch "$CALLER25/deleted.sh" "$CORPUS25/deleted.sh" "$CORPUS25/kept.sh"
+cat > "$OUT25/graph.json" <<'JSON'
+{"nodes":[{"id":"deleted","source_file":"deleted.sh"},{"id":"kept","source_file":"kept.sh"}],"links":[]}
+JSON
+cat > "$BIN25/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2/graphify-out/graph.json" <<'PY'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    graph = json.load(f)
+graph["nodes"] = [node for node in graph["nodes"] if os.path.isfile(node["source_file"])]
+with open(path, "w") as f:
+    json.dump(graph, f)
+print(len(graph["nodes"]))
+PY
+STUB
+chmod +x "$BIN25/graphify"
+touch "$CALLER25/kept.sh"
+rm "$CORPUS25/deleted.sh"
+out25=$(cd "$CALLER25" && CDPATH="$WS" PATH="$BIN25:$PATH" bash "$SCRIPT" "corpus 25" 2>&1); rc25=$?
+n25=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["nodes"]))' "$OUT25/graph.json")
+[ "$rc25" -eq 0 ] && [ "$n25" -eq 1 ] && pass "T25 deleted source evicted (2 -> $n25 nodes)" \
+  || fail "T25 expected 2 -> 1 nodes after deletion, got 2 -> $n25 (exit $rc25): $out25"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

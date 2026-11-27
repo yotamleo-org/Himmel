@@ -411,7 +411,10 @@ case "$_last_forced" in ''|*[!0-9]*) _last_forced=0 ;; esac
 _force_args=()
 [ "$((_now - 10#$_last_forced))" -lt 86400 ] || _force_args=(--force)
 set +e
-"${_lowprio[@]}" graphify update "$CORPUS_ROOT" ${_force_args[@]+"${_force_args[@]}"}
+(
+  CDPATH='' cd -- "$CORPUS_ROOT/" &&
+    "${_lowprio[@]}" graphify update "$PWD" ${_force_args[@]+"${_force_args[@]}"}
+)
 _graphify_rc=$?
 set -e
 if [ -f "$_pre_ast" ]; then
