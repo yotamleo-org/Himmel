@@ -3075,12 +3075,19 @@ project_is_himmel_checkout() {
 }
 
 unwire_local_settings() {
-  local local_f units
+  local local_f units id=0
   local_f="$(dirname -- "$1")/settings.local.json"
   [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] || return 0
   [ -e "$local_f" ] || [ -L "$local_f" ] || return 0
   units="$(prov_read_units --path "$local_f" --kind json-key)$(prov_read_units --path "$local_f" --kind json-elem)"
   [ -n "$units" ] || return 0
+  project_is_himmel_checkout || id=$?
+  [ "$id" -ne 0 ] || return 0
+  if [ "$id" -ne 1 ]; then
+    echo "  project settings: cannot resolve checkout identity — refusing to unwire $local_f" >&2
+    fail_step "[6/8] project settings: checkout identity unresolved"
+    return 0
+  fi
   if [ -L "$(dirname -- "$local_f")" ] || [ -L "$local_f" ] || [ ! -f "$local_f" ]; then
     echo "  project settings: refusing non-regular or symlinked target $local_f" >&2
     fail_step "[6/8] project settings: unsafe target $local_f"
@@ -3479,14 +3486,7 @@ else
     fi
   fi
   if [ "$HALTED" -eq 0 ] && class_removes "$_ix_pset"; then
-    _local_identity=0
-    project_is_himmel_checkout || _local_identity=$?
-    if [ "$_local_identity" -eq 1 ]; then
-      unwire_local_settings "$_project_settings"
-    elif [ "$_local_identity" -eq 2 ]; then
-      echo "  project settings: cannot resolve checkout identity — refusing to unwire the local file" >&2
-      fail_step "[6/8] project settings: checkout identity unresolved"
-    fi
+    unwire_local_settings "$_project_settings"
   fi
   # S8: the other projects the ledger recorded, same guards.
   if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && class_removes "$_ix_pset"; then
