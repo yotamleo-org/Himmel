@@ -539,7 +539,7 @@ art_for() {
 mk_fixture_root() {
     local dir="$1"
     mkdir -p "$dir/scripts/t3" "$dir/scripts/himmelctl/lib" || return 1
-    cp -R "$REPO/scripts/hooks" "$REPO/scripts/lib" "$REPO/scripts/guardrails" "$dir/scripts/" || return 1
+    cp -R "$REPO/scripts/hooks" "$REPO/scripts/lib" "$REPO/scripts/guardrails" "$REPO/scripts/harnesses" "$dir/scripts/" || return 1
     cp "$REPO/scripts/himmelctl/lib/bypass-flags.json" "$dir/scripts/himmelctl/lib/bypass-flags.json" || return 1
     jq '.profiles.probe = {mcpServers: {probesrv: {command: "true"}}}' \
         "$REPO/scripts/t3/antigravity-profiles.json" > "$dir/scripts/t3/antigravity-profiles.json" || return 1

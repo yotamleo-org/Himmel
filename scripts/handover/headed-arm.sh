@@ -186,8 +186,7 @@
 #    failure into "no match" would let a broken scan silently read as
 #    "nothing running" and bypass dedup. An indeterminate answer must never
 #    be reported as a confirmed one; every one of its four call sites refuses
-#    with the distinct exit 9 on the latter rather than treating it as either
-#    a dedup hit or a green light to launch.
+#    with exit 9. The three pre-spawn sites write scan-indeterminate.
 #  - `pgrep -f` matches a FLATTENED command line, so an unrelated claude
 #    session whose PROMPT happened to contain "-n <our name> ", or whose OWN
 #    name merely had ours as a prefix, could satisfy the dedup pattern and
@@ -849,9 +848,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# Exit 0 means launched OR already running: the launcher's attempt record (headed-arm-worker.sh) cannot tell them
-# apart from the status, so the decision point writes its typed result to HEADED_ARM_OUTCOME_FILE when given.
-# Best-effort: a write that fails leaves the record indeterminate, never changes this exit.
+# Exit 0 writes launched or already-running. Exit 9 writes scan-indeterminate only for the three pre-spawn session scans.
+# The post-launch scan, headless service checks before launch and headless census after launch leave exit 9 wordless.
+# Writes to HEADED_ARM_OUTCOME_FILE are best-effort and never change the exit status.
 _ha_outcome() {
     [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null
     if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$1" = launched ]; then
@@ -1066,6 +1065,7 @@ if [ "$sc_rc" -eq 0 ]; then
 elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
+    _ha_outcome scan-indeterminate
     exit 9
 fi
 
@@ -1523,6 +1523,7 @@ while :; do
     elif [ "$sc_rc" -eq 2 ]; then
         echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
         echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
+        _ha_outcome scan-indeterminate
         exit 9
     fi
     if claim_lock; then claimed=1; break; fi
@@ -1562,6 +1563,7 @@ elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed re-checking for $NAME after claiming the lock - releasing rather than launch blind" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
+    _ha_outcome scan-indeterminate
     exit 9
 fi
 
@@ -1801,12 +1803,6 @@ fi
 # process is the worker itself (runCommand execs it over the tab's shell),
 # so closing a worker - close-wrapped-worker TERMs its claude pid - closes only
 # its tab, and a crashed worker leaves only its own tab dead.
-# Returns 1 to open a window instead: the switch is off, this is a chief
-# arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
-# window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
-# the window this arm opens, or adopts from a live konsole predecessor, becomes
-# the chief's window). A D-Bus failure also returns 1, with a WARN:
-# a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
 # with `env -i`, keeping only the tab's own terminal variables. That script
@@ -1865,19 +1861,20 @@ tab_chain_window() {
     return 1
 }
 tab_launch() {
-    local wpid sid tab_sh kv pred
-    [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
+    local wpid sid tab_sh kv pred record=1
+    case "${HIMMEL_WORKER_SESSION_TABS:-0}" in 1) ;; join) record=0 ;; *) return 1 ;; esac
     [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
-    wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
-    case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+    wpid=""
+    if [ "$record" = 0 ]; then
+        wpid="$(tab_live_window "$HIMMEL_CONSOLE_NAME")" || wpid=""
+    elif [ -r "$TAB_WINDOW_FILE" ]; then
+        wpid="$(cat "$TAB_WINDOW_FILE")"
+        case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+    fi
     if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
-        # No live window of this chief's own: a successor chief adopts a live
-        # konsole window of its chain and records it as its own. In order: the
-        # predecessor chief.sh next named, the previous letter, then the newest
-        # live window any chief of the chain recorded.
-        TAB_RECORD=1; wpid=""
+        TAB_RECORD=$record; wpid=""
         case "${HIMMEL_CHIEF_PREDECESSOR:-}" in
             ''|*[!A-Za-z0-9._-]*) ;;
             *) wpid="$(tab_live_window "$HIMMEL_CHIEF_PREDECESSOR")" || wpid="" ;;

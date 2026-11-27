@@ -15,6 +15,7 @@ import unittest
 from unittest import mock
 
 HERE = Path(__file__).resolve().parent
+HANG_GUARD_SECS = 60
 
 
 class ProofRecord(unittest.TestCase):
@@ -39,7 +40,7 @@ class ProofRecord(unittest.TestCase):
         self.doc.write_text('# proof worker\n> **Live test:** none — proof leg\n' + frozen + '## Results\n- 10:00 WRAPPED — proof ' + keys + ' verdict=CLOSE evidence=' + str(self.evidence) + tail + '\n' + results_extra)
 
     def run_record(self, *args, ok=True, env=None):
-        r = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc), '--mirror', str(self.mirror), *args], capture_output=True, text=True, env={**os.environ, **(env or {})}, timeout=3)
+        r = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc), '--mirror', str(self.mirror), *args], capture_output=True, text=True, env={**os.environ, **(env or {})}, timeout=HANG_GUARD_SECS)
         if ok:
             self.assertEqual(r.returncode, 0, r.stderr)
         return r
@@ -479,12 +480,12 @@ class ProofRecord(unittest.TestCase):
         self.doc.write_text('# ordinary worker\n## Results\n- 10:00 WRAPPED implementation done\n')
         result = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc),
                                  '--mirror', str(self.mirror), '--message-stdin'],
-                                input='Discussed WRAPPED proof HIMMEL-9848 as an example.', capture_output=True, text=True, timeout=3)
+                                input='Discussed WRAPPED proof HIMMEL-9848 as an example.', capture_output=True, text=True, timeout=HANG_GUARD_SECS)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.b / 'owed.jsonl').exists())
         result = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc),
                                  '--mirror', str(self.mirror), '--message-stdin'],
-                                input='N42 HIMMEL-9848 WRAPPED — proof HIMMEL-9848 verdict=KEEP evidence=' + str(self.evidence), capture_output=True, text=True, timeout=3)
+                                input='N42 HIMMEL-9848 WRAPPED — proof HIMMEL-9848 verdict=KEEP evidence=' + str(self.evidence), capture_output=True, text=True, timeout=HANG_GUARD_SECS)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.rows()[0]['recommendation'], 'CLOSE')
 

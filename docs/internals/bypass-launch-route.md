@@ -238,9 +238,12 @@ The normal route is the service (see "Run it as a service"): `himmelctl bypass o
 operator's own shell. The chief never starts it and a session cannot (`CLAUDECODE` is refused). On a Linux chief
 station the station sync that runs after each handled merge asks himmel-update's `bypass_daemon` step
 (`bypass-service.sh restart-if-changed`) to restart the unit onto the new code, so a merge that changes the daemon
-needs no operator step. The sync calls no `systemctl` or `launchctl` itself. Where no sync runs (a merge the chief's
-waiter never handled, a macOS station), run `bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon`;
-a session may run it, and a worktree's copy does nothing. A request that is waiting for your go when the restart
+needs no operator step. The doctor's `C103-bypass-launcher` row (`bash scripts/himmel-doctor.sh --only C103`) shows the
+launcher's state and names the way back; a launcher that is turned off or not installed is INFO there, not a WARN.
+The sync calls no `systemctl` or
+`launchctl` itself. Where no sync runs (a merge the chief's waiter never handled, a macOS station), run
+`bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon`; a session may run it, and a worktree's copy
+does nothing. A request that is waiting for your go when the restart
 lands is asked again with a new code, and the old code no longer works.
 
 What still needs the operator: a unit that is enabled but not running (`himmelctl bypass restart`; the sync reads
@@ -348,7 +351,7 @@ without it), pins `HOME`, `PATH` (system directories only), the operator id file
 test seams. The script takes `HOME` from the passwd entry and refuses a different one, ignores its own test seams, and
 runs every child (launcher, preflight, fleet manifest, sender) from an empty environment plus an allowlist: `HOME`,
 `USER`, `LOGNAME`, `PATH` (system directories, then your `~/.local/bin` and `~/.bun/bin`), a shaped `LANG`,
-the runtime dir, `HANDOVER_DIR` when pinned, `HIMMEL_WORKER_SESSION_TABS` when pinned (`worker_tabs=1`) but never for a launch that carries granted bypass flags, which always opens its own window and never joins or becomes the shared workers window (the daemon decides, in the service and in hand-start mode alike: it strips the switch from the child whenever any flag is granted, `HIMMEL_BILLED_OK` included), the two bridge paths, a pinned bus address, the granted flags and the
+the runtime dir, `HANDOVER_DIR` when pinned, `HIMMEL_WORKER_SESSION_TABS` when pinned (`worker_tabs=1`), set to `join` for a launch that carries granted bypass flags (the daemon decides, in the service and in hand-start mode alike: any granted flag, `HIMMEL_BILLED_OK` included, turns a switch of `1` into `join`; such a launch joins an existing shared workers window as a tab, with the flags only in that tab's command, and never creates, records or gets adopted as that window: with none open it opens a window of its own), the two bridge paths, a pinned bus address, the granted flags and the
 worker effort and API names. The session names a headed terminal needs (`DISPLAY`, `WAYLAND_DISPLAY`, `XAUTHORITY`,
 `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`) are read by name as data and checked (`DISPLAY` must equal logind's;
 the Wayland socket must exist; `XAUTHORITY` must be a file you own); a failed check, or no graphical session at all,

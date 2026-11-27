@@ -17,7 +17,8 @@
 # Exit 0 always: it informs review, never blocks it.
 #
 # Row text shows only in a Claude session (scripts/lib/session-lane.sh
-# session_lane_claude_only), checked before the ledger is read. --ids prints
+# session_lane_claude_only), checked before the ledger is read; a Codex build
+# lane gets the --ids lines instead of the withheld line. --ids prints
 # the same header and then `<id>\t<file>\t<anchor>\t<ticket>` lines with no
 # ceiling, trigger or note text, so it skips that gate and lists every open row.
 # Ledger path and row state: ledger-lib.sh.
@@ -25,6 +26,12 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 say() { printf 'CEILINGS: %s\n' "$1"; exit 0; }
+
+codex_build_lane() {
+    [ "$(session_lane_signal)" = "CODEX_THREAD_ID set" ] || return 1
+    _session_lane_walk_chain
+    [ "$SESSION_LANE_AGENT" = codex ]
+}
 
 IDS=0 ALL=0 RANGE="" REPO="" HAVE_FILES=0 MODE="" FROM=1
 FILES=()
@@ -54,7 +61,10 @@ if [ "$IDS" -eq 0 ]; then
     # shellcheck disable=SC1091
     { [ -r "$HERE/../lib/session-lane.sh" ] && . "$HERE/../lib/session-lane.sh"; } 2>/dev/null \
         || say "withheld (non-Claude session: cannot load session-lane.sh)"
-    why=$(session_lane_claude_only) || say "withheld (non-Claude session: ${why:-unknown})"
+    if ! why=$(session_lane_claude_only); then
+        codex_build_lane || say "withheld (non-Claude session: ${why:-unknown})"
+        IDS=1
+    fi
 fi
 
 # shellcheck source=scripts/ledger/ledger-lib.sh

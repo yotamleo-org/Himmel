@@ -20,7 +20,9 @@
 #   nonce       AUTHORITY-BEARING and chief-only: kept from the entry already on
 #               the workers: line, or given with --nonce for a worker not yet listed.
 #               Never read from the worker doc or the manifest, which a worker or a
-#               manifest edit could set
+#               manifest edit could set. One exception, not here: `chief.sh next` gives a
+#               live worker with no span, or a well-formed NONCE-UNKNOWN span, the RETASK
+#               token of its brief when its doc records no SUCCESSION accepted
 #   pid         informational: kept from the existing entry, else --pid, else the
 #               `pid<digits>` suffix of the lock token
 # A manifest worker that holds no lock is left out (tick reads a listed worker whose

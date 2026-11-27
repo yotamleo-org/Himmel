@@ -146,6 +146,26 @@ assert_rc "missing file fails open" 0 "$RC"
 RC="$(printf 'not json' | bash "$HOOK" >/dev/null 2>&1; echo $?)"
 assert_rc "unparseable stdin fails open" 0 "$RC"
 
+printf '\nHarness registry (a descriptor is live the moment it is saved: both guards load it)\n'
+mkdir -p "$TMP/scripts/harnesses"
+cp "$SCRIPT_DIR/../harnesses"/*.json "$SCRIPT_DIR/../harnesses/registry.jq" "$TMP/scripts/harnesses/"
+RC="$(run Edit "$TMP/scripts/harnesses/codex.json")"
+assert_rc "a loadable registry allows" 0 "$RC" "$(head -3 "$ERR")"
+jq 'del(.tool_map)' "$SCRIPT_DIR/../harnesses/codex.json" > "$TMP/scripts/harnesses/codex.json"
+RC="$(run Edit "$TMP/scripts/harnesses/codex.json")"
+assert_rc "a descriptor the loader refuses denies" 2 "$RC"
+assert_err "refusal names the descriptor" 'codex\.json is malformed'
+printf '{"id":' > "$TMP/scripts/harnesses/codex.json"
+RC="$(run Write "$TMP/scripts/harnesses/codex.json")"
+assert_rc "a descriptor that is not JSON denies" 2 "$RC"
+cp "$SCRIPT_DIR/../harnesses/codex.json" "$TMP/scripts/harnesses/codex.json"
+printf '.\n' >> "$TMP/scripts/harnesses/registry.jq"
+RC="$(run Edit "$TMP/scripts/harnesses/registry.jq")"
+assert_rc "a broken loader denies" 2 "$RC"
+printf 'empty\n' > "$TMP/scripts/harnesses/registry.jq"
+RC="$(run Edit "$TMP/scripts/harnesses/registry.jq")"
+assert_rc "a loader that returns nothing denies" 2 "$RC"
+
 printf '\nReal corpus (a guard that fires on healthy production files is unshippable)\n'
 CORPUS_FAIL=""
 for _hf in "$SCRIPT_DIR"/*.sh; do

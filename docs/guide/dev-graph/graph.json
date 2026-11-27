@@ -2760,7 +2760,7 @@
       "id": "m.s.minerva.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 266,
+        "line": 272,
         "text": "fix → re-critic until it returns clean, **cap 5 rounds per spec**"
       },
       "from": "s.minerva",
@@ -2858,7 +2858,7 @@
       "id": "m.p.plan.again",
       "source": {
         "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
-        "line": 557,
+        "line": 563,
         "text": "fix → re-critic until clean, **cap 5 rounds**"
       },
       "from": "p.plan",
@@ -3622,7 +3622,8 @@
         "waiter-error": "a fault of the waiter itself (an acknowledgement stuck, a supervisor failure, a hung child, an unread worker document, a pending-events timeout or manifest/cursor failure): the chief inspects the named diagnostic without arming a second waiter while its supervisor is live, repairs the named document or state, and never closes proof or source debt to silence it, operational triage",
         "ready-mismatch": "a READY whose judge or trust-path claim the diff contradicts went ALERT: the chief reads the tick.sh --ready-mismatch rows and re-rules the PR, operational triage",
         "t3-relay": "a T3 thread binding event (an ask thread with a linked PR, a bind given up or refused, a relay owner takeover, a failed thread list) or a READY or resolve bullet on a T3 ask row that nothing acts on: the chief reads it and answers the thread, operational triage",
-        "chief-duty": "the chief-duty sweep lists an owed chief action the chief has not been shown: the chief runs the line's printed next command, operational triage"
+        "chief-duty": "the chief-duty sweep lists an owed chief action the chief has not been shown: the chief runs the line's printed next command, operational triage",
+        "held-priority": "a High, operator-directed or old versioned ticket the dispatcher holds: the chief applies the printed fix line or closes it, operational triage"
       }
     },
     "docs/handover/worker-preface.md": {

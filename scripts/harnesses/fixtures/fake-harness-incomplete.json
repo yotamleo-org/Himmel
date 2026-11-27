@@ -1,0 +1,17 @@
+{
+  "id": "fake-harness",
+  "complete": false,
+  "t3": { "driver": "fake", "instance_ids": ["fake"] },
+  "hook_config": ".fake/hooks.json",
+  "tool_map": {
+    "mcp_prefix": "fake_<server>_<tool>",
+    "tools": { "fake_shell": { "claude": "Bash" } }
+  },
+  "event_map": { "PreToolUse": "beforeTool" },
+  "deny_dialect": "exit-2",
+  "adapter": ".fake/adapter.sh",
+  "token_paths": ["~/.fake/session.json"],
+  "egress_provider": null,
+  "lane": null,
+  "quota_source": null
+}

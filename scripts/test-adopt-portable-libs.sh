@@ -68,6 +68,17 @@ mkdir -p "$proj" "$hstate/tester/proj" "$hhome"
 git init -q "$proj"
 install_proj() { HOME="$hhome" bash "$repo_root/scripts/adopt.sh" --profile core --scope project --target "$proj" >/dev/null 2>&1; }
 install_proj || { echo "FAIL: adopt.sh --profile core --scope project failed on the handover fixture" >&2; exit 1; }
+guard_in_proj() { (cd "$proj" && printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" | PATH="$saved_path" HOME="$hhome" bash scripts/hooks/block-read-secrets.sh 2>&1); }
+if out=$(guard_in_proj 'ls'); then echo "ok: portable_secrets_guard_allows_a_benign_call"
+else echo "FAIL: portable_secrets_guard_allows_a_benign_call: the installed guard refused ls: $out" >&2; fail=1; fi
+guard_in_proj 'cat ~/.grok/auth.json' >/dev/null; grc=$?
+if [ "$grc" -eq 2 ]; then echo "ok: portable_secrets_guard_fences_a_descriptor_token"
+else echo "FAIL: portable_secrets_guard_fences_a_descriptor_token: rc=$grc" >&2; fail=1; fi
+
+for f in "$repo_root"/scripts/harnesses/*.json "$repo_root"/scripts/harnesses/registry.jq; do
+  grep -qxF "scripts/harnesses/${f##*/}" <<< "$portable" || { echo "FAIL: scripts/harnesses/${f##*/} is not in PORTABLE_FILES" >&2; fail=1; }
+done
+
 item="$hstate/tester/proj/standalones/PROJ-1-demo"; mkdir -p "$item"
 printf '# Demo\n\n**Status:** in-progress\n' > "$item/brief.md"
 bash "$repo_root/scripts/handover/bug.sh" add --bugs "$item/bugs.md" --symptom "portable resume must show this open bug" >/dev/null

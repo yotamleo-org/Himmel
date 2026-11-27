@@ -153,8 +153,11 @@
 # and never resumes. Re-arm with `graphmap-cadence.sh arm --rewrite-armed`, which
 # rewrites the runner files already on disk and touches no crontab row;
 # himmel-update does this when it sees a runner below v29.
+# v30: the qmd-reindex runner also refreshes the gmail named index (a
+# `qmd-reindex.sh --index gmail` fire when gmail.yml exists). An armed v29 qmd
+# runner never refreshes it. Re-arm with `qmd-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=29
+CADENCE_RUNNER_FORMAT_VERSION=30
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"

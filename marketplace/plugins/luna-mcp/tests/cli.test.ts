@@ -24,7 +24,7 @@ interface Rig {
   io: KeysIo;
 }
 
-async function rig(t: TestContext, collections: string[] = ["luna", "luna-pa", "himmel", "salus", "jira-himmel"]): Promise<Rig> {
+async function rig(t: TestContext, collections: string[] = ["luna", "luna-pa", "himmel", "salus", "jira-himmel"], isolated: string[] = ["gmail"]): Promise<Rig> {
   const dir = await scratch(t);
   const file = join(dir, "cfg", "luna-mcp-keys.json");
   const clock = makeClock();
@@ -37,6 +37,7 @@ async function rig(t: TestContext, collections: string[] = ["luna", "luna-pa", "
     now: clock.now,
     randomBytes: counter(),
     listCollections: async () => collections,
+    listIsolated: async () => isolated,
   };
   return { file, clock, out, err, io };
 }
@@ -82,6 +83,27 @@ describe("luna-mcp-keys mint", () => {
     assert.deepEqual(keys[0]!.allowedCollections, ["luna", "luna-pa", "himmel", "jira-himmel"]);
     assert.deepEqual(keys[0]!.roles, ["reader"]);
     assert.equal(keys[0]!.resource, PUBLIC_URL);
+  });
+
+  it("never puts a named-index collection in all, and grants it only when it is named", async (t) => {
+    const mint = async (collections: string) => {
+      const r = await rig(t);
+      assert.equal(await runKeys(["mint", "--principal", "grokbot", "--provider", "xai-grokbot", "--collections", collections, "--ttl", "30d"], r.io), 0);
+      return (await readKeysFile(r.file)).keys[0]!.allowedCollections;
+    };
+    assert.deepEqual(await mint("all"), ["luna", "luna-pa", "himmel", "jira-himmel"]);
+    assert.deepEqual(await mint("all,gmail"), ["luna", "luna-pa", "himmel", "jira-himmel", "gmail"]);
+    assert.deepEqual(await mint("gmail"), ["gmail"]);
+    assert.deepEqual(await mint("luna, gmail,luna"), ["luna", "gmail"]);
+  });
+
+  it("refuses an unknown name next to all, and gmail when no index defines it", async (t) => {
+    const r = await rig(t);
+    assert.equal(await runKeys(["mint", "--principal", "grokbot", "--provider", "xai-grokbot", "--collections", "all,nonesuch", "--ttl", "30d"], r.io), 2);
+    const none = await rig(t, undefined, []);
+    assert.equal(await runKeys(["mint", "--principal", "grokbot", "--provider", "xai-grokbot", "--collections", "all,gmail", "--ttl", "30d"], none.io), 2);
+    await assert.rejects(stat(r.file));
+    await assert.rejects(stat(none.file));
   });
 
   it("accepts a Luna-only key", async (t) => {

@@ -159,6 +159,19 @@ done
 for w in 'critic-seal.sh' 'minerva-trace-lint.sh'; do
   case "$STAGE4" in *"$w"*) pass "f: Stage 4 names $w" ;; *) fail "f: Stage 4 names $w" ;; esac
 done
+for w in 'sign-shape' '--lint'; do
+  case "$STAGE2" in *"$w"*) pass "f: Stage 2 holds: $w" ;; *) fail "f: Stage 2 holds: $w" ;; esac
+done
+w='sign-shape <spec> --plan <plan> --lint'
+case "$STAGE4" in *"$w"*) pass "f: Stage 4 names $w" ;; *) fail "f: Stage 4 names $w" ;; esac
+TERMINAL="$(awk '/^## Terminal/{f=1;next} /^## /{f=0} f' "$SKILL" | flat)"
+for w in 'sign-check' 'READY-TO-SIGN'; do
+  case "$TERMINAL" in *"$w"*) pass "f: Terminal holds: $w" ;; *) fail "f: Terminal holds: $w" ;; esac
+done
+BRIEF="$(flat < "$REPO_ROOT/docs/handover/worker-brief-template.md")"
+for w in 'sign-shape' '--lint' 'sign-check' 'READY-TO-SIGN spec='; do
+  case "$BRIEF" in *"$w"*) pass "f: the brief template holds: $w" ;; *) fail "f: the brief template holds: $w" ;; esac
+done
 
 echo "== g: a return with no quoted sha is refused and the file is unchanged =="
 newfix g; gen_page; QS_MD="$(sha "$SPEC")"; QS_HTML="$(sha "$HTML")"

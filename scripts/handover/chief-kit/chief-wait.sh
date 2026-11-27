@@ -1732,6 +1732,35 @@ relaunch_wake() {
     set_wake "$items" "$relaunch_file" "${CHIEF_WAIT_RELAUNCH_REWAKE_MIN:-60}" || return 1
     printf '%s\n' "$fired" | awk 'NF { i = index($0, ":"); print "WAKE relaunch-owed " substr($0, 1, i - 1) " " substr($0, i + 1) }'
 }
+heldhi_file="$inbox.wait.heldhi"
+held_hi_wake() {
+    local keys n shown
+    case "$1" in
+        '?') return 1 ;;
+        '') rm -f "$heldhi_file"; return 1 ;;
+    esac
+    keys="$(printf '%s\n' "$1" | tr ',' '\n')"
+    set_wake "$keys" "$heldhi_file" "${CHIEF_WAIT_HELDHI_REWAKE_MIN:-$(rule_rewake held-hi)}" || return 1
+    n="$(printf '%s\n' "$keys" | grep -c .)"
+    shown="$(printf '%s\n' "$keys" | head -n 10 | paste -sd, -)"
+    [ "$n" -le 10 ] || shown="$shown +$((n - 10)) more"
+    printf 'WAKE held-priority n=%s %s\n' "$n" "$shown"
+    if grep -q '^# held-hi [^ ]* no-scope ' "$hb_file.tickout"; then
+        printf 'fix no-scope: a readiness: comment with a Writes: line, or close; --why-ticket <KEY> names every gate\n'
+    fi
+    if grep -q '^# held-hi [^ ]* merged-no-remainder ' "$hb_file.tickout"; then
+        printf "fix merged-no-remainder: a Remaining: or deferred line in the merged PR's body, or close\n"
+    fi
+    return 0
+}
+closecand_file="$inbox.wait.closecand"
+close_cand_note() {
+    [ -n "$1" ] && [ "$housekeeping_secs" -ne 0 ] || return 1
+    [ ! -f "$closecand_file" ] || [ "$1" != "$(cat "$closecand_file")" ] || return 1
+    if housekeeping_add close-candidate "$1"; then return 0; fi
+    printf '%s\n' "$1" > "$closecand_file"
+    return 1
+}
 unowned_aged_file="$inbox.wait.unowned-aged"
 unowned_aged_wake() {
     local aged
@@ -3799,6 +3828,11 @@ while :; do
             if relaunch_out="$(relaunch_wake "$(field relaunch "$tick_line")")"; then
                 printf '%s\n%s\n' "$relaunch_out" "$tick_line"
                 exit_reason='wake-relaunch-owed'; exit 0
+            fi
+            if close_cand_note "$(field close-cand "$tick_line")"; then exit_reason='wake-close-candidate'; exit 0; fi
+            if held_hi_out="$(held_hi_wake "$(field held-hi "$tick_line")")"; then
+                printf '%s\n%s\n' "$held_hi_out" "$tick_line"
+                exit_reason='wake-held-priority'; exit 0
             fi
             resume_stale_read="" resume_stale_keys=""
             case "$cap_val" in

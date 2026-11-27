@@ -435,4 +435,44 @@ arm "$d21" PROJ-21-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 check "21a both implementing-worker launches exit 0" "$rc21a$rc21b" 00
 check "21b an implementing worker's own IMPL_GUARD_OK and INLINE_IMPL_OK do not stop it joining the shared window" "$(konsole_count "$d21")" 1
 
+if [ "$HAVE_PROC" = 1 ]; then
+d22="$tmp/c22"; mk_env "$d22"
+arm "$d22" PROJ-22-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
+w22="$(window_of "$d22" PROJ-22-N1-a)"
+arm "$d22" PROJ-22-N2-b HIMMEL_WORKER_SESSION_TABS=join HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief DESTRUCTIVE_OK=1; rc22=$?
+check "22a join, live window: exit 0" "$rc22" 0
+check "22b join, live window: no --separate window of its own" "$(konsole_count "$d22")" 1
+contains "22c join, live window: newSession on the recorded window" "$(cat "$d22/qdbus-record" 2>/dev/null)" "org.kde.konsole-${w22:-x} /Windows/1 newSession"
+contains "22d join, live window: the tab's worker holds the granted flag" "$(cat "$d22/env.PROJ-22-N2-b" 2>/dev/null)" "DESTRUCTIVE_OK=1"
+contains "22e join, live window: the window's own env was recorded" "$(cat "$d22/window-env.${w22:-x}" 2>/dev/null)" "HIMMEL_CONSOLE_NAME="
+lacks "22f join, live window: the window's own env holds no granted flag" "$(cat "$d22/window-env.${w22:-x}" 2>/dev/null)" "DESTRUCTIVE_OK"
+arm "$d22" PROJ-22-N3-c HIMMEL_WORKER_SESSION_TABS=join HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief DESTRUCTIVE_OK=1; rc22s=$?
+check "22g join, predecessor's window: exit 0" "$rc22s" 0
+check "22h join, predecessor's window: a tab there, no second window" "$(konsole_count "$d22") $(window_of "$d22" PROJ-22-N3-c)" "1 ${w22:-unset}"
+check "22i join, predecessor's window: never recorded as the successor's" "$([ -e "$d22/locks/tabs-${NL}FY-roadmap-chief.window" ] && echo recorded || echo none)" none
+
+d23="$tmp/c23"; mk_env "$d23"; mkdir -m 0700 "$d23/locks"
+sleep 60 > /dev/null 2>&1 & p23=$!; echo "$p23" >> "$d23/pids"
+printf '%s\n' "$p23" > "$d23/locks/tabs-CHIEF-A.window"
+arm "$d23" PROJ-23-N1-a HIMMEL_WORKER_SESSION_TABS=join HIMMEL_CONSOLE_NAME=CHIEF-A; rc23=$?
+check "23a join, recorded pid is not a konsole: own window, qdbus never called" "$rc23 $(konsole_count "$d23") $([ -e "$d23/qdbus-record" ] && echo called || echo none)" "0 1 none"
+check "23b join, recorded pid is not a konsole: the record is not rewritten" "$(cat "$d23/locks/tabs-CHIEF-A.window")" "$p23"
+else
+  echo "  SKIP 22-23 join with a window: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
+fi
+
+d24="$tmp/c24"; mk_env "$d24"
+arm "$d24" PROJ-24-N1-a HIMMEL_WORKER_SESSION_TABS=join HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief DESTRUCTIVE_OK=1; rc24=$?
+check "24a join, no window: exit 0" "$rc24" 0
+check "24b join, no window: one window" "$(konsole_count "$d24")" 1
+contains "24c join, no window: it is --separate" "$(cat "$d24/konsole-record")" "--separate"
+rc24f=0; found24="$(find "$d24/locks" -name 'tabs-*.window')" || rc24f=$?
+check "24d join, no window: no window record is written" "${rc24f}[$found24]" "0[]"
+arm "$d24" PROJ-24-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc24b=$?
+w24b="$(window_of "$d24" PROJ-24-N2-b)"
+check "24e next successor launch: opens a window of its own, not the bypass one" "$rc24b $(konsole_count "$d24")" "0 2"
+check "24f next successor launch: records its own window" "$(cat "$d24/locks/tabs-${NL}FY-roadmap-chief.window" 2>/dev/null)" "${w24b:-unset}"
+contains "24g next successor launch: its window env was captured" "$(cat "$d24/window-env.${w24b:-x}" 2>/dev/null)" "HIMMEL_CONSOLE_NAME="
+lacks "24h next successor launch: its window env holds no granted flag" "$(cat "$d24/window-env.${w24b:-x}" 2>/dev/null)" "DESTRUCTIVE_OK"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

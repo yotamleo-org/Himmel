@@ -30,6 +30,11 @@ write_t3_settings() {
   "gemini":{"driver":"gemini","displayName":"Gemini","enabled":true},
   "claudeAgent_worker-impl":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/worker-impl.json"}},
   "claudeAgent_maintainer-hooks":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/maintainer-hooks.json"}},
+  "claudeAgent_maintainer-hooks-other":{"driver":"claudeAgent","enabled":true,"config":{}},
+  "grokThread":{"driver":"grok","enabled":true},
+  "cursorThread":{"driver":"cursor","enabled":true},
+  "noDriver":{"enabled":true},
+  "fakeInst":{"driver":"fake","enabled":true},
   "claudeBypass":{"driver":"claudeAgent","enabled":true,"environment":[{"name":"AGENTS_MD_OK","value":"1"}],"config":{}},
   "skipArgs":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/y.json --dangerously-skip-permissions"}},
   "skipCr":{"driver":"codex","enabled":true,"config":{"env":{"SKIP_CR":"1"}}},
@@ -78,11 +83,20 @@ from_to() {
 
 run "an Antigravity thread launches an Orchestrator thread: allowed" 0 - "$(from_to antigravity orchestratorNeon)"
 run "a codex thread launches an Antigravity thread: allowed" 0 - "$(from_to codex antigravity)"
-run "a Gemini thread launches a Claude profile thread: allowed" 0 - "$(from_to gemini claudeAgent_worker-impl)"
-run "a Claude thread launches a Gemini thread: allowed" 0 - "$(from_to claudeAgent gemini)"
+run "a Gemini thread launches a Claude profile thread: allowed, the source's driver is not judged" 0 - "$(from_to gemini claudeAgent_worker-impl)"
+run "a grok thread launches a codex thread: allowed, the source's driver is not judged" 0 - "$(from_to grokThread codex)"
+run "a launch onto a driver with no descriptor: refused" 2 '"gemini": its driver gemini has no harness descriptor' "$(from_to claudeAgent gemini)"
 run "an Orchestrator thread launches a codex thread: allowed" 0 - "$(from_to orchestratorNeon codex)"
 run "create_threads across providers: allowed" 0 - \
-    '{"tool_name":"'$T'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"gemini"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+    '{"tool_name":"'$T'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"claudeAgent"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+run "a launch onto the built-in antigravity instance: allowed" 0 - "$(from_to claudeAgent antigravity)"
+run "a launch onto a grok instance: refused, its descriptor is incomplete" 2 \
+    '"grokThread": its driver grok has an incomplete harness descriptor (grok.json)' "$(from_to codex grokThread)"
+run "a launch onto the built-in grok instance: refused" 2 '"grok": its driver grok has an incomplete harness descriptor' "$(from_to codex grok)"
+run "a launch onto a cursor instance: refused" 2 'its driver cursor has an incomplete harness descriptor (cursor.json)' "$(from_to codex cursorThread)"
+run "an instance entry with no driver: refused" 2 '"noDriver": no T3 driver is known for it' "$(from_to codex noDriver)"
+run "the deny names the descriptor rule" 2 'scripts/harnesses' "$(from_to codex grokThread)"
+run "operator route: an incomplete driver is allowed, on stderr" 0 'override: allowed' "$(from_to codex grokThread)" T3_THREAD_TOOLS_OK=1
 
 run "launch on a bypass instance: refused" 2 '"claudeBypass": carries a himmel bypass flag (AGENTS_MD_OK)' "$LAUNCH_BAD"
 run "deny names the bypass rule" 2 'a hook bypass is granted per session' "$LAUNCH_BAD"
@@ -187,8 +201,14 @@ printf '{"theme":"dark"}\n' > "$T3_SETTINGS"
 run "T3 settings with no providerInstances: a built-in allowed" 0 - "$LAUNCH_OK"
 write_t3_settings
 
+mkdir -p "$TMP/emptyread"
+printf '#!/usr/bin/env bash\ncase "$*" in *"then .driver else null"*) exit 0 ;; esac\nexec %q "$@"\n' "$(command -v jq)" > "$TMP/emptyread/jq"
+chmod +x "$TMP/emptyread/jq"
+run "an empty second read of T3's settings: every instance id refused" 2 'the drivers in T3' "$LAUNCH_OK" PATH="$TMP/emptyread:$PATH"
+
 mkdir -p "$TMP/regtree/hooks" "$TMP/regtree/himmelctl/lib"
 cp "$HOOK" "$TMP/regtree/hooks/guard-t3-thread-tools.sh"
+cp -R "$HOOKS/../harnesses" "$TMP/regtree/harnesses"
 REAL_HOOK="$HOOK" HOOK="$TMP/regtree/hooks/guard-t3-thread-tools.sh"
 printf '{"flags":[{"name":"SKIP_CR"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
 run "a fixture registry flag: refused" 2 '"skipCr": carries a himmel bypass flag (SKIP_CR)' "$(from_to codex skipCr)"
@@ -198,6 +218,28 @@ printf '{"flags":[{"bypasses":"x"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-fla
 run "a registry entry with no name: refused" 2 'whether it carries a bypass flag is unknown' "$(from_to codex antigravity)"
 printf '{"flags":{"a":{"name":"SKIP_CR"}}}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
 run "a registry whose flags is not an array: refused" 2 'whether it carries a bypass flag is unknown' "$(from_to codex antigravity)"
+
+printf '{"flags":[{"name":"SKIP_CR"}]}\n' > "$TMP/regtree/himmelctl/lib/bypass-flags.json"
+run "a copied tree with an intact harness registry: allowed" 0 - "$(from_to codex antigravity)"
+cp "$HOOKS/../harnesses/fixtures/fake-harness-incomplete.json" "$TMP/regtree/harnesses/fake-harness.json"
+run "an incomplete fake harness: an agent launch is refused" 2 \
+    '"fakeInst": its driver fake has an incomplete harness descriptor (fake-harness.json)' "$(from_to codex fakeInst)"
+cp "$HOOKS/../harnesses/fixtures/fake-harness-complete.json" "$TMP/regtree/harnesses/fake-harness.json"
+run "a complete fake harness: the launch passes" 0 - "$(from_to codex fakeInst)"
+rm -f "$TMP/regtree/harnesses/fake-harness.json"
+printf '{"id":' > "$TMP/regtree/harnesses/codex.json"
+run "a malformed descriptor: an instance id refused" 2 'codex.json is not one JSON document' "$(from_to codex antigravity)"
+run "a malformed descriptor: the source instance is refused too" 2 'the harness registry cannot be read' \
+    '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","delegatedFrom":{"instanceId":"codex"}}}'
+cp "$HOOKS/../harnesses/codex.json" "$TMP/regtree/harnesses/codex.json"
+rm -f "$TMP/regtree/harnesses/grok.json"
+run "a missing listed descriptor: an instance id refused" 2 'no descriptor for the listed harness grok' "$(from_to codex antigravity)"
+cp "$HOOKS/../harnesses/grok.json" "$TMP/regtree/harnesses/grok.json"
+printf 'empty\n' > "$TMP/regtree/harnesses/registry.jq"
+run "a loader that returns nothing: the source instance is refused" 2 'the harness registry cannot be read' \
+    '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","delegatedFrom":{"instanceId":"codex"}}}'
+rm -rf "$TMP/regtree/harnesses"
+run "a missing harness registry: an instance id refused" 2 'the harness registry cannot be read' "$(from_to codex antigravity)"
 HOOK="$REAL_HOOK"
 
 run "rename to X-chief: refused" 2 'only by the operator in the T3 UI' \
