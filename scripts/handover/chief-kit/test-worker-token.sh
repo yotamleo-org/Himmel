@@ -196,6 +196,13 @@ eq "WT9d: a directory under one that denies traversal is bad (rc 6), not absent"
 chmod 700 "$B"
 wt current "$B/never-made/HIMMEL-1-N1-demo-2026-01-01.md" >/dev/null; rc=$?
 eq "WT9d: a directory that does not exist is still no record (rc 1)" "$rc" 1
+bucket; mkdir -p "$B/No such file or directory/deeper"; chmod 000 "$B/No such file or directory"
+wt current "$B/No such file or directory/deeper/HIMMEL-1-N1-demo-2026-01-01.md" >/dev/null; rc=$?
+eq "WT9d: a denied path that itself holds the absence words is still bad (rc 6)" "$rc" 6
+chmod 700 "$B/No such file or directory"
+bucket; wt mint "$D" Y-N1 >/dev/null; mkdir -p "$D"
+wt current "$D" >/dev/null; rc=$?
+eq "WT9e: a directory given as the worker doc is bad (rc 6)" "$rc" 6
 bucket; wt mint "$D" Y-N1 >/dev/null; mkdoc "$D"; chmod 000 "$KEYF"
 wt current "$D" >/dev/null; rc=$?
 eq "WT8b: an unreadable key is bad (rc 6), not a keymismatch" "$rc" 6

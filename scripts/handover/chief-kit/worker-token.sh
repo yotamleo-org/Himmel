@@ -68,7 +68,7 @@ safe_name() { case "$1" in ''|-*|*[!A-Za-z0-9_.-]*) return 1 ;; esac; return 0; 
 absent() {
     local e
     e="$(LC_ALL=C ls -d -- "$1" 2>&1)" && return 1
-    case "$e" in *"No such file or directory"*) return 0 ;; esac
+    case "$e" in *": No such file or directory") return 0 ;; esac
     return 1
 }
 
@@ -217,7 +217,7 @@ if [ "$sub" = mint ]; then
     die 4 "$stem already has a history; a minted stem is never minted again"
 fi
 
-[ -r "$doc" ] || absent "$doc" || die 6 "the worker doc is unreadable: $doc"
+{ [ -f "$doc" ] && [ -r "$doc" ]; } || absent "$doc" || die 6 "the worker doc is unreadable or not a file: $doc"
 if [ "$state" = ok ] && [ -f "$doc" ]; then
     pick=""
     while read -r g rto rkid; do

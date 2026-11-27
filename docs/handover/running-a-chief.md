@@ -1215,8 +1215,8 @@ A successor that arrives after you have left can prove itself only with the
 two-token chain form (the current token from `worker-token.sh current <doc>`, the fresh
 one from `worker-token.sh rotate <doc> --to <itself>`). A worker with no record
 (`worker-token.sh gen <doc>` reads `state=none`) is outside it: take the current token from
-its span or brief and mint the fresh one by hand. `state=keymismatch` (the GO key changed)
-is chained the same way, but the span or brief can be stale for a rotated worker. A worker
+its span or brief and mint the fresh one by hand. `state=keymismatch` (the GO key changed
+or is missing: check it first) is chained the same way, but the span or brief can be stale for a rotated worker. A worker
 that cannot verify the chain is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
 tick reads `nonces=UNCONFIRMED:<worker>` until each worker's own `SUCCESSION

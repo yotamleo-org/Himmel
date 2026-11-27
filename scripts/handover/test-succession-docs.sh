@@ -529,7 +529,7 @@ contains 'successor-start: the chain rotates to the successor itself' "$succ_sta
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'running-a-chief: a worker with no record keeps the hand-minted chain' "$r12" 'A worker with no record (`worker-token.sh gen <doc>` reads `state=none`) is outside it: take the current token from its span or brief and mint the fresh one by hand'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'running-a-chief: a keymismatch warns that the span or brief can be stale' "$r12" '`state=keymismatch` (the GO key changed) is chained the same way, but the span or brief can be stale for a rotated worker'
+contains 'running-a-chief: a keymismatch warns that the span or brief can be stale' "$r12" '`state=keymismatch` (the GO key changed or is missing: check it first) is chained the same way, but the span or brief can be stale for a rotated worker'
 contains 'chief-template step 9: a worker with no record keeps the hand-minted chain' "$s9" 'no record: mint by hand'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'successor-start: a worker with no record keeps the hand-minted chain' "$succ_start" 'a worker with no record (`gen` reads `state=none`, or `keymismatch` after a key change)'
