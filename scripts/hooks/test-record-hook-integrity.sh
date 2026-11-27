@@ -1164,6 +1164,18 @@ else
   bad "rowH6 control: an edit outside the pinned set gave '$hH6' (want ok)"
 fi
 
+rm -rf "$PH/scripts/harnesses"
+OUTH="$T/rowH7/out"
+run_recorder "$PH" "$OUTH" "sess-h"
+RECH="$OUTH/sess-h.json"
+hH7="$(h_verify)"
+h_restore
+if [ -n "$(h_pin scripts/harnesses/claude.json)" ] && [ "${hH7#deny scripts/harnesses/}" != "$hH7" ]; then
+  ok "rowH7: a registry directory deleted before the session starts is still pinned from HEAD and refuses the hook call"
+else
+  bad "rowH7: deleted scripts/harnesses at record time gave '$hH7' pins=$(jq -c '.pins' "$OUTH/sess-h.json" 2>/dev/null)"
+fi
+
 # ---------------------------------------------------------------------------
 # Row 26: the recorder runs under bash 3.2. An apostrophe in a comment inside a
 # multi-line $( ) reads there as an open quote; `bash -n` can miss it when a
