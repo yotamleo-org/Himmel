@@ -4,6 +4,8 @@
 set -uo pipefail
 # shellcheck source=tests/testlib-himmel-doctor.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-himmel-doctor.sh"
+SUITE_HOME="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c-home.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+export HOME="$SUITE_HOME" HIMMEL_POLICY_FOLLOWS_HOME=1
 
 echo "== C44: skills collection missing -> FAIL =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/c44-missing.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
@@ -2901,5 +2903,58 @@ echo "== C100: the real read-only ack on a fleet it cannot read is a WARN, never
 out="$(HANDOVER_DIR="$c100_t/root" HIMMEL_DOCTOR_FLEET_TIMEOUT=20 bash "$DOC" --root "$REPO_ROOT" --no-color --only C100 2>&1)"
 if grepq "$out" 'WARN C100-fleet' && grepq "$out" -F 'cannot read fleet attempts for' && ! grepq "$out" 'OK   C100'; then pass "C100 real runtime on a damaged fleet -> WARN"; else fail "C100 real runtime -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c100_t"
+
+echo "== C102: lane grants (HIMMEL-11204) =="
+c102_t="$(mktemp -d "${TMPDIR:-/tmp}/c102.XXXXXX")" || { echo "FATAL: C102 setup"; exit 1; }
+c102_t="$(cd "$c102_t" && pwd -P)" || exit 1
+c102_home="$c102_t/home"; c102_root="$c102_t/root"; c102_cfg="$c102_home/.himmel/config.json"
+mkdir -p "$c102_home/.himmel" "$c102_root/scripts"
+chmod 700 "$c102_home/.himmel"
+cp -R "$REPO_ROOT/scripts/lib" "$c102_root/scripts/lib"
+git init -q -b main "$c102_root"
+git -C "$c102_root" remote add origin 'https://github.com/acme/fixture.git'
+c102_run() {
+    HOME="$c102_home" XDG_CONFIG_HOME="$c102_home/.config" GIT_CONFIG_NOSYSTEM=1 HIMMEL_POLICY_FOLLOWS_HOME="${1-1}" \
+        bash "$DOC" --root "$c102_root" --no-color --only C102 2>&1
+}
+c102_cfg() { printf '%s\n' "$1" > "$c102_cfg"; chmod 600 "$c102_cfg"; }
+c102_want() {
+    if grepq "$out" -F "$2"; then pass "C102 $1"; else fail "C102 $1 -> $(printf '%s' "$out" | grep -F C102 | head -4)"; fi
+}
+c102_lacks() {
+    if grepq "$out" -F 'C102-lane-grants' && ! grepq "$out" -F "$2"; then pass "C102 $1"; else fail "C102 $1 -> $(printf '%s' "$out" | grep -F C102 | head -4)"; fi
+}
+c102_pin='"lane_grants_origin":"github.com/acme/fixture"'
+rm -f "$c102_cfg"; out="$(c102_run)"
+c102_want "no config -> INFO none" 'INFO C102-lane-grants: no lane grants'
+c102_cfg '{}'; out="$(c102_run)"
+c102_want "no key -> INFO none" 'INFO C102-lane-grants: no lane grants'
+c102_cfg "{\"lane_grants\":{\"codex\":[\"git-push-branch\",\"net-read\"],\"antigravity\":[\"manage-task-own\"]},$c102_pin}"; out="$(c102_run)"
+c102_want "grants -> INFO list with each lane's wiring state" 'INFO C102-lane-grants: antigravity: manage-task-own (not wired until S2); codex: git-push-branch, net-read (hook only; the exec-lane sandbox blocks network and the git dir, a full-access T3 thread has no sandbox)'
+c102_lacks "clean grants -> no WARN" 'WARN C102'
+c102_cfg '{"lane_grants":'; out="$(c102_run)"
+c102_want "malformed -> WARN" 'WARN C102-lane-grants: config.json cannot be read as one JSON object'
+c102_cfg "{\"lane_grants\":{\"codex\":[\"net-read\"]},$c102_pin}"; chmod 664 "$c102_cfg"; out="$(c102_run)"
+c102_want "untrusted file holding the key -> WARN" 'WARN C102-lane-grants: config.json or its directory is a symlink'
+c102_cfg '{"lane_grants":{"codex":["manage-task-own","sk-not-a-capability"],"zzz-lane":[]}}'; out="$(c102_run)"
+c102_want "manage-task-own under codex -> WARN" 'WARN C102-lane-grants: manage-task-own is not applicable to codex'
+c102_want "unknown capability -> WARN" 'WARN C102-lane-grants: an unknown capability name under codex is ignored'
+c102_want "unknown lane key -> WARN" 'WARN C102-lane-grants: a key under lane_grants other than'
+c102_lacks "no config value is echoed" 'sk-not-a-capability'
+c102_cfg '{"lane_grants":{"codex":["git-push-branch","net-read"]}}'; out="$(c102_run)"
+c102_want "push listed without a pin -> WARN" 'WARN C102-lane-grants: lane_grants_origin is unset or not a repo'
+c102_want "push without a pin is not listed as held" 'codex: net-read (hook only'
+c102_cfg "{\"lane_grants\":{\"codex\":[\"git-push-branch\"]},$c102_pin}"
+git -C "$c102_root" remote set-url origin 'https://github.com/acme/other.git'; out="$(c102_run)"
+c102_want "origin naming another repo -> WARN" 'WARN C102-lane-grants: a fetch or push URL'
+git -C "$c102_root" remote set-url origin 'git@github.com:acme/fixture.git'
+printf '[url "https://github.com/"]\n\tinsteadOf = git@github.com:\n' > "$c102_home/.gitconfig"; out="$(c102_run)"
+c102_lacks "ssh-to-https rewrite of the same repo -> no WARN" 'WARN C102'
+rm -f "$c102_home/.gitconfig"
+c102_cfg '{}'; out="$(c102_run '')"
+c102_want "redirected HOME, no key -> INFO not checked" 'INFO C102-lane-grants: lane grants not checked (HOME is not the account home)'
+c102_cfg '{"lane_grants":{"codex":["net-read"]}}'; out="$(c102_run '')"
+c102_want "redirected HOME with the key -> WARN" 'WARN C102-lane-grants: the two config paths are not the same file; no grant applies'
+rm -rf "$c102_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

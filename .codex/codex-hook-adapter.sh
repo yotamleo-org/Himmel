@@ -136,6 +136,9 @@ IFS="$oldifs"
 input="$(cat)"
 nl='
 '
+if named="$(printf '%s' "$input" | jq -c '. + {himmel_lane: "codex"}' 2>/dev/null)" && [ -n "$named" ]; then
+  input="$named"
+fi
 
 # Inbound lifecycle event, parsed once. SessionStart / UserPromptSubmit are
 # advisory CONTEXT events with no permission gate. Under Codex a hook feeds the
