@@ -45,6 +45,9 @@ file name for a tree-wide name scan to count:
   row that fell behind the tree bills nobody. A change to `comment-count.awk` recounts
   the tree, so for a file that change does not touch the changed classifier takes that
   count; a file it does touch is counted by the classifier the gate runs.
+- A merge in progress (`--staged` with `MERGE_HEAD`) is judged against both parents: a
+  path's row limit is the higher of the two parents' rows, and a file may keep as many
+  comments as either parent's version holds. A comment neither parent has is refused.
 - Rewording a comment in place, or editing a code line that carries one, leaves the
   count unchanged and passes. The refusal names the file by its path, its count and its
   row, then the added comment lines as `path:line: text`. A raised row whose key matches
@@ -67,7 +70,8 @@ whole-file rows of `scripts/lint/ticket-ref-allow.tsv` (fixtures, archives, gene
 and vendored trees).
 
 `bash scripts/lint/check-new-comments.sh --write-baseline` rewrites the baseline from
-the working tree. A sweep PR leaves the baseline alone; run it in its own PR after sweeps
+the working tree, and handles a root file named like an awk assignment (`a=b.sh`) as a
+file. A sweep PR leaves the baseline alone; run it in its own PR after sweeps
 merge, and in the PR that renames a file so the row moves with the file. The sweep itself is the `/no-comments` skill
 (`.claude/skills/no-comments/SKILL.md`).
 
@@ -77,10 +81,12 @@ To read a baseline diff, hash the paths the change touches and match the keys:
 git diff --name-only origin/main... | while IFS= read -r p; do printf '%s\t%s\n' "$(printf '%s' "$p" | git hash-object --stdin)" "$p"; done
 ```
 
-The counts by path, highest first:
+The counts by path, highest first. This is a repo-wide look, not the baseline's file set:
+it does not leave out the whole-file rows of `scripts/lint/ticket-ref-allow.tsv` as
+`--write-baseline` does:
 
 ```bash
-git ls-files -z '*.sh' '*.py' '*.mjs' '*.js' '*.ts' | xargs -0 awk -f scripts/lint/comment-count.awk -v mode=tree | sort -t "$(printf '\t')" -k2,2nr
+git ls-files -z '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1' '*.py' '*.js' '*.mjs' '*.cjs' '*.ts' '*.tsx' '*.mts' '*.cts' | xargs -0 awk -f scripts/lint/comment-count.awk -v mode=tree | sort -t "$(printf '\t')" -k2,2nr
 ```
 
 ### The history-comment gate
