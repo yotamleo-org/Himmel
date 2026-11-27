@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { Chain, readChain, signTap, submitSpool } from "./chain";
 import { readNotifyCursor } from "./poller";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
-import { ConfigError, type Config } from "./config";
+import { ConfigError, readPeersFile, type Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
 import { checkEnvelopeOutbound } from "./egress";
@@ -19,6 +19,7 @@ import { keygen, verify } from "./sign";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
 import * as TE from "./testlib-envelope";
+import { CHAT as PAIR_CHAT, DM_CHAT, makeWorld, type Bridge, type Side, type World } from "./testlib-bridge";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -29,7 +30,12 @@ const GH = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2";
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
 
 const origSpawn = procHooks.spawn;
-afterEach(() => { procHooks.spawn = origSpawn; });
+const origHome = process.env.HOME;
+beforeEach(() => { process.env.HOME = tmp("peer-poller-home-"); });
+afterEach(() => {
+  procHooks.spawn = origSpawn;
+  if (origHome === undefined) delete process.env.HOME; else process.env.HOME = origHome;
+});
 
 function himmelRoot(): string {
   const root = tmp("peer-poller-himmel-");
@@ -58,7 +64,7 @@ function makeTg() {
 }
 
 type Env = Awaited<ReturnType<typeof setup>>;
-async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown>; stateDir?: string; configDir?: string } = {}) {
+async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown>; stateDir?: string; configDir?: string; operatorDm?: boolean; stationName?: string } = {}) {
   const stateDir = over.stateDir ?? tmp("peer-poller-state-");
   const configDir = over.configDir ?? tmp("peer-poller-conf-");
   writeFileSync(join(configDir, "hmac.key"), "k".repeat(32), { mode: 0o600 });
@@ -68,12 +74,16 @@ async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: Polle
     operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: tmp("peer-poller-bridge-"), himmelRoot: himmelRoot(), maxTextChars: 4000, addressing: "command",
     peers: { example: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, "42"], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
       theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" }, ...(over.peerOver ?? {}) } as any },
-  };
+    ...(over.operatorDm ? { operatorDmChatId: 4242 } : {}), ...(over.stationName ? { self: { stationName: over.stationName } } : {}),
+  } as any;
+  const peersPath = join(configDir, "peers.json");
+  writeFileSync(peersPath, JSON.stringify(cfg), { mode: 0o600 });
+  chmodSync(peersPath, 0o600);
   const c = { t: T0, now: () => c.t };
   const t = makeTg();
   const reads: { text: string; kind: string }[] = [];
   const readerRun = over.readerRun ?? (async (text: string, kind: string) => { reads.push({ text, kind }); return { summary: "a digest", asks: ["x?"] }; });
-  const deps: PollerDeps = { cfg, tg: t.tg, ourBotId: OUR_ID, stateDir, configDir, clock: c.now, matrix: over.matrix, hostname: "testbox", readerRun: readerRun as any, log: () => {} };
+  const deps: PollerDeps = { cfg, tg: t.tg, ourBotId: OUR_ID, stateDir, configDir, peersPath, reloadConfig: () => readPeersFile(peersPath), clock: c.now, matrix: over.matrix, hostname: "testbox", readerRun: readerRun as any, log: () => {} };
   const poller = await Poller.create(deps);
   await poller.recover();
   return { poller, deps, cfg, c, ...t, reads, stateDir, configDir, peerDir, key: Buffer.from("k".repeat(32)) };
@@ -1539,4 +1549,44 @@ test("a retry-after answer at the start lookup waits no longer than the backoff 
   const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
   await expect(p.start()).rejects.toThrow(/start lookup failed/);
   expect(Math.max(...waits)).toBeLessThanOrEqual(30_000);
+});
+
+const pairWorld = () => makeWorld({ unpaired: true, operatorDm: true, serves: false });
+const theirKeys = (b: Bridge) => readPeersFile(b.peersPath).peers[b.other].theirs.keys.map(k => k.pub);
+const offerDm = (w: World, side: Side) => w.wire.filter(s => s.from === side && s.chat === DM_CHAT && s.markup).at(-1)!;
+let pairTapSeq = 9_000_000;
+function tap(b: Bridge, data: string, messageId: number, over: { from?: number; chat?: number; inline?: boolean } = {}) {
+  const id = ++pairTapSeq;
+  b.inbox.push({ update_id: id, callback_query: { id: "cq" + id, from: { id: over.from ?? 4242, is_bot: false }, data, ...(over.inline ? {} : { message: { message_id: messageId, chat: { id: over.chat ?? DM_CHAT, type: "private" } } }) } });
+}
+const approveData = (w: World, side: Side) => offerDm(w, side).markup.inline_keyboard[0][0].callback_data as string;
+async function offered() {
+  const w = await pairWorld();
+  submitSpool(w.alpha.peerDir, { type: "card" });
+  await w.step("alpha");
+  await w.step("bravo");
+  return w;
+}
+
+test("a DM send is recorded with its chat id and is not echoed into the other station's group inbox", async () => {
+  const w = await pairWorld();
+  await (w.alpha.poller as any).deps.tg.sendMessage(DM_CHAT, "to the operator");
+  await (w.alpha.poller as any).deps.tg.sendMessage(PAIR_CHAT, "to the group");
+  expect(w.wire.map(s => s.chat)).toEqual([DM_CHAT, PAIR_CHAT]);
+  expect(w.bravo.inbox.map(u => u.message.text)).toEqual(["to the group"]);
+});
+
+test.skip("end to end: our card request, their admission, their offer and one Approve tap leave our key in their peers.json", async () => {
+  const w = await offered();
+  tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id);
+  await w.step("bravo");
+  expect(theirKeys(w.bravo)).toEqual([w.alpha.key.pub]);
+});
+
+test.skip("end to end paired check: the same tap from a user who is not the operator leaves their peers.json bytes", async () => {
+  const w = await offered();
+  const before = readFileSync(w.bravo.peersPath);
+  tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id, { from: 999 });
+  await w.step("bravo");
+  expect(readFileSync(w.bravo.peersPath).equals(before)).toBe(true);
 });

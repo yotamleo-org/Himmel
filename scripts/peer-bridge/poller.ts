@@ -9,7 +9,7 @@ import { atomicWrite } from "../telegram/bus";
 import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, readChain, signTap, startIdentity, submitSpool, sweepResults, tapSigOk, verifyChain, writeResult, type IntentRec, type SpoolRec } from "./chain";
 import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
-import { checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
+import { checkCardOutbound, checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
 import { admit, admitEnvelope, appendUnknownChat, createGateState, looksLikeEnvelope, matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { ENV_LINE_RE, mintId } from "./grammar";
@@ -32,11 +32,15 @@ export type PollerDeps = {
   ourBotId: string;
   stateDir: string;
   configDir: string;
+  peersPath: string;
   clock?: () => number;
   reloadConfig?: () => Config;
   matrix?: OutCtx["matrix"];
   hostname?: string;
   checkEnvelope?: typeof checkEnvelopeOutbound;
+  checkCard?: typeof checkCardOutbound;
+  lockSleep?: (ms: number) => Promise<unknown>;
+  peersHooks?: { afterRead?: () => void };
   readerRun?: typeof runReader;
   readerTimeoutMs?: number;
   log?: (line: string) => void;
@@ -1060,7 +1064,7 @@ export async function main(): Promise<void> {
   try { await writeCodeStamp(stateDir()); } catch (e) { console.error(`peer-bridge: cannot write the code stamp: ${(e as Error).message}`); }
   const tg = new PeerTelegram(token);
   const poller = await Poller.create({
-    cfg, tg, ourBotId: botIdFromToken(token), stateDir: stateDir(), configDir: configDir(),
+    cfg, tg, ourBotId: botIdFromToken(token), stateDir: stateDir(), configDir: configDir(), peersPath: peersFile(),
     reloadConfig: () => loadConfig(peersFile()),
   });
   try { await poller.start(); } catch (e) {

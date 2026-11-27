@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { hostname as osHostname } from "node:os";
 import { evaluate, loadMatrix } from "../guardrails/egress-matrix-eval.mjs";
-import type { Peer } from "./config";
+import { cardMessage, type Peer } from "./config";
 import { parseEnvelopeLine } from "./envelope";
 import { ENV_LINE_RE, SIG_LINE_RE } from "./grammar";
 import { badHost } from "./host";
@@ -35,7 +35,7 @@ const refuse =(rule: string, shape?: string): Refusal => (shape ? { ok: false, r
 const OPENING = ["question", "status", "info"];
 let defaultMatrix: any;
 
-function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: Corpus | "peer-jobs" = "peer-desk"): boolean {
+function matrixAllows(ctx: Pick<OutCtx, "matrix">, corpus: Corpus | "peer-jobs" | "peer-pairing" = "peer-desk"): boolean {
   try {
     const m = ctx.matrix ?? (defaultMatrix ??= loadMatrix());
     const { verdict } = evaluate(m, corpus, "peer-telegram", "peer-message");
@@ -124,8 +124,23 @@ export async function checkEnvelopeOutbound(lines: string[], ctx: EnvOutCtx): Pr
   return contentRules(l3, { hostname: ctx.hostname, himmelRoot: ctx.himmelRoot });
 }
 
+export type CardOutCtx = Pick<EnvOutCtx, "peer" | "self" | "keyDir" | "himmelRoot" | "hostname" | "matrix">;
+
+export async function checkCardOutbound(text: string, ctx: CardOutCtx): Promise<Outcome> {
+  const peer = ctx.peer;
+  if (!peer) return refuse("unknown-peer");
+  if (peer.chatId === null) return refuse("peer-not-live");
+  if (ctx.self === undefined) return refuse("no-name");
+  let pub: string;
+  try { pub = publicKeyOf(currentSigningKey(ctx.keyDir).path); } catch { return refuse("no-key"); }
+  if (text !== cardMessage(peer.theirs.username, ctx.self, pub)) return refuse("card-text");
+  if (badHost(ctx.self, ctx.hostname ?? osHostname())) return refuse("host");
+  if (!matrixAllows(ctx, "peer-pairing")) return refuse("egress-matrix");
+  return secretShapes(text, { himmelRoot: ctx.himmelRoot });
+}
+
 const SAFE_ROOT = /^[A-Za-z0-9_\/.@+-]+$/;
-async function secretShapes(text: string, ctx: OutCtx): Promise<Outcome> {
+async function secretShapes(text: string, ctx: Pick<OutCtx, "himmelRoot" | "allowShape" | "claudecode" | "tty" | "tainted">): Promise<Outcome> {
   if (!SAFE_ROOT.test(ctx.himmelRoot)) return refuse("redact-check-failed");
   const run = await runProc(["bash", "-c", `. ${ctx.himmelRoot}/scripts/lib/redact.sh && redact_check`], {
     input: text, env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, timeoutMs: 15_000,
