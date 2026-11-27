@@ -9,7 +9,7 @@
 # for ONE corpus. What was missing is the scheduler/arm layer. This is that
 # layer: a SEPARATE OS-scheduler cadence (Option B) that bounds graph drift with
 # TWO tiers:
-#   - STRUCTURAL/AST (`graphify update <corpus> --force`): pure local parse, no
+#   - STRUCTURAL/AST (`graphify update <corpus>`): pure local parse, no
 #     LLM, no API key, no bank, no egress. Cheap enough to run HOURLY.
 #   - SEMANTIC (refresh-graph-map.sh: LLM extraction of markdown docs + curated
 #     MOC/community naming): the only tier that costs anything. The himmel
@@ -58,9 +58,9 @@
 #       bash <himmel>/scripts/graphify/ast-update.sh <vault>
 #   HIMMEL-GraphMapAst-Himmel  hourly, structural, free (default :15 past)
 #       bash <himmel>/scripts/graphify/ast-update.sh <himmel repo>
-#   (ast-update.sh runs `graphify update <corpus> --force` itself, behind the
-#   promote lock shared with the semantic pair -- see that
-#   script's header.)
+#   (ast-update.sh runs `graphify update <corpus>` itself, with --force once
+#   per 24 h, behind the promote lock shared with the semantic pair -- see
+#   that script's header.)
 #   HIMMEL-GraphPublish-Himmel  every 6h, free (default :35 past)
 #       bash <himmel>/scripts/graphify/graph-cadence.sh <himmel repo>
 #   (graph-cadence.sh does NOT rebuild the himmel AST graph a second time: the
@@ -373,7 +373,7 @@ Usage: graphmap-cadence.sh <arm|status|disarm> [flags]
 
 Arm the OS scheduler with the recurring graphify graph cadence for the himmel
 corpus (the Luna corpus only via `arm --luna-only`): a free structural (AST)
-refresh (`graphify update <corpus> --force`,
+refresh (`graphify update <corpus>`,
 via the promote-lock wrapper — no bank, no claude session) AND a
 semantic refresh per corpus (fence-safe incremental extraction + curated-MOC
 republish, `bash refresh-graph-map.sh ...` on the claude-api backend with the
@@ -1098,7 +1098,7 @@ cron_payload() {
 # Structural (AST) payload builder, POSIX form (routed
 # through the promote-lock wrapper): bash + ast-update.sh +
 # corpus-root. q_bash/q_script/q_corpus arrive pre-quoted (printf %q).
-# --force lives INSIDE ast-update.sh, not on this command line.
+# The daily --force is decided INSIDE ast-update.sh, not on this command line.
 ast_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
     # ast-update.sh reads GRAPHIFY_OUT from its environment exactly the way
