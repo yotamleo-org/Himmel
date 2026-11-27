@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readCursor } from '../mirror-cursor.js';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { appendChain, contentSha, loadKey, readChain, readSigned, withLock, type Chain } from './ledger.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
@@ -146,17 +147,9 @@ function blockedByOf(text: string): string[] {
 
 export function readMirrorFilesUnverified(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null; complete: boolean } {
   if (!root || !existsSync(root)) return { issues: null, sync: null, complete: false };
-  let sync: string | null = null;
-  let complete = false;
-  try {
-    const cur = JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string; complete?: boolean };
-    if (!Number.isNaN(Date.parse(cur.lastSync))) {
-      sync = cur.lastSync;
-      complete = cur.complete !== false;
-    }
-  } catch {
-    sync = null;
-  }
+  const cur = readCursor(root);
+  const sync = cur ? cur.lastSync : null;
+  const complete = cur ? cur.complete === undefined : false;
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
     if (!name.endsWith('.md')) continue;

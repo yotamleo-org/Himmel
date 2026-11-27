@@ -879,7 +879,7 @@ export function registerRelease(program: Command): void {
       + 'OUTSIDE <versions|none> current= open=; whether the key is in the current version\'s bucket. Read-only; exit 0 once every key has its line')
     .requiredOption('--mirror <dir>', 'The key project\'s Jira mirror directory; required, with no JIRA_PROJECT_KEY fallback')
     .action(async (keys: string[], o: { mirror: string }) => {
-      const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date() });
+      const lines = await bucketCheck(process.env, keys, o.mirror, { get: repairGetter(), deadlineMs: REPAIR_READ_DEADLINE_MS, now: new Date(), cli: resolve(process.argv[1]) });
       for (const l of lines) console.log(l);
     });
 

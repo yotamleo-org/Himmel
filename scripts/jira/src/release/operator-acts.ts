@@ -7,6 +7,7 @@ import { baselineId, effectOn, terminalOf } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
 import type { Baseline, Declaration, EventRow, IssueSnap, OperatorRow, OutOfVersionRow, RequestRow } from './types.js';
 import { appendOperator, type Ctx, f, latestRequests, type Loaded, locked, lockedAcross, operatorFence, readMirror, readOperatorRecords, type ReleaseRecord, ts } from './engine-core.js';
+import { mirrorState, type MirrorState } from '../mirror-cursor.js';
 
 export function declare(ctx: Ctx, o: { project: string; versions: string[]; decision: string; verbatim: string; mode: Declaration['mode'] }): Declaration {
   operatorFence(ctx);
@@ -247,22 +248,29 @@ function withinDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, deadline]).finally(() => clearTimeout(timer));
 }
 
-export interface BucketOptions { get: Getter; deadlineMs: number; now: Date }
+export interface BucketOptions { get: Getter; deadlineMs: number; now: Date; cli?: string }
+
+const shellQuote = (s: string): string => (/^[A-Za-z0-9_./:@%+=-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
 export async function bucketCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string, o: BucketOptions): Promise<string[]> {
   const { issues } = readMirror(mirrorRoot);
+  const state = issues ? null : mirrorState(mirrorRoot);
   const versionsPath = `${mirrorRoot.replace(/\/+$/, '')}.versions.tsv`;
   const lines: string[] = [];
-  for (const key of keys) lines.push(await bucketLine(env, key, mirrorRoot, versionsPath, issues, o));
+  for (const key of keys) lines.push(await bucketLine(env, key, mirrorRoot, versionsPath, issues, o, state));
   return lines;
 }
 
 async function bucketLine(env: Record<string, string | undefined>, key: string, mirrorRoot: string, versionsPath: string,
-  issues: Map<string, IssueSnap> | null, o: BucketOptions): Promise<string> {
-  const failed = (why: string) => `FAILED ${key} ${why.replace(/\s+/g, ' ')}`;
+  issues: Map<string, IssueSnap> | null, o: BucketOptions, state: MirrorState | null): Promise<string> {
+  const failed = (why: string) => `FAILED ${key} ${why.replace(/[\r\n]+/g, ' ')}`;
   if (!ISSUE_KEY.test(key)) return failed('is not a ticket key');
-  if (!issues) return failed(`no readable mirror at ${mirrorRoot}`);
   const project = key.split('-')[0];
+  if (!issues && state?.complete === 'no') {
+    const heal = `JIRA_PROJECT_KEY=${project} ${o.cli ? `node ${shellQuote(o.cli)}` : 'jira'} mirror --root ${shellQuote(mirrorRoot)}`;
+    return failed(`mirror sync incomplete since ${state.lastSync} at ${mirrorRoot} (cursor complete: false, repair: ${state.repair}); heal: ${heal}`);
+  }
+  if (!issues) return failed(`no readable mirror at ${mirrorRoot}`);
   let naming: Declared[];
   try {
     naming = declaredReleases(env).filter((d) => unparsedOrNamesProject(d, project));
