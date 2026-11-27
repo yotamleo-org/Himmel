@@ -3,8 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderIssue } from '../commands/mirror.js';
 import type { ReadinessFixture } from '../readiness.js';
+
+/** The dispatcher every unit test gets unless it names another: it passes each ticket and records nothing. */
+export function makePassingNdStub(): string {
+  const path = join(mkdtempSync(join(tmpdir(), 'jira-test-readiness-')), 'next-dispatchable.sh');
+  writeFileSync(path, 'exit 0\n');
+  return path;
+}
 
 /** This checkout's own dispatcher, for the rows that read its verdict with no stub. */
 export const DISPATCHER = fileURLToPath(new URL('../../../handover/chief-kit/next-dispatchable.sh', import.meta.url));
@@ -22,7 +28,7 @@ export function makeNdFixture(): ReadinessFixture {
   git('add', '-A');
   git('commit', '-q', '-m', 'fixture');
   mkdirSync(mirror);
-  writeFileSync(join(mirror, 'ZZ-1.md'), renderIssue({ key: 'ZZ-1', fields: { summary: 'done', status: { name: 'Done' } } }, []));
+  writeFileSync(join(mirror, 'ZZ-1.md'), '---\nkey: "ZZ-1"\ntype: "Task"\nstatus: "Done"\n---\n\n# ZZ-1: done\n');
   const gh = join(root, 'gh');
   writeFileSync(gh, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
   return { gitDir, mainRef: 'main', mirror, seams: { NEXT_DISPATCH_GH_CMD: gh } };

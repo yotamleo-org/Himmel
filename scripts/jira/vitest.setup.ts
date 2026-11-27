@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { recordLiveConfigDir } from './live/project-guard.js';
+import { makePassingNdStub } from './src/operations/readiness-stub.test-helper.js';
 
 // The live suite reads the station's test project from the config dir the redirects below hide: record it first.
 const liveConfigDir = recordLiveConfigDir(process.env, userInfo().homedir);
@@ -27,9 +28,7 @@ process.env.HIMMEL_ADMISSIONS_LEDGER = join(mkdtempSync(join(tmpdir(), 'jira-tes
 process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'jira-test-conf-'));
 process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 
-const readinessStub = join(mkdtempSync(join(tmpdir(), 'jira-test-readiness-')), 'next-dispatchable.sh');
-writeFileSync(readinessStub, 'exit 0\n');
-process.env.JIRA_READINESS_CHECK = readinessStub;
+process.env.JIRA_READINESS_CHECK = makePassingNdStub();
 delete process.env.JIRA_READINESS_TIMEOUT_MS;
 delete process.env.HIMMEL_JIRA_MIRROR;
 
