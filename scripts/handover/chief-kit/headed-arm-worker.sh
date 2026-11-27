@@ -926,7 +926,6 @@ if [ "$DRY_RUN" -ne 1 ]; then
     unset -v _fl_err _fl_rc _fl_line
 else
     _fl_scope="$(FLEET_LAUNCH_WORKER_INTENT=1 python3 -I "$_csg_dir/../../lib/fleet_runtime.py" admit --doc "$DOC" --manifest "$FLEET_MANIFEST" --name "$NAME")" || exit 10
-    FLEET_LAUNCH_MANAGED="$(printf '%s\n' "$_fl_scope" | jq -r .managed)" || exit 10
 fi
 if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi
 
@@ -1012,6 +1011,9 @@ case ",$PROFILE," in
         ;;
 esac
 if [ "$READINESS" -eq 1 ]; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+        FLEET_LAUNCH_MANAGED="$(printf '%s\n' "$_fl_scope" | jq -r .managed)" || exit 10
+    fi
     if [ "$LANE" != "native" ] || [ "$CONSULT" -ne 0 ] || [ "$JUDGE" -ne 0 ] || [ "$RELAY" -ne 0 ] || [ "$RM" -ne 0 ] \
         || [ "$HEADLESS" -ne 0 ] || [ "$NO_PROFILE" -ne 0 ] || [ -n "$FLEET_MANIFEST" ]; then
         echo "headed-arm-worker: refusing the readiness role: it is a native, headed, plain launch only (not --lane $LANE, --consult, --judge, --relay, a release manager, --headless, --no-profile or --fleet)" >&2
