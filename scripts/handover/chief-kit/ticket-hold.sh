@@ -7,6 +7,9 @@
 # Usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>]
 #                      [--kind chain-order|gate|file-collision|operator|date] [--on <KEY>] [--thread <id>]
 #        ticket-hold.sh <KEY> --release [--owner <who>]
+#        ticket-hold.sh <KEY> --release --cloud-session <session_id> --reason <text> --owner <who>
+#   The last form takes a cloud-owned ticket over: it writes one cloud-takeover row to status-events.jsonl and makes no
+#   Jira call; the dispatcher then stops counting that session as the key's owner.
 #   --owner is chief, operator or a lowercase name (a-z, 0-9, -; at most 32); --until must be a real date.
 #   The hold row records owner, reason and any until (nothing releases the hold on it; the Chains tab reads a
 #   date hold as date-gated until then); status-drift.sh flags a started ticket that is still held as stuck
@@ -37,18 +40,20 @@ usage() {
     echo "usage: ticket-hold.sh <KEY> --reason <text> --owner <who> [--until <YYYY-MM-DD>] [--kind <kind>] [--on <KEY>] [--thread <id>]" >&2
     echo "       kind: chain-order | gate | file-collision | operator | date" >&2
     echo "       ticket-hold.sh <KEY> --release [--owner <who>]" >&2
+    echo "       ticket-hold.sh <KEY> --release --cloud-session <session_id> --reason <text> --owner <who>" >&2
     exit 2
 }
 [ "$#" -ge 2 ] || usage
 KEY="$1"
 shift
-REASON="" OWNER="" UNTIL="" KIND="" ON="" THREAD="" RELEASE=0
+REASON="" OWNER="" UNTIL="" KIND="" ON="" THREAD="" RELEASE=0 CLOUD="" CLOUD_SET=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --release) RELEASE=1; shift ;;
-        --reason | --owner | --until | --kind | --on | --thread)
+        --reason | --owner | --until | --kind | --on | --thread | --cloud-session)
             [ "$#" -ge 2 ] || usage
             case "$1" in
+                --cloud-session) CLOUD="$2"; CLOUD_SET=1 ;;
                 --reason) REASON="$2" ;;
                 --owner) OWNER="$2" ;;
                 --until) UNTIL="$2" ;;
@@ -63,9 +68,14 @@ done
 [[ "$KEY" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]] || usage
 if [ "$RELEASE" -eq 0 ]; then
     [ -n "$REASON" ] && [ -n "$OWNER" ] || usage
+elif [ "$CLOUD_SET" -eq 1 ]; then
+    [ -n "$REASON" ] && [ -n "$OWNER" ] || usage
+    [ -z "$UNTIL$KIND$ON$THREAD" ] || usage
+    [[ "$CLOUD" =~ ^session_[A-Za-z0-9]+$ ]] || usage
 else
     [ -z "$REASON$UNTIL$KIND$ON$THREAD" ] || usage
 fi
+[ "$CLOUD_SET" -eq 0 ] || [ "$RELEASE" -eq 1 ] || usage
 case "$KIND" in "" | chain-order | gate | file-collision | operator | date) ;; *) usage ;; esac
 [ "$KIND" != date ] || [ -n "$UNTIL" ] || usage
 [ -z "$ON" ] || [[ "$ON" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || usage
@@ -84,6 +94,17 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/ticket-status.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/ticket-status.sh"
+
+if [ "$CLOUD_SET" -eq 1 ]; then
+    takeover_err=$(status_event event=cloud-takeover key="$KEY" session="$CLOUD" owner="$OWNER" reason="$(printf '%s' "$REASON" | tr -d '|\t\r\n')" result=done 2>&1 >/dev/null)
+    case "$takeover_err" in
+        *status-log-unwritable*)
+            echo "ticket-hold: $KEY: the takeover row was not written" >&2
+            exit 1 ;;
+    esac
+    echo "ticket-hold: $KEY: cloud session $CLOUD taken over"
+    exit 0
+fi
 
 if [ "$RELEASE" -eq 1 ]; then
     EVENT=hold-release FLAG=--remove-labels

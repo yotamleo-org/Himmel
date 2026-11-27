@@ -41,7 +41,7 @@
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth), up to half the slots left
 # when the tier starts (rounded up); the tier's other RESUME rows follow its To Do rows, before the next tier;
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
-# next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
+# next to --doc: a session owns until its PR merges or closes or a cloud-takeover row names it) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
 # that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
 # open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line (`# intake <m>: <keys>` with no open version; --dispositions prints it too, for the tick's INTAKE=); an empty
@@ -127,8 +127,8 @@
 # prints `# overlap unknown for PR <n>` / `live worker <N>` / `series ledger <n>` under the header and gates no row.
 # What still gates: an open-PR LIST that fails (the list is printed with an `open PRs unknown` header and no RESUME or
 # IN CI row, rather than silently trusting an empty set) and a live-worker manifest that cannot be read (`live workers unknown`).
-# An open PR that is not ours (cross-repository) and has been idle OUTSIDE_OWN_DAYS (7) or more days no longer owns a ticket key
-# its title names: the ticket is listed with `# overlap <KEY> also named by outside PR <n> (idle <d>d)`.
+# An open PR owns every ticket key its title or branch names, inside this repository or outside it, whatever its idle days. A
+# cross-repository PR's owner text carries its idle days (`open PR <n> (idle <d>d)`, or `(idle unknown)`); the age is printed, never acted on.
 #
 # Series ledgers (stacked_series only): each ledger under the --workers-from manifest's `series/` directory, read through
 # chief-kit/series-ledger.py read, names every non-abandoned item's writes as `series <sid>`, so the files stay an overlap
@@ -410,7 +410,6 @@ def manifest_workers(m):
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
     'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
-OUTSIDE_OWN_DAYS = 7
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
 def files_in(text):
@@ -933,6 +932,7 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
+cloud_taken = set()
 hold_row = {}
 merge_fields = {}
 unconfirmed = set()
@@ -978,6 +978,8 @@ try:
                 hold_row[why_key] = r
             if r.get('event') == 'merge' and r.get('contract') == 'no':
                 merge_fields[(why_key, str(r.get('pr', '')))] = r
+        if isinstance(r, dict) and r.get('event') == 'cloud-takeover' and r.get('result') == 'done':
+            cloud_taken.add((str(r.get('key', '')).upper(), str(r.get('session', ''))))
         if not (isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') in ('yes', 'no')):
             continue
         mkey = str(r.get('key', '')).upper()
@@ -994,6 +996,7 @@ except FileNotFoundError:
     pass
 except OSError as e:
     status_unreadable = True
+    cloud_taken.clear()
     print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
 ref_proves_absence_memo = []
@@ -1510,20 +1513,113 @@ if pool_only and not workers_from and not worker_keys:
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
     owner_unknown('the fleet', 'no worker source named', 'pass --workers-from <manifest> or --owners <keys>')
     sourceless = True
-# cloud sessions own their ticket too: the same file and 48h window tick reads
+now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
+gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
+cloud_held = []
+CLOUD_NODE = """import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+const { evaluate, defaults } = await import(pathToFileURL(process.env.CL_MJS).href);
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const stamp = (c) => { const v = Date.parse(c.createdAt ?? ''); return Number.isNaN(v) ? -Infinity : v; };
+const blocked = (prs, number) => {
+  const marks = ((prs.find((p) => p.number === number) ?? {}).comments ?? []).filter((c) => /^\\s*CLOUD-(DONE|BLOCKED)\\b/.test(c.body ?? ''));
+  return marks.length > 0 && /^\\s*CLOUD-BLOCKED\\b/.test(marks.reduce((a, c) => (stamp(c) >= stamp(a) ? c : a)).body);
+};
+const cfg = { ...defaults(), windowH: Infinity };
+console.log(JSON.stringify(input.keys.map((e) => evaluate({ sessions: e.sessions, prs: e.prs, heads: null, legDocs: [], now: input.now, cfg })
+  .map((r) => [r.session, r.state, r.pr ?? null, r.pr != null && blocked(e.prs, r.pr)]))));
+"""
+CLOUD_STATES = {'merged', 'closed', 'branch', 'pending', 'no-branch', 'done-pending', 'unshepherded', 'shepherded', 'pr-silent', 'working'}
+CLOUD_KEY_RE = re.compile(r'^[A-Z][A-Z0-9]*-[0-9]+$')
+
+def cloud_prs(key, secs):
+    try:
+        out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'all', '--search', key, '--limit', '100', '--json',
+                              'number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments'],
+                             capture_output=True, text=True, timeout=secs, check=True, env=dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(secs) - 1)))).stdout
+        prs = json.loads(out)
+        if not isinstance(prs, list) or len(prs) >= 100:
+            return None
+        for p in prs:
+            datetime.datetime.fromisoformat(p['createdAt'].replace('Z', '+00:00'))
+        return prs
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+def cloud_states(reads, sessions_of, secs):
+    keys = [k for k in reads if reads[k] is not None and sessions_of[k]]
+    if not keys or secs <= 0:
+        return {}
+    payload = {'now': now_s * 1000, 'keys': [{'sessions': [{'ticket': k, 'session': sn, 'launched': at} for sn, at in sessions_of[k]], 'prs': reads[k]} for k in keys]}
+    try:
+        got = json.loads(subprocess.run(['node', '--input-type=module', '-e', CLOUD_NODE], input=json.dumps(payload), capture_output=True, text=True, timeout=secs, check=True,
+                                        env=dict(os.environ, CL_MJS=os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'cloud-liveness.mjs'))).stdout)
+        if not isinstance(got, list) or len(got) != len(keys):
+            return {}
+        found = {}
+        for k, rows in zip(keys, got):
+            if not isinstance(rows, list) or len(rows) != len(sessions_of[k]):
+                return {}
+            for (sn, _), row in zip(sessions_of[k], rows):
+                if not (isinstance(row, list) and len(row) == 4 and row[0] == sn and row[1] in CLOUD_STATES and isinstance(row[3], bool)):
+                    return {}
+            found[k] = [(row[1], row[3]) for row in rows]
+        return found
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {}
+
 cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
-if cloud_tsv and os.path.isfile(cloud_tsv):
-    window_s = int(os.environ.get('CLOUD_LIVENESS_WINDOW_H', '48')) * 3600
+def cloud_own():
+    cloud_rows = {}
     for line in open(cloud_tsv, encoding='utf-8', errors='replace'):
         cols = line.rstrip('\n').split('\t')
-        if len(cols) < 2:
+        k = cols[1].strip().upper() if len(cols) >= 2 else ''
+        if not CLOUD_KEY_RE.match(k):
             continue
         try:
-            at = datetime.datetime.fromisoformat(cols[0].replace('Z', '+00:00')).timestamp()
+            at = datetime.datetime.fromisoformat(cols[0].strip().replace('Z', '+00:00')).timestamp() * 1000
         except ValueError:
+            at = None
+        cloud_rows.setdefault(k, []).append((cols[2].strip() if len(cols) > 2 else '', at))
+    cloud_end = time.monotonic() + 60
+    cloud_reads = {}
+    cloud_sessions_of = {}
+    for k, rows in cloud_rows.items():
+        live = [(sn, at) for sn, at in rows if (k, sn) not in cloud_taken]
+        if not live or why_key or k not in issues or done_key(k) or k in worker_keys:
             continue
-        if time.time() - at <= window_s:
-            worker_keys.add(cols[1].strip().upper()); owner.setdefault(cols[1].strip().upper(), 'a cloud session')
+        cloud_sessions_of[k] = [(sn, at) for sn, at in live if at is not None]
+        if not cloud_sessions_of[k]:
+            cloud_reads[k] = None
+        elif len(cloud_reads) >= 10 or cloud_end - time.monotonic() <= 0:
+            cloud_reads[k] = None
+        else:
+            cloud_reads[k] = cloud_prs(k, min(gh_t(20), cloud_end - time.monotonic()))
+    cloud_found = cloud_states(cloud_reads, cloud_sessions_of, min(30, cloud_end - time.monotonic()))
+    for k, rows in cloud_rows.items():
+        sent = 0
+        for sn, at in rows:
+            if (k, sn) in cloud_taken:
+                continue
+            why = 'not read'
+            if k in cloud_reads:
+                why = 'end unknown'
+                if at is not None:
+                    got = cloud_found.get(k)
+                    if got is not None:
+                        state, blocked = got[sent]
+                        sent += 1
+                        if state in ('merged', 'closed'):
+                            continue
+                        why = 'blocked' if blocked else 'no end event'
+            idle = 'unknown' if at is None else '%dd' % max(0, (now_s * 1000 - at) // 86400000)
+            if k not in worker_keys and k in cloud_reads:
+                cloud_held.append((k, printable(sn), idle, why))
+            worker_keys.add(k); owner.setdefault(k, 'cloud session %s (idle %s, %s)' % (printable(sn), idle, why))
+
+if cloud_tsv and os.path.isfile(cloud_tsv):
+    cloud_own()
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
@@ -1915,10 +2011,6 @@ pr_unknown = False
 pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
-outside_idle = {}
-now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
-gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
-gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
     nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
@@ -1952,11 +2044,10 @@ try:
                 idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
             except ValueError:
                 idle = None
+        cross = len(cols) >= 5 and cols[3] == 'true'
+        idle_txt = '' if not cross else (' (idle %dd)' % idle if idle is not None else ' (idle unknown)')
         for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
-            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
-                outside_idle.setdefault(k.upper(), (cols[0], idle))
-            else:
-                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
+            pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s%s' % (cols[0], idle_txt))
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
@@ -2409,9 +2500,6 @@ def say_overlaps(i, against_listed=True):
     src = ' (from %s)' % i['src'] if os.environ.get('ND_WHY') == '1' else ''
     for f, who in dict.fromkeys(pairs):
         say('# overlap %s %s with %s%s' % (i['key'], f, printable(who), src))
-    if i['key'] in outside_idle:
-        num, days = outside_idle[i['key']]
-        say('# overlap %s also named by outside PR %s (idle %dd)' % (i['key'], num, days))
 
 def flush_rows():
     for t in out_buf:
@@ -2489,6 +2577,8 @@ def drop_summary():
                 print('# scope %s %s%s: %s%s' % (k, issues[k]['src'], ' nowrite' if issues[k].get('nowrite') else '', ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
                 if issues[k].get('nowrite'):
                     staging_why(issues[k])
+    if cloud_held:
+        print('# cloud-held %d: %s' % (len(cloud_held), ', '.join('%s (%s, idle %s, %s)' % h for h in sorted(cloud_held, key=lambda h: int(h[0].split('-')[1])))))
     if first_ver is None:
         return
     listed = {i['key'] for i in emitted}

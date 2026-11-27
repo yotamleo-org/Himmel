@@ -167,6 +167,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     `VERSION-DRIFT` row lists a Done or started ticket held only in a later unreleased version than
     the current one, with the INTAKE request that folds it in (the wrap prints it as `drift:`);
     `ticket-hold.sh <KEY> --reason <r> --owner <o>` (or `--release`) sets and clears the `held` label.
+    `ticket-hold.sh <KEY> --release --cloud-session <session_id> --reason <r> --owner <o>` frees a ticket a cloud session holds when that session will never end on its own: it writes one `cloud-takeover` row, makes no Jira call, and nothing calls it automatically.
 
     The chief workflow publishes no split focus, Done or future pages (`tracker.py`
     still accepts `--out-done` and `--out-future`); drop any `tracker-done:` or

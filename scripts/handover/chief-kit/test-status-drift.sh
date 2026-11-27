@@ -573,6 +573,41 @@ check "10786 H1: the hold row records the move" "$(rowq 'select(.event == "hold"
 contains "10786 H1: the HOLD comment says the ticket moved to To Do" "$(cat "$FX/comment-body.last")" "moved to To Do"
 hold "$K" --release --owner operator
 check "10786 H1: a release makes no second transition" "$(ntrans)" 1
+reset "To Do"
+rm -f "$CLOG"
+hold "$K" --release --cloud-session session_abc --reason "dead session" --owner chief; rc=$?
+check "10378 H1: the cloud takeover form exits 0" "$rc" 0
+check "10378 H1: it writes one cloud-takeover row with the key, session, owner, reason and result" "$(rowq 'select(.event == "cloud-takeover") | [.key, .session, .owner, .reason, .result] | join(" ")')" "$K session_abc chief dead session done"
+check "10378 H1: and that is the only row" "$(wc -l < "$LOG" | tr -d ' ')" 1
+check "10378 H1: and no Jira call is made" "$(grep -c -E "^(edit|get|comment|transition) " "$STUB_LOG")" 0
+check "10378 H1: and no chain-log row is written" "$([ -e "$CLOG" ] && echo row || echo none)" none
+nrows() { [ -e "$LOG" ] && wc -l < "$LOG" | tr -d ' ' || echo 0; }
+n1="$(nrows)"
+hold "$K" --release --cloud-session abc --reason "dead session" --owner chief; rc=$?
+check "10378 H2: control: a session id that is not session_<id> is a usage error" "$rc" 2
+check "10378 H2: and adds no row" "$(nrows)" "$n1"
+hold "$K" --release --cloud-session session_abc --owner chief; rc=$?
+check "10378 H3: control: the form without --reason is a usage error" "$rc" 2
+hold "$K" --release --cloud-session session_abc --reason r; rc=$?
+check "10378 H3: control: the form without --owner is a usage error" "$rc" 2
+hold "$K" --cloud-session session_abc --reason r --owner chief; rc=$?
+check "10378 H3: control: --cloud-session without --release is a usage error" "$rc" 2
+hold "$K" --release --cloud-session session_abc --reason r --owner chief --kind gate; rc=$?
+check "10378 H3: control: the form refuses --kind" "$rc" 2
+hold "$K" --release --cloud-session session_abc --reason r --owner chief --thread t1; rc=$?
+check "10378 H3: control: the form refuses --thread" "$rc" 2
+hold "$K" --release --cloud-session session_abc --reason r --owner chief --until 2026-12-01; rc=$?
+check "10378 H3: control: the form refuses --until" "$rc" 2
+hold "$K" --release --cloud-session session_abc --reason r --owner chief --on HIMMEL-1; rc=$?
+check "10378 H3: control: the form refuses --on" "$rc" 2
+hold "$K" --release --cloud-session '' --owner chief; rc=$?
+check "10378 H3: an empty --cloud-session value is a usage error, never a plain release" "$rc" 2
+check "10378 H3: and these add no row and call no Jira" "$(nrows) $(grep -c -E "^(edit|get|comment|transition) " "$STUB_LOG")" "$n1 0"
+reset "To Do"
+: > "$tmp/not-a-dir"
+TICKET_STATUS_STATE_DIR="$tmp/not-a-dir" hold "$K" --release --cloud-session session_abc --reason r --owner chief; rc=$?
+check "10378 H4: a takeover row that cannot be written exits 1" "$rc" 1
+contains "10378 H4: and says the row was not written" "$(cat "$tmp/hout")" "the takeover row was not written"
 reset "In Review"
 hold "$K" --reason r --owner operator; rc=$?
 check "10786 H1 control: a hold on an In Review ticket moves nothing" "$(ntrans)" 0
