@@ -156,9 +156,14 @@ is_own_mcp_schema_read() {
     esac
     case "$rel" in
         */*/*) return 1 ;;
-        ?*/?*.json) return 0 ;;
+        ?*/?*.json) ;;
         *) return 1 ;;
     esac
+    case "$raw" in
+        */mcp/"$rel") ;;
+        *) return 1 ;;
+    esac
+    [ "$(canon_path "${raw%/mcp/"$rel"}")/mcp" = "$OWN_MCP_REAL" ] && [ -f "$real" ]
 }
 
 check_forbidden_homes() {

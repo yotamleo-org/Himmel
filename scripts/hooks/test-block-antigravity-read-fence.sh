@@ -207,6 +207,13 @@ done
 assert_deny "denies symlinked server dir to config/" "symlink" "$(mk_read "$OWN_MCP/to_config/hooks.json")"
 assert_deny "denies symlinked server dir to another home" "symlink" \
     "$(mk_read "$OWN_MCP/to_foreign/browser_navigate.json")"
+ln -s "$OWN_MCP/playwright" "$TMP/alias-server"
+assert_deny "denies an in-tree symlink reached through an alias to the server dir" "provider home" \
+    "$(mk_read "$TMP/alias-server/to_sibling.json")"
+assert_deny "denies a schema reached through an alias to the server dir" "provider home" \
+    "$(mk_read "$TMP/alias-server/browser_navigate.json")"
+mkdir -p "$OWN_MCP/playwright/dir.json"
+assert_deny "denies a directory named like a schema" "provider home" "$(mk_read "$OWN_MCP/playwright/dir.json")"
 assert_deny "denies .. traversal out of mcp/" "provider home" \
     "$(mk_read "$OWN_MCP/playwright/../../../config/hooks.json")"
 assert_deny "denies .. traversal back into mcp/" "provider home" \
@@ -268,11 +275,11 @@ for tool in write_file edit_file; do
             bad "$tool denied on own mcp/playwright/$f (out=$out)"
         fi
     done
-    out="$(run_adapter_write "$tool" "$WR_ACP/brain/conv-1/plan.md")"
-    if grep -qF 'self-protect' <<<"$out"; then
-        bad "control: $tool in the own artifact dir passes self-protect (out=$out)"
+    out="$(run_adapter_write "$tool" "$WR_ACP/brain/conv-1/plan.md")"; rc=$?
+    if [ "$rc" -eq 0 ] && [ -z "$out" ]; then
+        ok "control: $tool in the own artifact dir is allowed"
     else
-        ok "control: $tool in the own artifact dir passes self-protect"
+        bad "control: $tool in the own artifact dir is allowed (rc=$rc out=$out)"
     fi
 done
 assert_deny "run_command redirect into own mcp/ denied" "provider home" \

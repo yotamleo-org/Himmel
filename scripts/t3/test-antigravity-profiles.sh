@@ -637,6 +637,7 @@ jq --slurpfile real "$HERE/antigravity-profiles.json" '.profiles.design.mcpEnv =
 fresh
 env T3_AP_REGISTRY="$T/registry-sock.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-mcp.json" bash "$GEN" --apply --profile design >/dev/null 2>&1
 sock_tmp="$(jq -r --arg inherited "$T3_LONG_TMPDIR" '.mcpServers.playwright.env.TMPDIR // $inherited' "$(home_of)/config/mcp_config.json")"
+expect_eq "41 the generated config yields a TMPDIR to measure" "$([ -n "$sock_tmp" ] && echo yes || echo no)" yes
 sock_len="$(chrome_sock_len "$sock_tmp")"
 expect_eq "41 control: T3's inherited TMPDIR overflows Chrome's socket path" "$([ "$(chrome_sock_len "$T3_LONG_TMPDIR")" -ge 107 ] && echo over || echo under)" over
 expect_eq "41 playwright's socket path stays under 107 bytes (got $sock_len)" "$([ "$sock_len" -lt 107 ] && echo under || echo over)" under

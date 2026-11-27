@@ -112,9 +112,12 @@ tool schemas, `<own home>/antigravity-acp/mcp/<server>/<tool>.json`, `*.json` on
 `instructions.md` beside them stays denied).
 `block-antigravity-read-fence.sh` derives `<own home>` from the artifact folder, which must be
 `<T3 home>/userdata/providers/antigravity/<home>/antigravity-acp/brain/<conversation>`. Only `Read` and
-`read_file` get it: shell commands, `read_resource`, `list_resources` and writes stay denied. A `..` in
-the path, any other file or depth, and a path naming `antigravity-oauth-token` are denied, and so is a
-symlink at or below `mcp/`, wherever it points.
+`read_file` get it: shell commands, `read_resource`, `list_resources` and writes stay denied. It needs a
+regular file whose path, as given, ends in that `mcp/<server>/<tool>.json` under the own
+`antigravity-acp/`. A `..` in the path, any other file or depth, a path naming
+`antigravity-oauth-token`, and a path that reaches the file through an alias or a symlink below
+`antigravity-acp/` are denied. A path that goes through `mcp/` into a symlink is denied wherever the
+link points.
 
 ## What a thread may call
 
