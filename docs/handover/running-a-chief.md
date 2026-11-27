@@ -865,8 +865,10 @@ environment. Unset, every launch is unchanged.
   fails (a `WARN: tab launch` line in its launch log), on macOS, for chief
   arms, and when `HIMMEL_CONSOLE_NAME` is unset.
 - A bypass-granted launch from the bypass launch service (or its hand-started
-  daemon) never becomes or joins the shared workers window: it always opens its
-  own window.
+  daemon) joins an existing shared workers window as a tab, with the granted
+  flags only in that tab's command (`HIMMEL_WORKER_SESSION_TABS=join`). It never
+  creates the shared window: with none open it opens a window of its own, which
+  is never recorded and never adopted by a later launch or chief.
 - The window keeps the first worker's `HIMMEL-` tab title, so the KWin rule
   that places new `HIMMEL-` windows still matches it.
 - Limits: two workers dispatched at the same instant before any window exists
