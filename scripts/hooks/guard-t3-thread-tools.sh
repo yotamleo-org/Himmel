@@ -142,13 +142,13 @@ case "$findings" in
         else profile_dir=""; fi
         # swallow-ok: jq's error text can quote T3's settings values, which agents may not read; a failure refuses every instance id
         bypass=$(jq -c --slurpfile reg "$REGISTRY" --arg D "$profile_dir" '
-            def shown: if test("^(/|~/|\\.)") and test("^[A-Za-z0-9._/~-]{1,200}$") then . else "a value that is not a path" end;
+            def shown: if test("\\A(/|~/|\\.)") and test("\\A[A-Za-z0-9._/~-]{1,200}\\z") then . else "a value that is not a path" end;
             def own($text): {rule: "own-settings-instance", text: ("carries settings of its own in its launchArgs (" + $text + ")")};
-            ($D | test("^/[A-Za-z0-9._/-]*$") and (test("//|/$|/\\.\\.?(/|$)") | not)) as $dok
+            ($D | test("\\A/[A-Za-z0-9._/-]*\\z") and (test("//|/\\z|/\\.\\.?(/|\\z)") | not)) as $dok
             | ($D + "/") as $Dp
             | def under($re): type == "string" and startswith($Dp) and (.[($Dp | length):] | test($re));
-              def pfile: under("^[0-9a-f]{12}/[A-Za-z0-9._-]+\\.json$");
-              def mfile: under("^mcp-[0-9a-f]{12}/[A-Za-z0-9._-]+\\.mcp\\.json$");
+              def pfile: under("\\A[0-9a-f]{12}/[A-Za-z0-9._-]+\\.json\\z");
+              def mfile: under("\\Amcp-[0-9a-f]{12}/[A-Za-z0-9._-]+\\.mcp\\.json\\z");
               def classify:
                 if . == "" then {own: [], files: []}
                 elif test("--settings") and contains("{") then {own: [own("inline settings JSON")], files: []}
@@ -172,7 +172,7 @@ case "$findings" in
                         {own: [own("--settings " + ($bad | shown) + ": not a resolved profile file under " + ($D | shown))], files: []}
                       else
                         ([$t[] | select(startswith("--") and (IN("--settings", "--mcp-config", "--strict-mcp-config") | not))
-                           | ((capture("^(?<f>--[A-Za-z0-9-]+)").f) // "an extra argument")]
+                           | ((capture("\\A(?<f>--[A-Za-z0-9-]+)").f) // "an extra argument")]
                          + ([range(0; $t | length) as $i | select($t[$i] == "--mcp-config") | ($t[$i + 1] // "") | select(mfile | not)]
                             | if length > 0 then ["--mcp-config"] else [] end)
                          | unique | if length == 0 then ["an extra argument"] else . end) as $out

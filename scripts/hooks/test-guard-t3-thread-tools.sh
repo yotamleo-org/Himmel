@@ -43,7 +43,7 @@ MC=$(resolved Maintainer-Hooks '{"x":1}')
 ED=$(resolved edited '{"env":{"MARKERKEY":"1"}}'); printf 'x' >> "$ED"
 EM=$(resolved edm '{"mcpServers":{"a":{}}}' mcp); printf 'x' >> "$EM"
 mkdir -p "$LP/bbbbbbbbbbbb"
-mkfifo "$LP/bbbbbbbbbbbb/fifo.json" 2>/dev/null || true # swallow-ok: row S3b checks that the FIFO exists
+mkfifo "$LP/bbbbbbbbbbbb/fifo.json" 2>/dev/null
 OH=$(printf '%s\n' '{}' | sha12)
 mkdir -p "$CT/other/$OH" "$CT/Xlp/$OH" "$CT/.lp/$OH"
 printf '%s\n' '{}' > "$CT/other/$OH/x.json"
@@ -110,8 +110,9 @@ run() {
     local name="$1" want="$2" grep_for="$3" payload="$4" rc out
     shift 4
     N=$((N+1))
-    # shellcheck disable=SC2086 # RUN_TIMEOUT, when set, adds the two words timeout <seconds>
-    out=$(printf '%s' "$payload" | env "$@" ${RUN_TIMEOUT:+timeout $RUN_TIMEOUT} bash "$HOOK" 2>&1 >/dev/null); rc=$?
+    local pre=()
+    [ -z "${RUN_TIMEOUT:-}" ] || pre=(timeout "$RUN_TIMEOUT")
+    out=$(printf '%s' "$payload" | env "$@" ${pre[@]+"${pre[@]}"} bash "$HOOK" 2>&1 >/dev/null); rc=$?
     if [ "$rc" != "$want" ]; then
         echo "FAIL $name: rc=$rc want=$want out=$out"; FAIL=$((FAIL+1)); return
     fi
@@ -260,15 +261,15 @@ for t in bash jq cat tr cut sort sed date hostname uname mkdir dirname head grep
 done
 run "S9: no sha256 tool: refused" 2 '"claudeAgent_worker-impl": whether its settings files are resolved profile files is unknown (no sha256 tool)' \
     "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/nosha"
-lacks "S9: no sha256 tool is not reported as a bad path" 'not a resolved profile file under'"$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/nosha"
+lacks "S9: no sha256 tool is not reported as a bad path" 'not a resolved profile file under' \
+    "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/nosha"
 run "S11: the operator override allows an own-settings instance, on stderr" 0 'override: allowed' "$(from_to codex inlineSettings)" T3_THREAD_TOOLS_OK=1
 run "S12: the refusal text names the own-settings rule" 2 'whose launch line carries settings that are not a resolved profile file' "$(from_to codex handPointed)"
 run "S13: a relative settings directory: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
     "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR=lp
 run "S13: a settings directory with a space: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
     "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$CT/l p"
-RUN_TIMEOUT=5 run "S14: a call that names no Claude instance reads no settings file" 0 - \
-    "$(from_to codex antigravity)" HIMMEL_PROFILE_SETTINGS_DIR="$LP/bbbbbbbbbbbb/fifo.json"
+run "S14: a call that names no Claude instance verifies no settings file" 0 - "$(from_to codex antigravity)" PATH="$TMP/nosha"
 run "S15: HOME unset and no settings directory: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
     "$(from_to codex claudeAgent_worker-impl)" -u HOME -u HIMMEL_PROFILE_SETTINGS_DIR
 
