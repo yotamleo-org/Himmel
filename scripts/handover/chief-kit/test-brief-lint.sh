@@ -1585,7 +1585,8 @@ g22 g22d "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh" startup')"; g
 
 CW_G26="$tmp/cwd-g26"; mk_gw "$CW_G26" || exit 1
 rm -f "$CW_G26/scripts/hooks/guard-g.sh"; ln -s guard-g.sh "$CW_G26/scripts/hooks/guard-g.sh"
-mk_g g26 'scripts/lib/g-lib.sh' "$CW_G26"; lint_g '' "$tmp/g26.md"; g_err3 "G26 a member that cannot be statted (a symlink loop) refuses, never read as missing" 'cannot work out which files the pinned guards run'
+mk_g g26 'scripts/lib/g-lib.sh' "$CW_G26"; lint_g '' "$tmp/g26.md"; g_err3 "G26 a member that cannot be statted (a symlink loop) refuses, never read as missing" 'ELOOP'
+grep -F 'ELOOP' <<< "$err" | grep -Fq 'guard-g.sh' && ok "G26b and names the looping member" || bad "G26b the refusal does not name guard-g.sh: $err"
 
 NONODE="$tmp/nonode-bin"; mkdir -p "$NONODE"
 for t in bash sh python3 git dirname basename awk tr sed grep cat wc head tail sort mktemp rm mkdir env readlink uname date cut find id; do
