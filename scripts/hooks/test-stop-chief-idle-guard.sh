@@ -222,7 +222,7 @@ fi
 if [ -n "$PREFIX_HOOK" ]; then
     ok "HIMMEL-3148 setup: extracted the pre-fix hook from $PREDICATE_BASE_SHA"
 else
-    skip "HIMMEL-3148 setup: could not extract the pre-fix hook from $PREDICATE_BASE_SHA — RED control skipped"
+    bad "HIMMEL-3148 setup: could not extract the pre-fix hook from $PREDICATE_BASE_SHA — a missing red-control fixture is a failure"
 fi
 
 if ! worker_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="worker-fixture-session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
@@ -312,6 +312,25 @@ out="$(run_guard "$CHIEF_PAYLOAD")"
 if is_block "$out"; then bad "(ALIVE) past-TTL worker lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL worker lock with a live owner pid is still held -> allow"; fi
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" >/dev/null 2>&1
 
+PRE4567_HOOK=""
+if [ -n "$PREFIX_HOOK" ] && cp "$HOOKS/fixtures/red-control/stop-chief-idle-guard.pre-himmel4567.sh" \
+        "$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh" 2>/dev/null; then
+    PRE4567_HOOK="$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh"
+else
+    bad "HIMMEL-4567 setup: could not stage the pre-fix hook — a missing red-control fixture is a failure"
+fi
+
+if [ -n "$PRE4567_HOOK" ]; then
+    rm -f "$WAIT_HB"
+    out="$(run_guard_hook "$PRE4567_HOOK" "$CHIEF_PAYLOAD" \
+        HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
+        HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then bad "(reach) 4567 pre-fix hook exited $rc (a crash proves nothing)"
+    elif is_block "$out"; then ok "(reach) 4567 pre-fix hook blocks with no worker and no waiter — it reaches its predicate"
+    else bad "(reach) 4567 pre-fix hook did not block with no worker and no waiter — it exits before its predicate: $out"; fi
+fi
+
 # --- no live chief-wait.sh waiter blocks, whatever the workers --
 # chief-wait.sh is the chief's one wake source and exits after each WAKE,
 # so a chief that ends its turn without re-arming it stays deaf even with
@@ -328,14 +347,6 @@ WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$worker_lock_out" | sed -n 's/^re
 ( exit 0 ) &
 DEAD_PID=$!
 wait "$DEAD_PID"
-
-PRE4567_HOOK=""
-if [ -n "$PREFIX_HOOK" ] && cp "$HOOKS/fixtures/red-control/stop-chief-idle-guard.pre-himmel4567.sh" \
-        "$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh" 2>/dev/null; then
-    PRE4567_HOOK="$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh"
-else
-    skip "HIMMEL-4567 setup: could not stage the pre-fix hook — RED rows skipped"
-fi
 
 # check_waiter <label> <expect block|allow> <hb setup: absent | age pid state>
 check_waiter() {

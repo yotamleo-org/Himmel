@@ -20,7 +20,7 @@
 #      This repo has NO branch protection, so GitHub will not otherwise block a
 #      merge over red/pending CI (operator rule: "ready to merge" requires green).
 #   3. Console-GO gate (HIMMEL-2919/HIMMEL-3142): when this is a console-spawned
-#      leg (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-leg.sh), the PR's
+#      worker (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-worker.sh), the PR's # old-term-ok
 #      head SHA must have a matching GO file under the handover root's
 #      `.locks/go/` (chief-kit/go.sh writes it — "the file IS the GO"). Before
 #      this gate existed, a leg merging via `gh pr merge` directly (instead of
@@ -150,7 +150,7 @@ fi
 [ -z "$sel" ] && exit 0   # cannot resolve target: fail open
 
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/cr-merge-gate.sh" 2>/dev/null || exit 0
+. "$SCRIPT_DIR/../lib/review-merge-gate.sh" 2>/dev/null || exit 0
 
 reason=""
 rc=0
@@ -243,7 +243,7 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | tr '[:upper:]' '[:lower:]' | tr 
         fi
         go_reason=""
         go_rc=0
-        go_reason=$(go_gate "$go_num" "$go_sha" "$go_root") || go_rc=$?
+        go_reason=$(go_gate "$go_num" "$go_sha" "$go_root" "${GH_STUB_NWO:-o/r}") || go_rc=$?
         if [ "$go_rc" = "2" ]; then
             echo "block-unresolved-cr-merge: $go_reason" >&2
             exit 2
