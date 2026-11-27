@@ -196,19 +196,20 @@ if [ -z "$BLOCK" ]; then fail "i: the checkout block is in SKILL.md (markers # >
 fi
 
 echo "== j: at the cap =="
-newfix j; gen_page; stub spec-r1 "SPEC FINDINGS 1"; stub spec-r2 "SPEC FINDINGS 1"; retspec 3 "SPEC FINDINGS 1"
+newfix j; gen_page; for r in 1 2 3 4; do stub spec-r$r "SPEC FINDINGS 1"; done; retspec 5 "SPEC FINDINGS 1"
 if [ -z "$SEALLINE" ]; then fail "j: the seal command is in SKILL.md"; else
-  sealspec 3
-  refused "j: spec r3 FINDINGS, no plan critic file: refused" "$HTML" "no plan critic file"
+  sealspec 5
+  refused "j: spec r5 FINDINGS, no plan critic file: refused" "$HTML" "no plan critic file"
   retplan 1 "PLAN FINDINGS 1"; sealplan 1
   refused "j: plan r1 FINDINGS: refused" "$HTML" "not 'PLAN CLEAN'"
   retplan 2 "PLAN CLEAN"; sealplan 2
   accepted "j: plan r2 CLEAN: accepted" "$HTML"
   has "j: it opens with the findings block" 'open-findings' "$(cat "$QUEUED" 2>/dev/null)"
-  retplan 3 "PLAN FINDINGS 1"; sealplan 3
-  accepted "j: plan r3 FINDINGS: accepted" "$HTML"
-  newfix j2; gen_page; stub spec-r1 "SPEC FINDINGS 1"; stub spec-r2 "SPEC FINDINGS 1"; retspec 3 "SPEC CLEAN"; sealspec 3; retplan 1 "PLAN CLEAN"; sealplan 1
-  accepted "j: spec r3 CLEAN: accepted" "$HTML"
+  retplan 3 "PLAN CLEAN"; sealplan 3; retplan 4 "PLAN CLEAN"; sealplan 4
+  retplan 5 "PLAN FINDINGS 1"; sealplan 5
+  accepted "j: plan r5 FINDINGS: accepted" "$HTML"
+  newfix j2; gen_page; for r in 1 2 3 4; do stub spec-r$r "SPEC FINDINGS 1"; done; retspec 5 "SPEC CLEAN"; sealspec 5; retplan 1 "PLAN CLEAN"; sealplan 1
+  accepted "j: spec r5 CLEAN: accepted" "$HTML"
   lacks "j: with no findings block" 'open-findings' "$(cat "$QUEUED" 2>/dev/null)"
 fi
 
@@ -220,7 +221,7 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   refused "k: the spec critic re-read it, the plan critic's seal holds: refused naming the plan critic" "$HTML" "changed since the plan critic read it"
   ret "$SPEC.critic-plan-r1.md" "PLAN CLEAN" "$QP_PLAN" "$PLAN"; seal1 "$SPEC.critic-plan-r1.md" "$PLAN" "$QP_PLAN"
   accepted "k: no spec seal on the plan return: accepted (the ceiling)" "$HTML"
-  newfix k2; gen_page; stub spec-r1 "SPEC FINDINGS 1"; stub spec-r2 "SPEC FINDINGS 1"; retspec 3 "SPEC CLEAN"; sealspec 3
+  newfix k2; gen_page; for r in 1 2 3 4; do stub spec-r$r "SPEC FINDINGS 1"; done; retspec 5 "SPEC CLEAN"; sealspec 5
   stub plan-r1 "PLAN FINDINGS 1"; retplan 2 "PLAN CLEAN"; sealplan 2
   cp "$SPEC" "$T/k-spec-bytes"
   accepted "k: at the cap, unedited: accepted" "$HTML"
@@ -228,17 +229,17 @@ if [ -z "$SEALLINE" ]; then fail "k: the seal command is in SKILL.md"; else
   refused "k: at the cap, an edit: refused" "$HTML" "changed since the spec critic read it"
   cp "$T/k-spec-bytes" "$SPEC"
   accepted "k: the sealed bytes put back: accepted" "$HTML"
-  newfix k3; gen_page; for r in 1 2; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
+  newfix k3; gen_page; for r in 1 2 3 4; do stub spec-r$r "SPEC FINDINGS 1"; stub plan-r$r "PLAN FINDINGS 1"; done
   seedfix
-  retspec 3 "SPEC FINDINGS 1"; sealspec 3; retplan 3 "PLAN FINDINGS 1"; sealplan 3
+  retspec 5 "SPEC FINDINGS 1"; sealspec 5; retplan 5 "PLAN FINDINGS 1"; sealplan 5
   FIXKEY="$(basename "$SPEC")"; FIXKEY="${FIXKEY%-x.md}"
-  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" spec --specs "$S" | head -n 1)" retspec 4 "SPEC CLEAN"; sealspec 4
-  [ "$SEALRC" -eq 0 ] && pass "k: round 4 after a blocking round 3: the spec return is sealed with no record" || fail "k: round 4 after a blocking round 3: the spec return is sealed with no record" "$SEALOUT"
-  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" plan --specs "$S" | head -n 1)" retplan 4 "PLAN CLEAN"; sealplan 4; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 4 is sealed too" || fail "k: the plan critic's round 4 is sealed too" "$SEALOUT"
-  accepted "k: both critics at r4: accepted" "$HTML"
-  printf 'decision 7\n' > "$SPEC.operator-round-r5.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
-  retspec 5 "SPEC CLEAN"; sealspec 5
-  [ "$SEALRC" -ne 0 ] && has "k: round 5 with an operator-round file: the seal is refused, naming the record it needs" "HIMMEL-1 writer round 5 needs a round-critical record with the operator's words" "$SEALOUT" || fail "k: round 5 with an operator-round file: the seal is refused" "$SEALOUT"
+  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" spec --specs "$S" | head -n 1)" retspec 6 "SPEC CLEAN"; sealspec 6
+  [ "$SEALRC" -eq 0 ] && pass "k: round 6 after a blocking round 5: the spec return is sealed with no record" || fail "k: round 6 after a blocking round 5: the spec return is sealed with no record" "$SEALOUT"
+  RET_EXTRA="$(bun "$ROUTE" closure-pack "$FIXKEY" plan --specs "$S" | head -n 1)" retplan 6 "PLAN CLEAN"; sealplan 6; [ "$SEALRC" -eq 0 ] && pass "k: the plan critic's round 6 is sealed too" || fail "k: the plan critic's round 6 is sealed too" "$SEALOUT"
+  accepted "k: both critics at r6: accepted" "$HTML"
+  printf 'decision 7\n' > "$SPEC.operator-round-r7.md"; printf 'verbatim\n' > "$S/decisions/verbatim-decision-7-x.txt"
+  retspec 7 "SPEC CLEAN"; sealspec 7
+  [ "$SEALRC" -ne 0 ] && has "k: round 7 with an operator-round file: the seal is refused, naming the record it needs" "HIMMEL-1 writer round 7 needs a round-critical record with the operator's words" "$SEALOUT" || fail "k: round 7 with an operator-round file: the seal is refused" "$SEALOUT"
 fi
 
 echo "== l: the core-check command reaches the primary's CLI from a worktree =="
