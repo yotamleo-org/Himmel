@@ -80,7 +80,9 @@
 # Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a write path or
 # the reader answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
 # outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
-# chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out.
+# chief-run, state repo). Else a `Writes:` or `Files:` line of the description (the marker at the line start, or a capitalised one
+# after any space; a `Writes:` line naming only a specs/ path is a state-repo write), else the description's paths, comments left
+# out. A path is a repo path under a known root, or a file name or partial path that ends exactly one path on main.
 # A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
 # is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
 # and `(from <source>)` on an `# overlap` line. A ticket whose next step is stated to write nothing (a `Writes:` line with no path and
@@ -412,10 +414,40 @@ excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
+PATH_TOKEN_RE = re.compile(r"(?<![\w./~-])([\w.+@-]+(?:/[\w.+@-]+)*\.[A-Za-z0-9]{1,8})(?![\w/-])")
+
+@functools.lru_cache(maxsize=None)
+def suffix_index():
+    # every '/'-bounded suffix of every path on main -> the paths ending in it
+    index = {}
+    try:
+        listed = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'ls-tree', '-r', '-z', '--name-only', os.environ['ND_MAIN_REF']],
+                                capture_output=True, text=True, errors='replace', timeout=60, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        print('# warn: path-suffix resolution off (git ls-tree failed)')
+        return index
+    for path in filter(None, listed.split('\0')):
+        parts = path.split('/')
+        for n in range(len(parts)):
+            index.setdefault('/'.join(parts[n:]), []).append(path)
+    return index
+
+def path_tokens(text):
+    # (start, end, path): every FILE_RE match, then every other file name that ends exactly one path on main
+    found = [(m.start(), m.end(), m.group(1)) for m in FILE_RE.finditer(text)]
+    spans = [(start, end) for start, end, _ in found]
+    for m in PATH_TOKEN_RE.finditer(text):
+        if any(m.start() < end and m.end() > start for start, end in spans):
+            continue
+        hits = suffix_index().get(m.group(1), [])
+        if len(hits) == 1:
+            found.append((m.start(), m.end(), hits[0]))
+    return found
+
 def files_in(text):
     out = []
-    for m in FILE_RE.finditer(text):
-        f = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
+    for _, _, path in path_tokens(text):
+        f = re.sub(r'[.,;:)\]-]+$', '', path)
         if f and not f.endswith('/') and os.path.isdir(os.path.join(repo, f)):
             f += '/'  # a directory keeps its slash, whatever punctuation followed it in the text
         if f and f not in out:
@@ -441,14 +473,22 @@ def split_reads(text):
     # (paths it writes, paths it only runs)
     run, written = set(), set()
     for line in text.splitlines():
-        for m in FILE_RE.finditer(line):
-            if RUN_BEFORE_RE.search(line[:m.start()]):
-                run.update(files_in(m.group(0)))
+        for start, end, _ in path_tokens(line):
+            if RUN_BEFORE_RE.search(line[:start]):
+                run.update(files_in(line[start:end]))
         if WRITTEN_RE.search(line):
             written.update(files_in(line))
     named = files_in(text)
     reads = [f for f in named if f in run and f not in written]
     return [f for f in named if f not in reads], reads
+
+MID_MARKER_RE = re.compile(r'(?<=\s)\**(Writes?|Files?)\**(?:\s*\([^)\n]*\))?\s*:')  # case-sensitive: a lowercase mid-line `files:` is prose
+SPECS_RE = re.compile(r'(?<![\w./-])specs/[\w.+@-]+/')  # a state-repo path: a write that holds no file of this repo
+
+def marker(line):
+    # ('w' or 'f', the text after the marker) for a Writes:/Files: line, else None
+    m = EXPLICIT_RE.match(line) or MID_MARKER_RE.search(line)
+    return (m.group(1)[0].lower(), line[m.end():]) if m else None
 
 def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
@@ -465,24 +505,25 @@ def scope_of(body):
         stamp, lines = readiness[-1]
         files, nowrite = [], False
         for line in lines:
-            match = EXPLICIT_RE.match(line)
-            if match and match.group(1)[0].lower() == 'w':
-                files.extend(path for path in files_in(line) if path not in files)
-                nowrite = nowrite or bool(NO_WRITE_RE.search(line))
+            kind, value = marker(line) or ('', '')
+            if kind == 'w':
+                files.extend(path for path in files_in(value) if path not in files)
+                nowrite = nowrite or bool(NO_WRITE_RE.search(value) or SPECS_RE.search(value))
         if files or nowrite:
             return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
-    explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
+    explicit, kinds, nowrite_line, state_line, writes_hit = [], set(), False, False, False
     for line in desc.splitlines():
-        m = EXPLICIT_RE.match(line)
-        hits = files_in(line) if m else []
+        kind, value = marker(line) or ('', '')
+        hits = files_in(value) if kind else []
         if hits:
             explicit += [f for f in hits if f not in explicit]
-            kinds.add(m.group(1)[0].lower())
-            writes_hit = writes_hit or m.group(1)[0].lower() == 'w'
-        elif m and m.group(1)[0].lower() == 'w' and NO_WRITE_RE.search(line):
-            nowrite_line = True
-    if nowrite_line and not writes_hit:
-        return {'files': [], 'src': 'Writes: line', 'reads': [], 'no_scope': False, 'nowrite': True}
+            kinds.add(kind)
+            writes_hit = writes_hit or kind == 'w'
+        elif kind == 'w':
+            state_line = state_line or bool(SPECS_RE.search(value))
+            nowrite_line = nowrite_line or bool(NO_WRITE_RE.search(value))
+    if (state_line or nowrite_line) and not writes_hit:
+        return {'files': [], 'src': 'Writes: line (state repo)' if state_line else 'Writes: line', 'reads': [], 'no_scope': False, 'nowrite': True}
     if explicit:
         return {'files': explicit, 'src': 'Writes: line' if 'w' in kinds else 'Files: line', 'reads': [], 'no_scope': False, 'nowrite': False}
     files, reads = split_reads(desc)
@@ -2420,7 +2461,7 @@ for k, prs in needs_note:
 scope_questions.sort(key=lambda k: ranked(issues[k]))
 scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
 for k in scope_shown:
-    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)' % k)
+    print('NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched; to clear it add a Writes: line to the ticket (a unique file name or Writes: specs/... also count), or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)' % k)
 if len(scope_questions) > len(scope_shown):
     print('# no readable scope: %d more ticket(s) not shown, --why names them' % (len(scope_questions) - len(scope_shown)))
 if os.environ.get('ND_SCOPE_BATCH'):

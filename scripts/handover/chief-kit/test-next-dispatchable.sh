@@ -3608,10 +3608,10 @@ p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
 p_comment $'readiness: scoped by chief\nWrites: scripts/lib/rd.sh'
 p_run --why-ticket HIMMEL-11001; p_verdict P3 0; has 'P3 predicate readiness scope' "$P_OUT" 'readiness comment'; has 'P3 predicate path' "$P_OUT" 'scripts/lib/rd.sh'
 p_list; has 'P3 listing readiness scope' "$P_OUT" 'files=scripts/lib/rd.sh'
-for marker in $'Readiness ruling: scoped\nWrites: scripts/lib/rd.sh' $'ordinary note\nWrites: scripts/lib/rd.sh' 'readiness: scoped Writes: scripts/lib/rd.sh'; do
+for marker in $'Readiness ruling: scoped\nWrites: scripts/lib/rd.sh' $'ordinary note\nWrites: scripts/lib/rd.sh'; do
     p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'; p_comment "$marker"
-    p_run --why-ticket HIMMEL-11001; p_verdict "P4(a/b/d) predicate $marker" 1; has 'P4(a/b/d) predicate no scope' "$P_OUT" 'no-scope:'
-    p_list; has 'P4(a/b/d) listing guard' "$P_OUT" 'NEEDS-CHIEF-NOTE HIMMEL-11001'
+    p_run --why-ticket HIMMEL-11001; p_verdict "P4(a/b) predicate $marker" 1; has 'P4(a/b) predicate no scope' "$P_OUT" 'no-scope:'
+    p_list; has 'P4(a/b) listing guard' "$P_OUT" 'NEEDS-CHIEF-NOTE HIMMEL-11001'
 done
 p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
 p_comment $'readiness: old\nWrites: scripts/lib/old.sh'
@@ -5379,7 +5379,7 @@ trap 'rm -rf "$WORK" "$BASE_ND"' EXIT
 if git -C "$HERE" show origin/main:scripts/handover/chief-kit/next-dispatchable.sh > "$BASE_ND" 2>/dev/null && [ -s "$BASE_ND" ]; then
     ctl_new="$(run107 --why; echo "rc=$?")"
     ctl_base="$(NEXT_DISPATCH_MIRROR="$M107" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$BASE_ND" --top 60 --workers-dir "$WORK/s107/workers" --workers-from "$WORK/fleet5.json" --why 2>/dev/null; echo "rc=$?")"
-    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/^\(# source mirror_age_min=\).*/\1/' -e '/^# resume=[0-9]*$/d'; }
+    norm107() { sed -e 's/, or batch it: --scope-batch FILE (docs\/handover\/chief-sections\/scope-helper.md)//' -e 's/ (a unique file name or Writes: specs\/\.\.\. also count)//' -e's/^\(# source mirror_age_min=\).*/\1/' -e '/^# resume=[0-9]*$/d'; }
     check "10774 B1.ctl: without the flag the listing is the base listing, the remedy suffix aside" "$(printf '%s\n' "$ctl_base" | norm107)" "$(printf '%s\n' "$ctl_new" | norm107)"
 else
     echo "SKIP: 10774 B1.ctl: no origin/main ref to read the base script from"
@@ -5397,7 +5397,7 @@ check "10774 B2: and nothing was listed" "0" "$(grep -c . "$B107/b2.out")"
 run107 --why-ticket "$KP-10701" --scope-batch "$B107/b3.jsonl" > /dev/null; b3rc=$?
 check "10774 B3: --why-ticket with --scope-batch exits 2" "2" "$b3rc"
 check "10774 B3: and writes no file" "no" "$([ -e "$B107/b3.jsonl" ] && echo yes || echo no)"
-has "10774 B4: the no-scope row prints the remedy suffix" "$(run107 | grep -m1 '^NEEDS-CHIEF-NOTE ')" "to clear it add a Writes: line to the ticket, or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)"
+has "10774 B4: the no-scope row prints the remedy suffix" "$(run107 | grep -m1 '^NEEDS-CHIEF-NOTE ')" "to clear it add a Writes: line to the ticket (a unique file name or Writes: specs/... also count), or say no code, or batch it: --scope-batch FILE (docs/handover/chief-sections/scope-helper.md)"
 for bs in 0 51 abc 007; do
     run107 --scope-batch "$B107/b5-$bs.jsonl" --batch-size "$bs" > /dev/null; b5rc=$?
     check "10774 B5: --batch-size $bs exits 2" "2" "$b5rc"
@@ -5549,6 +5549,59 @@ M="$WORK/jira-mirror/HIMMEL"
 W69="$HERE/../../../docs/handover/chief-sections/waiter.md"
 for n in '> <file> 2>&1; echo "rc=$?"' 'rounded up' 'enforcement.md'; do
     grep -qF -- "$n" "$W69" && pass "10769 T-D1: waiter.md holds $n" || fail "10769 T-D1: waiter.md lacks $n"
+done
+
+SG="$WORK/git10944"; mkdir -p "$SG/scripts/handover/chief-kit" "$SG/scripts/a" "$SG/scripts/b"
+for f in handover/chief-kit/zz-arm-worker.sh handover/chief-kit/tick.sh a/dup.sh b/dup.sh; do : > "$SG/scripts/$f"; done
+git -C "$SG" init -q -b main && git -C "$SG" add -A && git -C "$SG" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q -m "init" \
+    || fail "10944: could not build the fixture tree"
+M44="$WORK/m10944/HIMMEL"; mkdir -p "$M44"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/m10944/HIMMEL.versions.tsv"
+M="$M44"
+t44() { mk "$KP-$1" "To Do" Medium '[]' '["v1.0.1"]' '[]' "scope row $1" "$2"; }
+t44 4401 "The arm path is wrong in zz-arm-worker.sh."
+t44 4402 "The arm path is wrong in dup.sh."
+t44 4403 "The arm path is wrong in zz-nowhere.sh."
+t44 4404 "The arm path is wrong in ick.sh."
+t44 4405 "The arm path is wrong in chief-kit/tick.sh."
+t44 4406 "To see it, run bash tick.sh"
+t44 4407 "Follow-up of X Writes: specs/audits/x.md"
+t44 4408 "Follow-up of X files: specs/audits/x.md"
+t44 4409 "Files: specs/audits/x.md"
+t44 4410 "Writes: specs/audits/x.md"
+t44 4411 "Background is in specs/audits/x.md for the reader."
+t44 4412 "Follow-up of X Writes: none (no code)"
+t44 4413 "The reader holds this ticket."
+t44 4414 "The reader holds this ticket too."
+printf '\n## Comments\n\n### chief — 2026-11-27T10:00\n\nreadiness: ruled Writes: scripts/lib/a.sh\n' >> "$M44/$KP-4413.md"
+printf '\n## Comments\n\n### chief — 2026-11-27T11:00\n\nreadiness: ruled Writes: specs/audits/x.md\n' >> "$M44/$KP-4414.md"
+M="$WORK/jira-mirror/HIMMEL"
+s44() { NEXT_DISPATCH_GIT_DIR="${GD44:-$SG}" NEXT_DISPATCH_MIRROR="$M44" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" "$@" 2>/dev/null; }
+l44="$(s44 --top 100)"
+w44() { s44 --why-ticket "$KP-$1"; }
+row44() { printf '%s\n' "$l44" | grep -F "	$KP-$1	"; }
+note44() { printf '%s\n' "$2" | grep -F "NEEDS-CHIEF-NOTE $KP-$1: no readable scope"; }
+CK44=scripts/handover/chief-kit
+has "10944 N1: a basename present once on main is the ticket's file" "$(row44 4401)" "files=$CK44/zz-arm-worker.sh"
+has "10944 N1.ctl: a basename present twice stays held" "$(note44 4402 "$l44")" "$KP-4402"
+has "10944 N1.none: a basename present nowhere stays held" "$(note44 4403 "$l44")" "$KP-4403"
+has "10944 N1.bnd: a suffix off a / boundary stays held" "$(note44 4404 "$l44")" "$KP-4404"
+has "10944 N1.sub: a partial path resolves to the full path" "$(row44 4405)" "files=$CK44/tick.sh"
+has "10944 N5: a basename the text only runs is a read, not a write" "$(w44 4406)" "# scope $KP-4406 description: - reads=$CK44/tick.sh"
+l44bad="$(GD44="$WORK/no-such-git-dir" s44 --top 100)"
+check "10944 N6: a failing git prints one warn line" "1" "$(printf '%s\n' "$l44bad" | grep -cF '# warn: path-suffix resolution off (git ls-tree failed)')"
+has "10944 N6: and the basename ticket stays held" "$(note44 4401 "$l44bad")" "$KP-4401"
+has "10944 N2: a mid-line Writes: naming a specs/ path is a state-repo write" "$(w44 4407)" "# scope $KP-4407 Writes: line (state repo): - reads=-"
+has "10944 N2.ctl: a mid-line lowercase files: is no marker" "$(note44 4408 "$l44")" "$KP-4408"
+has "10944 N2.files: a Files: line with only a specs/ path stays held" "$(note44 4409 "$l44")" "$KP-4409"
+has "10944 N3: a Writes: line naming a specs/ path is a state-repo write" "$(w44 4410)" "# scope $KP-4410 Writes: line (state repo): - reads=-"
+has "10944 N3.ctl: a specs/ path in prose only stays held" "$(note44 4411 "$l44")" "$KP-4411"
+has "10944 N4: a mid-line Writes: none (no code) is the ticket's own statement" "$(w44 4412)" "# scope $KP-4412 Writes: line: - reads=-"
+has "10944 N8: a one-line readiness: ruled Writes: reads" "$(w44 4413)" "# scope $KP-4413 readiness comment 2026-11-27T10:00: scripts/lib/a.sh reads=-"
+has "10944 N8.state: a readiness comment's specs/ path is a no-write scope" "$(w44 4414)" "# scope $KP-4414 readiness comment 2026-11-27T11:00: - reads=-"
+for n in 4401 4407 4410 4412 4413 4414; do
+    lacks "10944 N7: --why-ticket $KP-$n raises no no-scope gate" "$(w44 $n)" " no-scope:"
+    has "10944 N7: the listing lists $KP-$n" "$(row44 $n)" "$KP-$n"
 done
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
