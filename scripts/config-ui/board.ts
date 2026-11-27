@@ -388,7 +388,7 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
   }
   return items;
 }
-function ledgerItems(bucket: string, terminal: Set<string>): OwedItem[] {
+function ledgerItems(bucket: string): OwedItem[] {
   let text: string;
   try { text = readText(join(bucket, "owed.jsonl")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return []; throw e; }
   const adds = new Map<string, Record<string, unknown>>(), closed = new Set<string>();
@@ -403,7 +403,6 @@ function ledgerItems(bucket: string, terminal: Set<string>): OwedItem[] {
   for (const [id, r] of adds) {
     if (closed.has(id) || r.actor !== "operator") continue;
     const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : null;
-    if (key && terminal.has(key)) continue;
     const actor = ownerOf(String(r.text ?? ""), "operator");
     items.push({ actor, source: "owed ledger", key, title: clip(String(r.text ?? id), 140), ctx: `${id} (${String(r.kind)}) in owed.jsonl`,
       act: actor === "chief" ? "the chief acts on what the row names" : r.kind === "proof" ? "run the proof" : "do what the row names" });
@@ -474,7 +473,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     if (!running) miss("unsigned specs", "no running version");
     else tryRead("unsigned specs", () => specItems(bucket, running!, open, unknownKeys, skipped, unread, env), "none");
     tryRead("handoff items", () => handoffItems(bucket, terminalKeys), `no Open operator items section in the newest HANDOFF under ${bucket}`);
-    try { items.push(...ledgerItems(bucket, terminalKeys)); } catch (e) { miss("owed ledger", (e as Error).message); }
+    try { items.push(...ledgerItems(bucket)); } catch (e) { miss("owed ledger", (e as Error).message); }
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {
