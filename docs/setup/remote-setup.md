@@ -321,11 +321,22 @@ bash scripts/remote-setup/remote-setup.sh peer --replace
 
 This is not part of the `DONE:` above, and the check does not need it. Your chiefs can exchange
 signed job requests once each station has a name and a key, and each operator has trusted the
-other's key. Trusting a key needs you to read its fingerprint to the other operator by voice or
-another messenger, and to type it back: that cannot be automated, so there is no helper for it. The
-steps are the `station-name`, `keygen` and `trust` verbs of `bun scripts/peer-bridge/setup.ts`, run
-by you in your own Terminal; to take a key away or change it use `untrust`, and `keygen --rotate`.
-The exact steps are in [the peer bridge reference](../internals/peer-bridge.md).
+other's key.
+
+The order matters. Both sides first run `add`, `confirm` and `dm` (so each group is confirmed and
+each operator's own chat with the peer bridge bot is recorded). Then each side runs
+`bun scripts/peer-bridge/setup.ts pair <peer>` in its own Terminal. That asks your poller to post
+your pairing card in the group, and the other operator gets it in their own chat with the peer
+bridge bot, with **Approve** and **Reject** buttons and the key's fingerprint. A side that ran
+`pair` before the other was ready runs `pair` again.
+
+Before you tap **Approve**, compare all five groups of the fingerprint on your screen with the
+fingerprint the other operator reads to you by call or another messenger, never over the group.
+The tap does not check that comparison for you. The offer expires after 30 minutes, and only a
+peer with no trusted key gets one. Everything else (a changed key, two keys offered at once, an
+expired offer, a peer on an older version) stays at the Terminal: `pair <peer> --card '<their card>'`
+or `trust`, where you type the fingerprint back. To take a key away or change it use `untrust` and
+`keygen --rotate`. The exact steps are in [the peer bridge reference](../internals/peer-bridge.md).
 
 ### See which pairing step is missing
 
@@ -333,8 +344,9 @@ The exact steps are in [the peer bridge reference](../internals/peer-bridge.md).
 is not done yet: our station name, our station key, the group chat, your chat with the peer bridge
 bot, or their key. A missing step does not turn the check red: the signed chief-to-chief jobs need
 all five, the `DONE:` above needs only the group chat. The list comes from a small file,
-`~/.himmel/remote-setup/pairing.json`, that `setup.ts` rewrites after each of its pairing steps; it
-holds yes or no for each step and the peer's name, never a key or an id.
+`~/.himmel/remote-setup/pairing.json`, rewritten under the `peers.json` lock after every
+`peers.json` write (the poller's included, after an Approve tap) and after each `setup.ts` pairing
+step; it holds yes or no for each step and the peer's name, never a key or an id.
 
 ### Undo
 

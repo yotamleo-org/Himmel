@@ -1,24 +1,25 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Chain, readChain, signTap, submitSpool } from "./chain";
-import { readNotifyCursor } from "./poller";
+import { Chain, readChain, signTap, startIdentity, submitSpool } from "./chain";
+import { readDmSent, readNotifyCursor } from "./poller";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
-import { ConfigError, type Config } from "./config";
+import { ConfigError, cardMessage, readPeersFile, type Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
-import { checkEnvelopeOutbound } from "./egress";
+import { checkCardOutbound, checkEnvelopeOutbound } from "./egress";
 import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
 import { TIMEOUT_S_MAX, parseEnvelopeLine, type Kind } from "./envelope";
 import type { JobRecord } from "./resolve";
-import { keygen, verify } from "./sign";
+import { STATION_KEY, fingerprint, keyId, keygen, keygenActivate, keygenRotate, publicKeyOf, verify } from "./sign";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
 import * as TE from "./testlib-envelope";
+import { CHAT as PAIR_CHAT, DM_CHAT, makeWorld, type Bridge, type Side, type World } from "./testlib-bridge";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
 
 const REPO = join(import.meta.dir, "..", "..");
@@ -29,7 +30,12 @@ const GH = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2";
 const tmp = (p: string) => mkdtempSync(join(tmpdir(), p));
 
 const origSpawn = procHooks.spawn;
-afterEach(() => { procHooks.spawn = origSpawn; });
+const origHome = process.env.HOME;
+beforeEach(() => { process.env.HOME = tmp("peer-poller-home-"); });
+afterEach(() => {
+  procHooks.spawn = origSpawn;
+  if (origHome === undefined) delete process.env.HOME; else process.env.HOME = origHome;
+});
 
 function himmelRoot(): string {
   const root = tmp("peer-poller-himmel-");
@@ -58,7 +64,7 @@ function makeTg() {
 }
 
 type Env = Awaited<ReturnType<typeof setup>>;
-async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown>; stateDir?: string; configDir?: string } = {}) {
+async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: PollerDeps["matrix"]; peerOver?: Record<string, unknown>; stateDir?: string; configDir?: string; operatorDm?: boolean; stationName?: string } = {}) {
   const stateDir = over.stateDir ?? tmp("peer-poller-state-");
   const configDir = over.configDir ?? tmp("peer-poller-conf-");
   writeFileSync(join(configDir, "hmac.key"), "k".repeat(32), { mode: 0o600 });
@@ -67,13 +73,17 @@ async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: Polle
   const cfg: Config = {
     operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: tmp("peer-poller-bridge-"), himmelRoot: himmelRoot(), maxTextChars: 4000, addressing: "command",
     peers: { example: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, "42"], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-      theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" }, ...(over.peerOver ?? {}) } as any },
-  };
+      theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", keys: [] }, ...(over.peerOver ?? {}) } as any },
+    ...(over.operatorDm ? { operatorDmChatId: 4242 } : {}), ...(over.stationName ? { self: { stationName: over.stationName } } : {}),
+  } as any;
+  const peersPath = join(configDir, "peers.json");
+  writeFileSync(peersPath, JSON.stringify(cfg), { mode: 0o600 });
+  chmodSync(peersPath, 0o600);
   const c = { t: T0, now: () => c.t };
   const t = makeTg();
   const reads: { text: string; kind: string }[] = [];
   const readerRun = over.readerRun ?? (async (text: string, kind: string) => { reads.push({ text, kind }); return { summary: "a digest", asks: ["x?"] }; });
-  const deps: PollerDeps = { cfg, tg: t.tg, ourBotId: OUR_ID, stateDir, configDir, clock: c.now, matrix: over.matrix, hostname: "testbox", readerRun: readerRun as any, log: () => {} };
+  const deps: PollerDeps = { cfg, tg: t.tg, ourBotId: OUR_ID, stateDir, configDir, peersPath, reloadConfig: () => readPeersFile(peersPath), clock: c.now, matrix: over.matrix, hostname: "testbox", readerRun: readerRun as any, log: () => {} };
   const poller = await Poller.create(deps);
   await poller.recover();
   return { poller, deps, cfg, c, ...t, reads, stateDir, configDir, peerDir, key: Buffer.from("k".repeat(32)) };
@@ -830,7 +840,7 @@ test("a second poller exits non-zero but not 78, and never reads the operator en
   const home = processEnv();
   const holder = spawn("sleep", ["30"], { stdio: "ignore" });
   await new Promise(r => holder.once("spawn", r));
-  const { startIdentity } = await import("./chain");
+
   writeFileSync(join(home, ".himmel/peer-bridge/poller.pid"), JSON.stringify({ pid: holder.pid, start: startIdentity(holder.pid!) }), { mode: 0o600 });
   const r = runPoller(home);
   holder.kill("SIGKILL");
@@ -1539,4 +1549,564 @@ test("a retry-after answer at the start lookup waits no longer than the backoff 
   const p = await Poller.create({ ...e.deps, tg, sleep: async ms => { waits.push(ms); } });
   await expect(p.start()).rejects.toThrow(/start lookup failed/);
   expect(Math.max(...waits)).toBeLessThanOrEqual(30_000);
+});
+
+const pairWorld = () => makeWorld({ unpaired: true, operatorDm: true, serves: false });
+const theirKeys = (b: Bridge) => readPeersFile(b.peersPath).peers[b.other].theirs.keys.map(k => k.pub);
+const offerDm = (w: World, side: Side) => w.wire.filter(s => s.from === side && s.chat === DM_CHAT && s.markup).at(-1)!;
+let pairTapSeq = 9_000_000;
+function tap(b: Bridge, data: string, messageId: number, over: { from?: number; chat?: number; inline?: boolean } = {}) {
+  const id = ++pairTapSeq;
+  b.inbox.push({ update_id: id, callback_query: { id: "cq" + id, from: { id: over.from ?? 4242, is_bot: false }, data, ...(over.inline ? {} : { message: { message_id: messageId, chat: { id: over.chat ?? DM_CHAT, type: "private" } } }) } });
+}
+const approveData = (w: World, side: Side) => offerDm(w, side).markup.inline_keyboard[0][0].callback_data as string;
+async function offered() {
+  const w = await pairWorld();
+  submitSpool(w.alpha.peerDir, { type: "card" });
+  await w.step("alpha");
+  await w.step("bravo");
+  return w;
+}
+
+test("a DM send is recorded with its chat id and is not echoed into the other station's group inbox", async () => {
+  const w = await pairWorld();
+  await (w.alpha.poller as any).deps.tg.sendMessage(DM_CHAT, "to the operator");
+  await (w.alpha.poller as any).deps.tg.sendMessage(PAIR_CHAT, "to the group");
+  expect(w.wire.map(s => s.chat)).toEqual([DM_CHAT, PAIR_CHAT]);
+  expect(w.bravo.inbox.map(u => u.message.text)).toEqual(["to the group"]);
+});
+
+test("end to end: our card request, their admission, their offer and one Approve tap leave our key in their peers.json", async () => {
+  const w = await offered();
+  tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id);
+  await w.step("bravo");
+  expect(theirKeys(w.bravo)).toEqual([w.alpha.key.pub]);
+});
+
+test("end to end paired check: the same tap from a user who is not the operator leaves their peers.json bytes", async () => {
+  const w = await offered();
+  const before = readFileSync(w.bravo.peersPath);
+  tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id, { from: 999 });
+  await w.step("bravo");
+  expect(readFileSync(w.bravo.peersPath).equals(before)).toBe(true);
+});
+
+async function cardEnv(over: Parameters<typeof setup>[0] = {}, key = true) {
+  const e = await setup({ stationName: "yotam", ...over });
+  if (key) keygen(e.configDir);
+  return e;
+}
+const cardIntents = (e: Env) => outbox(e).filter(r => r.kind === "intent" && r.msgKind === "card") as any[];
+const ourPubOf = (e: Env) => publicKeyOf(join(e.configDir, STATION_KEY));
+async function askCard(e: Env, name?: string) {
+  const n = submitSpool(e.peerDir, { type: "card" }, name === undefined ? undefined : () => name);
+  await e.poller.drainSpool();
+  return n;
+}
+
+test("a card record posts our card once, as one intent and one group send that holds no fingerprint", async () => {
+  const e = await cardEnv();
+  const name = await askCard(e);
+  const text = cardMessage("example_bot", "yotam", ourPubOf(e));
+  expect(e.sent).toEqual([{ chat: CHAT, text, replyTo: undefined }]);
+  const [i] = cardIntents(e);
+  expect([cardIntents(e).length, i.card, i.spool, i.text, i.root, i.isRoot, typeof i.ts]).toEqual([1, keyId(ourPubOf(e)), name, text, null, false, "number"]);
+  expect(i.text.replace(/ /g, "")).not.toContain(fingerprint(ourPubOf(e)).replace(/ /g, ""));
+  expect(readResult(e, name).ok).toBe(true);
+  expect(readChain(join(e.peerDir, "threads.jsonl"))).toEqual([]);
+});
+
+test("the fourth card request of a UTC day writes card-daily and sends nothing; the next day posts again", async () => {
+  const e = await cardEnv();
+  for (let i = 0; i < 3; i++) await askCard(e);
+  const fourth = await askCard(e);
+  expect(readResult(e, fourth)).toEqual({ ok: false, rule: "card-daily" });
+  expect([e.sent.length, cardIntents(e).length]).toEqual([3, 3]);
+  e.c.t += DAY_MS;
+  await askCard(e);
+  expect(e.sent.length).toBe(4);
+});
+
+test("a card Telegram refused does not count, and a key rotated the same day starts its own three", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new TelegramError("Bad Request", 400); });
+  for (let i = 0; i < 4; i++) await askCard(e);
+  expect(cardIntents(e).length).toBe(4);
+  expect(e.sent.length).toBe(4);
+  keygenRotate(e.configDir);
+  keygenActivate(e.configDir);
+  const after = await askCard(e);
+  expect([readResult(e, after).ok, cardIntents(e).length]).toEqual([true, 5]);
+});
+
+test("a card request is refused with its rule, and makes no intent, without a station name, a key or a confirmed chat", async () => {
+  for (const [want, e] of [
+    ["no-name", await cardEnv({ stationName: undefined })],
+    ["no-key", await cardEnv({}, false)],
+    ["not-set-up", await cardEnv({ peerOver: { chatId: null } })],
+  ] as const) {
+    const name = await askCard(e);
+    expect(readResult(e, name)).toEqual({ ok: false, rule: want });
+    expect([cardIntents(e).length, e.sent.length]).toEqual([0, 0]);
+  }
+});
+
+test("a spool file left by a crash after the card intent makes no second intent, restores its result and sends once", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new RetryAfter(60); });
+  await askCard(e, "0001-crash.json");
+  e.sent.length = 0;
+  rmSync(join(e.peerDir, "spool", "results", "0001-crash.json"));
+  submitSpool(e.peerDir, { type: "card" }, () => "0001-crash.json");
+  const again = await Poller.create(e.deps);
+  e.c.t += 120_000;
+  await again.drainSpool();
+  expect(cardIntents(e).length).toBe(1);
+  expect(e.sent.length).toBe(1);
+  expect(readResult(e, "0001-crash.json").ok).toBe(true);
+});
+
+const rotate = (e: Env) => { keygenRotate(e.configDir); keygenActivate(e.configDir); };
+
+test("a key activated while the card waits behind a retry-after refuses it at flush, and after a restart in recover", async () => {
+  for (const restart of [false, true]) {
+    const e = await cardEnv();
+    e.script.push(() => { throw new RetryAfter(60); });
+    await askCard(e);
+    e.sent.length = 0;
+    rotate(e);
+    e.c.t += 120_000;
+    if (restart) { const p = await Poller.create(e.deps); await p.recover(); } else await e.poller.drainSpool();
+    expect(e.sent).toEqual([]);
+    expect(outbox(e).filter(r => r.kind === "refused").map(r => r.reason)).toEqual(["card-text"]);
+  }
+});
+
+test("a chat confirmed again while the card waits sends it to the new chat, where the check passes", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new RetryAfter(60); });
+  await askCard(e);
+  e.sent.length = 0;
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.chatId = -100999;
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+  e.c.t += 120_000;
+  await e.poller.drainSpool();
+  expect(e.sent.map(s => s.chat)).toEqual([-100999]);
+});
+
+test("every card sent passed the real card check twice: when queued and just before the send", async () => {
+  const seen: { text: string; ok: boolean }[] = [];
+  const e = await cardEnv();
+  const p = await Poller.create({ ...e.deps, checkCard: async (text, ctx) => { const r = await checkCardOutbound(text, ctx); seen.push({ text, ok: r.ok }); return r; } });
+  submitSpool(e.peerDir, { type: "card" });
+  await p.drainSpool();
+  expect(seen.map(s => s.ok)).toEqual([true, true]);
+  expect(seen.every(s => s.text === e.sent[0].text)).toBe(true);
+});
+
+const THEIR_PUB = Buffer.alloc(32, 5).toString("base64");
+const cardUpdate = (station = "example", pub = THEIR_PUB, over: Record<string, unknown> = {}) => rootUpdate(`/peer@${OUR_NAME}\n#pair station=${station} key=${pub}`, over);
+const inboxOf = (e: Env) => readChain(join(e.peerDir, "inbox.jsonl")) as any[];
+
+test("an admitted card is chained as peer-card and starts no reader; a refused one writes no inbox record and no digest job", async () => {
+  const e = await setup();
+  await e.poller.processBatch([cardUpdate("example", THEIR_PUB, { from: { id: 42, is_bot: true } })]);
+  expect([inboxOf(e).length, existsSync(digestFile(e.peerDir))]).toEqual([0, false]);
+  await e.poller.processBatch([cardUpdate()]);
+  expect(inboxOf(e).map(r => [r.kind, r.station, r.key])).toEqual([["peer-card", "example", THEIR_PUB]]);
+  expect([existsSync(digestFile(e.peerDir)), e.reads.length]).toEqual([false, 0]);
+});
+
+test("a card from an unknown chat leaves its unknown-chats row", async () => {
+  const e = await setup();
+  await e.poller.processBatch([cardUpdate("example", THEIR_PUB, { chat: { id: -100555, type: "supergroup", title: "t" } })]);
+  expect(readChain(join(e.stateDir, "unknown-chats.jsonl")).map(r => (r as any).chat_id)).toEqual([-100555]);
+});
+
+test("peer-card records count toward the rate cap after a restart", async () => {
+  const e = await setup({ peerOver: { maxPerMinute: 1 } });
+  await e.poller.processBatch([cardUpdate()]);
+  const again = await Poller.create(e.deps);
+  await again.recover();
+  await again.processBatch([cardUpdate()]);
+  expect(inboxOf(e).length).toBe(1);
+});
+
+const KEY_A = Buffer.alloc(32, 5).toString("base64"), KEY_B = Buffer.alloc(32, 6).toString("base64");
+const MIN = 60_000;
+async function pairEnv(over: Parameters<typeof setup>[0] = {}) {
+  const logs: string[] = [];
+  const e = await setup({ operatorDm: true, stationName: "yotam", ...over });
+  const poller = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await poller.recover();
+  return { ...e, poller, logs };
+}
+type PairEnv = Awaited<ReturnType<typeof pairEnv>>;
+const pairRecs = (e: Env) => readChain(join(e.peerDir, "pairing.jsonl")) as any[];
+const offersOf = (e: Env) => pairRecs(e).filter(r => r.kind === "card-offer");
+const closesOf = (e: Env) => pairRecs(e).filter(r => r.kind === "offer-result");
+const pairNotes = (e: Env, type: string) => (readChain(notifyFile(e.stateDir)) as any[]).filter(r => r.type === type);
+const send = (e: PairEnv, key = KEY_A, over: Record<string, unknown> = {}) => e.poller.processBatch([cardUpdate("example", key, over)]);
+const why = (e: PairEnv) => e.logs.filter(l => l.startsWith("card-no-offer")).map(l => l.split("why=")[1]);
+const theirsBase = { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", keys: [] };
+const keyEntry = (pub: string, at: number) => ({ id: keyId(pub), pub, addedAt: new Date(at).toISOString().replace(/\.\d{3}Z$/, "Z") });
+async function trustAtTerminal(e: PairEnv, pub: string, at = e.c.t) {
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.theirs.keys = [keyEntry(pub, at)];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+}
+async function later(e: PairEnv, ms: number) { e.c.t += ms; await e.poller.tick(); }
+
+test("only the peer bot's card in the configured group makes an offer and a pair-offer notify", async () => {
+  const e = await pairEnv();
+  const good = cardUpdate("example", KEY_A);
+  await e.poller.processBatch([cardUpdate("example", KEY_B, { from: { id: 42, is_bot: true } }), cardUpdate("example", KEY_B, { chat: { id: -100555, type: "supergroup" } }), good]);
+  expect(offersOf(e).map(o => [o.key, o.station, o.chat_id, o.message_id])).toEqual([[KEY_A, "example", CHAT, good.message.message_id]]);
+  expect(pairNotes(e, "pair-offer").map(n => [n.offer, n.key, n.exp])).toEqual([[offersOf(e)[0].offer, KEY_A, offersOf(e)[0].exp]]);
+  expect(offersOf(e)[0].exp).toBe(e.c.t + 30 * MIN);
+  expect(cardIntents(e)).toEqual([]);
+});
+
+const NO_OFFER: [string, () => Promise<PairEnv>][] = [
+  ["no-dm", async () => { const e = await pairEnv({ operatorDm: false }); await send(e); return e; }],
+  ["killed", async () => { const e = await pairEnv(); writeFileSync(join(e.configDir, "example.killed"), ""); await send(e); return e; }],
+  ["already-paired", async () => { const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, keys: [keyEntry(KEY_B, T0)] } } }); await send(e); return e; }],
+  ["name-differs", async () => { const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, stationName: "another" } } }); await send(e); return e; }],
+  ["two-cards-today", async () => { const e = await pairEnv(); await send(e, KEY_A); await send(e, KEY_B); await send(e, KEY_A); return e; }],
+  ["already-offered", async () => { const e = await pairEnv(); await send(e); await send(e); return e; }],
+  ["same-message", async () => { const e = await pairEnv(); await send(e, KEY_A, { message_id: 77 }); await later(e, 31 * MIN); await send(e, KEY_A, { message_id: 77 }); return e; }],
+  ["rejected-today", async () => {
+    const e = await pairEnv();
+    await send(e);
+    await new Chain().append(join(e.peerDir, "pairing.jsonl"), { kind: "offer-result", offer: offersOf(e)[0].offer, state: "REJECTED", ts: Math.floor(e.c.t / 1000) });
+    await send(e);
+    return e;
+  }],
+  ["daily-offers", async () => { const e = await pairEnv(); for (let i = 0; i < 6; i++) { await send(e); await later(e, 31 * MIN); } return e; }],
+];
+for (const [rule, run] of NO_OFFER) {
+  test(`no offer: ${rule}`, async () => {
+    const e = await run();
+    expect(why(e).at(-1)).toBe(rule);
+    const made = rule === "two-cards-today" || rule === "already-offered" || rule === "same-message" || rule === "rejected-today" ? 1 : rule === "daily-offers" ? 5 : 0;
+    expect(offersOf(e).length).toBe(made);
+  });
+}
+
+test("when two checks refuse, the earlier one in the order is named", async () => {
+  const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, keys: [keyEntry(KEY_B, T0)] } } });
+  writeFileSync(join(e.configDir, "example.killed"), "");
+  await send(e);
+  expect(why(e)).toEqual(["killed"]);
+});
+
+test("a second, different key while an offer is open closes it two-cards, makes none, and alerts once; a third meets two-cards-today", async () => {
+  const e = await pairEnv();
+  await send(e, KEY_A);
+  await send(e, KEY_B);
+  expect(offersOf(e).length).toBe(1);
+  expect(closesOf(e).map(r => [r.state, r.rule])).toEqual([["REFUSED", "two-cards"]]);
+  expect([pairNotes(e, "pair-alert").length, pairNotes(e, "pair-result").map(n => [n.state, n.rule])]).toEqual([1, [["REFUSED", "two-cards"]]]);
+  await send(e, Buffer.alloc(32, 8).toString("base64"));
+  expect([why(e).at(-1), offersOf(e).length]).toEqual(["two-cards-today", 1]);
+});
+
+test("a different key closes the open offer also at the day's offer cap, and when it was rejected earlier that day", async () => {
+  const capped = await pairEnv();
+  for (let i = 0; i < 4; i++) { await send(capped); await later(capped, 31 * MIN); }
+  await send(capped);
+  await send(capped, KEY_B);
+  expect(closesOf(capped).at(-1)).toMatchObject({ state: "REFUSED", rule: "two-cards" });
+  const rejected = await pairEnv();
+  await send(rejected, KEY_B);
+  await new Chain().append(join(rejected.peerDir, "pairing.jsonl"), { kind: "offer-result", offer: offersOf(rejected)[0].offer, state: "REJECTED", ts: Math.floor(rejected.c.t / 1000) });
+  await send(rejected, KEY_A);
+  await send(rejected, KEY_B);
+  expect(closesOf(rejected).at(-1)).toMatchObject({ state: "REFUSED", rule: "two-cards" });
+});
+
+test("settle closes an expired offer once, with one pair-result", async () => {
+  const e = await pairEnv();
+  await send(e);
+  await later(e, 31 * MIN);
+  await later(e, MIN);
+  expect(closesOf(e).map(r => r.state)).toEqual(["EXPIRED"]);
+  expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["EXPIRED"]);
+});
+
+test("settle: its own key trusted before the expiry is APPROVED by terminal-or-replay, also when the restart comes after the expiry", async () => {
+  const e = await pairEnv();
+  await send(e);
+  await trustAtTerminal(e, KEY_A);
+  await later(e, MIN);
+  expect(closesOf(e).map(r => [r.state, r.by])).toEqual([["APPROVED", "terminal-or-replay"]]);
+  const crashed = await pairEnv();
+  await send(crashed);
+  await trustAtTerminal(crashed, KEY_A);
+  crashed.c.t += 40 * MIN;
+  const again = await Poller.create({ ...crashed.deps, cfg: readPeersFile(crashed.deps.peersPath) });
+  await again.recover();
+  expect(closesOf(crashed).map(r => r.state)).toEqual(["APPROVED"]);
+});
+
+test("settle: its own key trusted only after the expiry is EXPIRED, and another key trusted is REFUSED already-paired", async () => {
+  const late = await pairEnv();
+  await send(late);
+  late.c.t += 31 * MIN;
+  await trustAtTerminal(late, KEY_A);
+  await late.poller.tick();
+  expect(closesOf(late).map(r => r.state)).toEqual(["EXPIRED"]);
+  const other = await pairEnv();
+  await send(other);
+  await trustAtTerminal(other, KEY_B);
+  await other.poller.tick();
+  expect(closesOf(other).map(r => [r.state, r.rule])).toEqual([["REFUSED", "already-paired"]]);
+});
+
+test("settle re-appends a pair-offer, a pair-result and a pair-alert that a crash lost", async () => {
+  const e = await pairEnv();
+  await send(e);
+  dropLast(notifyFile(e.stateDir), 1);
+  await e.poller.tick();
+  expect(pairNotes(e, "pair-offer").length).toBe(1);
+  await send(e, KEY_B);
+  dropLast(notifyFile(e.stateDir), 2);
+  await e.poller.tick();
+  await e.poller.tick();
+  expect([pairNotes(e, "pair-result").length, pairNotes(e, "pair-alert").length]).toEqual([1, 1]);
+});
+
+function noFingerprintOutsideDm(e: PairEnv, key: string) {
+  const bare = fingerprint(key).replace(/ /g, "");
+  const outside = [
+    ...e.sent.filter(s => s.chat !== 4242).map(s => s.text), ...e.logs,
+    ...["outbox.jsonl", "inbox.jsonl", "pairing.jsonl"].map(f => (existsSync(join(e.peerDir, f)) ? readFileSync(join(e.peerDir, f), "utf8") : "")),
+  ];
+  for (const text of outside) expect(text.replace(/ /g, "")).not.toContain(bare);
+}
+
+test("the fingerprint reaches the operator's chat and nowhere else, at the offer and after a two-cards close", async () => {
+  const e = await pairEnv();
+  await send(e, KEY_A);
+  const dm = e.sent.filter(s => s.chat === 4242);
+  expect(dm.length).toBe(1);
+  expect(dm[0].text).toContain(fingerprint(KEY_A));
+  expect(dm[0].markup.inline_keyboard[0][0].callback_data).toBe(`pair:ok:example:${offersOf(e)[0].offer}`);
+  noFingerprintOutsideDm(e, KEY_A);
+  await send(e, KEY_B);
+  noFingerprintOutsideDm(e, KEY_A);
+  noFingerprintOutsideDm(e, KEY_B);
+});
+
+function offerMessage(e: PairEnv): number {
+  const ids = readdirSync(join(e.stateDir, "notify", "sent")).map(Number).filter(id => (readDmSent(e.stateDir, id) as any)?.type === "pair-offer");
+  return Math.max(...ids);
+}
+type TapOver = { verb?: "ok" | "no"; from?: number; chat?: number; inline?: boolean; messageId?: number; offer?: string };
+function pairTapUpdate(e: PairEnv, over: TapOver = {}) {
+  const offer = over.offer ?? offersOf(e).at(-1)!.offer;
+  return { update_id: ++uid, callback_query: { id: `cb${uid}`, data: `pair:${over.verb ?? "ok"}:example:${offer}`, from: { id: over.from ?? 4242 }, ...(over.inline ? {} : { message: { message_id: over.messageId ?? offerMessage(e), chat: { id: over.chat ?? 4242 } } }) } };
+}
+const pairTap = (e: PairEnv, over: TapOver = {}) => e.poller.processBatch([pairTapUpdate(e, over)]);
+const peersBytesOf = (e: Env) => readFileSync(e.deps.peersPath);
+const trustedIn = (e: Env) => readPeersFile(e.deps.peersPath).peers.example.theirs.keys.map(k => k.pub);
+const stateOfLast = (e: Env) => closesOf(e).map(r => [r.state, r.rule ?? null]);
+async function open(over: Parameters<typeof setup>[0] = {}, deps: Partial<PollerDeps> = {}) {
+  const e = await pairEnv(over);
+  if (Object.keys(deps).length) {
+    const poller = await Poller.create({ ...e.deps, ...deps, log: l => e.logs.push(l) });
+    await poller.recover();
+    e.poller = poller;
+  }
+  await send(e);
+  return e;
+}
+async function refusedTap(e: PairEnv, over: TapOver, answer: string, closes: unknown[] = []) {
+  const before = peersBytesOf(e);
+  await pairTap(e, over);
+  expect(e.answers.at(-1)).toBe(answer);
+  expect(peersBytesOf(e).equals(before)).toBe(true);
+  expect(stateOfLast(e)).toEqual(closes as any);
+}
+const lockdownFile = (e: PairEnv) => join(e.cfg.bridgeRoot, "lockdown");
+
+test("a pair tap from anyone but the operator, outside the operator's chat, inline, or on another message writes nothing", async () => {
+  const e = await open();
+  await refusedTap(e, { from: 777 }, "Not authorized.");
+  await refusedTap(e, { chat: CHAT }, "Not authorized.");
+  await refusedTap(e, { inline: true }, "Not authorized.");
+  await refusedTap(e, { messageId: 123 }, "Unknown offer.");
+  await refusedTap(e, { offer: "ffffffff" }, "Unknown offer.");
+  mkdirSync(join(e.stateDir, "notify", "sent"), { recursive: true });
+  writeFileSync(join(e.stateDir, "notify", "sent", "555"), JSON.stringify({ n: 1, chat: 4242, type: "draft", peer: "example", draft: offersOf(e)[0].offer, ts: e.c.t }));
+  await refusedTap(e, { messageId: 555 }, "Unknown offer.");
+});
+
+test("a tap after the expiry closes the offer EXPIRED, for Approve and for Reject", async () => {
+  for (const verb of ["ok", "no"] as const) {
+    const e = await open();
+    e.c.t += 31 * MIN;
+    await refusedTap(e, { verb }, "Already expired.", [["EXPIRED", null]]);
+    expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["EXPIRED"]);
+  }
+});
+
+test("lockdown keeps the offer open, a tap after it lifts trusts, and a Reject during it still rejects", async () => {
+  const e = await open();
+  writeFileSync(lockdownFile(e), "");
+  await refusedTap(e, {}, "locked, reset at the station");
+  rmSync(lockdownFile(e));
+  await pairTap(e);
+  expect([e.answers.at(-1), trustedIn(e)]).toEqual(["Trusted.", [KEY_A]]);
+  const r = await open();
+  writeFileSync(lockdownFile(r), "");
+  await refusedTap(r, { verb: "no" }, "Rejected.", [["REJECTED", null]]);
+  expect(pairNotes(r, "pair-result").map(n => n.state)).toEqual(["REJECTED"]);
+});
+
+test("lockdown or a kill that lands under the lock, before the rename, writes nothing", async () => {
+  let at: PairEnv;
+  const locked = at = await open({}, { peersHooks: { afterRead: () => writeFileSync(lockdownFile(at), "") } });
+  await refusedTap(locked, {}, "locked, reset at the station");
+  const killed = at = await open({}, { peersHooks: { afterRead: () => writeFileSync(join(at.configDir, "example.killed"), "") } });
+  await refusedTap(killed, {}, "Refused (killed).", [["REFUSED", "killed"]]);
+  expect(pairNotes(killed, "pair-result").map(n => [n.state, n.rule])).toEqual([["REFUSED", "killed"]]);
+});
+
+test("a peer killed before the tap is refused, and a terminal trust of another key before the reload is refused by the writer", async () => {
+  const k = await open();
+  writeFileSync(join(k.configDir, "example.killed"), "");
+  await refusedTap(k, {}, "Refused (killed).", [["REFUSED", "killed"]]);
+  const e = await open();
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.theirs.keys = [keyEntry(KEY_B, e.c.t)];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await refusedTap(e, {}, "Refused (already-paired).", [["REFUSED", "already-paired"]]);
+  expect(trustedIn(e)).toEqual([KEY_B]);
+});
+
+test("a held lock answers Busy, and any other writer error leaves the offer open and the poller running", async () => {
+  let at: PairEnv;
+  const busy = at = await open({}, { lockSleep: async ms => { at.c.t += ms; } });
+  const child = Bun.spawn(["cat"], { stdin: "pipe", stdout: "ignore" });
+  try {
+    writeFileSync(join(busy.configDir, "peers.json.lock"), JSON.stringify({ pid: child.pid, start: startIdentity(child.pid) }), { mode: 0o600 });
+    await refusedTap(busy, {}, "Busy, tap again.");
+  } finally { child.kill(); }
+  const e = await open();
+  chmodSync(e.deps.peersPath, 0o644);
+  await refusedTap(e, {}, "Could not record the tap.");
+  expect(e.logs.some(l => l.includes("must be mode 0600"))).toBe(true);
+  chmodSync(e.deps.peersPath, 0o600);
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Trusted.");
+});
+
+test("an offer record of every spool type drained while an offer is open writes no trust", async () => {
+  const e = await open();
+  const before = peersBytesOf(e);
+  const recs: any[] = [
+    { type: "tap", verb: "ok", draft: offersOf(e)[0].offer, by: OP, ts: e.c.t },
+    { type: "draft", source: "send.ts", kind: "info", text: "pair:ok" },
+    { type: "ack", sid: "abc", token: "def" },
+    { type: "confirm", chatId: CHAT },
+    { type: "card" },
+    { type: "pair-tap", verb: "ok", offer: offersOf(e)[0].offer },
+  ];
+  for (const r of recs) submitSpool(e.peerDir, r);
+  await e.poller.drainSpool();
+  expect(peersBytesOf(e).equals(before)).toBe(true);
+  expect(closesOf(e)).toEqual([]);
+});
+
+test("an Approve trusts the key, the poller holds it right after the batch, and pairing.json shows it", async () => {
+  const e = await open();
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Trusted.");
+  expect(trustedIn(e)).toEqual([KEY_A]);
+  expect((e.poller as any).cfg.peers.example.theirs.keys.map((k: any) => k.pub)).toEqual([KEY_A]);
+  expect(readPeersFile(e.deps.peersPath).peers.example.theirs.stationName).toBe("example");
+  expect(JSON.parse(readFileSync(join(process.env.HOME!, ".himmel", "remote-setup", "pairing.json"), "utf8")).peers[0].theirKey).toBe(true);
+  expect(closesOf(e).map(r => [r.state, r.by])).toEqual([["APPROVED", OP]]);
+  expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["APPROVED"]);
+  noFingerprintOutsideDm(e, KEY_A);
+});
+
+test("a station-name write that lands during the tap is kept and the tap still trusts", async () => {
+  let at: PairEnv, n = 0;
+  const e = at = await open({}, { peersHooks: { afterRead: () => {
+    if (n++) return;
+    const doc = JSON.parse(readFileSync(at.deps.peersPath, "utf8"));
+    doc.self = { stationName: "renamed" };
+    writeFileSync(at.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  } } });
+  await pairTap(e);
+  expect([e.answers.at(-1), trustedIn(e), readPeersFile(e.deps.peersPath).self.stationName]).toEqual(["Trusted.", [KEY_A], "renamed"]);
+});
+
+test("two Approves in one batch leave one key and one result, and a later one changes nothing", async () => {
+  const e = await open();
+  await e.poller.processBatch([pairTapUpdate(e), pairTapUpdate(e)]);
+  expect([trustedIn(e), closesOf(e).length, e.answers.slice(-2)]).toEqual([[KEY_A], 1, ["Trusted.", "Already approved."]]);
+  const peers = peersBytesOf(e), recs = readFileSync(join(e.peerDir, "pairing.jsonl"));
+  await pairTap(e);
+  expect(e.answers.at(-1)).toBe("Already approved.");
+  expect([peersBytesOf(e).equals(peers), readFileSync(join(e.peerDir, "pairing.jsonl")).equals(recs)]).toEqual([true, true]);
+});
+
+test("an ordinary peer reply whose body starts with #pair stays a peer message", async () => {
+  const e = await pairEnv();
+  const ask = askRoot();
+  await e.poller.processBatch([ask]);
+  await e.poller.processBatch([rootUpdate("#answer id=b2c3d4e5\n#pair programming on Friday?", { reply_to_message: { message_id: ask.message.message_id } })]);
+  expect(inboxOf(e).map(r => r.kind)).toEqual(["peer-msg", "peer-msg"]);
+});
+
+test("an offer that expires after the tap takes the lock is closed EXPIRED and writes nothing", async () => {
+  let at: PairEnv;
+  const e = at = await open({}, { peersHooks: { afterRead: () => { at.c.t += 31 * MIN; } } });
+  await refusedTap(e, {}, "Already expired.", [["EXPIRED", null]]);
+});
+
+test("a card replayed after a crash before its offer is not dropped by the rate it already counted in", async () => {
+  const e = await pairEnv({ peerOver: { maxPerMinute: 1 } });
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const again = await Poller.create(e.deps);
+  await again.recover();
+  await again.processBatch([u]);
+  expect(offersOf(e).map(o => o.key)).toEqual([KEY_A]);
+  expect(inboxOf(e).filter(r => r.kind === "peer-card").length).toBe(1);
+});
+
+test("a replayed card passes admission again: a changed peer bot id makes no offer", async () => {
+  const e = await pairEnv();
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.peerBotId = "777000777";
+  doc.peers.example.allowFrom = [PEER_ID, "777000777"];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+  await e.poller.processBatch([u]);
+  expect(offersOf(e)).toEqual([]);
+});
+
+test("a replayed card takes no rate charge from another message", async () => {
+  const e = await pairEnv({ peerOver: { maxPerMinute: 3 } });
+  await e.poller.processBatch([askRoot("c3d4e5f6")]);
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const charged = (e.poller as any).gate.rate.get("example").length;
+  await e.poller.processBatch([u]);
+  expect([(e.poller as any).gate.rate.get("example").length, offersOf(e).length]).toEqual([charged, 1]);
 });

@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { readPeersFile } from "./config";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readChain } from "./chain";
@@ -23,6 +24,8 @@ export type Bridge = {
   stateDir: string;
   configDir: string;
   peerDir: string;
+  peersPath: string;
+  answers: string[];
   key: KeyInfo;
   logs: string[];
   inbox: any[];
@@ -32,14 +35,17 @@ export type Bridge = {
 };
 
 export type World = {
-  alpha: Bridge; bravo: Bridge; clock: { t: number; now: () => number }; wire: { from: Side; text: string }[];
+  alpha: Bridge; bravo: Bridge; clock: { t: number; now: () => number }; wire: { from: Side; chat: number; text: string; message_id: number; markup?: any }[];
   step(side: Side): Promise<void>;
   inject(from: Side, kind: Kind, body: Record<string, unknown>, opts?: { tamper?: boolean; text?: string }): string;
 };
 
-export type WorldOpts = { serves?: boolean; allow?: AllowEntry[]; approve?: "tty" | "auto"; budgets?: Record<string, number>; bravoPeer?: Record<string, unknown> };
+export type WorldOpts = { serves?: boolean; allow?: AllowEntry[]; approve?: "tty" | "auto"; budgets?: Record<string, number>; bravoPeer?: Record<string, unknown>; operatorDm?: boolean; unpaired?: boolean };
+
+export const DM_CHAT = 4242;
 
 export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
+  process.env.HOME = mkdtempSync(join(tmpdir(), "peer-w-home-"));
   const clock = { t: T0_MS, now: () => clock.t };
   const wire: World["wire"] = [];
   const keys = { alpha: null as unknown as KeyInfo, bravo: null as unknown as KeyInfo };
@@ -50,6 +56,7 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     keys[s] = keygen(dirs[s].configDir);
   }
   const bridges = {} as Record<Side, Bridge>;
+  const answers: Record<Side, string[]> = { alpha: [], bravo: [] };
   let updateId = 1000, messageId = 5000;
 
   for (const side of ["alpha", "bravo"] as Side[]) {
@@ -59,7 +66,7 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     mkdirSync(join(peerDir, "spool"), { recursive: true, mode: 0o700 });
     const theirs = {
       username: BOT_USER[other], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-20",
-      stationName: other, keys: [{ id: keys[other].id, pub: keys[other].pub, addedAt: "2026-11-19T00:00:00Z" }],
+      ...(opts.unpaired ? { keys: [] } : { stationName: other, keys: [{ id: keys[other].id, pub: keys[other].pub, addedAt: "2026-11-19T00:00:00Z" }] }),
     };
     const serving = side === "bravo" && opts.serves !== false;
     const cfg = {
@@ -73,7 +80,11 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
           ...(side === "bravo" ? opts.bravoPeer ?? {} : {}),
         },
       },
+      ...(opts.operatorDm ? { operatorDmChatId: DM_CHAT } : {}),
     } as unknown as Config;
+    const peersPath = join(configDir, "peers.json");
+    writeFileSync(peersPath, JSON.stringify(cfg), { mode: 0o600 });
+    chmodSync(peersPath, 0o600);
     if (side === "bravo" && opts.allow) {
       writeFileSync(join(configDir, `${other}.suites`), opts.allow.map(a => `${a.alias} ${a.path}\n`).join(""), { mode: 0o600 });
     }
@@ -82,18 +93,19 @@ export async function makeWorld(opts: WorldOpts = {}): Promise<World> {
     const tg: TgLike = {
       getUpdates: async () => inbox.splice(0),
       getChatMember: async () => ({ user: { username: BOT_USER[side] } }),
-      sendMessage: async (_chat: number, text: string) => {
-        wire.push({ from: side, text });
-        bridges[other].inbox.push({ update_id: ++updateId, message: { message_id: ++messageId, from: { id: Number(BOT_ID[side]), is_bot: true, username: BOT_USER[side] }, chat: { id: CHAT, type: "supergroup" }, date: clock.t / 1000, text } });
+      sendMessage: async (chat: number, text: string, _replyTo?: number, markup?: any) => {
+        wire.push({ from: side, chat, text, message_id: ++messageId, ...(markup ? { markup } : {}) });
+        if (chat === CHAT) bridges[other].inbox.push({ update_id: ++updateId, message: { message_id: messageId, from: { id: Number(BOT_ID[side]), is_bot: true, username: BOT_USER[side] }, chat: { id: CHAT, type: "supergroup" }, date: clock.t / 1000, text } });
         return { message_id: messageId };
       },
+      answerCallbackQuery: async (_id: string, text: string) => { answers[side].push(text); },
     };
     const checked: { lines: string[]; ok: boolean }[] = [];
     const checkEnvelope: typeof checkEnvelopeOutbound = async (lines, ctx) => { const r = await checkEnvelopeOutbound(lines, ctx); checked.push({ lines, ok: r.ok }); return r; };
-    const poller = await Poller.create({ cfg, tg, ourBotId: BOT_ID[side], stateDir, configDir, clock: clock.now, hostname: "testbox", checkEnvelope, log: l => logs.push(l) });
+    const poller = await Poller.create({ cfg, tg, ourBotId: BOT_ID[side], stateDir, configDir, peersPath, reloadConfig: () => readPeersFile(peersPath), clock: clock.now, hostname: "testbox", checkEnvelope, log: l => logs.push(l) });
     await poller.recover();
     bridges[side] = {
-      side, other, poller, cfg, stateDir, configDir, peerDir, key: keys[side], logs, inbox, checked,
+      side, other, poller, cfg, stateDir, configDir, peerDir, peersPath, answers: answers[side], key: keys[side], logs, inbox, checked,
       chain: (f: string) => readChain(join(peerDir, f)),
       jobs() {
         const m = new Map<number, any>();

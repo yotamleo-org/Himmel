@@ -1,5 +1,8 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import * as EG from "./egress";
+import { runProc } from "./proc";
+import { cardMessage } from "./config";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { mintRetaskNonce as briefNonce } from "../telegram/brief-blocks";
@@ -270,4 +273,47 @@ test("the matrix row decides: peer-jobs to peer-telegram is allowed, and no rule
   await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: empty });
   const textOnly = { default: "deny", rules: [{ corpus: "peer-desk", provider: "peer-telegram", purpose: "peer-message", verdict: "allow" }] };
   await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: textOnly });
+});
+
+const slashed = [TE.keyWithShape(/\+\/[A-Za-z0-9]/), TE.keyWithShape(/^\/[A-Za-z0-9]/)];
+afterAll(() => { for (const s of slashed) TE.dropStation(s); });
+const cardPeer = () => peer({ theirs: { ...peer().theirs, username: "their_bot" } });
+const cardCtx = (st: TE.Station, over: Record<string, unknown> = {}) => ({ peer: cardPeer(), self: "yotam", keyDir: st.dir, himmelRoot: HIMMEL_ROOT, hostname: "box.lan", ...over }) as any;
+const card = (st: TE.Station, station = "yotam") => cardMessage("their_bot", station, st.key.pub);
+async function cardRefused(text: string, rule: string, st: TE.Station, over: Record<string, unknown> = {}) {
+  expect(await EG.checkCardOutbound(text, cardCtx(st, over))).toMatchObject({ ok: false, rule });
+}
+
+test("the card gate passes the exact card for keys whose base64 holds slashes, which the free-text gate refuses", async () => {
+  for (const st of slashed) {
+    expect(await EG.checkCardOutbound(card(st), cardCtx(st))).toEqual({ ok: true });
+    expect(await refused(card(st).split("\n")[1], { kind: "info" })).toMatchObject({ rule: "path" });
+  }
+});
+
+test("the card gate refuses any other bytes, another key, a dead chat, a host name, no matrix row and any secret shape", async () => {
+  const st = slashed[0];
+  await cardRefused(card(st) + " ", "card-text", st);
+  await cardRefused(card(st).replace("station=yotam", "station=yotan"), "card-text", st);
+  await cardRefused(card(st) + "\nmore", "card-text", st);
+  await cardRefused(card(slashed[1]), "card-text", st);
+  await cardRefused(card(st), "unknown-peer", st, { peer: undefined });
+  await cardRefused(card(st), "peer-not-live", st, { peer: { ...cardPeer(), chatId: null } });
+  await cardRefused(card(st), "no-name", st, { self: undefined });
+  await cardRefused(card(st), "no-key", st, { keyDir: st.dir + "-missing" });
+  await cardRefused(card(st, "box"), "host", st, { self: "box" });
+  await cardRefused(card(st), "egress-matrix", st, { matrix: { default: "deny", rules: [{ corpus: "peer-jobs", provider: "peer-telegram", purpose: "peer-message", verdict: "allow" }] } });
+  const stubRoot = mkdtempSync(join(tmpdir(), "peer-redact-"));
+  mkdirSync(join(stubRoot, "scripts", "lib"), { recursive: true });
+  writeFileSync(join(stubRoot, "scripts", "lib", "redact.sh"), "redact_check() { cat >/dev/null; echo 'shape=gh precision=low'; return 10; }\n");
+  await cardRefused(card(st), "secret-shape", st, { himmelRoot: stubRoot, allowShape: "gh", tty: true, claudecode: false });
+});
+
+test("the real redact_check passes fifty random cards in one run", async () => {
+  const cards = Array.from({ length: 50 }, () => {
+    const st = TE.mkStation("yotam");
+    try { return card(st); } finally { TE.dropStation(st); }
+  });
+  const run = await runProc(["bash", "-c", `. ${HIMMEL_ROOT}/scripts/lib/redact.sh && redact_check`], { input: cards.join("\n"), env: { PATH: process.env.PATH ?? "/usr/bin:/bin" }, timeoutMs: 15_000 });
+  expect([run.timedOut, run.code]).toEqual([false, 0]);
 });

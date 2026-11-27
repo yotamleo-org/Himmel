@@ -18,7 +18,15 @@ export function mkStation(name: string): Station {
   const key = keygen(dir);
   return { name, dir, keyPath: join(dir, STATION_KEY), key };
 }
-export const dropStation = (s: Station) => fs.rmSync(s.dir, { recursive: true, force: true });
+export function keyWithShape(re: RegExp): Station {
+  for (let i = 0; i < 2000; i++) {
+    const s = mkStation("shape");
+    if (re.test(s.key.pub)) return s;
+    dropStation(s);
+  }
+  throw new Error(`no key of shape ${re} in 2000 tries`);
+}
+export const dropStation =(s: Station) => fs.rmSync(s.dir, { recursive: true, force: true });
 
 export const iso = (s: number) => new Date(s * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
 

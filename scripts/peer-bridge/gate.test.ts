@@ -7,6 +7,7 @@ import { readChain } from "./chain";
 import type { Config } from "./config";
 import { EnvelopeWindow, admit, appendUnknownChat, createGateState, noteAdmitted, rebuildFromInbox, type GateState } from "./gate";
 import { failedTests, makeRedCopy } from "./testlib-red-copy";
+import * as G from "./gate";
 
 const OUR_ID = "111000111", OUR_NAME = "ours_bot", PEER_ID = "555000111", HUMAN = "42";
 const CHAT = -1001234567890;
@@ -306,4 +307,57 @@ test("an id taken back out of the envelope window is no longer a duplicate, and 
   expect(w.has(CHAT, 1, "00000001")).toBe(false);
   expect(w.has(CHAT, 1, "00000002")).toBe(true);
   expect(w.size).toBe(1);
+});
+
+const CARD_PUB = Buffer.alloc(32, 5).toString("base64");
+const CARD_TEXT = `/peer@${OUR_NAME}\n#pair station=example key=${CARD_PUB}`;
+const cardUpd = (over: Record<string, unknown> = {}, text = CARD_TEXT) => rootUpd(over, text);
+
+test("admitCard admits the peer bot's fresh two-line card in the configured supergroup", () => {
+  const u = cardUpd();
+  expect(G.looksLikeCard(u)).toBe(true);
+  const r = G.admitCard(u, cfg(), fresh());
+  expect(r.ok).toBe(true);
+  if (r.ok) expect(r.rec).toEqual({ kind: "peer-card", untrusted: true, peer: "example", from_id: PEER_ID, chat_id: CHAT, message_id: u.message.message_id, ts: NOW / 1000, station: "example", key: CARD_PUB } as any);
+});
+
+test("admitCard refuses every other sender, chat and shape, and logs only the text's sha", () => {
+  const who = (id: number, bot = true) => ({ from: { id, is_bot: bot, username: "x" } });
+  const cases: [string, any][] = [
+    ["another allowFrom id", cardUpd(who(Number(HUMAN)))],
+    ["a human peer id", cardUpd(who(Number(PEER_ID), false))],
+    ["another chat", cardUpd({ chat: { id: -100555, type: "supergroup" } })],
+    ["a basic group", cardUpd({ chat: { id: CHAT, type: "group" } })],
+    ["an edit", cardUpd({ edit_date: 5 })],
+    ["a forward", cardUpd({ forward_date: 5 })],
+    ["via_bot", cardUpd({ via_bot: { id: 1 } })],
+    ["a quote", cardUpd({ quote: { text: "x" } })],
+    ["a reply", cardUpd({ reply_to_message: { message_id: 1 } })],
+    ["a sender_chat", cardUpd({ sender_chat: { id: 1 } })],
+    ["the anonymous admin", cardUpd(who(1087968824))],
+    ["our own bot", cardUpd(who(Number(OUR_ID)))],
+    ["a third line", cardUpd({}, CARD_TEXT + "\nmore")],
+    ["another bot's address", cardUpd({}, CARD_TEXT.replace(OUR_NAME, "other_bot"))],
+    ["a bad key", cardUpd({}, `/peer@${OUR_NAME}\n#pair station=example key=${CARD_PUB.slice(0, -2)}d=`)],
+  ];
+  for (const [why, u] of cases) {
+    const state = fresh();
+    const c = why === "another chat" ? cfg() : cfg();
+    if (why === "a reply") state.roots.add(`${CHAT}:1`);
+    const r = G.admitCard(u, c, state);
+    expect([why, r.ok]).toEqual([why, false]);
+    if (!r.ok) {
+      expect(r.log).toMatch(/^card-drop rule=\d reason=.+ peer=(example|-) sha256=[0-9a-f]{64}$/);
+      expect(r.log).not.toContain(CARD_PUB);
+    }
+  }
+  const state = fresh();
+  const u = cardUpd();
+  state.committed = u.update_id;
+  expect(G.admitCard(u, cfg(), state).ok).toBe(false);
+});
+
+test("admitCard keeps the unknown-chat row of a rule 3 drop", () => {
+  const r = G.admitCard(cardUpd({ chat: { id: -100555, type: "supergroup", title: "t" } }), cfg(), fresh());
+  expect(r.ok === false && r.unknownChat).toEqual({ chat_id: -100555, type: "supergroup", title: "t" });
 });
