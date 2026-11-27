@@ -1566,10 +1566,15 @@ python3 -B -c 'import sys
 sys.path.insert(0, sys.argv[1]); import eval_runs
 eval_runs.append_row(eval_runs.make_row("review-panel-judged", "fixture", {}, {"catch_rate": 0.5}, run_id="judged-case-72",
                                         gitsha="0" * 40), sys.argv[2])' "$HERE/../lib" "$MS/judged-named.jsonl"
-out="$out$(misses "$MS/k2.json" --outputs "$M2" --ledger "$MS/judged-named.jsonl")"
+out="$out$(misses "$MS/k2.json" --outputs "$M2" --ledger "$MS/judged-named.jsonl" --json "$MS/m2r.json")"
 has "MA2 misses: a judged run id naming a sealed case is reported redacted" "$out" "verified (judged run judged-<sealed case>)"
-eq "MA2 misses: neither outside name carries a sealed case id" \
-  "$(printf '%s\n' "$out" | cat - "$MS/m2n.json" | grep -cE 'case-7[12]')" "0"
+cp -r "$M2" "$MS/named/pcase-72-1"
+out="$out$(misses "$MS/k2.json" --outputs "$MS/named/pcase-72-1" --json "$MS/m2d.json")"
+has "MA2 misses: a bundle named after a sealed defect id is reported redacted" "$out" "bundle <sealed defect>"
+eq "MA2 misses: all three json reports were written" \
+  "$(cat "$MS/m2n.json" "$MS/m2r.json" "$MS/m2d.json" | grep -c '"open_defects"')" "3"
+eq "MA2 misses: no outside name carries a sealed case or defect id" \
+  "$(printf '%s\n' "$out" | cat - "$MS/m2n.json" "$MS/m2r.json" "$MS/m2d.json" | grep -cE 'case-7[12]')" "0"
 out=$(misses "$MS/k2.json" --outputs "$M2" --validation "$MS/no-such-sidecar.json" --adjudications "$MS/none.jsonl"); rc=$?
 eq "MA2 misses: an unreadable sidecar is refused" "$rc" "2"
 mkdir -p "$MS/fx-gone"; cp "$MS/fx"/case-61*.patch "$MS/fx-gone/"

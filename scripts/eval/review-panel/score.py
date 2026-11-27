@@ -1550,9 +1550,14 @@ def report_misses(res):
 
 
 def redact_ids(text, cases):
-    """text with every sealed case id of the key's cases replaced."""
-    for cid in sorted((c for c, v in cases.items() if v.get("split") != "open"), key=len, reverse=True):
-        text = text.replace(cid, "<sealed case>")
+    """text with every sealed case id and sealed defect id of the key's cases replaced, the longest first."""
+    names = {}
+    for cid, c in cases.items():
+        if c.get("split") != "open":
+            names[cid] = "<sealed case>"
+            names.update({d["id"]: "<sealed defect>" for d in c.get("defects", [])})
+    for name in sorted(names, key=len, reverse=True):
+        text = text.replace(name, names[name])
     return text
 
 
