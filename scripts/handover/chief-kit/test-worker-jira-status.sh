@@ -350,15 +350,15 @@ check "D4b: only the latest merge row counts -> D5c" "$(row rule)" D5c
 reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5c: a partial merge then WRAPPED with a live lock is never To Do" "$(ntrans)" 0
+check "11376 D5c: a partial merge then WRAPPED with a live lock -> To Do, one rule on every wrap" "$(moved)" "transition $K To Do"
 check "D5c: rule" "$(row rule)" D5c
 fn "$K" --event sweep
-check "D5c: nor does the next sweep demote it" "$(ntrans)" 0
+check "11376 D5c: and the next sweep moves nothing more" "$(ntrans)" 1
 reset "In Progress"; owned WRAPPED 0
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
 check "10955 D5c: a partial merge then WRAPPED with no live lock -> To Do" "$(moved)/$(row rule)" "transition $K To Do/D5c"
-contains "10955 D5c: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live lock (D5c) → To Do"
+contains "10955 D5c: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live worker (D5c) → To Do"
 reset "To Do"; owned WRAPPED 0
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"moved"}\n' "$K" >> "$LOG"
 fn "$K" --event sweep
@@ -366,7 +366,7 @@ check "10955 D5c: a partial in To Do with no live lock stays To Do" "$(ntrans)/$
 reset "To Do"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"moved"}\n' "$K" >> "$LOG"
 fn "$K" --event sweep
-check "D5c: a partial left in To Do goes back to In Progress" "$(moved)" "transition $K In Progress"
+check "11376 D5c: a partial in To Do stays To Do while the wrapped lock is still held" "$(ntrans)" 0
 reset "In Progress"; owned WRAPPED 0
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
@@ -378,7 +378,7 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","result":"moved","rule":"D3","from":"IN CI","to":"In Progress","dir":"back"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c (HIMMEL-8522): a derive row under event merge after a contract=no row -> D5c" "$(row rule)" D5c
-check "D5c (HIMMEL-8522): the replay is never demoted to To Do" "$(ntrans)" 0
+check "D5c (HIMMEL-8522): the replay moves by the contract row to To Do" "$(moved)" "transition $K To Do"
 reset "IN CI"; owned WRAPPED
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"miss","stage":"transition"}\n' "$K" >> "$LOG"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","result":"noop","rule":"D3","from":"IN CI"}\n' "$K" >> "$LOG"
@@ -412,18 +412,18 @@ check "D5d: the owner on record is the chief step" "$(jq -r .owner "$REC")" "chi
 reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf 'Remaining: the second half of the parser\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5d: a partial with no readable owner stays D5c In Progress" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a partial with no readable owner stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining() {
     reset "In Progress"; owned WRAPPED 11; d5d_merge
     printf 'Remaining: %s\n' "$1" > "$FX/pr-body-11"
     fn "$K" --event wrapped --doc "$DOC"
 }
 d5d_remaining "the rest of YR-2 and LINE-3 stays here, see real-012"
-check "D5d: key-shaped words that are not tickets name no owner -> D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: key-shaped words that are not tickets name no owner -> D5c" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the second half stays on $K"
-check "D5d: a Remaining line naming only the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a Remaining line naming only the own key stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "held for HIMMEL-9561 and the parser half"
-check "D5d: a cross-reference is not an owner -> D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a cross-reference is not an owner -> D5c" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the cutover, owner: HIMMEL-9002"
 check "D5d: an owner: phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9002
 d5d_remaining "the cutover → HIMMEL-9003"
@@ -431,15 +431,15 @@ check "D5d: an arrow phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")
 reset "In Progress"; owned WRAPPED 11; d5d_merge
 printf 'Remaining: the second half stays on this ticket\n\n## Ticket coverage\n- ask one: deferred -> HIMMEL-9002\n- ask two: done\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5d: a Remaining line plus a coverage deferred arrow to another key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a Remaining line plus a coverage deferred arrow to another key stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the rest, owner: $K"
-check "D5d: owner: with the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: owner: with the own key stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the rest → $K"
-check "D5d: an arrow to the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: an arrow to the own key stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the rest → himmel-9002"
-check "D5d: a lowercase key after an arrow stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a lowercase key after an arrow stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 d5d_remaining "the rest, owner: HIMMEL-9002x"
-check "D5d: a key with trailing word characters stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+check "D5d: a key with trailing word characters stays D5c, not D5d" "$(ntrans)/$(row rule)" 1/D5c
 reset "In Progress"; owned LIVE 11 0; d5d_merge
 printf '## Ticket coverage\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
 fn "$K" --event live --doc "$DOC"
@@ -463,10 +463,10 @@ fn "$K" --event wrapped --doc "$DOC"
 check "10955 D6n: WRAPPED on a completes-no brief, In Progress, no PR, no merge row, no live lock -> To Do" "$(moved)" "transition $K To Do"
 check "D6n: rule" "$(row rule)" D6n
 check "10955 D6n: the row is a move" "$(row result)" moved
-contains "10955 D6n: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live lock (D6n) → To Do"
+contains "10955 D6n: the slipped ticket is named" "$(cat "$tmp/out")" "worker-jira-status: SLIPPED $K In Progress with no live worker (D6n) → To Do"
 reset "In Progress"; owned WRAPPED 11; flagdoc no
 fn "$K" --event wrapped --doc "$DOC"
-check "10955 D6n: the same doc with a live lock leaves In Progress alone" "$(ntrans)/$(row rule)/$(row result)" 0/D6n/noop
+check "11376 D6n: the same doc with a live lock moves too" "$(ntrans)/$(row rule)/$(row result)" 1/D6n/moved
 reset "In Progress"; owned WRAPPED 0; flagdoc yes
 fn "$K" --event wrapped --doc "$DOC"
 check "D6n guard: completes yes still moves In Progress to To Do" "$(moved)" "transition $K To Do"
@@ -492,13 +492,13 @@ printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:00
 ( cd "$tmp/hard" && bash "$SUT" "$K" --event wrapped --doc -f >"$tmp/out" 2>&1 )
 check "9323 a --doc path -f is read as the doc: wrapped on a completes-no brief, rule D6n" "$(row rule)" D6n
 check "9323 a --doc path -f: no live lock, so To Do (10955)" "$(moved)" "transition $K To Do"
-# --- D5c: a merged PR with no merge row keeps a wrapped ticket In Progress ---
+# --- D5c: a merged PR with no merge row answers D5c, never D6, for a wrapped ticket ---
 merged() { printf '%s\n' "$1" > "$FX/pr-merged.json"; } # the merged-PR list the stub gh returns
 reset "In Review"; owned WRAPPED 11
 merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c merged-no-row: a merged PR, no merge row, WRAPPED -> rule D5c, not D6" "$(row rule)" D5c
-check "D5c merged-no-row: the ticket moves to In Progress" "$(moved)" "transition $K In Progress"
+check "D5c merged-no-row: the ticket moves to To Do" "$(moved)" "transition $K To Do"
 check "D5c merged-no-row: the row carries stage=merged-no-row" "$(row stage)" merged-no-row
 check "D5c merged-no-row: the row names the merged PR" "$(row merged_pr)" 77
 # The row the first run wrote (a real funnel launch, not a seeded fixture) answers every later derive:
@@ -513,17 +513,17 @@ printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 : > "$STUB_LOG"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
-check "D5c merged-no-row: the real sweep (open-PR snapshot) keeps the ticket In Progress" "$(ntrans)" 0
+check "D5c merged-no-row: the real sweep (open-PR snapshot) moves nothing more" "$(ntrans)" 0
 check "D5c merged-no-row: and makes no merged-PR gh call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 0
 rm -f "$FX/pr-merged.fail"
 # A first sweep over a ticket no funnel run has logged: its snapshot derive reads D6, which only
-# routes the key to the funnel; the funnel derives live and finds the merged PR, never To Do.
+# routes the key to the funnel; the funnel derives live and finds the merged PR.
 reset "IN CI"; owned WRAPPED 11
 merged "[{\"number\":81,\"title\":\"fix: [$K] shipped by hand\"}]"
 printf '%s\n' "$K" > "$FX/list.key"
 printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
-check "D5c merged-no-row: a first sweep moves the ticket to In Progress, never To Do" "$(moved)" "transition $K In Progress"
+check "D5c merged-no-row: a first sweep moves the ticket to To Do" "$(moved)" "transition $K To Do"
 check "D5c merged-no-row: and logs the stage for the next derive" "$(row stage)/$(row merged_pr)" merged-no-row/81
 # The sweep's snapshot derive never reads the merged list: only the funnel's live derive does (one call).
 check "D5c merged-no-row: a snapshot derive makes no merged-PR gh call (the funnel makes the only one)" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 1
@@ -534,12 +534,12 @@ check "D5c merged-no-row: a non-D5c noop row is unchanged" "$(statusrows | tail 
 reset "In Progress"; owned WRAPPED 11
 printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5c merged-no-row: a partial-merge D5c noop row is unchanged (no stage, no merged_pr)" "$(statusrows | tail -n 1 | jq -c 'del(.ts)')" "{\"event\":\"wrapped\",\"key\":\"$K\",\"result\":\"noop\",\"rule\":\"D5c\",\"from\":\"In Progress\"}"
+check "D5c merged-no-row: a partial-merge D5c moved row is unchanged (no stage, no merged_pr)" "$(statusrows | tail -n 1 | jq -c 'del(.ts)')" "{\"event\":\"wrapped\",\"key\":\"$K\",\"result\":\"moved\",\"rule\":\"D5c\",\"from\":\"In Progress\",\"to\":\"To Do\",\"dir\":\"back\"}"
 reset "In Progress"; owned WRAPPED 11
 merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
 fn "$K" --event wrapped --doc "$DOC"
-check "D5c merged-no-row: a ticket already In Progress is not moved" "$(ntrans)" 0
-check "D5c merged-no-row: and its noop row still carries the stage" "$(row stage)" merged-no-row
+check "D5c merged-no-row: a wrapped ticket In Progress moves to To Do" "$(moved)" "transition $K To Do"
+check "D5c merged-no-row: and its row still carries the stage" "$(row stage)" merged-no-row
 reset "In Review"; owned WRAPPED 0
 merged "[{\"number\":78,\"title\":\"fix: [HIMMEL-90019] y follows [$K]\"}]"
 fn "$K" --event wrapped --doc "$DOC"
@@ -1041,7 +1041,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     else
         echo "skip - phase I5 b, d, f: no flock binary"
     fi
-    reset "To Do"; owned WRAPPED 11; labels '[]'; mergerow 11 no
+    reset "In Progress"; owned WRAPPED 11; labels '[]'; mergerow 11 no
     printf '%s\n' "$K" > "$FX/list.key"
     printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
     bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
