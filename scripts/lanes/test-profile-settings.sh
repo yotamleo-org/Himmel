@@ -108,5 +108,13 @@ for list in readiness,worker-impl worker-impl,readiness; do
     case "$E13" in *'cannot be composed'*) [ "$rc" = 2 ] && ok "T13 $list refuses to compose (rc=2)" || bad "T13 $list rc=$rc" ;; *) bad "T13 $list wrong refusal reason (rc=$rc): $E13" ;; esac
 done
 
+envof() { python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("env"), sort_keys=True))' "$1"; }
+MH=$(bash "$PS" maintainer-hooks); rc=$?
+[ "$rc" = 0 ] && ok "T14 maintainer-hooks resolves rc=0" || bad "T14 rc=$rc"
+[ "$(envof "$MH" 2>/dev/null)" = '{"HIMMEL_HOOK_INTEGRITY_BYPASS_OK": "1", "HIMMEL_MAINTAINER_ACTION": "hook-edit"}' ] \
+    && ok "T14 maintainer-hooks file env holds exactly the marker and the hook bypass" || bad "T14 env wrong: $(envof "$MH" 2>/dev/null)"
+WI=$(bash "$PS" worker-impl); rc=$?
+[ "$rc" = 0 ] && [ "$(envof "$WI")" = null ] && ok "T14 worker-impl file carries no env block (control)" || bad "T14 worker-impl rc=$rc env=$(envof "$WI" 2>/dev/null)"
+
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"

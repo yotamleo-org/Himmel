@@ -75,7 +75,11 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr
 // client-side classifier claudex runs denies it.
 const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
-const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'worker-impl', 'worker-bus', 'worker-eval', 'worker-docs', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
+const MAINTAINER_ENV = {
+  'maintainer-hooks': { HIMMEL_MAINTAINER_ACTION: 'hook-edit', HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '1' },
+};
+const envOf = (name) => (Object.hasOwn(MAINTAINER_ENV, name) ? { env: { ...MAINTAINER_ENV[name] } } : {});
+const WORKER_SESSION_PROFILES = new Set(['maintainer-hooks', 'lane-impl', 'worker-impl','worker-bus', 'worker-eval', 'worker-docs', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
 
 // The readiness role. Its whole model-facing capability is these two MCP tools, served by
 // the adapter in scripts/handover/chief-kit/readiness-tools.mjs; every native tool is denied as well
@@ -347,6 +351,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     if (spec.disableWorkflows !== undefined) errors.push('profile "bare" must not declare disableWorkflows — bare has no base capability to restrict');
     if (spec.previewBrowser !== undefined) errors.push('profile "bare" must not declare previewBrowser — bare is floor-only by construction');
   }
+  if (spec.env !== undefined) errors.push(`profile "${name}" must not declare env: a settings env comes only from the resolver's maintainer table`);
   validateReadinessSpec(errors, name, spec);
   validateToolTrim(errors, name, spec);
   if (spec.artifact !== undefined && typeof spec.artifact !== 'boolean') errors.push(`profile "${name}" artifact must be a boolean`);
@@ -695,7 +700,7 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts) };
+    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts), ...envOf(name) };
   }
   const chiefAllow = spec?.chiefAllow === true ? (registry.chiefAllow ?? []) : [];
   const allow = [...chiefAllow, ...mcpAllow];
@@ -740,7 +745,7 @@ export function contextForProfile(registry, name) {
 // Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
-export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'chief', 'chief-relay', 'console-judge', 'release-manager', READINESS_PROFILE];
+export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'chief', 'chief-relay', 'console-judge', 'release-manager', READINESS_PROFILE, ...Object.keys(MAINTAINER_ENV)];
 
 // A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor
