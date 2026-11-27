@@ -4281,6 +4281,56 @@ assert_rc "11257c19 a literal closing brace ending another executable's name all
     "$(bash_rc_of "$WT2" '/opt/tool} plugin install foo' HOME="$T3H")"
 assert_rc "11257b22 a braced default whose suffix completes the agy name denies" 2 \
     "$(bash_rc_of "$WT2" '${X:-/usr/bin/ag}y plugin import claude' HOME="$T3H")"
+assert_rc "11341a1 a brace command word that expands to agy denies" 2 \
+    "$(bash_rc_of "$WT2" '{agy,} plugin install ./p' HOME="$T3H")"
+assert_rc "11341a2 a brace inside the agy command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a{g,}y plugin import claude' HOME="$T3H")"
+assert_rc "11341a3 a star glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" 'a*y plugin import claude' HOME="$T3H")"
+assert_rc "11341a4 a question-mark glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" 'a?y mcp add srv -- cmd' HOME="$T3H")"
+assert_rc "11341a5 a bracket glob command word that matches agy denies" 2 \
+    "$(bash_rc_of "$WT2" '[a]gy plugin install ./p' HOME="$T3H")"
+assert_rc "11341c1 a brace command word followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" '{agy,} plugin list' HOME="$T3H")"
+assert_rc "11341c2 a glob command word followed by a read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'a*y mcp list' HOME="$T3H")"
+assert_rc "11341c3 a brace command word that is plainly another program allows" 0 \
+    "$(bash_rc_of "$WT2" '{echo,} hello world' HOME="$T3H")"
+assert_rc "11341c4 a glob argument to another program allows" 0 \
+    "$(bash_rc_of "$WT2" 'ls a*y plugin' HOME="$T3H")"
+assert_rc "11341c5 the test builtin comparing a word to plugin allows" 0 \
+    "$(bash_rc_of "$WT2" '[ "$k" = plugin ] && echo install' HOME="$T3H")"
+assert_rc "11341c6 a brace group whose body mentions plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" '{ echo plugin install; }' HOME="$T3H")"
+assert_rc "11341a7 a bracket glob holding an equals sign ahead of an agy path denies" 2 \
+    "$(bash_rc_of "$WT2" 's[c=]ripts/x/agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341a8 a real assignment prefix before agy still denies" 2 \
+    "$(bash_rc_of "$WT2" 'k=v agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341c7 a real assignment prefix before an agy read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'k1=v agy plugin list' HOME="$T3H")"
+assert_rc "11341c8 an array assignment prefix before an agy read verb allows" 0 \
+    "$(bash_rc_of "$WT2" 'k[1]=v agy plugin list' HOME="$T3H")"
+assert_rc "11341a9 two bracket globs with an equals sign between them ahead of an agy path deny" 2 \
+    "$(bash_rc_of "$WT2" 's[c]ripts/[x]=y/agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341a10 an escaped closing bracket inside a bracket glob ahead of an agy path denies" 2 \
+    "$(bash_rc_of "$WT2" 's[c\]=]ripts/../../../../../../../../../usr/bin/agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341a11 a quoted closing bracket inside a bracket glob ahead of an agy path denies" 2 \
+    "$(bash_rc_of "$WT2" 's[c"]"=]ripts/../../../../../../../../../usr/bin/agy plugin install ./p' HOME="$T3H")"
+assert_rc "11341c10 a quoted value after a legal name before another CLI's plugin install allows" 0 \
+    "$(bash_rc_of "$WT2" 'k="v w" claude plugin install foo' HOME="$T3H")"
+assert_rc "11341a12 a three-deep subscript assignment with a slash in its value before a variable command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a[b[c[0]]]=/usr/bin $X plugin install ./p' HOME="$T3H" X=agy)"
+assert_rc "11341a13 a quoted subscript assignment with a slash in its value before a variable command word denies" 2 \
+    "$(bash_rc_of "$WT2" 'a["k"]=/opt/x $X plugin install ./p' HOME="$T3H" X=agy)"
+assert_rc "11341a14 any subscript assignment prefix marks a possible agy, so another CLI's plugin install is refused fail-closed" 2 \
+    "$(bash_rc_of "$WT2" 'k[i[0]]=v claude plugin install foo' HOME="$T3H")"
+assert_rc "11341a15 a read verb after a marked agy word does not hide the plugin install that follows" 2 \
+    "$(bash_rc_of "$WT2" 'k[0]=v $D/agy help plugin install ./p' HOME="$T3H")"
+assert_rc "11341a16 a help flag after a marked agy word does not hide the plugin install that follows" 2 \
+    "$(bash_rc_of "$WT2" 'k[0]=v $D/agy --help plugin install ./p' HOME="$T3H")"
+assert_rc "11341a17 a brace prefix word does not hide an agy plugin install behind a read flag" 2 \
+    "$(bash_rc_of "$WT2" '{nice,} $HOME/bin/agy -h plugin install ./p' HOME="$T3H")"
 assert_rc "11257c20 an agy prompt held in a variable allows" 0 \
     "$(bash_rc_of "$WT2" 'agy -p "$PROMPT"' HOME="$T3H")"  # headless-gemini-ok: hook input only, nothing runs agy
 assert_rc "11257c21 a variable subcommand followed by a read verb allows" 0 \
