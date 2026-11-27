@@ -2,7 +2,6 @@
 # Tests for scripts/hooks/mcp-policy.sh: MCP call tracking plus
 # the gating seam.
 #
-#   enforce (test fixtures only): the same calls are denied.
 #   audit: one line per call, no argument content, size cap with rotation.
 #   latency: p95 per call under a budget.
 #
