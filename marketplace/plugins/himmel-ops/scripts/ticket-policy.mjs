@@ -10,7 +10,7 @@ const HINTS = {
   Plan: '1. <one to five bounded steps, each naming the surface it touches>',
   DoD: '- <one to five checkable results: a test, a command and its output, a doc section, a Jira state>',
   Proof: '<the planned verification: the real user path for a feature, a RED case and its negative control for a guard, the detection check for hygiene>',
-  'Agent detail': '<files, contract, suites>',
+  'Agent detail': '<the repo paths it writes, on a line that starts with Writes; then contract, suites>',
 };
 
 export function renderTicketSkeleton() {
