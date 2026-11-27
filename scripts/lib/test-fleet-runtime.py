@@ -144,7 +144,6 @@ class Runtime(unittest.TestCase):
         self.assertFalse((slot / 'managed.json').exists())
 
     def stamp_after(self, change):
-        """A real managed preflight whose admission lock is changed by `change` after the claim and before stamp reads its pid."""
         self.active()
         self.rt('begin')
         tools = self.bucket / 'stamp-tools'
