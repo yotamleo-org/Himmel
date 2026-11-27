@@ -386,6 +386,11 @@ run16 ok "$d16" "LIVE — READY-TO-SIGN spec=/s/spec.md plan=/s/plan.md spec-ret
 refused16 "no plan-return" 10
 contains "16: the missing field is named" "$err" "plan-return"
 check "16: a missing field calls nothing" "$(calls16)" ""
+for again in spec=/s/other.md plan-return=/s/other.md "keys=$K2" "spec-sha=$sha_c" route=spec; do
+    run16 ok "$d16" "$ready16 route=spec-review $again"
+    refused16 "a second ${again%%=*}= field" 10
+    check "16: a second ${again%%=*}= field calls nothing" "$(calls16)" ""
+done
 run16 stale "$d16" "$ready16"
 refused16 "a build with no sign-check" 11
 contains "16: it says sign-check is unavailable" "$err" "sign-check unavailable"

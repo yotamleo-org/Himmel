@@ -108,6 +108,12 @@ sign_field() {
 sign_gate() {
     local name value spec="" plan="" r1="" r2="" keys="" spec_sha="" plan_sha="" route out rc
     local ok_re='^SIGN-CHECK OK spec-sha=([0-9a-f]{64}) plan-sha=([0-9a-f]{64}|none)$'
+    for name in spec plan spec-return plan-return keys spec-sha plan-sha route; do
+        if [[ " $TEXT" =~ [[:space:]]$name=.*[[:space:]]$name= ]]; then
+            echo "append-results: READY-TO-SIGN names '$name=' twice, and only one can be checked - nothing written" >&2
+            exit 10
+        fi
+    done
     for name in spec plan spec-return plan-return keys spec-sha plan-sha; do
         value="$(sign_field "$name")"
         if [ -z "$value" ]; then
