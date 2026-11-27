@@ -19,6 +19,9 @@
 #   of yours is answered on WEAK_BUDGET tokens under a LOW CONFIDENCE header naming that file.
 #   A why/how query lists doc and rationale nodes before code symbols (rank-why-how.py).
 #   WORKER_GRAPH_OUT=<dir> reads <dir>/graph.json instead of the primary's (the staleness eval's scratch graphs).
+#   With no WORKER_GRAPH_OUT and no graph for the cwd's repo (a vault), the graph of the checkout
+#   this wrapper lives in answers, with a NOTE naming it.
+#   An explain whose name matches several nodes of one file is answered on that file's node, with a NOTE.
 #   If the graph's built_at_commit is behind this worktree's HEAD, a NOTE goes
 #   to stderr (the answer is still printed) so a stale graph is never silent.
 set -u
@@ -62,6 +65,14 @@ if (c) process.stdout.write(c.name);
     fi
   fi
 fi
+gitc=(git)
+if [ -z "${WORKER_GRAPH_OUT:-}" ] && [ ! -f "$out/graph.json" ] \
+   && own="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+   && [ -f "$(dirname "$own")/graphify-out/graph.json" ]; then
+  echo "worker-graph: NOTE no graph at $out/graph.json; answering from $(dirname "$own")/graphify-out/graph.json, the graph of this wrapper's own checkout" >&2
+  out="$(dirname "$own")/graphify-out"
+  gitc=(git -C "$here")
+fi
 if [ ! -f "$out/graph.json" ]; then
   # absolute paths: the reader may stand in a vault, where a repo-relative scripts/ path does not exist
   if [ -n "$role" ] && [ "$role" != publisher ]; then
@@ -75,10 +86,10 @@ fi
 built="$(grep -o '"built_at_commit": *"[0-9a-f]*"' "$out/graph.json" | head -1 | sed 's/.*: *"//;s/"$//')"
 if [ -z "$built" ]; then
   echo "worker-graph: NOTE graph records no built_at_commit; freshness unknown" >&2
-elif ! git cat-file -e "$built^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$built" HEAD 2>/dev/null; then
+elif ! "${gitc[@]}" cat-file -e "$built^{commit}" 2>/dev/null || ! "${gitc[@]}" merge-base --is-ancestor "$built" HEAD 2>/dev/null; then
   echo "worker-graph: NOTE graph built at ${built:0:9} is not an ancestor of this worktree's HEAD; it may differ from your tree" >&2
 else
-  n="$(git rev-list --count "$built..HEAD")"
+  n="$("${gitc[@]}" rev-list --count "$built..HEAD")"
   [ "$n" -gt 0 ] && echo "worker-graph: NOTE graph built at ${built:0:9} is $n commits behind this worktree's HEAD; recent changes are missing" >&2
 fi
 
@@ -158,6 +169,34 @@ else
   ans="$(GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify "$@")"; rc=$?
 fi
 case "$rc" in 124|137) echo "worker-graph: graphify ran past ${CALL_SECS}s and was stopped" >&2 ;; esac
+if [ "$sub" = explain ] && [ -n "$question" ] && [ "${ans#Ambiguous: }" != "$ans" ] && command -v python3 >/dev/null 2>&1; then
+  fid="$(printf '%s\n' "$ans" | python3 -I -c '
+import json, os, re, sys
+ids = re.findall(r"^\s+id: (\S+)$", sys.stdin.read(), re.M)
+try:
+    nodes = {n.get("id"): n for n in json.load(open(sys.argv[1])).get("nodes", [])}
+except Exception:
+    sys.exit()
+hits = [nodes[i] for i in ids if i in nodes]
+srcs = {h.get("source_file") for h in hits}
+if len(hits) < 2 or len(hits) != len(ids) or len(srcs) != 1 or not next(iter(srcs)):
+    sys.exit()
+src = next(iter(srcs))
+files = [h["id"] for h in hits
+         if (h.get("metadata") or {}).get("kind") == "file" or h.get("label") == os.path.basename(src)]
+if len(files) == 1:
+    print(files[0])
+' "$graph" 2>/dev/null)"
+  if [ -n "$fid" ]; then
+    re=("$sub") swapped=0
+    for a in "${@:2}"; do
+      if [ "$swapped" = 0 ] && [ "$a" = "$question" ]; then re+=("$fid"); swapped=1; else re+=("$a"); fi
+    done
+    echo "worker-graph: NOTE '$question' matched several nodes of one file; explaining its file node $fid" >&2
+    set -- "${re[@]}"
+    ans="$(GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify "$@")"; rc=$?
+  fi
+fi
 # graphify ranks by name match, so a why/how answer led with code symbols; rank-why-how.py lists
 # doc and rationale nodes first for those questions and leaves any other question untouched.
 if [ "$sub" = query ] && command -v python3 >/dev/null 2>&1; then
