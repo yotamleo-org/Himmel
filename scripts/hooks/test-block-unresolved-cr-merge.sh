@@ -1022,7 +1022,7 @@ if [ "$resolve_root_pre_rc" -eq 2 ] && grep -q "has no chief GO" "$RESOLVE_ROOT_
     && ! grep -q "cannot load scripts/lib/go-gate.sh" "$RESOLVE_ROOT_PRE_ERR"; then
     pass=$((pass+1)); echo "ok   red-control-resolve-root-pre-fix-false-refuses"
 else
-    fail=$((fail+1)); echo "FAIL red-control-resolve-root-pre-fix-false-refuses rc=$resolve_root_pre_rc (want 2, 'has no chief GO' on stderr) err=$(cat "$RESOLVE_ROOT_PRE_ERR")"
+    fail=$((fail+1)); echo "FAIL red-control-resolve-root-pre-fix-false-refuses rc=$resolve_root_pre_rc (want 2) err=$(cat "$RESOLVE_ROOT_PRE_ERR")"
 fi
 
 cp "$HOOK" "$RESOLVE_ROOT_ANCHOR/scripts/hooks/block-unresolved-cr-merge.sh"
