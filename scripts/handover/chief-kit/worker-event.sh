@@ -302,7 +302,7 @@ if [ -n "$halted" ]; then
 fi
 
 owe_next_step() {
-    local stem key flag results stream ready sha actor=chief step due id out bucket chief
+    local stem key flag results stream ready sha signer actor=chief step due id out bucket chief
     stem="${worker##*/}"; stem="${stem%.md}"
     [[ $stem =~ ^([A-Z][A-Z0-9]*-[0-9]+)- ]] || return 0
     key="${BASH_REMATCH[1]}"
@@ -315,7 +315,8 @@ owe_next_step() {
     if [ -n "$ready" ]; then
         sha="$(grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' <<< "$ready" | tail -n 1 | grep -oiE '[0-9a-f]+$' | cut -c1-12)" || sha=""
         step="sign the design${sha:+ (last spec hash named: $sha)} if it is not signed yet, then dispatch the build"
-        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ready"; then
+        signer="$(grep -oiE "(operator|chief)('s)? (signs|signature|sign-off)|signed by the (operator|chief)|(operator|chief) (must|to) sign" <<< "$ready" | tail -n 1)" || signer=""
+        if grep -qi 'operator' <<< "$signer"; then
             actor=operator
             step="ask the operator to $step"
         fi

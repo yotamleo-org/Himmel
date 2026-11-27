@@ -1020,6 +1020,10 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: the design is up' '- 10:10 WRAPPE
 run21 "WRAPPED N6021"
 contains "21e3 a request with no hash names none" "$(owed21 "$step21 | .text")" "sign the design $conditional"
 
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: rev 1, the operator signs this one' '- 10:05 LIVE — READY-TO-SIGN sent: rev 2, the chief signs this one' '- 10:10 WRAPPED — READY-TO-SIGN sent, ticket left open'
+run21 "WRAPPED N6021"
+check "21e5 the last request that names a signer wins" "$(owed21 "$step21 | .actor")" chief
+
 doc21 no '- 10:00 LIVE — x' '- 10:10 WRAPPED — lock released'
 run21 "WRAPPED N6021 READY-TO-SIGN sent: spec sha256 3333333333333333"
 contains "21e4 a request only in the event message is a sign step" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 333333333333)"
