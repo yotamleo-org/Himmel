@@ -15,8 +15,8 @@ himmel_primary_root() {
     # shellcheck source=scripts/lib/git-clean.sh
     . "$kit/git-clean.sh" 2>/dev/null || return 1
     common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1  # swallow-ok: no git, or an old git, is "unknown"
-    [ "${common##*/}" = ".git" ] || return 1
-    printf '%s\n' "${common%/.git}"
+    [ -n "$common" ] || return 1
+    dirname -- "$common"
 }
 
 jira_cli_path() {

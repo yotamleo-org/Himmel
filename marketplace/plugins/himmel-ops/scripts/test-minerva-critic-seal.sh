@@ -162,9 +162,8 @@ done
 for w in 'sign-shape' '--lint'; do
   case "$STAGE2" in *"$w"*) pass "f: Stage 2 holds: $w" ;; *) fail "f: Stage 2 holds: $w" ;; esac
 done
-for w in '--plan' '--lint'; do
-  case "$STAGE4" in *"$w"*) pass "f: Stage 4 names $w" ;; *) fail "f: Stage 4 names $w" ;; esac
-done
+w='sign-shape <spec> --plan <plan> --lint'
+case "$STAGE4" in *"$w"*) pass "f: Stage 4 names $w" ;; *) fail "f: Stage 4 names $w" ;; esac
 TERMINAL="$(awk '/^## Terminal/{f=1;next} /^## /{f=0} f' "$SKILL" | flat)"
 for w in 'sign-check' 'READY-TO-SIGN'; do
   case "$TERMINAL" in *"$w"*) pass "f: Terminal holds: $w" ;; *) fail "f: Terminal holds: $w" ;; esac

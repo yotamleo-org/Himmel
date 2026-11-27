@@ -413,7 +413,7 @@ check "16: a chief doc takes the token unchecked, rc 0" "$rc" 0
 check "16: a chief doc calls nothing" "$(calls16)" ""
 
 jira_src="$(cd "$HERE/../../jira" && pwd)"
-if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
+if command -v bun >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
     printf '#!/bin/sh\nexec bun "%s/src/index.ts" "$@"\n' "$jira_src" > "$tmp/jira-real"
     chmod +x "$tmp/jira-real"
     export OWE_JIRA_CLI="$tmp/jira-real"
@@ -436,7 +436,7 @@ if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; 
     contains "16: the real refusal is printed" "$err" "SIGN-CHECK REFUSED: "
     contains "16: the real refusal names the spec gate" "$err" "minerva-spec-gate"
 else
-    echo "ok - 16: real-verb rows skipped (no bun, or no scripts/jira/node_modules)"
+    echo "ok - 16: real-verb rows skipped (no bun, sha256sum or scripts/jira/node_modules)"
 fi
 unset OWE_JIRA_CLI STUB_DIR
 
