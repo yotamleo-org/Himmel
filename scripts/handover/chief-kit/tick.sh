@@ -4139,7 +4139,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         fi
     fi
     if [ -r "$pd_base.closecand" ]; then
-        close_cand_lines="$(grep '^# close-candidate ' "$pd_base.closecand")"  # swallow-ok: no candidate line reads empty
+        close_cand_lines="$(grep '^# close-candidate ' "$pd_base.closecand")"
         close_cand="$(printf '%s\n' "$close_cand_lines" | awk 'NF { print $3 }' | paste -sd, -)"
     fi
 fi

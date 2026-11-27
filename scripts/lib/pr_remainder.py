@@ -145,7 +145,6 @@ DONE_ITEM_RE = re.compile(r':[ \t]*done[ \t.]*$', re.I)
 
 
 def _blocks(body):
-    """[in_coverage, is_list_item, text] for every list item and paragraph, its continuation lines joined"""
     out, cur, in_coverage = [], None, False
     for raw in body.replace('\r', '').splitlines():
         line = raw.strip()

@@ -1756,7 +1756,7 @@ held_hi_wake() {
 closecand_file="$inbox.wait.closecand"
 close_cand_note() {
     [ -n "$1" ] && [ "$housekeeping_secs" -ne 0 ] || return 1
-    [ "$1" != "$(cat "$closecand_file" 2>/dev/null)" ] || return 1  # swallow-ok: no marker reads empty, so the first value queues
+    [ ! -f "$closecand_file" ] || [ "$1" != "$(cat "$closecand_file")" ] || return 1
     if housekeeping_add close-candidate "$1"; then return 0; fi
     printf '%s\n' "$1" > "$closecand_file"
     return 1

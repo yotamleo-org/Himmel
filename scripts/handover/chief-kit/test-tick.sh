@@ -1887,7 +1887,7 @@ hh_tick() {
     env NEXT_DISPATCH_MIRROR="$hh/mirror/HIMMEL" TICK_STATE_DIR="$state" HH_ND_ROWS="$rows" REPO="$hh/repo" TICK_POOL_WAIT=60 TOKEN='' \
         bash "$hh_kit/tick.sh" "$@" --doc "$hh_doc" 2>/dev/null
     for hh_lock in "$state"/tick-pool-*.lock; do
-        [ ! -e "$hh_lock" ] || flock -w 60 "$hh_lock" true  # gnu-ok: Linux-only kit  # prim-ok: waits out the detached snapshot run before a row reads its probes
+        [ ! -e "$hh_lock" ] || flock -w 60 "$hh_lock" true
     done
 }
 hh_one() {
@@ -1932,17 +1932,16 @@ hh_issue HIMMEL-7 High '' '' 9
 out="$(hh_tick sort "$hh/sort.rows")"
 contains '(10944) the set is sorted by priority, then oldest first' "$out" ' held-hi=HIMMEL-6,HIMMEL-7,HIMMEL-1'
 hh_prio="$(python3 -I -c 'import ast,re,sys; print("\n".join("%s %d" % kv for kv in ast.literal_eval(re.search(r"^PRIO = (\{.*\})$", open(sys.argv[1]).read(), re.M)[1]).items()))' "$HERE/next-dispatchable.sh")"
-: > "$hh/t10.rows"; hh_n=100; hh_want=''
+: > "$hh/t10.rows"; hh_n=100; hh_want=()
 while read -r hh_name hh_rank; do
     hh_n=$((hh_n + 1))
     hh_issue "HIMMEL-$hh_n" "$hh_name" '' '' 3
     hh_scope "HIMMEL-$hh_n" >> "$hh/t10.rows"
-    [ "$hh_rank" -gt 1 ] || hh_want="$hh_want HIMMEL-$hh_n"
+    [ "$hh_rank" -gt 1 ] || hh_want+=("HIMMEL-$hh_n")
 done <<< "$hh_prio"
 out="$(hh_tick t10 "$hh/t10.rows")"
 hh_got="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^held-hi=//p' | tr ',' '\n' | LC_ALL=C sort | tr '\n' ' ')"
-# shellcheck disable=SC2086  # one key per word
-hh_same "(10944 T10) the tick's priority set is the dispatcher's rank 1 or better" "$hh_got" "$(printf '%s\n' $hh_want | LC_ALL=C sort | tr '\n' ' ')"
+hh_same "(10944 T10) the tick's priority set is the dispatcher's rank 1 or better" "$hh_got" "$(printf '%s\n' "${hh_want[@]}" | LC_ALL=C sort | tr '\n' ' ')"
 mkdir -p "$hh/t8-mirror/HIMMEL" "$hh/t8-workers"
 cp "$hh/mirror/HIMMEL/HIMMEL-1.md" "$hh/t8-mirror/HIMMEL/"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$hh/gh-empty"; chmod +x "$hh/gh-empty"
@@ -1962,7 +1961,7 @@ mkdir -p "$hh/shim"
 printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) echo x >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh/gitlog" "$(command -v git)" > "$hh/shim/git"
 chmod +x "$hh/shim/git"
 PATH="$hh/shim:$PATH" hh_tick c1 "$hh/c.rows" > /dev/null
-hh_calls="$(grep -c . "$hh/gitlog" 2>/dev/null)"  # swallow-ok: no log yet counts nothing
+hh_calls="$(grep -c . "$hh/gitlog" 2>/dev/null)"
 out="$(PATH="$hh/shim:$PATH" TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
 contains '(10944 C1) a done-but-open blocker is listed with its dependants, by a tick that does not rebuild' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
 hh_same '(10944 C1) the tick line lists it; an In Progress blocker and a longer key are not' "$(printf '%s\n' "$out" | tr ' ' '\n' | grep '^close-cand=')" 'close-cand=HIMMEL-102'

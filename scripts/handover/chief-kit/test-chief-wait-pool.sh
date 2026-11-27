@@ -1234,7 +1234,7 @@ arm "$I" "$WORK/hh-w4.out" 20
 check '(10944 W4) a key new to the set wakes at once' '0:WAKE held-priority n=2 HIMMEL-1,HIMMEL-2' "$rc:$(grep '^WAKE ' "$WORK/hh-w4.out" | head -n 1)"
 check '(10944 W9) a set with both classes prints both fix lines' '1:1' "$(grep -c '^fix no-scope: ' "$WORK/hh-w4.out"):$(grep -c "^fix merged-no-remainder: a Remaining: or deferred line in the merged PR's body, or close$" "$WORK/hh-w4.out")"
 touch -d '5 minutes ago' "$I.wait.heldhi"
-hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # swallow-ok: no marker reads empty and fails the row  # gnu-ok: Linux-only kit
+hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
 for hh_set in HIMMEL-2,HIMMEL-1 HIMMEL-1; do
     hh_line FULL "held-hi=$hh_set" "$hh_s1"
     arm_quiet "$I" "$WORK/hh-w8.out" 8
@@ -1243,7 +1243,7 @@ done
 check '(10944 W8) the marker holds the shrunk set and keeps its clock' "$KP-1:$hh_mtime" "$(cat "$I.wait.heldhi" 2>/dev/null):$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
 hh_first w5
 touch -d '5 minutes ago' "$I.wait.heldhi"
-hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # swallow-ok: no marker reads empty and fails the row  # gnu-ok: Linux-only kit
+hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
 hh_line FULL 'held-hi=?'
 arm_quiet "$I" "$WORK/hh-w5.out" 8
 check '(10944 W5) an unknown set neither wakes nor touches the marker' "124:0:$KP-1:$hh_mtime" "$rc:$(hh_wakes "$WORK/hh-w5.out"):$(cat "$I.wait.heldhi" 2>/dev/null):$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
