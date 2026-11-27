@@ -55,20 +55,34 @@ function removeLock(lock, f) {
   console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
   return true;
 }
-function clearCrashedGuard(guard, env) {
-  const f = lockFacts(guard);
-  if (isCrashedLock(f, env)) removeLock(guard, f);
+const lockId = (lock) => { const s = statSync(lock); return `${s.ino}-${Math.floor(s.mtimeMs)}`; };
+function takeGuard(stem, env) {
+  const spent = [];
+  for (let n = 0; ; n += 1) {
+    const guard = `${stem}.${n}`;
+    try { mkdirSync(guard, { mode: 0o700 }); return { guard, spent }; } catch {
+      if (!isCrashedLock(lockFacts(guard), env)) return null;
+      spent.push(guard);
+    }
+  }
+}
+function removeGuards(guards) {
+  for (const g of guards) { try { rmdirSync(g); } catch { /* already gone */ } }
 }
 function reclaim(lock, env) {
-  const guard = `${lock}.reclaim`;
-  try { mkdirSync(guard, { mode: 0o700 }); } catch {
-    try { clearCrashedGuard(guard, env); } catch { }
-    return false;
-  }
+  let held = null;
   try {
+    const seen = lockId(lock);
+    if (!isCrashedLock(lockFacts(lock), env)) return false;
+    held = takeGuard(`${lock}.reclaim.${seen}`, env);
+    if (!held) return false;
     const f = lockFacts(lock);
-    return isCrashedLock(f, env) && removeLock(lock, f);
-  } catch { return false; } finally { try { rmdirSync(guard); } catch { /* already gone */ } }
+    if (lockId(lock) !== seen || !isCrashedLock(f, env)) return false;
+    removeLock(lock, f);
+    const unkeyed = `${lock}.reclaim`;
+    removeGuards([...held.spent, ...(isCrashedLock(lockFacts(unkeyed), env) ? [unkeyed] : [])]);
+    return true;
+  } catch { return false; } finally { if (held) removeGuards([held.guard]); }
 }
 function takeLock(lock, env) {
   // An empty value is unset (Number('') is 0, which would disable the retry).

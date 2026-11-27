@@ -1159,15 +1159,28 @@ test('a stale empty ledger lock behind a stale empty reclaim lock is reclaimed, 
   assert.equal(existsSync(guard), false);
 });
 
-test('a young reclaim lock, or one that holds a file or has a live recorded holder, is left alone', () => {
-  for (const shape of ['young', 'contents', 'live-holder']) {
+const guardOf = (lock, n) => { const s = statSync(lock); return `${lock}.reclaim.${s.ino}-${Math.floor(s.mtimeMs)}.${n}`; };
+
+test('a crashed reclaim of this lock is superseded after the bound, and its guard goes with the lock', () => {
+  const f = fixture();
+  const lock = `${f.paths.state}.lock`;
+  mkdirSync(lock); age(lock, 120);
+  const first = guardOf(lock, 0);
+  const second = guardOf(lock, 1);
+  mkdirSync(first); age(first, 120);
+  const r = statusOf(f, LOCK_TIMEOUT);
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  for (const p of [lock, first, second]) assert.equal(existsSync(p), false, p);
+});
+
+test('a young reclaim guard, or one that holds a file, keeps the lock and is left alone', () => {
+  for (const shape of ['young', 'contents']) {
     const f = fixture();
     const lock = `${f.paths.state}.lock`;
-    const guard = `${lock}.reclaim`;
-    mkdirSync(lock); mkdirSync(guard); age(lock, 120);
-    if (shape === 'contents') writeFileSync(join(guard, 'x'), '');
-    if (shape === 'live-holder') writeFileSync(`${guard}.pid`, `${process.pid}\n`);
-    if (shape !== 'young') age(guard, 120);
+    mkdirSync(lock); age(lock, 120);
+    const guard = guardOf(lock, 0);
+    mkdirSync(guard);
+    if (shape === 'contents') { writeFileSync(join(guard, 'x'), ''); age(guard, 120); }
     assert.equal(statusOf(f, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable', shape);
     assert.equal(existsSync(guard), true, shape);
     assert.equal(existsSync(lock), true, shape);

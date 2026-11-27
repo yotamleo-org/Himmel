@@ -76,8 +76,12 @@ when it is empty, older than the call timeout plus the kill grace, and no record
 (`<lock>.pid`, beside the lock) is running, whether the pid is dead or was never recorded (a
 kill between the lock's `mkdir` and the pid write, or between the pid removal and the lock's
 `rmdir`, records none). A lock with contents, a young lock or a running holder is never
-touched and refuses by name after the lock wait. A waiter killed while reclaiming can leave
-`<lock>.reclaim` behind; the same rule clears it, and a later pass reclaims the lock.
+touched and refuses by name after the lock wait. Reclaiming is serialised by a guard folder
+named for that one crashed lock (`<lock>.reclaim.<inode>-<mtime>.<n>`). A reclaimer killed
+mid-way leaves its guard; once the guard meets the same rule, the next waiter takes `<n>+1`
+instead of removing it, so a slow waiter never removes a newer guard, and the spent guards go
+once the lock is gone. A crashed unnumbered `<lock>.reclaim` never blocks and is removed with
+the lock.
 
 For every other failure the launcher:
 
