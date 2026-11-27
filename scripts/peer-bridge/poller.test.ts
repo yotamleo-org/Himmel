@@ -7,15 +7,15 @@ import { Chain, readChain, signTap, submitSpool } from "./chain";
 import { readNotifyCursor } from "./poller";
 import { draftState } from "./drafts";
 import { notifyFile, renderNotify } from "./notify";
-import { ConfigError, readPeersFile, type Config } from "./config";
+import { ConfigError, cardMessage, readPeersFile, type Config } from "./config";
 import { ackToken, digestFile } from "./digests";
 import { admit, createGateState, noteAdmitted } from "./gate";
-import { checkEnvelopeOutbound } from "./egress";
+import { checkCardOutbound, checkEnvelopeOutbound } from "./egress";
 import { procHooks } from "./proc";
 import { Poller, type PollerDeps, type TgLike } from "./poller";
 import { TIMEOUT_S_MAX, parseEnvelopeLine, type Kind } from "./envelope";
 import type { JobRecord } from "./resolve";
-import { keygen, verify } from "./sign";
+import { STATION_KEY, fingerprint, keyId, keygen, keygenActivate, keygenRotate, publicKeyOf, verify } from "./sign";
 import { RetryAfter, TelegramError } from "./telegram";
 import { Threads } from "./threads";
 import * as TE from "./testlib-envelope";
@@ -1589,4 +1589,119 @@ test.skip("end to end paired check: the same tap from a user who is not the oper
   tap(w.bravo, approveData(w, "bravo"), offerDm(w, "bravo").message_id, { from: 999 });
   await w.step("bravo");
   expect(readFileSync(w.bravo.peersPath).equals(before)).toBe(true);
+});
+
+async function cardEnv(over: Parameters<typeof setup>[0] = {}, key = true) {
+  const e = await setup({ stationName: "yotam", ...over });
+  if (key) keygen(e.configDir);
+  return e;
+}
+const cardIntents = (e: Env) => outbox(e).filter(r => r.kind === "intent" && r.msgKind === "card") as any[];
+const ourPubOf = (e: Env) => publicKeyOf(join(e.configDir, STATION_KEY));
+async function askCard(e: Env, name?: string) {
+  const n = submitSpool(e.peerDir, { type: "card" }, name === undefined ? undefined : () => name);
+  await e.poller.drainSpool();
+  return n;
+}
+
+test("a card record posts our card once, as one intent and one group send that holds no fingerprint", async () => {
+  const e = await cardEnv();
+  const name = await askCard(e);
+  const text = cardMessage("example_bot", "yotam", ourPubOf(e));
+  expect(e.sent).toEqual([{ chat: CHAT, text, replyTo: undefined }]);
+  const [i] = cardIntents(e);
+  expect([cardIntents(e).length, i.card, i.spool, i.text, i.root, i.isRoot, typeof i.ts]).toEqual([1, keyId(ourPubOf(e)), name, text, null, false, "number"]);
+  expect(i.text.replace(/ /g, "")).not.toContain(fingerprint(ourPubOf(e)).replace(/ /g, ""));
+  expect(readResult(e, name).ok).toBe(true);
+  expect(readChain(join(e.peerDir, "threads.jsonl"))).toEqual([]);
+});
+
+test("the fourth card request of a UTC day writes card-daily and sends nothing; the next day posts again", async () => {
+  const e = await cardEnv();
+  for (let i = 0; i < 3; i++) await askCard(e);
+  const fourth = await askCard(e);
+  expect(readResult(e, fourth)).toEqual({ ok: false, rule: "card-daily" });
+  expect([e.sent.length, cardIntents(e).length]).toEqual([3, 3]);
+  e.c.t += DAY_MS;
+  await askCard(e);
+  expect(e.sent.length).toBe(4);
+});
+
+test("a card Telegram refused does not count, and a key rotated the same day starts its own three", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new TelegramError("Bad Request", 400); });
+  for (let i = 0; i < 4; i++) await askCard(e);
+  expect(cardIntents(e).length).toBe(4);
+  expect(e.sent.length).toBe(4);
+  keygenRotate(e.configDir);
+  keygenActivate(e.configDir);
+  const after = await askCard(e);
+  expect([readResult(e, after).ok, cardIntents(e).length]).toEqual([true, 5]);
+});
+
+test("a card request is refused with its rule, and makes no intent, without a station name, a key or a confirmed chat", async () => {
+  for (const [want, e] of [
+    ["no-name", await cardEnv({ stationName: undefined })],
+    ["no-key", await cardEnv({}, false)],
+    ["not-set-up", await cardEnv({ peerOver: { chatId: null } })],
+  ] as const) {
+    const name = await askCard(e);
+    expect(readResult(e, name)).toEqual({ ok: false, rule: want });
+    expect([cardIntents(e).length, e.sent.length]).toEqual([0, 0]);
+  }
+});
+
+test("a spool file left by a crash after the card intent makes no second intent, restores its result and sends once", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new RetryAfter(60); });
+  await askCard(e, "0001-crash.json");
+  e.sent.length = 0;
+  rmSync(join(e.peerDir, "spool", "results", "0001-crash.json"));
+  submitSpool(e.peerDir, { type: "card" }, () => "0001-crash.json");
+  const again = await Poller.create(e.deps);
+  e.c.t += 120_000;
+  await again.drainSpool();
+  expect(cardIntents(e).length).toBe(1);
+  expect(e.sent.length).toBe(1);
+  expect(readResult(e, "0001-crash.json").ok).toBe(true);
+});
+
+const rotate = (e: Env) => { keygenRotate(e.configDir); keygenActivate(e.configDir); };
+
+test("a key activated while the card waits behind a retry-after refuses it at flush, and after a restart in recover", async () => {
+  for (const restart of [false, true]) {
+    const e = await cardEnv();
+    e.script.push(() => { throw new RetryAfter(60); });
+    await askCard(e);
+    e.sent.length = 0;
+    rotate(e);
+    e.c.t += 120_000;
+    if (restart) { const p = await Poller.create(e.deps); await p.recover(); } else await e.poller.drainSpool();
+    expect(e.sent).toEqual([]);
+    expect(outbox(e).filter(r => r.kind === "refused").map(r => r.reason)).toEqual(["card-text"]);
+  }
+});
+
+test("a chat confirmed again while the card waits sends it to the new chat, where the check passes", async () => {
+  const e = await cardEnv();
+  e.script.push(() => { throw new RetryAfter(60); });
+  await askCard(e);
+  e.sent.length = 0;
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.chatId = -100999;
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+  e.c.t += 120_000;
+  await e.poller.drainSpool();
+  expect(e.sent.map(s => s.chat)).toEqual([-100999]);
+});
+
+test("every card sent passed the real card check twice: when queued and just before the send", async () => {
+  const seen: { text: string; ok: boolean }[] = [];
+  const e = await cardEnv();
+  const p = await Poller.create({ ...e.deps, checkCard: async (text, ctx) => { const r = await checkCardOutbound(text, ctx); seen.push({ text, ok: r.ok }); return r; } });
+  submitSpool(e.peerDir, { type: "card" });
+  await p.drainSpool();
+  expect(seen.map(s => s.ok)).toEqual([true, true]);
+  expect(seen.every(s => s.text === e.sent[0].text)).toBe(true);
 });

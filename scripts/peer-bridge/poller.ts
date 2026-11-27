@@ -7,7 +7,7 @@ import fs from "node:fs";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, readChain, signTap, startIdentity, submitSpool, sweepResults, tapSigOk, verifyChain, writeResult, type IntentRec, type SpoolRec } from "./chain";
-import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, clampToSchema, loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
+import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, cardMessage, clampToSchema,loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkCardOutbound, checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
@@ -17,7 +17,7 @@ import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
 import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
-import { currentSigningKey, sign } from "./sign";
+import { currentSigningKey, publicKeyOf, sign } from "./sign";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
 import { appendNotify, notifyFile, renderChainAlert, renderFallback, renderNotify, type DailyNotify, type NotifyRec, type ResultNotify, type UnpairedNotify } from "./notify";
@@ -65,7 +65,8 @@ type ReadJob = { rec: PeerMsgRec; kind: ReaderKind; transition: Transition; held
 const kindLine = (k: string) => (k === "question" ? "ask:question" : k);
 const PERMANENT = [400, 403, 404];
 const SENT_PRUNE_MS = 7 * 86_400_000;
-const PEER_TAP_RE = /^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
+const MAX_CARDS_PER_DAY = 3;
+const PEER_TAP_RE =/^peer:(ok|no):([a-z0-9][a-z0-9-]{0,31}):([0-9a-f]{8})$/;
 
 export const DRAFTING_LINE = "drafted; approve or reject it with the buttons on the draft message";
 export const OUTBOUND_REFUSAL_LINE = "a reply about our own outbound thread needs the peer desk's send.ts; nothing was sent";
@@ -277,6 +278,11 @@ export class Poller {
           if (ok.ok) continue;
           await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, ok, this.ts()), intent: i.n });
           this.pending.delete(`${i.peer}:${i.n}`);
+          continue;
+        }
+        if (i.msgKind === "card") {
+          const ok = await this.checkCard(i.peer, i.text);
+          if (!ok.ok) await this.refuseCard(i, ok);
           continue;
         }
         const res = await this.egress(i.text, this.ctxFor({ peer: i.peer, msgKind: i.msgKind, isRoot: i.isRoot, isTemplate: !!i.tpl, replyTo: i.root, text: i.text, corpus: this.corpusOf(i.source ?? "send.ts"), checkUsage: false }));
@@ -817,7 +823,40 @@ export class Poller {
       return;
     }
     if (rec.type === "draft") return this.applyDraft(peer, name, rec);
+    if (rec.type === "card") return this.applyCard(peer, name);
     return this.applyTap(peer, name, rec);
+  }
+
+  private checkCard(peer: string, text: string): Promise<Outcome> {
+    return (this.deps.checkCard ?? checkCardOutbound)(text, {
+      peer: this.cfg.peers[peer], self: this.cfg.self?.stationName, keyDir: this.deps.configDir, himmelRoot: this.cfg.himmelRoot,
+      hostname: this.deps.hostname, matrix: this.deps.matrix,
+    });
+  }
+
+  private async applyCard(peer: string, name: string): Promise<void> {
+    const dir = this.dir(peer);
+    const out = this.outbox(peer);
+    if (out.some(r => r.kind === "intent" && r.msgKind === "card" && r.spool === name)) return writeResult(dir, name, { ok: true });
+    const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
+    const self = this.cfg.self?.stationName;
+    if (self === undefined) return no("no-name");
+    let key: { id: string; path: string };
+    try { key = currentSigningKey(this.deps.configDir); } catch { return no("no-key"); }
+    const p = this.cfg.peers[peer];
+    if (!p || p.chatId === null) return no("not-set-up");
+    const dead = new Set(out.filter(r => (r.kind === "failed" || r.kind === "refused") && typeof r.intent === "number").map(r => r.intent));
+    const today = out.filter(r => r.kind === "intent" && r.msgKind === "card" && r.card === key.id && !dead.has(r.n) && utcDay(r.ts * 1000) === utcDay(this.now()));
+    if (today.length >= MAX_CARDS_PER_DAY) return no("card-daily");
+    const text = cardMessage(p.theirs.username, self, publicKeyOf(key.path));
+    const res = await this.checkCard(peer, text);
+    if (!res.ok) {
+      await this.chain.append(this.file(peer, "outbox.jsonl"), refusalRecord(text, res, this.ts()));
+      return no(res.rule);
+    }
+    const rec = await this.chain.append(this.file(peer, "outbox.jsonl"), { kind: "intent", peer, chat: p.chatId, id: mintId(), root: null, msgKind: "card", text, isRoot: false, card: key.id, spool: name, ts: this.ts() });
+    this.pending.set(`${peer}:${rec.n}`, rec as unknown as Pending);
+    writeResult(dir, name, { ok: true });
   }
 
   private async reloadNow(): Promise<boolean> {
@@ -983,7 +1022,7 @@ export class Poller {
   }
 
   private wire(i: Pending): string {
-    if (i.tpl || i.env) return i.text;
+    if (i.tpl || i.env || i.msgKind === "card") return i.text;
     const address = i.isRoot ? `/peer@${this.cfg.peers[i.peer].theirs.username}\n` : "";
     return `${address}#${kindLine(i.msgKind)} id=${i.id}\n${i.text}`;
   }
@@ -997,11 +1036,21 @@ export class Poller {
     await this.deliverNotify();
   }
 
+  private async refuseCard(i: Pending, res: Refusal): Promise<void> {
+    await this.chain.append(this.file(i.peer, "outbox.jsonl"), { ...refusalRecord(i.text, res, this.ts()), intent: i.n });
+    this.pending.delete(`${i.peer}:${i.n}`);
+    this.log(`card-send peer=${i.peer} refused: ${res.rule}`);
+  }
+
   private async flushPeer(): Promise<void> {
     if (this.now() < this.retryAt) return;
     for (const i of [...this.pending.values()].sort((a, b) => a.n - b.n || (a.peer < b.peer ? -1 : 1))) {
       const peer = this.cfg.peers[i.peer];
       if (!peer || peer.chatId === null) continue;
+      if (i.msgKind === "card") {
+        const ok = await this.checkCard(i.peer, i.text);
+        if (!ok.ok) { await this.refuseCard(i, ok); continue; }
+      }
       let messageId: number;
       try {
         messageId = (await this.deps.tg.sendMessage(peer.chatId, this.wire(i), i.root ?? undefined)).message_id;
@@ -1026,7 +1075,7 @@ export class Poller {
       if (i.isRoot && !i.resend && !i.tpl) this.rootIntents.set(`${i.peer}:${messageId}`, i);
       if (i.draft) await this.resultNotify(i.peer, i.draft, "SENT", i.root ?? messageId, { message_id: messageId });
       if (i.spool) { this.spoolDone.set(`${i.peer}/${i.spool}`, messageId); writeResult(this.dir(i.peer), i.spool, { ok: true, message_id: messageId }); }
-      if (i.tpl || i.resend || i.env) continue;
+      if (i.tpl || i.resend || i.env || i.msgKind === "card") continue;
       if (i.isRoot) await this.apply(this.threads.onOutbound({ peer: i.peer, chat: peer.chatId, root: messageId, kind: i.msgKind, isRoot: true }));
       else if (i.msgKind === "answer" && i.root !== null) await this.apply(this.threads.onOutbound({ peer: i.peer, chat: peer.chatId, root: i.root, kind: "answer", isRoot: false }));
     }
