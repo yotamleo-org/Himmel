@@ -1257,6 +1257,23 @@ test('wrapper libs: G5 — a translator linked to an identical copy elsewhere re
   assert.equal(out.contentIntegrityComplete, false);
 });
 
+test('wrapper libs: G6 — a symlinked wrapper is attested by the libs beside its real path', () => {
+  const ctx = libFixture();
+  const realHooks = join(ctx.dir, 'real-hooks');
+  mkdirSync(join(realHooks, 'lib'), { recursive: true });
+  const wrapper = join(ctx.repo, 'scripts', 'hooks', 'guardrail-skip-in-himmel.js');
+  writeFileSync(join(realHooks, 'guardrail-skip-in-himmel.js'), readFileSync(wrapper));
+  writeFileSync(join(realHooks, 'lib', 'harness-tool-translate.js'), readFileSync(join(ctx.repo, 'scripts', 'hooks', 'lib', 'harness-tool-translate.js')));
+  const table = JSON.parse(readFileSync(join(ctx.repo, MAP_REL), 'utf8'));
+  delete table.tools.run_terminal_command;
+  writeFileSync(join(realHooks, 'lib', 'harness-tool-map.json'), `${JSON.stringify(table, null, 2)}\n`);
+  rmSync(wrapper);
+  fs.symlinkSync(join(realHooks, 'guardrail-skip-in-himmel.js'), wrapper);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) assert.equal(libEntry(hook, MAP_REL)?.verdict, 'degraded');
+  assert.equal(out.contentIntegrityComplete, false);
+});
+
 test('wrapper libs: G4 — a guard that is not wired reports two missing-path lib elements', () => {
   const ctx = libFixture();
   const data = installedData(ctx);

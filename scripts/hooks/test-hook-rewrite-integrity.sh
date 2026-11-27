@@ -2466,6 +2466,16 @@ jq 'del(.tools.run_terminal_command)' "$P5C/lib/harness-tool-map.json" > "$P5C/l
 run_lib "$P0P" "$P0P" "$P0P.out" "$P5C/run-hook-with-bash.js" "$(lib_payload lib-s0 run_terminal_command)" --optional "$P0P/scripts/hooks/probe-a.sh"
 expect_saw "P5: a cache runner's tampered table is not checked (foreign: the ceiling)" run_terminal_command
 
+P5P="$T/lib-p5b"
+mk_lib_project "$P5P" lib-s5b
+drop_map_entry "$P5P"
+P5BC="$T/cache-b/hooks"
+mkdir -p "$P5BC"
+cp "$HOOKS_DIR/run-hook-with-bash.js" "$HOOKS_DIR/hook-integrity.js" "$P5BC/"
+ln -s "$P5P/scripts/hooks/lib" "$P5BC/lib"
+run_lib "$P5P" "$P5P" "$P5P.out" "$P5BC/run-hook-with-bash.js" "$(lib_payload lib-s5b run_terminal_command)" --optional "$P5P/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P5b: a cache runner whose lib/ links into the project is refused over an edited table" 'DENY run-hook-with-bash.js'
+
 P6P="$T/lib-p6"
 mk_lib_project "$P6P" lib-s6
 mkdir -p "$T/lib-p6-outside"
@@ -2488,7 +2498,7 @@ jq 'del(.tools.run_terminal_command)' "$T/lib-p6b-outside/harness-tool-map.json"
 rm -rf "$P6B/scripts/hooks/lib"
 ln -s "$T/lib-p6b-outside" "$P6B/scripts/hooks/lib"
 run_lib "$P6BL" "$P6BL" "$P6B.out" "$P6BL/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s6b run_terminal_command)" --optional "$P6BL/scripts/hooks/probe-a.sh"
-expect_unloaded_deny "P6b: with the project spelled through a link, a lib/ symlinked out of it is still refused" 'DENY run-hook-with-bash.js'
+expect_unloaded_deny "P6b: with the project spelled through a link, a lib/ symlinked out of it is still refused" 'a sourced lib outside the project'
 
 P6C="$T/lib-p6c"
 mk_lib_project "$P6C" lib-s6c

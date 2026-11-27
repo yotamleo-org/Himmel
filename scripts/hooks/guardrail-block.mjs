@@ -1335,9 +1335,10 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
     wrapperIntegrity: contentIntegrity(info.parsed.wrapperPath, anchor, wrapperRelativePath),
     wrapperLibIntegrity: RUNNER_LIBS.map((rel) => {
       const relativePath = `scripts/hooks/${rel}`;
-      const libPath = path.join(path.dirname(info.parsed.wrapperPath), rel);
+      const wrapperDir = path.dirname(resolvedPath(info.parsed.wrapperPath));
+      const libPath = path.join(wrapperDir, rel);
       const integrity = contentIntegrity(libPath, anchor, relativePath);
-      if (integrity.verdict === 'healthy' && resolvedPath(libPath) !== path.join(resolvedPath(path.dirname(info.parsed.wrapperPath)), rel)) {
+      if (integrity.verdict === 'healthy' && resolvedPath(libPath) !== path.join(wrapperDir, rel)) {
         return { relativePath, ...integrity, verdict: 'degraded', reason: 'resolves-elsewhere' };
       }
       return { relativePath, ...integrity };
