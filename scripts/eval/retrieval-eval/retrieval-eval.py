@@ -480,7 +480,7 @@ def qmd_rows_or_failed_result(args, timeout, may_send):
 
 def reask_until_k_rows_outside_own_dir(args, k, path, timeout, may_send):
     spare, t0 = 0, time.time()
-    while True:
+    while True:  # t13b-ok: bounded loop, spare only grows and the arm timeout ends it
         args["limit"] = k + spare
         left = timeout - (time.time() - t0) if spare else timeout
         if left <= 0:
