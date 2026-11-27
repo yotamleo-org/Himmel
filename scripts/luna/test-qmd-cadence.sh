@@ -571,12 +571,6 @@ done
 
 # Test C6e: the runner also refreshes the salus named index -----
 #
-# The salus index lives apart from the default one (qmd --index salus,
-# ~/.config/qmd/salus.yml), and nothing refreshed it. The runner now fires the
-# reindex a second time with --index salus, but only when salus.yml exists at
-# FIRE time. Behavioural: fire the generated runner with a stub in place of
-# qmd-reindex.sh, once with a fixture HOME that carries salus.yml and once
-# without, and read what the stub was called with.
 echo "TEST: generated cron runner refreshes the salus index when salus.yml exists"
 sal_dir="$TMP_ROOT/salus-probe"
 mkdir -p "$sal_dir/home-salus/.config/qmd" "$sal_dir/home-plain"
@@ -586,6 +580,7 @@ cat > "$sal_dir/reindex-stub.sh" <<'STUB'
 echo "$*" >> "$STUB_CALLS"
 case " $* " in
     *" --index salus "*) exit "${STUB_SALUS_RC:-0}" ;;
+    *" --index gmail "*) exit "${STUB_GMAIL_RC:-0}" ;;
     *) exit "${STUB_MAIN_RC:-0}" ;;
 esac
 STUB
@@ -617,6 +612,78 @@ assert_rc "a failed salus refresh fails the runner" 6 "$got_rc"
 got_rc=0; fire_salus "$sal_dir/home-salus" 5 0 || got_rc=$?
 assert_rc "a failed default refresh keeps its rc and still tries salus" 5 "$got_rc"
 assert_contains "the default failing does not skip salus" "--index salus" "$(cat "$sal_dir/calls")"
+
+echo "TEST: generated cron runner refreshes the gmail index when gmail.yml exists"
+gm_gmail_yml=$'collections:\n  gmail:\n    path: /gmail-notes\n'
+mkdir -p "$sal_dir/home-gmail/.config/qmd" "$sal_dir/home-both/.config/qmd"
+printf '%s' "$gm_gmail_yml" > "$sal_dir/home-gmail/.config/qmd/gmail.yml"
+printf '%s' "$gm_gmail_yml" > "$sal_dir/home-both/.config/qmd/gmail.yml"
+cp "$sal_dir/home-salus/.config/qmd/salus.yml" "$sal_dir/home-both/.config/qmd/salus.yml"
+build_probe_runner() {
+    local text
+    text=$(cat "$CRON_DIR/qmd-reindex.sh")
+    text=${text//"$sal_bash_stub"/$REAL_BASH}
+    text=${text//"$sal_reindex"/$sal_dir/reindex-stub.sh}
+    printf '%s\n' "$text" | sed "s@^log=.*@log=$sal_dir/run.log@" > "$1"
+}
+fire_named() {
+    : > "$sal_dir/calls"
+    rm -rf "$sal_dir/run.log.lock"
+    env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$2" STUB_CALLS="$sal_dir/calls" \
+        STUB_MAIN_RC="$3" STUB_SALUS_RC="$4" STUB_GMAIL_RC="$5" sh "$1" >/dev/null 2>&1
+}
+build_probe_runner "$sal_dir/run-named.sh"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-gmail" 0 0 0 || got_rc=$?
+calls_out=$(cat "$sal_dir/calls")
+assert_rc "gmail.yml present: runner exits 0" 0 "$got_rc"
+assert_contains "gmail.yml present: the gmail index is refreshed" "--index gmail" "$calls_out"
+assert_not_contains "gmail.yml alone: salus is not fired" "--index salus" "$calls_out"
+assert_contains "gmail.yml present: the default index is still refreshed" "--qmd-bin" "$(grep -v -- '--index' <<<"$calls_out" || true)"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-salus" 0 0 0 || got_rc=$?
+assert_not_contains "no gmail.yml: no --index gmail fire" "--index gmail" "$(cat "$sal_dir/calls")"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-plain" 0 0 0 || got_rc=$?
+assert_not_contains "neither yml: no named fire" "--index" "$(cat "$sal_dir/calls")"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
+assert_rc "both ymls: runner exits 0" 0 "$got_rc"
+salus_ln=$(grep -n -- '--index salus' "$sal_dir/calls" | head -1 | cut -d: -f1)
+gmail_ln=$(grep -n -- '--index gmail' "$sal_dir/calls" | head -1 | cut -d: -f1)
+if [ -n "$salus_ln" ] && [ -n "$gmail_ln" ] && [ "$salus_ln" -lt "$gmail_ln" ]; then
+    pass "both ymls: salus is fired before gmail"
+else
+    fail "both ymls: salus is fired before gmail" "salus@${salus_ln:-none} gmail@${gmail_ln:-none}"
+fi
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-gmail" 0 0 7 || got_rc=$?
+assert_rc "a failed gmail refresh fails the runner" 7 "$got_rc"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-gmail" 5 0 7 || got_rc=$?
+assert_rc "a failed default refresh keeps its rc over gmail's" 5 "$got_rc"
+assert_contains "the default failing does not skip gmail" "--index gmail" "$(cat "$sal_dir/calls")"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-both" 0 6 7 || got_rc=$?
+assert_rc "salus and gmail both failing: the first failing index's rc" 6 "$got_rc"
+assert_contains "a failed salus refresh does not skip gmail" "--index gmail" "$(cat "$sal_dir/calls")"
+got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-both" 0 0 7 || got_rc=$?
+assert_rc "salus ok, gmail failing: gmail's rc" 7 "$got_rc"
+
+echo "TEST: the 2-hourly runner gives gmail the same anchor-hour cleanup split as salus"
+run_cron arm --force --every-hours 2 --time 04:10 >/dev/null
+build_probe_runner "$sal_dir/run-hourly.sh"
+# shellcheck disable=SC2016  # the runner's own $(date) is spliced in literally
+sed 's@= 04 \]@= "$(date +%H)" ]@g' "$sal_dir/run-hourly.sh" > "$sal_dir/run-anchor.sh"
+sed 's@= 04 \]@= 99 ]@g' "$sal_dir/run-hourly.sh" > "$sal_dir/run-off.sh"
+got_rc=0; fire_named "$sal_dir/run-anchor.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
+assert_rc "anchor hour: runner exits 0" 0 "$got_rc"
+assert_contains "anchor hour: gmail is refreshed" "--index gmail" "$(cat "$sal_dir/calls")"
+assert_not_contains "anchor hour: gmail keeps its cleanup" "--no-cleanup" "$(cat "$sal_dir/calls")"
+got_rc=0; fire_named "$sal_dir/run-off.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
+assert_rc "off the anchor hour: runner exits 0" 0 "$got_rc"
+assert_contains "off the anchor hour: gmail skips cleanup" "--index gmail --no-cleanup" "$(cat "$sal_dir/calls")"
+assert_contains "off the anchor hour: salus skips cleanup" "--index salus --no-cleanup" "$(cat "$sal_dir/calls")"
+run_cron arm --force >/dev/null
+
+echo "TEST: the armed banner names the gmail index"
+out=$(run_cron arm --force --dry-run)
+assert_contains "dry-run runner fires --index gmail" "--index gmail" "$out"
+out=$(run_cron arm --force)
+assert_contains "banner scope names gmail.yml" "gmail.yml" "$out"
 
 # Test C6c: the self-overlap lock actually SERIALIZES ------------
 #

@@ -136,7 +136,8 @@ local-only index (`QMD_INDEX_NAME=salus`, `salus.yml`, port 8182).
 
 ### Starting the salus daemon and proving it stays local
 
-Start it with its own index name and port (no provider key, local models only):
+Start it with its own index name and port (no provider key, local models only); its
+state files carry the name too (`mcp-salus.pid`, `recycle-salus.*`, `starting-salus`):
 
 ```bash
 env QMD_INDEX_NAME=salus QMD_MCP_URL=http://localhost:8182/mcp bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh
@@ -168,6 +169,36 @@ never mix local and remote vectors (qmd checks no vector's model at query time).
 lock across the rename and flips the config, for the `gemma` and `qwen` local
 aliases and the `remote` route; no swap to a remote model has been proven on a
 test VM yet.
+
+### The gmail index
+
+The operator's mail archive (`~/Mail/gmail-md`, collection `gmail`) is its own local-only index
+(`QMD_INDEX_NAME=gmail`, `~/.config/qmd/gmail.yml`, local models) with its own daemon on port 8183
+and its own bearer token, so it never shares a process, a port or a token with the shared index
+on 8181. Point both token variables at the gmail token file; the daemon and the probe then use the
+same one:
+
+```bash
+env QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8183/mcp QMD_WAIT_TRIES=40 \
+  QMD_HTTP_TOKEN_FILE="$HOME/.config/qmd/http-token-gmail" QMD_HTTP_AUTH_FILE="$HOME/.config/qmd/http-token-gmail" \
+  bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh
+```
+
+A big index takes about 20 s to answer its first initialize, so raise `QMD_WAIT_TRIES` (one-second
+probes after the start; default 5). Every named index keeps its own state under `~/.cache/qmd`:
+`mcp-<name>.pid`, `mcp-<name>.log`, `recycle-<name>.lock|stamp|log` and `starting-<name>`. A pid is
+recycled only when its argv names that index (`--index <name>`; the default index has none), so a
+recycle of gmail can never stop the shared daemon, nor the other way round.
+
+To start it at login, run the same line with `--install-boot-unit` added after the script path. It
+writes `qmd-daemon-gmail.service` (the shared index keeps `qmd-daemon.service`) and bakes in
+`QMD_INDEX_NAME`, `QMD_MCP_URL`, `QMD_HTTP_TOKEN_FILE`, `QMD_HTTP_AUTH_FILE` and `QMD_WAIT_TRIES`
+from the environment you ran it in. Token paths must be absolute there.
+
+`luna-mcp` reaches this index through `LUNA_MCP_INDEXES` (see its README), with the url
+`http://localhost:8183`, the token file and `gmail.yml`; it searches `gmail` alone and never as part
+of a default search. Prove the daemon stays local: list its open connections with `ss -tnp` on the
+pid in `~/.cache/qmd/mcp-gmail.pid`; only loopback peers and its own listener should appear.
 
 ## Turning the daemon off on purpose
 

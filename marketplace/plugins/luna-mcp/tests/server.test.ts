@@ -499,6 +499,135 @@ describe("search contract", () => {
   });
 });
 
+describe("a named index searched on its own", () => {
+  const lex = [{ type: "lex", query: "needle" }];
+  const MAIL = "2026/11/invoice.md";
+
+  it("sends a gmail-only search to the gmail daemon alone and returns verified hits", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna", "gmail"] });
+    world.gmailQmd!.reply([qmdHit("gmail", MAIL), qmdHit("gmail", ".hidden/x.md"), qmdHit("luna", "CLAUDE.md"), qmdHit("gmail", "link-out.md")]);
+    const res = await world.ops("qmd_search", { searches: lex, collections: ["gmail"] }, token);
+    assert.equal(res.status, 200);
+    assert.equal(world.qmd.requests.length, 0);
+    assert.equal(world.gmailQmd!.requests.length, 1);
+    assert.deepEqual(world.gmailQmd!.requests[0]!.body!["collections"], ["gmail"]);
+    assert.equal(world.gmailQmd!.requests[0]!.headers["authorization"], `Bearer ${QMD_TOKEN}`);
+    assert.deepEqual(res.body.result.collections, ["gmail"]);
+    assert.deepEqual(res.body.result.hits.map((h: { collection: string; path: string }) => [h.collection, h.path]), [["gmail", MAIL]]);
+    assert.match(res.body.result.hits[0].snippet, /needle in mail/);
+    assert.ok(!JSON.stringify(res.body).includes(LEAK));
+  });
+
+  it("keeps gmail out of a default search, on both backends", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna", "himmel", "gmail"] });
+    world.qmd.reply([]);
+    const res = await world.ops("qmd_search", { searches: lex }, token);
+    assert.equal(res.status, 200);
+    assert.equal(world.gmailQmd!.requests.length, 0);
+    assert.equal(world.qmd.requests.length, 1);
+    assert.deepEqual(world.qmd.requests[0]!.body!["collections"], ["luna", "himmel"]);
+    assert.deepEqual(res.body.result.collections, ["luna", "himmel"]);
+  });
+
+  it("tells a gmail-only key to name the collection instead of searching nothing", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["gmail"] });
+    const res = await world.ops("qmd_search", { searches: lex }, token);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, "isolated_collection");
+    assert.equal(world.qmd.requests.length + world.gmailQmd!.requests.length, 0);
+    assert.equal((await lines(world)).at(-1)!.reason, "isolated-default");
+  });
+
+  it("drops a gmail hit the shared daemon returns", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna", "gmail"] });
+    world.qmd.reply([qmdHit("gmail", MAIL), qmdHit("luna", "docs/guide.md")]);
+    const res = await world.ops("qmd_search", { searches: lex, collections: ["luna"] }, token);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.result.hits.map((h: { path: string }) => h.path), ["docs/guide.md"]);
+  });
+
+  it("refuses gmail mixed with another collection before either daemon is called", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna", "gmail"] });
+    const res = await world.ops("qmd_search", { searches: lex, collections: ["gmail", "luna"] }, token);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error.code, "isolated_collection");
+    assert.match(res.body.error.message, /gmail/);
+    assert.equal(world.qmd.requests.length, 0);
+    assert.equal(world.gmailQmd!.requests.length, 0);
+    const deny = (await lines(world)).filter((l) => l.verdict === "deny");
+    assert.equal(deny.length, 1);
+    assert.equal(deny[0]!.reason, "isolated-mixed");
+    assert.equal(deny[0]!.tool, "qmd_search");
+    assert.equal(deny[0]!.collection, "gmail,luna");
+  });
+
+  it("lets a key without gmail ask for gmail and luna and learn nothing about gmail", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna"] });
+    world.qmd.reply([]);
+    const res = await world.ops("qmd_search", { searches: lex, collections: ["gmail", "luna"] }, token);
+    assert.equal(res.status, 200);
+    assert.deepEqual(world.qmd.requests[0]!.body!["collections"], ["luna"]);
+    assert.deepEqual(res.body.result.skipped, ["gmail"]);
+    assert.equal(world.gmailQmd!.requests.length, 0);
+    const alone = await world.ops("qmd_search", { searches: lex, collections: ["gmail"] }, token);
+    assert.equal(alone.status, 403);
+    assert.equal(alone.body.error.code, "collection_forbidden");
+    assert.equal(world.gmailQmd!.requests.length, 0);
+  });
+
+  it("answers 503 for a gmail search when only the gmail daemon is down", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["luna", "gmail"] });
+    await world.gmailQmd!.stop();
+    const res = await world.ops("qmd_search", { searches: lex, collections: ["gmail"] }, token);
+    assert.equal(res.status, 503);
+    assert.equal(world.qmd.requests.length, 0);
+  });
+
+  it("denies gmail to a provider the matrix does not admit, on search and read", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ provider: "openai-chatgpt", collections: ["gmail"] });
+    const search = await world.ops("qmd_search", { searches: lex, collections: ["gmail"] }, token);
+    assert.equal(search.status, 403);
+    assert.equal(search.body.error.code, "egress_denied");
+    const read = await world.ops("read_doc", { collection: "gmail", path: MAIL }, token);
+    assert.equal(read.status, 403);
+    assert.ok(!JSON.stringify(read.body).includes("needle in mail"));
+    assert.equal(world.gmailQmd!.requests.length, 0);
+  });
+
+  it("reads, lists and walks a gmail root under the same path jail", async (t) => {
+    const world = await makeWorld(t, { gmail: true });
+    const { token } = await world.mint({ collections: ["gmail"] });
+    const read = await world.ops("read_doc", { path: MAIL }, token);
+    assert.equal(read.status, 200);
+    assert.equal(read.body.result.collection, "gmail");
+    assert.match(read.body.result.content, /needle in mail/);
+    const multi = await world.ops("multi_read", { entries: [{ collection: "gmail", path: MAIL }, { collection: "gmail", path: ".hidden/x.md" }] }, token);
+    assert.equal(multi.body.result.results[0].ok, true);
+    assert.equal(multi.body.result.results[1].ok, false);
+    const listed = await world.ops("list_dir", { collection: "gmail", dir: "2026/11" }, token);
+    assert.equal(listed.status, 200);
+    assert.deepEqual(listed.body.result.entries.map((e: { name: string }) => e.name), ["invoice.md"]);
+    const recent = await world.ops("recent_docs", { collection: "gmail" }, token);
+    assert.equal(recent.status, 200);
+    assert.deepEqual(recent.body.result.docs.map((d: { path: string }) => d.path), [MAIL]);
+    for (const path of [".hidden/x.md", "link-out.md", "../", "%2e%2e/outside/secret.md"]) {
+      const res = await world.ops("read_doc", { collection: "gmail", path }, token);
+      assert.ok(res.status === 403 || res.status === 404, `${path} -> ${res.status}`);
+      assert.ok(!JSON.stringify(res.body).includes(LEAK), path);
+    }
+    assert.equal(world.gmailQmd!.requests.length, 0);
+    assert.equal(world.qmd.requests.length, 0);
+  });
+});
+
 describe("egress end to end", () => {
   const corpus = { himmel: ["himmel-code"], luna: ["luna-personal", "luna-clippings"] };
 
