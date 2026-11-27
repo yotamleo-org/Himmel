@@ -165,6 +165,15 @@ describe('leaveCheck (I1)', () => {
       expect(check({ before: ['v1.1.3'], after: [], leave: { by: 'O-1' }, ops }).ok).toBe(true);
     });
 
+    it('L1: a decision row carrying a go block and op remove covers --by; no --by refuses', () => {
+      const row: OperatorRow = {
+        ...decision('O-1', '2026-11-01T00:00:00Z', 'remove', 'v1.1.3', null),
+        go: { answer: 'move-out', update: 1_000_001, message_id: 7, ts: '2026-11-01T00:00:00.000Z', asked: '2026-10-31T23:59:00.000Z', code: 'K7P2QX', request_sha256: 'a'.repeat(64) },
+      };
+      expect(check({ before: ['v1.1.3'], after: [], leave: { by: 'O-1' }, ops: chain(row) }).ok).toBe(true);
+      expect(refused(check({ before: ['v1.1.3'], after: [], ops: chain(row) }))).toMatch(/with no operator record/);
+    });
+
     it('a version-defer remove under a move record', () => {
       const ops = chain(decision('O-2', '2026-11-01T00:00:00Z', 'move', 'v1.1.3', 'v1.1.4'));
       expect(check({ before: ['v1.1.3', 'v1.1.4'], after: ['v1.1.4'], leave: { by: 'O-2' }, ops }).ok).toBe(true);

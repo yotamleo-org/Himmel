@@ -880,13 +880,13 @@ while the operator is away; every claudex brief must say so and give the worker
 the chief's exact session name.
 
 Inbox delivery is **tool-call-gated**. Before ending a turn at BLOCKED,
-READY, PR-READY, or a blocking question/PROBE ask, the worker arms ONE bounded
+READY or FINDING, the worker arms ONE bounded
 Monitor on `bash scripts/handover/chief-kit/inbox-follow.sh --wake
 <handover-root>/inbox/<session>.md`, with `timeout_ms: 1800000`. Resolve the
 root through `handover_root()` and use only the worker's own exact session name.
-The supported API has no persistent flag. The worker re-arms on expiry for at
-most eight windows/four hours per unresolved hold; unrelated wakes do not
-reset the wall-clock cap. Full lifecycle, failure recovery and wrap rules:
+The supported API has no persistent flag. The worker re-arms on expiry until a
+resolving ruling arrives; the chief's waiter re-nudges the chief every 30
+minutes while the hold stands. Full lifecycle, failure recovery and wrap rules:
 [`worker-preface-claudex.md`](worker-preface-claudex.md).
 
 The fixed wake envelope is data only: the worker makes a benign tool call to

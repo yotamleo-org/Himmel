@@ -6,7 +6,8 @@
 #
 # The inherited set is the chief doc's `## Live state` `legs:` entries (the same parse
 # relay-batch.sh uses). Each worker's doc comes from the fleet manifest next to the chief doc
-# (<chief doc stem>.fleet.json). Per worker it prints one state:
+# (<chief doc stem>.fleet.json) or the rows `chief.sh next` moved out of it (<chief doc
+# stem>.fleet.moved.json). Per worker it prints one state:
 #   quoted-back  the worker's LATEST `SUCCESSION accepted:` Results bullet names --successor as
 #                the incoming chief (the worker took this chief over)
 #   relayed      no such bullet yet, but the worker is listed in --relayed (the predecessor's
@@ -59,6 +60,15 @@ done
 # the successor is pasted into a quoted message in the printed command: a session name only
 case "$successor" in *[!A-Za-z0-9_.-]*) echo "succession-tracker.sh: --successor must be a session name (letters, digits, . _ -)" >&2; exit 2 ;; esac
 manifest="${doc%.md}.fleet.json"
+moved="${manifest%.json}.moved.json"
+if [ -f "$moved" ]; then
+    both="$(mktemp "${TMPDIR:-/tmp}/succession-tracker.XXXXXX")" || { echo "INCOMPLETE 0/0 (mktemp failed, cannot read $moved)"; exit 1; }
+    trap 'rm -f "$both"' EXIT
+    own="$manifest"; [ -f "$own" ] || own="$moved"
+    jq --slurpfile m "$moved" "$JQ_W"'(W // []) as $o | .workers = $o + [$m[0].workers[] | select(.doc as $x | any($o[]; .doc == $x) | not)] | del(.legs)' "$own" > "$both" \
+        || { echo "INCOMPLETE 0/0 (cannot merge $moved into $own: cannot cross-check the workers)"; exit 1; }
+    manifest="$both"
+fi
 
 # The worker block of ## Live state (the `workers:` line plus the lines wrapped under it). The
 # pre-rename `legs:` line is read only while legacy names are on; `workers:` wins when both exist.
