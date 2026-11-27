@@ -243,22 +243,61 @@ if [ -n "${HOME:-}" ]; then
     HOME_REAL="$(canon_path "$HOME")" || HOME_REAL="" # swallow-ok: empty HOME_REAL skips optional home-dir match while .agents and literal rules still run
 fi
 T3_HOME_1=""
-[ -n "$HOME_REAL" ] && T3_HOME_1="$HOME_REAL/.t3"
+[ -n "$HOME_REAL" ] && { T3_HOME_1="$(canon_path "$HOME_REAL/.t3")" || T3_HOME_1=""; } # swallow-ok: empty T3_HOME_1 falls back to T3_HOME_2
 T3_HOME_2=""
 if [ -n "${T3CODE_HOME:-}" ]; then
     T3_HOME_2="$(canon_path "$T3CODE_HOME")" || T3_HOME_2="" # swallow-ok: empty T3_HOME_2 falls back to T3_HOME_1 and literal checks
 fi
 
-ARTIFACT_REAL=""
-if [ -n "$ARTIFACT_DIR" ]; then
-    _ar="$(canon_path "$ARTIFACT_DIR")" || _ar="" # swallow-ok: failed artifact canon denies writes into T3 antigravity home (fail-closed)
-    case "$_ar" in
-        */userdata/providers/antigravity/*/antigravity-acp/brain/*)
-            ARTIFACT_REAL="$_ar"
+place_artifact() {
+    ARTIFACT_REAL="" ARTIFACT_HEX=""
+    local raw="${ARTIFACT_DIR%/}" mark="/userdata/providers/antigravity/"
+    local pfx="" rest="" hex="" tail="" pfx_real="" home_real="" t3h="" matched="" p="" real=""
+    case "$raw" in
+        /*) ;;
+        *) return 0 ;;
+    esac
+    case "$raw/" in
+        *//*|*/./*|*/../*) return 0 ;;
+    esac
+    case "$raw" in
+        *"$mark"*) ;;
+        *) return 0 ;;
+    esac
+    rest="${raw##*"$mark"}"
+    pfx="${raw%"$mark"*}${mark%/}"
+    hex="${rest%%/*}"
+    tail="${rest#"$hex"}"
+    case "$hex" in
+        *[!0-9a-f]*) return 0 ;;
+    esac
+    [ "${#hex}" -eq 64 ] || return 0
+    case "$tail" in
+        /antigravity-acp/brain/?*) ;;
+        *) return 0 ;;
+    esac
+    pfx_real="$(canon_path "$pfx")" || return 0 # swallow-ok: an unplaced artifact gets no widening (fail-closed)
+    for t3h in "$T3_HOME_1" "$T3_HOME_2"; do
+        [ -n "$t3h" ] || continue
+        home_real="$(canon_path "$t3h/userdata/providers/antigravity")" || continue # swallow-ok: an unresolvable home matches nothing (fail-closed)
+        [ "$pfx_real" != "$home_real" ] || matched=1
+    done
+    [ -n "$matched" ] || return 0
+    p="$raw"
+    while [ "$p" != "$pfx" ]; do
+        [ ! -L "$p" ] || return 0
+        p="${p%/*}"
+    done
+    real="$(canon_path "$raw")" || return 0 # swallow-ok: an unplaced artifact gets no widening (fail-closed)
+    case "$real" in
+        "$pfx_real/$hex/antigravity-acp/brain/"*)
+            ARTIFACT_REAL="$real"
+            ARTIFACT_HEX="$hex"
             ;;
     esac
-    unset _ar
-fi
+    return 0
+}
+place_artifact
 export HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$ARTIFACT_REAL"
 
 is_under_dir() {
@@ -386,23 +425,44 @@ build_claude_payload() {
           }'
 }
 
-in_design_profile() {
-    local sum="" t3h="" root=""
-    if command -v sha256sum >/dev/null 2>&1; then
-        sum="$(printf '%s' antigravity_design | sha256sum)"
-    elif command -v shasum >/dev/null 2>&1; then
-        sum="$(printf '%s' antigravity_design | shasum -a 256)"
+mcp_allowed_set() {
+    LANE_SET="" DECLARED_SET="" SESSION_PROFILE=""
+    local doc="" lane="" declared="" profiles="" prof="" p="" sum=""
+    doc="$(cat "$PRIMARY_ROOT/scripts/t3/antigravity-profiles.json" 2>/dev/null)" || return 1 # swallow-ok: an unreadable registry is denied by the caller
+    printf '%s' "$doc" | jq -se '
+        def server_name: type == "string" and test("\\A[A-Za-z0-9.-]+\\z");
+        length == 1 and (.[0]
+            | (.profiles | type == "object")
+              and (.laneMcpServers | type == "array" and all(.[]; server_name))
+              and all(.profiles | to_entries[];
+                  (.key | test("\\A[A-Za-z0-9._-]+\\z"))
+                  and (.value
+                      | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object")) else true end)
+                        and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string")) else true end))))
+    ' >/dev/null 2>&1 || return 1 # swallow-ok: a malformed registry is denied by the caller
+    lane="$(printf '%s' "$doc" | jq -r '.laneMcpServers | join(" ")')" || return 1
+    if [ -n "$ARTIFACT_HEX" ]; then
+        profiles="$(printf '%s' "$doc" | jq -r '.profiles | keys[]')" || return 1
+        for p in $profiles; do
+            sum=""
+            if command -v sha256sum >/dev/null 2>&1; then
+                sum="$(printf '%s' "antigravity_$p" | sha256sum)"
+            elif command -v shasum >/dev/null 2>&1; then
+                sum="$(printf '%s' "antigravity_$p" | shasum -a 256)"
+            fi
+            if [ "${sum%% *}" = "$ARTIFACT_HEX" ]; then
+                prof="$p"
+                break
+            fi
+        done
     fi
-    sum="${sum%% *}"
-    [ -n "$sum" ] || return 1
-    for t3h in "$T3_HOME_1" "$T3_HOME_2"; do
-        [ -n "$t3h" ] || continue
-        root="$(canon_path "$t3h/userdata/providers/antigravity/$sum/antigravity-acp/brain")" || continue
-        case "$ARTIFACT_REAL" in
-            "$root"/*) return 0 ;;
-        esac
-    done
-    return 1
+    if [ -n "$prof" ]; then
+        declared="$(printf '%s' "$doc" | jq -r --arg p "$prof" '
+            .profiles[$p]
+            | [((.mcpServers // {}) | keys[]), ((.optionalMcpServers // [])[])]
+            | map(select(test("\\A[A-Za-z0-9.-]+\\z"))) | join(" ")')" || return 1
+    fi
+    LANE_SET="$lane" DECLARED_SET="$declared" SESSION_PROFILE="$prof"
 }
 
 run_mcp_gate() {
@@ -419,25 +479,28 @@ run_mcp_gate() {
             emit_deny "antigravity-hook-adapter: invalid MCP tool name '$tool' — fail closed"
             ;;
     esac
-    case "$srv" in
-        graphify|t3-code) ;;
-        context7|shadcn|playwright)
-            in_design_profile || emit_deny "antigravity-hook-adapter: MCP server '$srv' is allowlisted for the antigravity_design profile only, and this session is not in that design profile"
-            ;;
+    mcp_allowed_set || emit_deny "antigravity-hook-adapter: cannot read laneMcpServers and profiles from $PRIMARY_ROOT/scripts/t3/antigravity-profiles.json — fail closed"
+    case " $LANE_SET " in
+        *" $srv "*) ;;
         *)
-            emit_deny "antigravity-hook-adapter: MCP server '$srv' is not allowlisted on the Antigravity lane"
+            case " $DECLARED_SET " in
+                *" $srv "*) ;;
+                *)
+                    emit_deny "antigravity-hook-adapter: MCP server '$srv' is not allowlisted on the Antigravity lane: it is not in laneMcpServers and profile '${SESSION_PROFILE:-none}' does not declare it in scripts/t3/antigravity-profiles.json"
+                    ;;
+            esac
+            local class=""
+            class="$(jq -r --arg s "$srv" --arg t "$tool" \
+                '.servers[$s] | select(type == "object" and .verdict == "allow") | .tools[$t] // empty' \
+                "$PRIMARY_ROOT/scripts/guardrails/mcp-policy.json")" || class=""
+            case "$class" in
+                read|write) ;;
+                *)
+                    emit_deny "antigravity-hook-adapter: $srv '$tool' is not a read or write tool in mcp-policy.json and is denied on the Antigravity lane"
+                    ;;
+            esac
             ;;
     esac
-    if [ "$srv" = "playwright" ]; then
-        local class=""
-        class="$(jq -r --arg t "$tool" '.servers.plugin_playwright_playwright.tools[$t] // empty' "$PRIMARY_ROOT/scripts/guardrails/mcp-policy.json")"
-        case "$class" in
-            read|write) ;;
-            *)
-                emit_deny "antigravity-hook-adapter: playwright '$tool' is not a read or write tool in mcp-policy.json and is denied on the Antigravity lane"
-                ;;
-        esac
-    fi
     payload="$(build_claude_payload "mcp__${srv}__${tool}" "$mode")" || emit_deny "antigravity-hook-adapter: failed to translate MCP payload"
     if [ "$srv" = "t3-code" ]; then
         chain+=(guard-t3-thread-tools.sh)
