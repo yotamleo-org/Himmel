@@ -222,12 +222,16 @@ pmr_bounded() {
     pid=$!
     (
         sleep "$secs"
+        marked=1
+        : > "$fired" || marked=0
         tree=$(pmr_tree "$pid")
         # shellcheck disable=SC2086
-        if ! : > "$fired"; then kill -KILL $tree; exit 0; fi
+        if [ "$marked" -eq 0 ]; then kill -KILL $tree; exit 0; fi
         # shellcheck disable=SC2086
         kill -TERM $tree 2>/dev/null
         left="${QMD_KILL_GRACE_SECS:-5}"
+        case "$left" in ''|*[!0-9]*) left=5 ;; esac
+        left=$((10#$left))
         while [ "$left" -gt 0 ]; do
             sleep 1
             # shellcheck disable=SC2086
