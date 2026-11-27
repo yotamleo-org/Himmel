@@ -114,7 +114,7 @@ if [ -n "$ARTIFACT_REAL" ]; then
             *)
                 for _t3h in "$T3_HOME_1" "$T3_HOME_2"; do
                     [ -n "$_t3h" ] || continue
-                    _prov="$(canon_path "$_t3h/userdata/providers/antigravity")" || continue # swallow-ok: no match leaves the carve-out off
+                    _prov="$(canon_path "$_t3h/userdata/providers/antigravity")" || continue
                     [ "${_home%/*}" != "$_prov" ] || OWN_MCP_REAL="$_acp/mcp"
                 done
                 ;;
