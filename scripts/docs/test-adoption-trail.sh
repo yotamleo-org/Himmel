@@ -624,7 +624,9 @@ if [ "$have_data" = 1 ]; then
   esac
   jq '.modules |= map(if .id == "install" then .requires = ["guardrails"] else . end)' "$DATA" > "$tmp/cycle.json"
   jq '.modules |= map(if .id == "fleet" then .requires += ["reach"] else . end)' "$DATA" > "$tmp/fleet-reach.json"
-  if order_gaps "$tmp/cycle.json" | grep -q '^cycle: ' && order_gaps "$tmp/fleet-reach.json" | grep -q '^fleet .* needs .*reach'; then
+  cyc="$(order_gaps "$tmp/cycle.json" | grep -E '^cycle: ')"
+  fr="$(order_gaps "$tmp/fleet-reach.json" | grep -E '^fleet .* needs .*reach')"
+  if [ -n "$cyc" ] && [ -n "$fr" ]; then
     ok "control: a cycle and a fleet edge to reach are each reported"
   else
     bad "control: the ORDER check missed a cycle or a fleet edge to reach"
@@ -713,7 +715,8 @@ else
 fi
 if [ "$have_data" = 1 ]; then
   perl -0777 -pe 's/<span class="alias" id="lvl-4"><\/span>//; s/<\/main>/<span class="alias" id="lvl-4"><\/span><\/main>/' "$LEVELS" > "$tmp/alias.html"
-  if alias_gaps "$DATA" "$tmp/alias.html" "$PAGE" | grep -q 'lvl-4 is not inside'; then
+  moved="$(alias_gaps "$DATA" "$tmp/alias.html" "$PAGE" | grep -F 'lvl-4 is not inside')"
+  if [ -n "$moved" ]; then
     ok "control: a lvl-4 anchor outside its card is reported"
   else
     bad "control: the ALIASES check accepted a lvl-4 anchor outside its card"
