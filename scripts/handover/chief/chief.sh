@@ -2454,7 +2454,7 @@ worker_ever_relayed() {
 
 label_spans() {
     # shellcheck disable=SC2016  # the backticks are literal span delimiters
-    printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -- "\`$2:" || :  # swallow-ok: no span is empty output
+    printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -- "\`$2:" || :
 }
 
 brief_seed_tokens() (
