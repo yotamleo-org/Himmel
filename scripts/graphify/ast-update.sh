@@ -380,6 +380,24 @@ PROMOTE_HEARTBEAT_PID=$!
 # rewrites the user's ~/.claude / ~/.codex / ~/.hermes skill dirs on a version
 # mismatch; skill refresh stays an explicit himmel-update step.
 export GRAPHIFY_NO_AUTO_REFRESH=1
+_caller_executable() {
+  local path
+  path=$(type -P "$1") || return 1
+  case "$path" in
+    /*|[A-Za-z]:[/\\]*) printf '%s\n' "$path" ;;
+    *) printf '%s/%s\n' "$PWD" "$path" ;;
+  esac
+}
+
+if ! _graphify_bin=$(_caller_executable graphify); then
+  echo "ast-update: FAILED -- graphify executable is missing from PATH; exiting 5" >&2
+  exit 5
+fi
+if ! _nice_bin=$(_caller_executable nice); then
+  echo "ast-update: FAILED -- nice executable is missing from PATH; exiting 5" >&2
+  exit 5
+fi
+
 # Shrink guard: `graphify update` re-extracts code files and
 # replaces their nodes, dropping the `_origin: semantic` nodes attached to them
 # (245 nodes lost at the 2026-10-16 09:15 tick). Snapshot the live graph, and
@@ -401,8 +419,10 @@ _nice_now=$(ps -o nice= -p $$ 2>/dev/null | tr -d ' ') || _nice_now=""
 [[ "$_nice_now" =~ ^-?[0-9]+$ ]] || _nice_now=0
 _nice_by=$((15 - _nice_now))
 [ "$_nice_by" -gt 0 ] || _nice_by=0
-_lowprio=(nice -n "$_nice_by")
-if command -v ionice >/dev/null 2>&1; then _lowprio=(ionice -t -c 3 "${_lowprio[@]}"); fi
+_lowprio=("$_nice_bin" -n "$_nice_by")
+if _ionice_bin=$(_caller_executable ionice); then
+  _lowprio=("$_ionice_bin" -t -c 3 "${_lowprio[@]}")
+fi
 
 _forced_stamp="$OUT_DIR/.ast-forced-at"
 _now=$(date -u +%s)
@@ -411,7 +431,10 @@ case "$_last_forced" in ''|*[!0-9]*) _last_forced=0 ;; esac
 _force_args=()
 [ "$((_now - 10#$_last_forced))" -lt 86400 ] || _force_args=(--force)
 set +e
-"${_lowprio[@]}" graphify update "$CORPUS_ROOT" ${_force_args[@]+"${_force_args[@]}"}
+(
+  CDPATH='' cd -- "$CORPUS_ROOT/" &&
+    "${_lowprio[@]}" "$_graphify_bin" update "$PWD" ${_force_args[@]+"${_force_args[@]}"}
+)
 _graphify_rc=$?
 set -e
 if [ -f "$_pre_ast" ]; then
