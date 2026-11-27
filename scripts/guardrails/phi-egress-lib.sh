@@ -60,9 +60,7 @@ _guard_endpoint_host() {
 # --- The PHI config dir ------------------------------------------------------
 # ~/.config/himmel/phi is the neutral dir for phi-roots / egress-denylist;
 # ~/.config/claude-glm (and $CLAUDE_GLM_CONFIG_DIR, when set) are the old
-# ones. NO GUARD READS THE NEUTRAL DIR YET: only the doctor calls the
-# functions below, until a later change re-points the readers. Until then the old
-# path stays authoritative. A list under EITHER dir counts (a union, so a
+# ones. A list under ANY of them counts (a union, so a
 # neutral list can never hide an old one). The neutral dir keys on HOME alone,
 # so an environment variable cannot steer a fail-closed read away from it.
 

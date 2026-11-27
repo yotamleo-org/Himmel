@@ -761,7 +761,6 @@ PHI_LIST_PATHS_MODULE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 def _roots(name):
-    """The roots of every present copy of the list; raises on anything unreadable (fail closed)."""
     spec = importlib.util.spec_from_file_location("phi_list_paths", PHI_LIST_PATHS_MODULE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

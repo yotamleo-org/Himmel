@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scripts/guardrails/testlib-phi-dirs.sh — builds the fixture states of
-# phi-dir-cases.tsv under a fixture HOME, for the resolver suite and every
-# reader suite. Sourced; it sets no shell option.
+# Sourced; it sets no shell option.
 #
 #   phi_dirs_cases                      print the case ids
 #   phi_dirs_expect <id> <column>       print one cell of the table

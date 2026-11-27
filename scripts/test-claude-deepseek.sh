@@ -79,8 +79,8 @@ for(const id of phi('phi_dirs_cases').split('\n')){
    delete f.env.CLAUDE_GLM_CONFIG_DIR;
    if(override.startsWith('home:'))f.env.CLAUDE_GLM_CONFIG_DIR=path.join(f.home,override.slice(5));
    if(override.startsWith('rel:'))f.env.CLAUDE_GLM_CONFIG_DIR=override.slice(4);
-   // HANDOVER_DIR makes the workspace permitted unless a PHI list covers it.
-   f.cwd=path.join(f.home,id==='C22'?'work':'phi-root-fixture');f.env.HANDOVER_DIR=f.cwd;f.lockCwd=id==='C22';
+   const permittedUnlessListed=path.join(f.home,id==='C22'?'work':'phi-root-fixture');
+   f.cwd=permittedUnlessListed;f.env.HANDOVER_DIR=permittedUnlessListed;f.lockCwd=id==='C22';
    const r=run(f,covered||unreadable?3:0);
    if(covered)assert(r.stderr.includes('guarded workspace'),r.stderr);
    if(phi('phi_dirs_expect',id,'rc_roots')==='2')assert(r.stderr.includes('unprovable: '),r.stderr);

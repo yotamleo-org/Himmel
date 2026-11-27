@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Python form of _guard_phi_list_paths (phi-egress-lib.sh).
-
-The contract is pinned by phi-dir-cases.tsv and run by test-phi-list-paths.sh.
-It never reads a list's content.
-"""
-
 import os
 import stat
 import sys
@@ -25,9 +19,7 @@ def phi_dirs(env=os.environ):
 
 
 def phi_dir_provable(path):
-    """Mirrors _guard_phi_dir_provable step for step.
-
-    os.path.exists is not used: it is False on EACCES, so a locked dir would
+    """os.path.exists is not used: it is False on EACCES, so a locked dir would
     read as "no list here".
     """
     d = path
@@ -59,14 +51,11 @@ def phi_dir_provable(path):
     return os.access(d, os.X_OK)
 
 
-def _is_present(path):
-    """Absent only on "no such file"; any other error counts as present."""
+def _present_unless_enoent(path):
     try:
         os.lstat(path)
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return True
+    except OSError as err:
+        return not isinstance(err, FileNotFoundError)
     return True
 
 
@@ -80,7 +69,7 @@ def phi_list_paths(name, env=os.environ):
         if not phi_dir_provable(d):
             return 2, paths, d
         candidate = d + "/" + name
-        if _is_present(candidate):
+        if _present_unless_enoent(candidate):
             paths.append(candidate)
     return (0 if paths else 3), paths, ""
 

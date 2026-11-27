@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// CommonJS form of _guard_phi_list_paths (phi-egress-lib.sh). The contract is
-// pinned by phi-dir-cases.tsv and run by test-phi-list-paths.sh. It never reads
-// a list's content.
 'use strict';
 
 const fs = require('fs');
@@ -31,8 +28,8 @@ function canTraverse(p) {
 }
 
 /**
- * Mirrors _guard_phi_dir_provable step for step. fs.existsSync is not used: it
- * is false on any error, so a locked dir would read as "no list here".
+ * fs.existsSync is not used: it is false on any error, so a locked dir would
+ * read as "no list here".
  */
 function phiDirProvable(dir) {
   let d = dir;
@@ -60,11 +57,7 @@ function phiDirProvable(dir) {
   return canTraverse(d);
 }
 
-/**
- * Absent only on "no such file": any other error counts as present, so the
- * reader that opens it fails closed.
- */
-function isPresent(file) {
+function presentUnlessEnoent(file) {
   try {
     fs.lstatSync(file);
     return true;
@@ -80,7 +73,7 @@ function phiListPaths(name, env = process.env) {
   for (const d of dirs) {
     if (!phiDirProvable(d)) return { rc: 2, paths, unprovable: d };
     const file = `${d}/${name}`;
-    if (isPresent(file)) paths.push(file);
+    if (presentUnlessEnoent(file)) paths.push(file);
   }
   return { rc: paths.length ? 0 : 3, paths, unprovable: '' };
 }

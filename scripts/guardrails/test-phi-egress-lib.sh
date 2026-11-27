@@ -97,8 +97,6 @@ else
     fail "lookalike host -> expected verbatim api.anthropic.com.evil.example got [$out]"
 fi
 
-# The list-paths answers live in phi-dir-cases.tsv (test-phi-list-paths.sh).
-# Each row runs in a subshell with its own HOME, so the station's real lists are never read.
 phi_home() { # <case> -> a fresh fixture HOME with both config parents
     local h="$WS/$1"
     mkdir -p "$h/.config/himmel/phi" "$h/.config/claude-glm"

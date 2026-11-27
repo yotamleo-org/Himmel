@@ -6,8 +6,6 @@
 # mutated scratch copy can be proven to fail.
 #
 # Usage: bash scripts/guardrails/test-phi-list-paths.sh
-# By design: single-quoted child bodies, subshell-local HOME, the trap and the seam variable.
-# shellcheck disable=SC2016,SC2030,SC2031,SC2034,SC2329
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -23,6 +21,7 @@ DEADLINE="$(command -v timeout || command -v gtimeout || true)"
 
 WS="$(mktemp -d "${TMPDIR:-/tmp}/phi-list-paths-test.XXXXXX")" || exit 1
 BUILT=()
+# shellcheck disable=SC2329
 cleanup() {
     local h
     for h in ${BUILT[@]+"${BUILT[@]}"}; do phi_dirs_restore "$h" || true; done
@@ -38,6 +37,7 @@ with_deadline() {
     if [ -n "$DEADLINE" ]; then "$DEADLINE" 10 "$@"; else "$@"; fi
 }
 
+# shellcheck disable=SC2016
 run_one() {
     local rc=0
     (
@@ -52,6 +52,7 @@ run_one() {
     return "$rc"
 }
 
+# shellcheck disable=SC2016
 dirs_of() {
     (
         phi_dirs_enter "$2" "$3" || exit 99
@@ -136,6 +137,7 @@ done
 
 home="$WS/dirs-dup"; mkdir -p "$home"
 want="$home/.config/himmel/phi"$'\n'"$home/.config/claude-glm"
+# shellcheck disable=SC2016,SC2030
 for impl in bash cjs py; do
     got="$(
         export HOME="$home" CLAUDE_GLM_CONFIG_DIR="$home/.config/claude-glm"
@@ -151,6 +153,7 @@ print("\n".join(m.phi_dirs(os.environ)))' "$PYMOD" ;;
 done
 
 echo "== no HOME =="
+# shellcheck disable=SC2016,SC2030,SC2031
 for impl in bash cjs py; do
     rc=0
     (
@@ -168,6 +171,7 @@ done
 echo "== newline in a dir =="
 home="$WS/newline"; nl_dir="$WS/glm"$'\n'"split"
 mkdir -p "$home" "$nl_dir" && printf '%s\n' "$home/phi-root-fixture" > "$nl_dir/phi-roots"
+# shellcheck disable=SC2016,SC2031
 for impl in bash cjs py; do
     rc=0
     (
@@ -199,6 +203,7 @@ echo "== fixture refusals =="
 standin="$WS/standin-home"; mkdir -p "$standin"
 for target in "$standin" "$standin/sub"; do
     rc=0
+    # shellcheck disable=SC2034
     ( PHI_DIRS_REAL_HOME="$standin"; phi_dirs_build C1 "$target" ) 2>"$WS/err" || rc=$?
     if [ "$rc" -ne 0 ] && [ ! -e "$standin/.config" ] && [ ! -e "$standin/sub" ] && [ ! -e "$standin/phi-root-fixture" ]; then
         pass "build at or under the recorded HOME is refused, nothing created"

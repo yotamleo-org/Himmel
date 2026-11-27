@@ -10,7 +10,6 @@
 # cannot shrink the list it is judged by. An unreadable, empty or invalid list
 # refuses. Blank lines and # comments are ignored; anchor every pattern.
 
-# The PHI list resolvers decide what R6, R12 and R15 read, with the table, fixture builder and suite that prove them.
 ^scripts/guardrails/(phi-egress-lib\.sh|phi-list-paths\.cjs|phi_list_paths\.py|phi-dir-cases\.tsv|testlib-phi-dirs\.sh|test-phi-list-paths\.sh)$
 ^marketplace/plugins/himmel-ops/hooks/phi-egress-lib\.sh$
 
