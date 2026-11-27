@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Unit rows for scripts/lib/lane-grants.sh: the per-lane grant reader, the strict
-# lexer, the four command shapes and the doctor report.
-#
-# Hermetic: a fixture HOME plus HIMMEL_POLICY_FOLLOWS_HOME=1, so no row reads the
-# account's real config. Git fixtures are local; the origin URL is never contacted.
-# SC2016: literal $ and backticks are payloads; SC2329: rows override lib seams.
 # shellcheck disable=SC2016,SC2329
 set -uo pipefail
 

@@ -15,28 +15,21 @@
 # safe under `set -euo pipefail` when called as `x=$(f) || x=`.
 #
 #   lane_config_path             the config path; rc 1 unless the policy-dir path
-#                                and the $HOME path (which the config-write guard
-#                                protects) are one file. lane_config_owner_ok and
-#                                lane_config_find are the unit suite's seams.
+#                                and the $HOME path are one file.
 #   lane_origin_ok <dir>         every fetch and push URL of <dir>'s origin (after
 #                                insteadOf and pushurl) names the pinned repo, and
 #                                no push refspec or mirror mode is set. A remote
-#                                helper (`::`) or an `@` in the path, which the
-#                                shared parser would strip as userinfo, refuses.
+#                                helper (`::`) or an `@` in the URL path refuses.
 #   lane_grant_argv <command>    the words of ONE simple command of literal words,
 #                                one per line. LC_ALL=C, so no locale collation
 #                                widens the unquoted allowlist; a word starting
 #                                with = is refused (zsh expands it to a path).
 #   lane_net_host_ok <host>      the one host check of a granted fetch; open by
-#                                default. curl takes no -L: a redirect would
-#                                leave the checked host.
-#   lane_grant_shape <payload>   the capability the command holds a grant for. It
-#                                stops at the first miss, so a command with no
-#                                grant-shaped prefix never reads the config; a
+#                                default.
+#   lane_grant_shape <payload>   the capability the command holds a grant for. A
 #                                JSON string holding NUL is refused because bash
-#                                would drop the byte. Git reads run in the
-#                                payload cwd, never the hook's own. gh picks its
-#                                base repo among all remotes, hence origin only.
+#                                would drop the byte. gh picks its base repo among
+#                                all remotes, hence origin only.
 #   lane_grants_report [<root>]  for the doctor: `info:`, `<lane>: <caps> (<state>)`
 #                                and `problem:` lines in fixed text only. When
 #                                $HOME is not the account home it reads only the
