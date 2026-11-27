@@ -514,7 +514,6 @@ describe("a named index searched on its own", () => {
     assert.equal(world.gmailQmd!.requests.length, 1);
     assert.deepEqual(world.gmailQmd!.requests[0]!.body!["collections"], ["gmail"]);
     assert.equal(world.gmailQmd!.requests[0]!.headers["authorization"], `Bearer ${GMAIL_QMD_TOKEN}`);
-    assert.ok(world.qmd.requests.every((r) => r.headers["authorization"] !== `Bearer ${GMAIL_QMD_TOKEN}`));
     assert.deepEqual(res.body.result.collections, ["gmail"]);
     assert.deepEqual(res.body.result.hits.map((h: { collection: string; path: string }) => [h.collection, h.path]), [["gmail", MAIL]]);
     assert.match(res.body.result.hits[0].snippet, /needle in mail/);

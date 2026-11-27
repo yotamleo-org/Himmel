@@ -113,9 +113,17 @@ if [ "$QMD_INDEX_NAME" != index ]; then
     '')
       echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
       exit 1 ;;
-    *://*:8181|*://*:8181/*)
-      echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port 8181, the shared server's; set QMD_MCP_URL to the index's own port." >&2
-      exit 1 ;;
+  esac
+  unit_port="${unit_url#*://}"
+  unit_port="${unit_port%%/*}"
+  unit_port="${unit_port##*:}"
+  case "$unit_port" in
+    ''|*[!0-9]*) ;;
+    *)
+      if [ "${#unit_port}" -le 9 ] && [ "$((10#$unit_port))" -eq 8181 ]; then
+        echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port 8181, the shared server's; set QMD_MCP_URL to the index's own port." >&2
+        exit 1
+      fi ;;
   esac
 fi
 boot_before="himmel-recover.service"

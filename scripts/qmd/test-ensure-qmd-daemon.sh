@@ -1449,6 +1449,9 @@ case "$out" in *"needs its own QMD_MCP_URL"*) ;; *) fail "(z20) no refusal line 
 run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8181/mcp
 [ "$rc" -eq 1 ] || fail "(z20) a named index on port 8181 must be refused: got rc $rc ($out)"
 case "$out" in *"cannot use port 8181"*) ;; *) fail "(z20) no refusal line naming port 8181 ($out)" ;; esac
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:08181/mcp
+[ "$rc" -eq 1 ] || fail "(z20) a named index on port 08181 (8181 to curl) must be refused: got rc $rc ($out)"
+case "$out" in *"cannot use port 8181"*) ;; *) fail "(z20) no refusal line for port 08181 ($out)" ;; esac
 rm -f "$units/qmd-daemon-gmail.service"
 set +e
 out="$(env -u QMD_MCP_URL QMD_SYSTEMCTL="$bin/systemctl" QMD_UNIT_DIR="$units" QMD_MOCK_STATE="$state" QMD_INDEX_NAME=gmail \

@@ -641,11 +641,11 @@ assert_not_contains "gmail.yml alone: salus is not fired" "--index salus" "$call
 assert_contains "gmail.yml present: the default index is still refreshed" "--qmd-bin" "$(grep -v -- '--index' <<<"$calls_out" || true)"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-salus" 0 0 0 || got_rc=$?
 assert_rc "no gmail.yml: runner exits 0" 0 "$got_rc"
-assert_contains "no gmail.yml: the runner still refreshed the default index" "--qmd-bin" "$(cat "$sal_dir/calls")"
+assert_contains "no gmail.yml: the runner still refreshed the default index" "--qmd-bin" "$(grep -v -- '--index' "$sal_dir/calls" || true)"
 assert_not_contains "no gmail.yml: no --index gmail fire" "--index gmail" "$(cat "$sal_dir/calls")"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-plain" 0 0 0 || got_rc=$?
 assert_rc "neither yml: runner exits 0" 0 "$got_rc"
-assert_contains "neither yml: the runner still refreshed the default index" "--qmd-bin" "$(cat "$sal_dir/calls")"
+assert_contains "neither yml: the runner still refreshed the default index" "--qmd-bin" "$(grep -v -- '--index' "$sal_dir/calls" || true)"
 assert_not_contains "neither yml: no named fire" "--index" "$(cat "$sal_dir/calls")"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
 assert_rc "both ymls: runner exits 0" 0 "$got_rc"
