@@ -749,8 +749,8 @@ cat > "$OUT26/graph.json" <<'JSON'
 {"nodes":[
  {"id":"a1","_origin":"ast","source_file":"a.sh","community":0},
  {"id":"s_kept","_origin":"semantic","source_file":"doc.md","community":0},
- {"id":"s_restored","_origin":"semantic","source_file":"doc.md","label":"stub"},
- {"id":"s_restored2","_origin":"semantic","source_file":"doc.md","label":"stub2"}],
+ {"id":"s_restored","_origin":"semantic","source_file":"doc.md","label":"stub","_restored":true},
+ {"id":"s_restored2","_origin":"semantic","source_file":"doc.md","label":"stub2","_restored":true}],
  "links":[{"source":"s_restored","target":"a1","_origin":"semantic","relation":"mentions"}],
  "hyperedges":[]}
 JSON
@@ -780,7 +780,7 @@ ids26=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".joi
 [ "$ids26" = "a1 a2 s_kept s_restored s_restored2 1" ] \
   && pass "T26 the restored nodes and their edge are back after the rebuild" || fail "T26 graph: $ids26"
 grep -qF "set aside 2 restored semantic node(s)" <<<"$out26" \
-  && pass "T26 only the two nodes without a community are set aside" || fail "T26 set-aside count: $out26"
+  && pass "T26 only the two nodes restore put back are set aside" || fail "T26 set-aside count: $out26"
 
 echo "T26b: a rebuild that really loses a node graphify wrote is still refused"
 CORPUS26B="$WS/c26b"; OUT26B="$CORPUS26B/graphify-out"; BIN26B="$WS/bin26b"; mkdir -p "$OUT26B" "$BIN26B"
@@ -800,8 +800,8 @@ PY
 STUB
 chmod +x "$BIN26B/graphify"
 out26b=$( PATH="$BIN26B:$PATH" bash "$SCRIPT" "$CORPUS26B" 2>&1 ); rc26b=$?
-left26b=$(find "$OUT26B" -name '*pre-ast*')
-[ "$rc26b" -eq 5 ] && grep -q "Refusing to overwrite" <<<"$out26b" && cmp -s "$OUT26B/graph.json" "$WS/graph26.orig" && [ -z "$left26b" ] \
+left26b=$(find "$OUT26B" -name '*pre-ast*'); find26b=$?
+[ "$find26b" -eq 0 ] && [ "$rc26b" -eq 5 ] &&grep -q "Refusing to overwrite" <<<"$out26b" && cmp -s "$OUT26B/graph.json" "$WS/graph26.orig" && [ -z "$left26b" ] \
   && pass "T26b the real loss is refused, graph.json is byte-equal and no snapshot is left" \
   || fail "T26b (rc=$rc26b) left=$left26b: $out26b"
 
@@ -858,6 +858,52 @@ chmod +x "$BIN28/mv"
 out28=$( PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" 2>&1 ); rc28=$?
 [ "$rc28" -eq 5 ] && grep -q "could not set aside" <<<"$out28" && grep -qF "kept at $OUT28/.graph.pre-ast.json" <<<"$out28" && ! grep -q "left as it was" <<<"$out28" && [ "$(cat "$OUT28/.graph.pre-ast.json" 2>/dev/null)" = "not json" ] \
   && pass "T28b a failed put-back after a failed set-aside names the kept snapshot" || fail "T28b (rc=$rc28): $out28"
+
+echo "T29: a community-less node a --no-cluster semantic merge added reaches graphify and gets a community"
+CORPUS29="$WS/c29"; OUT29="$CORPUS29/graphify-out"; BIN29="$WS/bin29"; mkdir -p "$OUT29" "$BIN29"
+touch "$CORPUS29/a.sh" "$CORPUS29/doc.md"
+printf '%s\n' "$(date -u +%s)" > "$OUT29/.ast-forced-at"
+printf '%s\n' '{"nodes":[{"id":"a1","_origin":"ast","source_file":"a.sh","community":0},{"id":"s_merged","_origin":"semantic","source_file":"doc.md"}],"links":[]}' > "$OUT29/graph.json"
+cat > "$BIN29/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "graphify-out", "graph.json")
+g = json.load(open(p))
+for n in g["nodes"]:
+    n["community"] = 7
+g["nodes"].append({"id": "s_back", "_origin": "semantic", "source_file": "doc.md", "community": 7, "_restored": True})
+json.dump(g, open(p, "w"))
+PY
+STUB
+chmod +x "$BIN29/graphify"
+out29=$( PATH="$BIN29:$PATH" bash "$SCRIPT" "$CORPUS29" 2>&1 ); rc29=$?
+nodes29=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join("%s:%s:%s" % (n["id"], n.get("community"), "stamped" if "_restored" in n else "plain") for n in sorted(g["nodes"], key=lambda n: n["id"])))' "$OUT29/graph.json")
+[ "$rc29" -eq 0 ] && grep -qF "s_merged:7:plain" <<<"$nodes29" \
+  && pass "T29 the merged node was clustered" || fail "T29 (rc=$rc29) nodes: $nodes29 :: $out29"
+grep -qF "s_back:7:plain" <<<"$nodes29" \
+  && pass "T29 a node that comes out of the clustered pass loses its stamp" || fail "T29 stamp: $nodes29"
+
+echo "T30: a node a full rebuild drops is stamped by restore and set aside on the next incremental run"
+CORPUS30="$WS/c30"; OUT30="$CORPUS30/graphify-out"; BIN30="$WS/bin30"; mkdir -p "$OUT30" "$BIN30"
+touch "$CORPUS30/a.sh" "$CORPUS30/b.sh" "$CORPUS30/doc.md"
+printf '%s\n' "$(date -u +%s)" > "$OUT30/.ast-forced-at"
+printf '%s\n' '{"nodes":[{"id":"a1","_origin":"ast","source_file":"a.sh","community":0},{"id":"s_dropped","_origin":"semantic","source_file":"doc.md"}],"links":[]}' > "$OUT30/graph.json"
+cat > "$BIN30/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+p = os.path.join(sys.argv[1], "graphify-out", "graph.json")
+g = json.load(open(p))
+g["nodes"] = [n for n in g["nodes"] if n["id"] != "s_dropped"]
+json.dump(g, open(p, "w"))
+PY
+STUB
+chmod +x "$BIN30/graphify"
+PATH="$BIN30:$PATH" bash "$SCRIPT" "$CORPUS30" >/dev/null 2>&1; rc30a=$?
+out30=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS30" 2>&1 ); rc30=$?
+[ "$rc30a" -eq 0 ] && [ "$rc30" -eq 0 ] && grep -qF "set aside 1 restored semantic node(s)" <<<"$out30" && grep -qF '"s_dropped"' "$OUT30/graph.json" \
+  && pass "T30 the dropped node is back, stamped, and the next run is not refused" || fail "T30 (rc=$rc30a/$rc30): $out30"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

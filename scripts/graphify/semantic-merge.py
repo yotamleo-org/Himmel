@@ -8,11 +8,13 @@
 #   plan  --root R --out O --max-files N --plan P   diff corpus vs manifest
 #   seed  --root R --out O                          stamp current hashes only
 #   merge --out O --scratch S --plan P --runtime-s T --tokens-in I --tokens-out J
-#   unrestore --out O              before an AST rebuild: set aside the semantic nodes graphify
-#                                  never wrote (no community), with their edges; restore puts them back
-#   restore --out O --before B [--root R]  put back the semantic items an AST rebuild
-#                                  (ast-update.sh) dropped from B's snapshot; with --root,
-#                                  not those of files R no longer tracks, and drop those too
+#   unrestore --out O              before an AST rebuild: set aside the nodes stamped `_restored`,
+#                                  with their edges; restore puts them back
+#   restore --out O --before B [--root R] [--rebuilt]  put back the semantic items an AST rebuild
+#                                  (ast-update.sh) dropped from B's snapshot, stamping each node
+#                                  `_restored`; with --root, not those of files R no longer tracks,
+#                                  and drop those too; --rebuilt (graph.json is graphify's output)
+#                                  first clears that stamp from the nodes already there
 #   prune --root R --out O         drop the nodes, edges and hyperedge members of files R no longer tracks
 #   untracked --root R --graph G   list G's source files R no longer tracks, one per line
 #   status --root R --out O        backed-off, unstamped and oldest-unstamped counts
@@ -417,7 +419,7 @@ def cmd_untracked(a):
 
 
 def cmd_unrestore(a):
-    """Set aside the semantic nodes graphify did not write (it stamps a community on every node it emits).
+    """Set aside the semantic nodes restore put back, which it stamps `_restored`.
 
     Left in, graphify drops them again and its shrink guard refuses an incremental run.
     """
@@ -425,7 +427,7 @@ def cmd_unrestore(a):
     g = load_json(graph_path)
     ekey = "edges" if "edges" in g and "links" not in g else "links"
     gone = {n.get("id") for n in g.get("nodes", [])
-            if n.get("_origin") == "semantic" and "community" not in n}
+            if n.get("_origin") == "semantic" and n.get("_restored")}
     if not gone:
         return
     g["nodes"] = [n for n in g["nodes"] if n.get("id") not in gone]
@@ -453,6 +455,7 @@ def cmd_restore(a):
     g.setdefault(ekey, [])
     gone = gone_sources(a.root, before, g) if a.root else set()
     declined = {}
+    cleared = sum(n.pop("_restored", None) is not None for n in g.get("nodes", [])) if a.rebuilt else 0
     live_ids = {n.get("id") for n in g.get("nodes", [])}
     restored_n = restored_e = restored_h = 0
     for n in before.get("nodes", []):
@@ -461,7 +464,7 @@ def cmd_restore(a):
             if k in gone:
                 declined[k] = declined.get(k, 0) + 1
                 continue
-            g["nodes"].append(n)
+            g["nodes"].append(dict(n, _restored=True))
             live_ids.add(n.get("id"))
             restored_n += 1
     have = {edge_key(e) for e in g[ekey]}
@@ -483,7 +486,7 @@ def cmd_restore(a):
     pruned, pruned_e, pruned_h = prune_graph(g, gone, a.root) if gone else ({}, 0, 0)
     for f, c in pruned.items():
         declined[f] = declined.get(f, 0) + c
-    if not (restored_n or restored_e or restored_h or pruned or pruned_e or pruned_h):
+    if not (restored_n or restored_e or restored_h or pruned or pruned_e or pruned_h or cleared):
         if declined:
             report_pruned("dropped", declined, 0, 0)
         return
@@ -738,6 +741,7 @@ def main():
     r.add_argument("--out", required=True)
     r.add_argument("--before", required=True)
     r.add_argument("--root", default="")
+    r.add_argument("--rebuilt", action="store_true")
     ur = sub.add_parser("unrestore")
     ur.add_argument("--out", required=True)
     pr = sub.add_parser("prune")
