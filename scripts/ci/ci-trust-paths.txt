@@ -114,6 +114,7 @@
 ^scripts/jira/src/release/signer\.test\.ts$
 # The operator fence's ancestry walk: a marked ancestor or a bad stop refuses every operator verb.
 ^scripts/jira/src/release/fence-ancestry\.ts$
+^scripts/jira/src/release/(go-answer|operator-words-spawn|operator-acts)(\.test)?\.ts$
 # The bridge envelope: the permission mode, allow and deny lists and Bash sandbox of every bridge spawn.
 ^scripts/telegram/run\.ts$
 ^scripts/(telegram/operator-words|jira/src/release/bridge-words)(\.test)?\.ts$

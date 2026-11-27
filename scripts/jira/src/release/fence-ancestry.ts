@@ -1,9 +1,11 @@
 import { existsSync, readFileSync, readlinkSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 export const FENCE_MARKERS = ['HIMMEL_CONSOLE_LEG', 'HIMMEL_RELEASE_MANAGER', 'HIMMEL_BRIDGE_SESSION'] as const;
 export const MAX_HOPS = 64;
+export const AGENT_MARKERS = ['CLAUDECODE'] as const;
+export const AGENT_COMMANDS = ['claude'] as const;
 
 export function hostNsFile(): string {
   return join(passwdHome(), '.claude', 'handover', 'bridge', 'host-ns');
@@ -34,6 +36,8 @@ export interface WalkOpts {
   platform?: NodeJS.Platform;
   execArgv?: readonly string[];
   env?: Readonly<Record<string, string | undefined>>;
+  markers?: readonly string[];
+  commands?: readonly string[];
   // Test-only: run once with a check removed to prove its row fails on that check.
   disable?: FenceCheck[];
 }
@@ -82,13 +86,13 @@ function proc(procRoot: string, pid: number): Proc | null {
   };
 }
 
-const markedBy = (env: Map<string, string> | null) => FENCE_MARKERS.find((m) => env?.get(m) === '1') ?? null;
+const markedBy = (env: Map<string, string> | null, markers: readonly string[]) => markers.find((m) => env?.get(m) === '1') ?? null;
 
 const userManagerHop = (p: Proc) => p.ppid === 1 && p.nspid === 1;
 
 interface Trail { marker: string | null; farthest?: number; farthestEnv?: Map<string, string>; refuse?: string }
 
-function climb(procRoot: string, start: number): Trail {
+function climb(procRoot: string, start: number, markers: readonly string[] = FENCE_MARKERS, commands: readonly string[] = []): Trail {
   const t: Trail = { marker: null };
   const stop = (why: string): Trail => ({ ...t, refuse: why });
   let uid: number | null = null;
@@ -98,15 +102,21 @@ function climb(procRoot: string, start: number): Trail {
     const p = proc(procRoot, pid);
     if (p === null) return stop(`process ${pid} cannot be read (gone mid-walk, or another uid)`);
     if (hop === 0) uid = p.uid;
+    if (commands.length) {
+      const argv = read(join(procRoot, String(pid), 'cmdline'));
+      if (argv === null) return stop(`the argv of ancestor ${pid} cannot be read`);
+      const name = basename(argv.split('\0')[0]);
+      if (commands.includes(name)) return stop(`ancestor ${pid} runs ${name}`);
+    }
     if (pid === 1) {
-      const m = markedBy(p.env);
+      const m = markedBy(p.env, markers);
       if (m) Object.assign(t, { marker: m, farthest: 1, farthestEnv: p.env ?? undefined });
       if (p.nspid > 1) return stop('pid 1 is the root of a pid namespace');
       return t;
     }
     if (p.uid === null || p.uid !== uid) return stop(`ancestor ${pid} runs as another uid (sudo, or a root process other than pid 1); run under tmux or systemd-run --user`);
     if (p.env === null && !userManagerHop(p)) return stop(`the start-up env of ancestor ${pid} cannot be read`);
-    const m = markedBy(p.env);
+    const m = markedBy(p.env, markers);
     if (m) Object.assign(t, { marker: m, farthest: pid, farthestEnv: p.env });
     if (p.ppid === null) return stop(`process ${pid} has no parseable PPid:`);
     if (p.ppid === 0) return stop(`the ancestry of ${start} ends at ${pid}, not at pid 1`);
@@ -174,7 +184,7 @@ export function walk(opts: WalkOpts = {}): WalkResult {
   } else if (!existsSync(procRoot)) {
     return { marker: null, stop: 'allow', why: `no ${procRoot}: the env check alone applies (named residual)` };
   }
-  const t = climb(procRoot, opts.pid ?? selfPid(procRoot));
+  const t = climb(procRoot, opts.pid ?? selfPid(procRoot), opts.markers, opts.commands);
   const res = (why: string): WalkResult => ({ marker: t.marker, stop: 'refuse', why, ...(t.farthest === undefined ? {} : { farthest: t.farthest }) });
   if (t.marker) return res(`${t.marker}=1 in the start-up env of ancestor ${t.farthest}${t.refuse ? `; ${t.refuse}` : ''}`);
   if (t.refuse) return res(t.refuse);

@@ -171,6 +171,34 @@ describe('walk: T1d, a namespace root', () => {
   });
 });
 
+describe('walk: HIMMEL-10604, the agent markers and commands options', () => {
+  const marked = () => fakeProc(chain({ 200: { env: { CLAUDECODE: '1' } } }));
+  const claude = (cmdline: string[] | null) => fakeProc(chain({ 200: { cmdline } }));
+
+  it('F1: markers CLAUDECODE refuses an ancestor with CLAUDECODE=1', () => {
+    expect(walk({ ...marked(), markers: ['CLAUDECODE'] })).toMatchObject({ stop: 'refuse', marker: 'CLAUDECODE', farthest: 200 });
+  });
+
+  it('F2 (control): the default walk allows the F1 and F3 trees', () => {
+    expect(walk(marked())).toEqual({ marker: null, stop: 'allow' });
+    expect(walk(claude(['/home/u/.local/bin/claude', '--bg']))).toEqual({ marker: null, stop: 'allow' });
+  });
+
+  it('F3: commands claude refuses an ancestor whose argv[0] basename is claude', () => {
+    const r = walk({ ...claude(['/home/u/.local/bin/claude', '--bg']), commands: ['claude'] });
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toMatch(/ancestor 200 runs claude/);
+    expect(walk({ ...claude(['/usr/bin/bash', 'claude']), commands: ['claude'] }).stop).toBe('allow');
+  });
+
+  it('F4: an ancestor whose cmdline cannot be read refuses when commands are asked', () => {
+    const r = walk({ ...claude(null), commands: ['claude'] });
+    expect(r.stop).toBe('refuse');
+    expect(r.why).toMatch(/argv of ancestor 200 cannot be read/);
+    expect(walk(claude(null)).stop).toBe('allow');
+  });
+});
+
 describe('walk: T1e, the host reference', () => {
   it('a pid 1 of a foreign Uid: and one NSpid: field, with own ids unlike host-ns, refuses; with the comparison removed it allows', () => {
     const t = fakeProc(chain(), { ns: SANDBOX });
