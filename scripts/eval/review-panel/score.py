@@ -1465,8 +1465,8 @@ def misses(bundles, fixtures, key_path, critics, window=DEFAULT_WINDOW, validati
         totals, cells = miss_bundle(per_case, cases, critics, members, window, draws, labels)
         for k, v in cells.items():
             seen.setdefault(k, []).append(v)
-        out_bundles.append({"name": os.path.basename(os.path.abspath(outputs)), "unbound_cases": unbound,
-                            "totals": {h: totals[h] for h in halves}})
+        out_bundles.append({"name": redact_ids(os.path.basename(os.path.abspath(outputs)), cases),
+                            "unbound_cases": unbound, "totals": {h: totals[h] for h in halves}})
     stability = {h: {w: {"stable": 0, "flaky": 0} for w in members} for h in halves}
     open_defects = []
     classes = {(cid, d["id"]): d["class"] for cid, c in cases.items() for d in c["defects"]}
@@ -1476,9 +1476,11 @@ def misses(bundles, fixtures, key_path, critics, window=DEFAULT_WINDOW, validati
         if cases[cid]["split"] == "open":
             open_defects.append({"case": cid, "defect": did, "class": classes[(cid, did)], "critic": who,
                                  "bins": [cell for _, cell in got], "stability": state})
+    verified = judged_row(ledger)
+    if verified:
+        verified["run_id"] = redact_ids(verified["run_id"], cases)
     return {"critics": critics, "members": members, "window": window, "graded": bool(adjudications),
-            "bundles": out_bundles, "open_defects": open_defects, "stability": stability,
-            "verified": judged_row(ledger),
+            "bundles": out_bundles, "open_defects": open_defects, "stability": stability, "verified": verified,
             "null_window": {"seed": NULL_SEED, "min_gap": NULL_MIN_GAP,
                             "draws": {c: list(v) for c, v in sorted(draws.items()) if cases[c]["split"] == "open"}}}
 
@@ -1547,15 +1549,19 @@ def report_misses(res):
     return "\n".join(out)
 
 
-def redact_sealed(text, key_path):
-    """text with every sealed case id replaced: a refusal of misses may quote a fixture path or a label."""
-    try:
-        sealed = [c for c, v in load_key(key_path)["cases"].items() if v.get("split") != "open"]
-    except (OSError, ValueError):
-        return text
-    for cid in sorted(sealed, key=len, reverse=True):
+def redact_ids(text, cases):
+    """text with every sealed case id of the key's cases replaced."""
+    for cid in sorted((c for c, v in cases.items() if v.get("split") != "open"), key=len, reverse=True):
         text = text.replace(cid, "<sealed case>")
     return text
+
+
+def redact_sealed(text, key_path):
+    """redact_ids over the key file: a refusal of misses may quote a fixture path or a label."""
+    try:
+        return redact_ids(text, load_key(key_path)["cases"])
+    except (OSError, ValueError):
+        return text
 
 
 def report(res):

@@ -1556,8 +1556,20 @@ M2="$MS/b2"; mkdir -p "$M2"; cp "$M1/case-61.md" "$M1/case-61c.md" "$M2/"
 for c in case-71 case-71c case-72 case-72c; do review "$M2/$c.md" codex; done
 out=$(misses "$MS/k2.json" --outputs "$M2" --json "$MS/m2.json")
 has "MA2 misses: the sealed half as whole-half totals" "$out" "sealed codex bins: key-hit 0, location-only 0, no-location 2, unscored 0"
+has "MA2 misses: the json report was written" "$(cat "$MS/m2.json")" '"open_defects"'
 eq "MA2 misses: no sealed case id, defect id or sealed class cell in the report or the json" \
-  "$(printf '%s\n' "$out" | cat - "$MS/m2.json" 2>/dev/null | grep -cE 'case-7[12]|pcase-7|fail-open|spec-miss')" "0"
+  "$(printf '%s\n' "$out" | cat - "$MS/m2.json" | grep -cE 'case-7[12]|pcase-7|fail-open|spec-miss')" "0"
+mkdir -p "$MS/named"; cp -r "$M2" "$MS/named/case-71"
+out=$(misses "$MS/k2.json" --outputs "$MS/named/case-71" --json "$MS/m2n.json")
+has "MA2 misses: a bundle named after a sealed case is reported redacted" "$out" "bundle <sealed case>"
+python3 -B -c 'import sys
+sys.path.insert(0, sys.argv[1]); import eval_runs
+eval_runs.append_row(eval_runs.make_row("review-panel-judged", "fixture", {}, {"catch_rate": 0.5}, run_id="judged-case-72",
+                                        gitsha="0" * 40), sys.argv[2])' "$HERE/../lib" "$MS/judged-named.jsonl"
+out="$out$(misses "$MS/k2.json" --outputs "$M2" --ledger "$MS/judged-named.jsonl")"
+has "MA2 misses: a judged run id naming a sealed case is reported redacted" "$out" "verified (judged run judged-<sealed case>)"
+eq "MA2 misses: neither outside name carries a sealed case id" \
+  "$(printf '%s\n' "$out" | cat - "$MS/m2n.json" | grep -cE 'case-7[12]')" "0"
 out=$(misses "$MS/k2.json" --outputs "$M2" --validation "$MS/no-such-sidecar.json" --adjudications "$MS/none.jsonl"); rc=$?
 eq "MA2 misses: an unreadable sidecar is refused" "$rc" "2"
 mkdir -p "$MS/fx-gone"; cp "$MS/fx"/case-61*.patch "$MS/fx-gone/"
@@ -1645,8 +1657,8 @@ echo '[]' > "$MS/arm.json"
   python3 "$SCORE" compare-paired --baseline-scores "$MS/arm.json" --candidate-scores "$MS/arm.json" --key "$MS/k1.json" 2>&1; } > "$MS/ma5.txt" 2>&1
 has "MA5 misses: the report was produced" "$(cat "$MS/ma5.txt")" "open   codex bins:"
 eq "MA5 misses: neither verb prints a verdict word" "$(grep -ciE 'keep|revert' "$MS/ma5.txt")" "0"
-eq "MA5 misses: no CI job or merge script reads either verb" \
-  "$(git -C "$HERE/../../.." grep -n 'score.py misses\|compare-paired' -- .github scripts/handover/merge-on-green.sh)" ""
+hits=$(git -C "$HERE/../../.." grep -n 'score.py misses\|compare-paired' -- .github scripts/handover/merge-on-green.sh 2>&1); rc=$?
+eq "MA5 misses: no CI job or merge script reads either verb (git grep ran and matched nothing)" "$rc:$hits" "1:"
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"
