@@ -27,7 +27,7 @@ import {
   ack, apply, bucketCheck, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, operatorFence, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, releaseForProject, reopen, request as releaseRequest, requestWithWords, reviewed, rmRun, rmRunSummary, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
-import { signerCheck, specSigner, type SignerAlert } from '../release/spec-sign.js';
+import { signCheck, signerCheck, specSigner, type SignerAlert } from '../release/spec-sign.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
@@ -751,7 +751,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'signer-check', 'core-check', 'core-check-batch', 'bucket-check']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'signer-check', 'sign-check', 'core-check', 'core-check-batch', 'bucket-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -872,6 +872,31 @@ export function registerRelease(program: Command): void {
       const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
       const specText = o.spec === undefined ? undefined : readFileSync(o.spec, 'utf8');
       for (const l of signerCheck(process.env, keys, mirror, { specText })) console.log(l);
+    });
+
+  rel.command('sign-check')
+    .description('The signing verbs\' byte checks on a spec and its critic returns: SIGN-CHECK OK (exit 0) or SIGN-CHECK REFUSED: <the signing message> (exit 1); a usage error exits 2. Read-only')
+    .option('--keys <list>', 'Comma-separated keys the spec covers')
+    .option('--spec <path>', 'The spec file')
+    .option('--plan <path>', 'The spec\'s plan file; --route spec-review needs it')
+    .option('--verdict <path>', 'A critic verdict file; give each one the signing verb would be given', (v: string, all: string[]) => [...all, v], [] as string[])
+    .option('--route <route>', 'The signing verb to check for: spec or spec-review', 'spec')
+    .option('--source-root <path>', 'With --route spec: the citation root, as release operator spec takes it')
+    .exitOverride((e) => process.exit(e.exitCode ? 2 : 0))
+    .action((o: { keys?: string; spec?: string; plan?: string; verdict: string[]; route: string; sourceRoot?: string }) => {
+      const route = o.route === 'spec' || o.route === 'spec-review' ? o.route : undefined;
+      if (!o.keys || !o.spec || !o.verdict.length || !route || (route === 'spec-review' && o.sourceRoot !== undefined)) {
+        console.error('release sign-check: usage: --keys <K[,K]> --spec <spec> [--plan <plan>] --verdict <return> [--verdict <return>] [--route spec|spec-review] [--source-root <dir>, route spec only]');
+        process.exitCode = 2;
+        return;
+      }
+      try {
+        const r = signCheck({ keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, route, sourceRoot: o.sourceRoot });
+        console.log(`SIGN-CHECK OK spec-sha=${r.specSha} plan-sha=${r.planSha ?? 'none'}`);
+      } catch (e) {
+        console.log(`SIGN-CHECK REFUSED: ${(e as Error).message}`);
+        process.exitCode = 1;
+      }
     });
 
   rel.command('bucket-check <keys...>')
