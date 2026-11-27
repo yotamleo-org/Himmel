@@ -3,14 +3,18 @@
 # inherited worker in ONE command instead of one hand-written message per worker.
 #
 #   relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]]
-#                  [--fresh <label>=<token>]...
+#                  [--fresh <label>]...
 #
 # Reads the chief doc's `## Live state` `workers:` entries (`<label>:<nonce>:<lock>:<pid>`)
 # and its fleet manifest (label -> worker doc -> worker name). Per worker it builds
 # ONE relay message — "your chief is now <successor>; token `<nonce>`; quote back
 # to <successor>" — which is exactly the S1 relay of docs/handover/worker-preface.md
 # ("Chief succession"): sent by the outgoing chief, naming its successor and
-# quoting the worker's CURRENT token.
+# quoting the worker's CURRENT token: the token record's (`worker-token.sh current
+# <worker doc>`), or the span nonce when the record has none (exit 1) or was not
+# consulted (exit 3) and the nonce is usable. Where a token must be quoted and none
+# is usable: `UNRESOLVED <label> (no usable token)`; any other record exit:
+# `UNRESOLVED <label> (token record unreadable)`. Both send nothing.
 #   claudex workers (--claudex): delivered now through inbox-send.sh --token, the
 #     chief's existing authorised channel (it refuses outside a chief).
 #   native workers, when the chief has a bus identity (HIMMEL_BUS_NAME): the relay IS
@@ -27,15 +31,19 @@
 #   claudex workers also get a token-free bus record naming the successor, sent right after
 #     their inbox relay lands: their `bus adopt` needs it while the outgoing chief is still
 #     live (a fast worker adopts on its first tool round); a hand relay leaves none.
-# --fresh <label>=<token> (repeatable): the fresh token the successor issued that worker. It
-#   is quoted next to the held one in the native SENDMESSAGE line and the claudex inbox
-#   relay; a bus record is token-free, so a native worker owed one is sent the SENDMESSAGE
-#   instead of a bus record. A label no relayed worker carries prints `FRESH-UNUSED <label>`.
-#   Without --fresh a relay keeps the worker's token (valid and complete).
-# What it never does: mint a token or nonce, rotate one, adopt one, write a worker's
-# Live state entry, or send LIVE. It copies the nonce the chief already holds (and the
-# --fresh token it is handed); the successor sends LIVE on this run's RELAYED line; the
-# quote-back tally is informational.
+# --fresh <label> (repeatable): the successor issues that worker a fresh token. At the send,
+#   and only for a resolved worker, `worker-token.sh rotate <doc> --to <successor>` makes
+#   it; a refused rotation prints `FRESH-REFUSED <label> (<reason>)` and the worker is
+#   relayed as with no --fresh. It is quoted next to the current one in the native
+#   SENDMESSAGE line and the claudex inbox relay; a bus record is token-free, so a native
+#   worker owed one is sent the SENDMESSAGE instead of a bus record. A label no relayed
+#   worker carries prints `FRESH-UNUSED <label>`. Without --fresh a relay keeps the
+#   worker's token (valid and complete).
+#   A rotation already pending to this successor is offered again the same way, with or
+#   without the flag, for a worker in Live state or only in the manifest.
+# What it never does: mint a token by hand, adopt one, write a worker's Live state entry,
+# or send LIVE. The successor sends LIVE on this run's RELAYED line; the quote-back tally
+# is informational.
 # A worker with no manifest row has no doc to resolve: it is listed as
 # `SKIPPED <label> (no manifest row)` for a hand relay. A worker whose session is not
 # exactly one live `claude -n <name>` process (candidates: its full doc stem, then
@@ -55,7 +63,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-usage() { echo "usage: relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]] [--fresh <label>=<token>]..." >&2; exit 2; }
+usage() { echo "usage: relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]] [--fresh <label>]..." >&2; exit 2; }
 [ "$#" -ge 3 ] || usage
 doc="$1"; shift
 successor=""; claudex=""; fresh=""; fresh_used=","
@@ -64,9 +72,11 @@ while [ "$#" -gt 0 ]; do
         --successor) [ "$#" -ge 2 ] || usage; successor="$2"; shift 2 ;;
         --claudex) [ "$#" -ge 2 ] || usage; claudex=",$2,"; shift 2 ;;
         --fresh) [ "$#" -ge 2 ] || usage
-            case "$2" in ?*=?*) ;; *) usage ;; esac
-            case "${2#*=}" in *[\`[:space:]]*) usage ;; esac
-            case $'\n'"$fresh" in *$'\n'"${2%%=*}="*) usage ;; esac
+            case "$2" in
+                *=*) echo "relay-batch: the --fresh <label>=<token> form is gone: pass --fresh <label>; the token comes from worker-token.sh rotate" >&2; exit 2 ;;
+                ''|*[!A-Za-z0-9_.-]*) usage ;;
+            esac
+            case $'\n'"$fresh" in *$'\n'"$2"$'\n'*) usage ;; esac
             fresh="${fresh}$2"$'\n'; shift 2 ;;
         *) usage ;;
     esac
@@ -100,10 +110,49 @@ wrapped() {
 }
 manifest="${doc%.md}.fleet.json"
 bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-# fresh_for <label>: sets ftok to the label's --fresh token ("" when none) and marks it used.
-fresh_for() {
-    ftok="$(printf '%s' "$fresh" | awk -F= -v l="$1" '$1 == l { print substr($0, length(l) + 2); exit }')"
-    [ -z "$ftok" ] || fresh_used="${fresh_used}$1,"
+fresh_wanted() {
+    case $'\n'"$fresh" in *$'\n'"$1"$'\n'*) fresh_used="${fresh_used}$1,"; return 0 ;; esac
+    return 1
+}
+wtoken="$HERE/worker-token.sh"
+record_token() {
+    local t trc=0
+    t="$(bash "$wtoken" current "$1" 2>/dev/null)" || trc=$?  # swallow-ok: every exit is handled below
+    case "$trc" in
+        0) qtok="$t" ;;
+        1|3) qtok=""; if gd_token_usable "$2"; then qtok="$2"; fi ;;
+        *) qtok=""; return 1 ;;
+    esac
+}
+record_pending() {
+    local out trc=0
+    out="$(bash "$wtoken" gen "$1" 2>/dev/null)" || trc=$?  # swallow-ok: every exit is handled below
+    case "$trc" in
+        0) case "$out" in *" pending="[0-9]*":$successor state=ok") return 0 ;; esac; return 1 ;;
+        1|3) return 1 ;;
+        *) return 2 ;;
+    esac
+}
+offer_fresh() {
+    local out trc=0
+    ftok=""
+    out="$(bash "$wtoken" rotate "$2" --to "$successor" 2>&1)" || trc=$?
+    out="$(printf '%s\n' "$out" | tail -n 1)"
+    if [ "$trc" -eq 0 ]; then ftok="$out"; else echo "FRESH-REFUSED $1 (${out#worker-token: })"; fi
+}
+unreadable() { echo "UNRESOLVED $1 (token record unreadable) — relay by hand"; }
+no_token() { echo "UNRESOLVED $1 (no usable token) — relay by hand"; }
+quoted_send() {
+    if [ "$2" = claudex ]; then
+        if bash "$send" "$3" "$(relay_text "$qtok" "$ftok")" --token "$qtok" --doc "$4" >/dev/null; then
+            echo "SENT-INBOX $1 ($3)"; sent=$((sent + 1))
+            send_notice "$1" "$3"
+        else
+            echo "FAILED-INBOX $1 ($3)"; rc=1
+        fi
+    else
+        printf 'SENDMESSAGE to=%s :: %s\n' "$3" "$(relay_text "$qtok" "$ftok")"; sent=$((sent + 1))
+    fi
 }
 # relay_text [<nonce> [<fresh token>]]: the relay; the SendMessage form quotes the worker's
 # token (and the fresh one when the successor issued it), the bus form carries none and
@@ -115,23 +164,25 @@ relay_text() {
     printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
 }
 not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state workers:; relay by hand if it is live"; }
-notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor"; }
+notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).%s\n' "$sender" "$successor" "${1:-}"; }
 notice_dir=""; notice_t0=0
 # send_notice <label> <session>: a claudex worker's bus record, sent as soon as its inbox
 # relay lands. The notices share ONE deadline (RELAY_BATCH_BUS_TIMEOUT), so a stalled store
 # cannot outlast relay-on-live's kill; a notice past it is skipped. Fail-soft: a failure
 # prints BUS-RELAY-FAIL only, the worker already has its inbox relay.
 send_notice() {
-    local label="$1" session="$2" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rem err rc wait_for=""
+    local label="$1" session="$2" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rem err rc wait_for="" body=notice
     [ -n "${HIMMEL_BUS_NAME:-}" ] || return 0
     if [ -z "$notice_dir" ]; then
         notice_dir="$(tmpdir)" || { notice_dir=""; echo "BUS-RELAY-FAIL $label (mktemp failed)"; return 0; }
         notice_text > "$notice_dir/notice"; notice_t0=$SECONDS
+        notice_text " Your inbox relay also carries a fresh token: read it before you write your quote-back." > "$notice_dir/notice-fresh"
     fi
+    [ -z "${ftok:-}" ] || body=notice-fresh
     rem=$((10#$limit - (SECONDS - notice_t0)))
     [ "$rem" -ge 1 ] || { echo "BUS-RELAY-FAIL $label (bus deadline spent)"; return 0; }
     command -v timeout >/dev/null 2>&1 && wait_for="timeout $rem"
-    if err="$($wait_for "$bus" send "$session" "$notice_dir/notice" 2>&1 >/dev/null)"; then
+    if err="$($wait_for "$bus" send "$session" "$notice_dir/$body" 2>&1 >/dev/null)"; then
         echo "BUS-RELAY $label ok"
     else
         rc=$?
@@ -175,7 +226,9 @@ EOB
         [ -z "$res" ] || echo "$res"
         case "$res:$kind" in
             "BUS-RELAY $label ok:relay" | "BUS-RELAY $label ok:offlive") sent=$((sent + 1)) ;;
-            *:relay) printf 'SENDMESSAGE to=%s :: %s\n' "$session" "$(relay_text "$nonce")"; sent=$((sent + 1)) ;;
+            *:relay)
+                if [ "$nonce" = - ]; then no_token "$label"
+                else printf 'SENDMESSAGE to=%s :: %s\n' "$session" "$(relay_text "$nonce")"; sent=$((sent + 1)); fi ;;
             *:offlive) not_in_live "$label" "$ldoc" ;;
         esac
     done <<EOB
@@ -277,22 +330,21 @@ EOR
         echo "UNRESOLVED $label (candidates: ${cands#,}; $hits live match(es), nothing sent) — relay by hand"
         continue
     fi
-    case "$lane" in
-        claudex)
-            fresh_for "$label"
-            if bash "$send" "$lsession" "$(relay_text "$nonce" "$ftok")" --token "$nonce" --doc "$ldoc" >/dev/null; then
-                echo "SENT-INBOX $label ($lsession)"; sent=$((sent + 1))
-                send_notice "$label" "$lsession"
-            else
-                echo "FAILED-INBOX $label ($lsession)"; rc=1
-            fi ;;
-        *) fresh_for "$label"
-           if [ -n "${HIMMEL_BUS_NAME:-}" ] && [ -z "$ftok" ]; then
-               bus_queue="${bus_queue}relay $label $lsession $nonce $ldoc"$'\n'
-           else
-               printf 'SENDMESSAGE to=%s :: %s\n' "$lsession" "$(relay_text "$nonce" "$ftok")"; sent=$((sent + 1))
-           fi ;;
-    esac
+    wanted=0; if fresh_wanted "$label"; then wanted=1; fi
+    pending=0; record_pending "$ldoc" || pending=$?
+    if [ "$pending" -eq 2 ] || ! record_token "$ldoc" "$nonce"; then unreadable "$label"; continue; fi
+    ftok=""
+    if [ "$wanted" -eq 1 ] || [ "$pending" -eq 0 ]; then
+        offer_fresh "$label" "$ldoc"
+        if ! record_token "$ldoc" "$nonce"; then unreadable "$label"; continue; fi
+    fi
+    if [ "$lane" = native ] && [ -n "${HIMMEL_BUS_NAME:-}" ] && [ -z "$ftok" ]; then
+        bus_queue="${bus_queue}relay $label $lsession ${qtok:--} $ldoc"$'\n'
+    elif [ -z "$qtok" ]; then
+        no_token "$label"
+    else
+        quoted_send "$label" "$lane" "$lsession" "$ldoc"
+    fi
 done <<EOF
 $entries
 EOF
@@ -307,8 +359,26 @@ if [ -f "$manifest" ]; then
         if wrapped "$mdoc"; then continue; fi
         total=$((total + 1))
         if ! printf '%s\n' "$entries" | cut -d: -f1 | grep -Fxq -- "$mlabel"; then
+            pending=1; wanted=0
+            case "$mlane" in
+                native|claudex)
+                    pending=0; record_pending "$mdoc" || pending=$?
+                    if fresh_wanted "$mlabel"; then wanted=1; fi ;;
+            esac
+            if [ "$pending" -eq 0 ] || { [ "$wanted" -eq 1 ] && [ "$pending" -eq 1 ]; }; then
+                if [ "$mlane" = claudex ]; then lsession="$(basename "$mdoc" .md)"; hits=1; else resolve_session "$mdoc"; fi
+                if [ "$hits" -ne 1 ]; then not_in_live "$mlabel" "$mdoc"; continue; fi
+                offer_fresh "$mlabel" "$mdoc"
+                if [ -n "$ftok" ] || [ "$pending" -eq 0 ]; then
+                    if ! record_token "$mdoc" -; then unreadable "$mlabel"
+                    elif [ -z "$qtok" ]; then no_token "$mlabel"
+                    else quoted_send "$mlabel" "$mlane" "$lsession" "$mdoc"; fi
+                    continue
+                fi
+            fi
             if [ -n "${HIMMEL_BUS_NAME:-}" ] && [ "$mlane" = native ] && resolve_session "$mdoc" && [ "$hits" -eq 1 ]; then
-                bus_queue="${bus_queue}offlive $mlabel $lsession - $mdoc"$'\n'
+                if [ "$pending" -eq 2 ]; then unreadable "$mlabel"
+                else bus_queue="${bus_queue}offlive $mlabel $lsession - $mdoc"$'\n'; fi
             else
                 not_in_live "$mlabel" "$mdoc"
             fi
@@ -321,9 +391,9 @@ relay_bus
 [ -z "$notice_dir" ] || rm -rf "$notice_dir"
 while read -r flabel; do
     [ -n "$flabel" ] || continue
-    case "$fresh_used" in *",$flabel,"*) ;; *) echo "FRESH-UNUSED $flabel (no relayed worker carries a --fresh token under this label; relay it by hand)" ;; esac
+    case "$fresh_used" in *",$flabel,"*) ;; *) echo "FRESH-UNUSED $flabel (no relayed worker carries this --fresh label; relay it by hand)" ;; esac
 done <<EOFR
-$(printf '%s' "$fresh" | cut -d= -f1)
+$fresh
 EOFR
 if [ -f "$manifest" ]; then
     # lockless watched rows hold no queue lock and no token, so there is

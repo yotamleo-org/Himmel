@@ -75,7 +75,12 @@
 #   structural run -- hourly for himmel, DAILY for luna, so
 #   this wrapper must not promise an hour); 5 FAILED --
 #   `graphify update` itself ran and exited non-zero (its real exit code is
-#   logged to stderr, NEVER reused as this script's own exit status). Exit 3
+#   logged to stderr, NEVER reused as this script's own exit status), or the
+#   graphify or `nice` executable is missing from PATH, or graph.json could not be snapshotted,
+#   have its restored semantic nodes set aside before the rebuild, or get them
+#   back after it, or the snapshot left by an interrupted rebuild could not be
+#   restored (that snapshot is kept, and every later run exits 5 until it
+#   restores). Exit 3
 #   is deliberately DISTINCT from exit 4: a real filesystem failure must
 #   never be reported as the benign "lock held, retry next run" skip -- that
 #   is the exact false-benign failure class this lock exists to eliminate.
@@ -402,13 +407,24 @@ fi
 # replaces their nodes, dropping the `_origin: semantic` nodes attached to them
 # (245 nodes lost at the 2026-10-16 09:15 tick). Snapshot the live graph, and
 # after a successful update put back every semantic item the rebuild lost
-# (semantic-merge.py restore). The snapshot lives in OUT_DIR, which this
-# script's lock owns, and is removed on every path.
+# (semantic-merge.py restore).
 _pre_ast="$OUT_DIR/.graph.pre-ast.json"
-rm -f "$_pre_ast"
-if [ -f "$OUT_DIR/graph.json" ] && ! cp "$OUT_DIR/graph.json" "$_pre_ast" 2>/dev/null; then
-  rm -f "$_pre_ast"
+if [ -f "$_pre_ast" ] \
+   && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
+  echo "ast-update: FAILED -- a snapshot left by an interrupted rebuild could not be restored into $OUT_DIR/graph.json; it is kept at $_pre_ast, nothing run. Exiting 5" >&2
+  exit 5
+fi
+rm -f "$_pre_ast" "$_pre_ast.tmp"
+if [ -f "$OUT_DIR/graph.json" ] && ! { cp "$OUT_DIR/graph.json" "$_pre_ast.tmp" 2>/dev/null && mv -f "$_pre_ast.tmp" "$_pre_ast" 2>/dev/null; }; then
+  rm -f "$_pre_ast.tmp"
   echo "ast-update: FAILED -- could not snapshot $OUT_DIR/graph.json before the rebuild (unreadable or disk full), so the semantic nodes it would drop could not be restored; nothing run. Exiting 5" >&2
+  exit 5
+fi
+if [ -f "$_pre_ast" ] \
+   && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" unrestore --out "$OUT_DIR"; then
+  _put_back="graph.json left as it was"
+  mv -f "$_pre_ast" "$OUT_DIR/graph.json" 2>/dev/null || _put_back="the pre-rebuild graph.json could not be put back and is kept at $_pre_ast"
+  echo "ast-update: FAILED -- could not set aside the restored semantic nodes before the rebuild; $_put_back, nothing run. Exiting 5" >&2
   exit 5
 fi
 _workers="${GRAPHIFY_MAX_WORKERS:-8}"
@@ -442,7 +458,7 @@ if [ -f "$_pre_ast" ]; then
   # keep it under a name the next run does not delete.
   _kept="$OUT_DIR/graph.pre-ast.kept.json"
   if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ] \
-     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
+     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT" --rebuilt; then
     mv -f "$_pre_ast" "$_kept" 2>/dev/null || _kept="$_pre_ast"
     echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. The pre-rebuild graph is kept at $_kept. Exiting 5" >&2
     exit 5

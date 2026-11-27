@@ -77,12 +77,13 @@ git init -q -b main "$WORK"
 git -C "$WORK" config user.email t@example.com
 git -C "$WORK" config user.name tester
 git -C "$WORK" remote add origin "$ORIGIN"
-write_plugin() {  # <version> <content>
-    mkdir -p "$WORK/$PLUG/.claude-plugin"
-    printf '{"name":"demo","version":"%s"}\n' "$1" > "$WORK/$PLUG/.claude-plugin/plugin.json"
-    printf '%s\n' "$2" > "$WORK/$PLUG/body.txt"
-    git -C "$WORK" add -A
-    git -C "$WORK" commit -q -m "$3"
+write_plugin() {
+    local w="${RB_WORK:-$WORK}"
+    mkdir -p "$w/$PLUG/.claude-plugin"
+    printf '{"name":"demo","version":"%s"}\n' "$1" > "$w/$PLUG/.claude-plugin/plugin.json"
+    printf '%s\n' "$2" > "$w/$PLUG/body.txt"
+    git -C "$w" add -A
+    git -C "$w" commit -q -m "$3"
 }
 printf '1.0.0\n' > "$WORK/VERSION"
 mkdir -p "$WORK/marketplace/.claude-plugin"
@@ -92,10 +93,11 @@ git -C "$WORK" push -q origin main
 BASE_OID=$(git -C "$WORK" rev-parse HEAD)
 git clone -q "$ORIGIN" "$CLONE"
 pr_head() {  # <version> <content> [release] -> commit on a branch off the base, pushed as the PR head
-    git -C "$WORK" checkout -q -B pr "$BASE_OID"
-    [ -z "${3:-}" ] || printf '1.1.0\n' > "$WORK/VERSION"
+    local w="${RB_WORK:-$WORK}"
+    git -C "$w" checkout -q -B pr "${RB_BASE:-$BASE_OID}"
+    [ -z "${3:-}" ] || printf '1.1.0\n' > "$w/VERSION"
     write_plugin "$1" "$2" "fix: pr"
-    git -C "$WORK" rev-parse HEAD
+    git -C "$w" rev-parse HEAD
 }
 PR_SAME=$(pr_head 0.4.71 from-pr)
 PR_UNBUMPED=$(pr_head 0.4.70 from-pr)
@@ -148,22 +150,47 @@ git -C "$WORK" commit -q -m "fix: pr introduces bad (not a release)"
 PR_BAD_NEW=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q main
 write_plugin 0.4.71 from-main "feat: main shipped 0.4.71"
+MAIN_0471=$(git -C "$WORK" rev-parse HEAD)
 mkdir -p "$WORK/$BADP/.claude-plugin"
 printf '{"name":"bad"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
 git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "feat: main bad manifest"
 git -C "$WORK" push -q origin main
+git -C "$WORK" checkout -q -B pr "$PR_SAME"
+git -C "$WORK" merge -q --no-edit "$MAIN_0471" >/dev/null 2>&1 || true
+write_plugin 0.4.71 from-pr "merge: main into pr, keep 0.4.71"
+PR_FWD_SAME=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q main
 
 run_bump() {  # <pr head> <files> [renames "new old" lines] [renames-unreadable flag] -> sets rc/out
-    git -C "$WORK" push -q -f origin "$1:refs/pull/$PR/head"
+    local w="${RB_WORK:-$WORK}" c="${RB_CLONE:-$CLONE}"
+    git -C "$w" push -q -f origin "$1:refs/pull/$PR/head"
     local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
-    SHA="$1"; REPO="$CLONE"; LEDGER="$CLONE/.git/cr-critic-scores.jsonl"
+    SHA="$1"; REPO="$c"; LEDGER="$c/.git/cr-critic-scores.jsonl"
     reset_stubs
     STUB_FILES="$2"
     STUB_RENAMES="${3:-}"
     STUB_RENAMES_FAIL="${4:-}"
     rc=0; out="$(run)" || rc=$?
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
+}
+
+p1() {
+    local w="${RB_WORK:-$WORK}" c="${RB_CLONE:-$CLONE}" wt="$tmp/p1-wt" mb files crc=0 want=0 mark='[PASS] 9.'
+    if [ "$3" = fail ]; then want=1; mark='[FAIL] 9.'; fi
+    mb=$(git -C "$w" merge-base main "$2")
+    files=$(git -C "$w" diff --name-only "$mb" "$2")
+    run_bump "$2" "$files"
+    contains "(11344-p1) $1: item 9 says $3" "$out" "$mark"
+    git -C "$c" worktree add -q --detach "$wt" "$2"
+    ck=$(cd "$wt" && bash "$REPO_ROOT/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/main 2>&1) || crc=$?
+    git -C "$c" worktree remove --force "$wt"
+    if [ "$3" = fail ]; then
+        contains "(11344-p1) $1: the checker refused on the version" "$ck" "is not above"
+    else
+        contains "(11344-p1) $1: the checker accepted the equal version" "$ck" "equals the base tip"
+    fi
+    check "(11344-p1) $1: checker rc agrees" "$crc" "$want"
 }
 
 # A PR that changes a plugin bumps that plugin's version above the
@@ -173,13 +200,18 @@ run_bump "$PR_UNBUMPED" "$PLUG/body.txt"
 check "plugin edit, version untouched: exit 1" "$rc" "1"
 contains "plugin edit, version untouched: check 9 fails" "$out" "[FAIL] 9."
 contains "plugin edit, version untouched: names the plugin" "$out" "demo"
+p1 "unraised head" "$PR_UNBUMPED" fail
 
-# Bumped to the version main already ships: two contents under one version.
 run_bump "$PR_SAME" "$PLUG/body.txt"
-check "plugin edit bumped to main's version: exit 1" "$rc" "1"
-contains "plugin edit bumped to main's version: check 9 fails" "$out" "[FAIL] 9."
-contains "plugin edit bumped to main's version: names the plugin" "$out" "demo"
-contains "plugin edit bumped to main's version: says why" "$out" "bump above main"
+contains "(11344-b1) equal version the PR raised itself: check 9 passes" "$out" "[PASS] 9."
+contains "(11344-b1) equal version: the PASS line names the plugin" "$out" "equal to current origin/main, raised from an older merge-base: demo 0.4.71"
+notcontains "(11344-b1) equal version: no check fails" "$out" "[FAIL]"
+p1 "equal raised head" "$PR_SAME" pass
+
+run_bump "$PR_FWD_SAME" "$PLUG/body.txt"
+contains "(11344-b4) merged forward at main's number: check 9 fails" "$out" "[FAIL] 9."
+contains "(11344-b4) merged forward at main's number: says why" "$out" "bump above main"
+p1 "merged-forward head" "$PR_FWD_SAME" fail
 
 # DoD: a plugin file changed AND the version bumped above main passes.
 run_bump "$PR_NEW_BUMP" "$PLUG/body.txt"
@@ -246,6 +278,61 @@ contains "plugin removed but still listed in marketplace.json: check 9 fails" "$
 
 run_bump "$PR_SAME" "README.md"
 contains "no plugin touched: check 9 passes" "$out" "[PASS] 9."
+
+FRESHP=marketplace/plugins/fresh
+add_fresh() {
+    mkdir -p "$RB_WORK/$FRESHP/.claude-plugin"
+    printf '{"name":"fresh","version":"1.0.0"}\n' > "$RB_WORK/$FRESHP/.claude-plugin/plugin.json"
+    printf 'x\n' > "$RB_WORK/$FRESHP/$1"
+    printf '{"plugins":[{"name":"demo","source":"./plugins/demo"},{"name":"fresh","source":"./plugins/fresh"}]}\n' > "$RB_WORK/marketplace/.claude-plugin/marketplace.json"
+    git -C "$RB_WORK" add -A
+    git -C "$RB_WORK" commit -q -m "feat: add fresh ($1)"
+}
+RB_ORIGIN="$tmp/origin2.git" RB_WORK="$tmp/work2" RB_CLONE="$tmp/clone2"
+git init -q --bare "$RB_ORIGIN"
+git init -q -b main "$RB_WORK"
+git -C "$RB_WORK" config user.email t@example.com
+git -C "$RB_WORK" config user.name tester
+git -C "$RB_WORK" remote add origin "$RB_ORIGIN"
+printf '1.0.0\n' > "$RB_WORK/VERSION"
+mkdir -p "$RB_WORK/marketplace/.claude-plugin"
+printf '{"plugins":[{"name":"demo","source":"./plugins/demo"}]}\n' > "$RB_WORK/marketplace/.claude-plugin/marketplace.json"
+write_plugin 0.4.70 base "chore: base"
+git -C "$RB_WORK" push -q origin main
+RB_BASE=$(git -C "$RB_WORK" rev-parse HEAD)
+git clone -q "$RB_ORIGIN" "$RB_CLONE"
+add_fresh main.txt
+write_plugin 0.4.71 main-1 "feat: main 0.4.71"
+write_plugin 0.4.72 main-2 "feat: main 0.4.72"
+git -C "$RB_WORK" push -q origin main
+PR_TWO=$(pr_head 0.4.72 from-pr)
+git -C "$RB_WORK" checkout -q -B pr "$RB_BASE"
+add_fresh pr.txt
+PR_FRESH=$(git -C "$RB_WORK" rev-parse HEAD)
+git -C "$RB_WORK" checkout -q main
+
+run_bump "$PR_TWO" "$PLUG/body.txt"
+contains "(11344-b7) equal through another number: check 9 fails" "$out" "[FAIL] 9."
+contains "(11344-b7) equal through another number: says why" "$out" "bump above main"
+p1 "two-step head" "$PR_TWO" fail
+run_bump "$PR_FRESH" "$FRESHP/.claude-plugin/plugin.json"
+contains "(11344-b8) new plugin at main's number: check 9 fails" "$out" "[FAIL] 9."
+contains "(11344-b8) new plugin at main's number: says why" "$out" "bump above main"
+p1 "new-plugin head" "$PR_FRESH" fail
+unset RB_ORIGIN RB_WORK RB_CLONE RB_BASE
+
+MAIN_KEEP=$(git -C "$WORK" rev-parse main)
+git -C "$WORK" checkout -q main
+printf '1.0.1\n' > "$WORK/VERSION"
+git -C "$WORK" commit -q -am "chore: VERSION only"
+git -C "$WORK" push -q origin main
+run_bump "$PR_SAME" "$PLUG/body.txt"
+contains "(11344-b6) equal after a VERSION change: check 9 fails" "$out" "[FAIL] 9."
+contains "(11344-b6) equal after a VERSION change: says why" "$out" "bump above main"
+p1 "equal head after a VERSION change" "$PR_SAME" fail
+git -C "$WORK" reset -q --hard "$MAIN_KEEP"
+git -C "$WORK" push -q -f origin "$MAIN_KEEP:main"
+check "(11344-b6) fixture main restored" "$(git -C "$WORK" ls-remote origin refs/heads/main | cut -f1)" "$MAIN_KEEP"
 
 # --- 12. computed TRUST-PATH line: from the PR diff against the default
 # branch's list, never from any READY text ---------------------------------------

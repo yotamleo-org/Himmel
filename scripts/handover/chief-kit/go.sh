@@ -680,39 +680,18 @@ if [ -z "$NWO" ]; then
     exit 1
 fi
 
-# sign the GO. The key is minted here, on the chief's first GO
-# (umask 077 + noclobber: mode 0600, never overwrites an existing key);
-# go_gate verifies it and never mints one.
 if [ -z "${HOME:-}" ]; then
     echo "go: HOME is unset - cannot locate the GO key" >&2
     exit 1
 fi
 KEY=$(go_key_file)
-if [ ! -e "$KEY" ]; then
-    if ! command -v openssl >/dev/null 2>&1; then
-        echo "go: openssl is required to mint the GO key" >&2
-        exit 1
-    fi
-    # mint to a temp file in the same directory first and
-    # validate it as 64 lowercase hex BEFORE moving it into place - a failed
-    # `openssl rand` (disk full, killed mid-write) used to leave an
-    # empty/partial file at $KEY itself, which is sticky: every later run sees
-    # `-e "$KEY"` true and never re-mints, failing closed forever. mv -n never
-    # clobbers a key another process won the race to mint first.
-    KEYDIR=$(dirname "$KEY")
-    ( umask 077 && mkdir -p "$KEYDIR" ) 2>/dev/null || true
-    TMPKEY=$(umask 077 && mktemp "$KEYDIR/.go-hmac.XXXXXX" 2>/dev/null) || TMPKEY=""
-    if [ -n "$TMPKEY" ]; then
-        ( umask 077; openssl rand -hex 32 > "$TMPKEY" ) 2>/dev/null || true
-        if grep -qxE '[0-9a-f]{64}' "$TMPKEY" 2>/dev/null; then
-            # prim-ok: mv -n never clobbers a key another process minted first; atomic_write would replace it
-            mv -n "$TMPKEY" "$KEY" 2>/dev/null || true
-        fi
-        rm -f "$TMPKEY" 2>/dev/null || true
-    fi
+if [ ! -e "$KEY" ] && ! command -v openssl >/dev/null 2>&1; then
+    echo "go: openssl is required to mint the GO key" >&2
+    exit 1
 fi
+go_key_ensure 2>/dev/null || true  # swallow-ok: a bad key is named below, any other failure by the signing refusal
 if [ -e "$KEY" ] && ! grep -qxE '[0-9a-f]{64}' "$KEY" 2>/dev/null; then
-    echo "go: the GO key at $KEY exists but is not 64 lowercase hex chars - remedy: remove $KEY (it was left behind by a previously failed mint) and re-run go.sh so it can mint a fresh one; no GO written" >&2
+    echo "go: the GO key at $KEY exists but is not 64 lowercase hex chars - remedy: remove $KEY (it was left behind by a previously failed mint) and re-run go.sh so it can mint a fresh one (deleting the key strands every recorded worker on today's fallback); no GO written" >&2
     exit 1
 fi
 MAC_OK=1

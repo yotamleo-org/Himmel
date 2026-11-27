@@ -204,8 +204,12 @@ A PR that changes a plugin bumps that plugin's `plugin.json` version above
 `main`'s, so `himmel-update` refreshes the station at once;
 `check-plugin-drift.sh --bump-required`, ready-check item 9 and the
 merge-on-green recheck refuse a plugin change without the bump, and a bump with
-no other change in that plugin. Two PRs bumping one plugin from the same base
-collide on the version line: the second merges `main` and bumps above it. The
+no other change in that plugin. One equal case passes: the PR raised the plugin
+itself, `main` moved it only from that same old version to that same new one,
+and no commit since the merge-base touched `VERSION`, so two PRs that raced from
+one base both merge with no re-push. A release cut stays strictly above `main`.
+While it lasts, `main` holds several contents under that version until a higher
+one ships: `himmel-update` reinstalls the cache, a marketplace install does not. The
 release-cut PR (the one that changes the root `VERSION` file) raises the
 version of every plugin changed since the last tag
 (`git diff --name-only <last tag> HEAD -- marketplace/plugins/`), each strictly
