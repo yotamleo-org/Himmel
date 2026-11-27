@@ -158,9 +158,11 @@ case "$findings" in
             | with_entries(select(.value | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
             || { bypass='{}' settings_err="T3's settings file $T3_SETTINGS or the bypass flag registry $REGISTRY could not be read"; }
         # swallow-ok: jq's error text can quote T3's settings values; a failure refuses every instance id
-        drivers=$(jq -c '(.providerInstances // {}) | with_entries(.value |= (if type == "object" then .driver else null end))' "$T3_SETTINGS" 2>/dev/null) \
-            || { drivers='{}'; [ -n "$settings_err" ] || settings_err="the drivers in T3's settings file $T3_SETTINGS could not be read"; }
-        [ -n "$drivers" ] || drivers='{}'
+        if ! drivers=$(jq -c '(.providerInstances // {}) | with_entries(.value |= (if type == "object" then .driver else null end))' "$T3_SETTINGS" 2>/dev/null) \
+            || [ -z "$drivers" ]; then
+            drivers='{}'
+            [ -n "$settings_err" ] || [ -z "$bypass" ] || settings_err="the drivers in T3's settings file $T3_SETTINGS could not be read"
+        fi
         ;;
 esac
 

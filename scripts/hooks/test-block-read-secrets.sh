@@ -1019,6 +1019,7 @@ cp "$(dirname "$HOOK")/../harnesses/codex.json" "$HT/scripts/harnesses/codex.jso
 for f in codex antigravity; do
     jq '.token_paths = []' "$(dirname "$HOOK")/../harnesses/$f.json" > "$HT/scripts/harnesses/$f.json"
 done
+assert_rc "11089 control: both rewrites emptied the token paths" 0 "$(jq -es 'all(.[]; .token_paths == [])' "$HT/scripts/harnesses/codex.json" "$HT/scripts/harnesses/antigravity.json" >/dev/null; echo $?)"
 assert_rc "11089 control: the tree with those paths removed still loads" 0 "$(ht "$(j_bash 'ls')")"
 for p in .codex/auth.json .gemini/oauth_creds.json .gemini/gemini-credentials.json .gemini/mcp-oauth-tokens-v2.json; do
     assert_rc "11089 no descriptor edit unfences ~/$p"      2 "$(ht "$(j_bash "cat ~/$p")")"

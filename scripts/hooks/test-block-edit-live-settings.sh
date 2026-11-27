@@ -4445,7 +4445,6 @@ ln -s "$S9H/.claude" "$SANDBOX/s9256dlink"
 assert_rc "9256e8 cp through a symlinked dir onto ~/.claude/settings.json denies" 2 \
     "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $SANDBOX/s9256dlink/settings.json" HOME="$S9H")"
 
-# a fixture checkout, once from its primary and once from a linked worktree.
 H11="$SANDBOX/hrn"
 mkrepo "$H11"
 mkdir -p "$H11/scripts/harnesses"

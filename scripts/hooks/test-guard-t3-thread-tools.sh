@@ -201,6 +201,11 @@ printf '{"theme":"dark"}\n' > "$T3_SETTINGS"
 run "T3 settings with no providerInstances: a built-in allowed" 0 - "$LAUNCH_OK"
 write_t3_settings
 
+mkdir -p "$TMP/emptyread"
+printf '#!/usr/bin/env bash\ncase "$*" in *"then .driver else null"*) exit 0 ;; esac\nexec %q "$@"\n' "$(command -v jq)" > "$TMP/emptyread/jq"
+chmod +x "$TMP/emptyread/jq"
+run "an empty second read of T3's settings: every instance id refused" 2 'the drivers in T3' "$LAUNCH_OK" PATH="$TMP/emptyread:$PATH"
+
 mkdir -p "$TMP/regtree/hooks" "$TMP/regtree/himmelctl/lib"
 cp "$HOOK" "$TMP/regtree/hooks/guard-t3-thread-tools.sh"
 cp -R "$HOOKS/../harnesses" "$TMP/regtree/harnesses"
