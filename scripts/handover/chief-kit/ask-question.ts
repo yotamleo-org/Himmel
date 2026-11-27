@@ -76,7 +76,7 @@ function answer(o: Record<string, string | string[] | boolean | undefined>): str
     }
   }
   appendFileSync(path, added);
-  return `--quote "${words.trim()}"`;
+  return `--quote '${words.trim().replaceAll("'", "'\\''")}'`;
 }
 
 if (import.meta.main) {

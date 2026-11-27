@@ -70,7 +70,7 @@ test("answer refuses a non-option and a second answer", () => {
   expect(wrong.code).toBe(1); expect(readFileSync(file, "utf8")).toBe(before);
   expect(wrong.out).toMatch(/^Needs you: .*"a3".*a1 .*a2 /m);
   const ok = answer(specs, "a1");
-  expect(ok.err).toBe(""); expect(ok.code).toBe(0); expect(ok.out).toContain('--quote "a1"');
+  expect(ok.err).toBe(""); expect(ok.code).toBe(0); expect(ok.out).toContain("--quote 'a1'");
   const after = readFileSync(file, "utf8");
   expect(shortAnswer(after, "a1", KEY)).toEqual({ ok: true });
   expect(answer(specs, "a1").code).toBe(1); expect(readFileSync(file, "utf8")).toBe(after);
@@ -80,6 +80,14 @@ test("answer takes 20 characters or more with no option check", () => {
   const { specs, file } = asked();
   expect(answer(specs, "sign it, but run the critic once more").code).toBe(0);
   expect(parseQuestion(readFileSync(file, "utf8"))).toMatchObject({ ok: true, q: { answer: "sign it, but run the critic once more" } });
+});
+
+test("the printed --quote reads back byte for byte through a shell", () => {
+  const { specs } = asked(); const words = "don't run `date` or $(id) \"yet\"";
+  const r = answer(specs, words);
+  expect(r.code).toBe(0);
+  const sh = Bun.spawnSync(["bash", "-c", `set -- ${r.out.trim()}; printf %s "$2"`]);
+  expect(sh.stdout.toString()).toBe(words);
 });
 
 test("answer refuses words holding a blank line", () => {
