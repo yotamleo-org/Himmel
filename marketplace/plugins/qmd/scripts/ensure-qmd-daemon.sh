@@ -108,9 +108,32 @@ else
   boot_unit="qmd-daemon-$QMD_INDEX_NAME.service"  # t13b-ok: the boot unit's name only, starts nothing
 fi
 mcp_stem="mcp$idx_sfx"
-if [ "$QMD_INDEX_NAME" != index ] && [ -z "$unit_url" ]; then
-  echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
-  exit 1
+shared_port=8181
+url_port() {
+  local h="${1#*://}" p
+  h="${h%%[/?#]*}"
+  h="${h##*@}"
+  case "$h" in \[*) h="${h#*]}" ;; esac
+  case "$h" in *:*) p="${h##*:}" ;; *) return 1 ;; esac
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  p="${p#"${p%%[!0]*}"}"
+  [ -n "$p" ] && [ "${#p}" -le 5 ] && [ "$p" -le 65535 ] || return 1
+  echo "$p"
+}
+url_port_n=""
+if [ "$QMD_INDEX_NAME" != index ]; then
+  if [ -z "$unit_url" ]; then
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
+    exit 1
+  fi
+  url_port_n="$(url_port "$QMD_MCP_URL")" || {
+    echo "ensure-qmd-daemon: ERROR - QMD_MCP_URL '$QMD_MCP_URL' must name a numeric port 1-65535 for the named index '$QMD_INDEX_NAME'." >&2
+    exit 1
+  }
+  if [ "$url_port_n" -eq "$shared_port" ]; then
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port $shared_port, the shared server's; set QMD_MCP_URL to the index's own port." >&2
+    exit 1
+  fi
 fi
 boot_before="himmel-recover.service"
 
@@ -363,7 +386,23 @@ $row
 EOF
   case "$rss" in ''|*[!0-9]*) return 1 ;; esac
   args_name_index "$args" || return 1
+  last_args="$args"
   echo "$rss $etime"
+}
+
+args_port() {
+  local -a words
+  local w prev="" got=""
+  read -r -a words <<EOF
+$1
+EOF
+  for w in "${words[@]:-}"; do
+    [ "$prev" != --port ] || got="$w"
+    case "$w" in --port=*) got="${w#--port=}" ;; esac
+    prev="$w"
+  done
+  case "$got" in ''|*[!0-9]*) return 1 ;; esac
+  [ "${#got}" -le 9 ] && echo "$((10#$got))"
 }
 
 index_serves() {
@@ -371,7 +410,8 @@ index_serves() {
   [ "$QMD_INDEX_NAME" = index ] && return 0
   pid="$(head -n1 "$pidfile" 2>/dev/null)"
   case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-  qmd_rss "$pid" >/dev/null
+  qmd_rss "$pid" >/dev/null || return 1
+  [ "$(args_port "$last_args")" = "$url_port_n" ]
 }
 
 check_ceiling() {
@@ -768,6 +808,7 @@ port_host="${QMD_MCP_URL#*://}"
 port_host="${port_host%%/*}"
 port_num="${port_host##*:}"
 port_host="${port_host%%:*}"
+[ -z "$url_port_n" ] || port_num="$url_port_n"
 port_held() {
   if command -v timeout >/dev/null 2>&1; then
     # shellcheck disable=SC2016 # $1/$2 are the inner bash -c's OWN positional

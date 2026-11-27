@@ -1283,7 +1283,7 @@ chmod +x "$ps3/ps"
 xdg3="$work/xdg3"
 mkdir -p "$xdg3/qmd"
 default_argv="bun /x/dist/cli/qmd.js mcp --http --port 8181"
-gmail_argv="bun /x/dist/cli/qmd.js --index gmail --port 8183 mcp --http --daemon"
+gmail_argv="bun /x/dist/cli/qmd.js --index gmail --port $test_port mcp --http --daemon"
 set_proc() { echo "$2" > "$state/ps3-rss-$1"; echo "$3" > "$state/ps3-args-$1"; }
 two_procs() {
   rm -f "$xdg3/qmd/"* "$state/ps3-pids.log"
@@ -1382,6 +1382,7 @@ echo "ok (z17): the index name is validated before any state path is built, even
 
 wait_run() {
   rm -f "$state/alive" "$state/qmd-argv.log"
+  export XDG_CACHE_HOME="$home/.cache"
   mkdir -p "$home/.cache/qmd"
   sleep 300 & wait_srv=$!
   STUB_PIDS+=("$wait_srv")
@@ -1397,6 +1398,7 @@ wait_run() {
   set -e
   wait "$wait_bg"
   kill "$wait_srv" 2>/dev/null || true
+  unset XDG_CACHE_HOME
   rm -f "$state/alive"
 }
 wait_run 6 QMD_WAIT_TRIES=abc
@@ -1462,22 +1464,45 @@ set -e
 [ ! -e "$units/qmd-daemon-gmail.service" ] || fail "(z20) a unit was written without the index's own URL"
 echo "ok (z20): a named index without its own QMD_MCP_URL is refused on start and on install"
 
-for url in http://localhost:0000008181/mcp "http://localhost:8181?probe=1" http://localhost:9/mcp; do
-  for shape in none default; do
+for url in http://localhost:9/mcp "http://localhost:9?probe=1" "http://localhost:0009/mcp"; do
+  for shape in none default gmail; do
     two_procs "$default_argv" 1048576 "$default_argv" 1048576
     [ "$shape" != none ] || rm -f "$xdg3/qmd/mcp-gmail.pid"
+    [ "$shape" != gmail ] || set_proc "$gm_pid" 1048576 "$gmail_argv"
     rm -f "$state/qmd-argv.log"
     run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="$url"
-    [ "$rc" -eq 1 ] || fail "(z21) $url, pidfile $shape: a probe answered by another index's server must exit 1, got $rc ($out)"
+    [ "$rc" -eq 1 ] || fail "(z21) $url, pidfile $shape: a probe answered on another port must exit 1, got $rc ($out)"
     case "$out" in *"not the 'gmail' index's server"*) ;; *) fail "(z21) $url, pidfile $shape: no refusal line ($out)" ;; esac
     [ ! -e "$state/qmd-argv.log" ] || fail "(z21) $url, pidfile $shape: qmd was started"
     reap_two
   done
 done
 two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
-run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:0000008181/mcp
-[ "$rc" -eq 0 ] || fail "(z21) a pidfile naming --index gmail is healthy whatever the URL spelling: got rc $rc ($out)"
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="$test_url?probe=1"
+[ "$rc" -eq 0 ] || fail "(z21) a pidfile naming --index gmail --port $test_port is healthy on that port: got rc $rc ($out)"
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="http://localhost:$(printf '%08d' "$test_port")/mcp"
+[ "$rc" -eq 0 ] || fail "(z21) a zero-padded spelling of the matching port is the same port: got rc $rc ($out)"
 reap_two
-echo "ok (z21): a named index counts as served only when its own pidfile names a live --index <name> server, whatever the URL"
+echo "ok (z21): a named index counts as served only when its own pidfile names a live --index <name> --port <the URL's port> server"
+
+for url in http://localhost:8181/mcp http://localhost:0000008181/mcp "http://localhost:8181?probe=1" http://localhost:08181/mcp "http://user@localhost:8181#x" "http://[::1]:8181/mcp"; do
+  run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="$url"
+  [ "$rc" -eq 1 ] || fail "(z22) a named index on the shared port must be refused ($url): got rc $rc ($out)"
+  case "$out" in *"cannot use port 8181"*) ;; *) fail "(z22) $url: no shared-port refusal ($out)" ;; esac
+  rm -f "$units/qmd-daemon-gmail.service"
+  set +e
+  out="$(env QMD_SYSTEMCTL="$bin/systemctl" QMD_UNIT_DIR="$units" QMD_MOCK_STATE="$state" QMD_INDEX_NAME=gmail QMD_MCP_URL="$url" \
+    HOME="$home" PATH="$bin:$safe" bash "$script" --install-boot-unit 2>&1)"
+  rc=$?
+  set -e
+  [ "$rc" -eq 1 ] || fail "(z22) --install-boot-unit on the shared port must be refused ($url): got rc $rc ($out)"
+  [ ! -e "$units/qmd-daemon-gmail.service" ] || fail "(z22) a unit was written for the shared port ($url)"
+done
+for url in http://localhost/mcp http://localhost:abc/mcp http://localhost:0/mcp http://localhost:65536/mcp "http://localhost:8183x/mcp"; do
+  run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="$url"
+  [ "$rc" -eq 1 ] || fail "(z22) a named index needs a numeric port 1-65535 ($url): got rc $rc ($out)"
+  case "$out" in *"numeric port"*) ;; *) fail "(z22) $url: no numeric-port refusal ($out)" ;; esac
+done
+echo "ok (z22): a named index is refused on the shared port, in any spelling, and without a numeric port"
 
 echo "PASS: all ensure-qmd-daemon cases"
