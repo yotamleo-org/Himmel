@@ -84,6 +84,7 @@ case "$sub" in
 esac
 
 command -v jq >/dev/null 2>&1 || die 6 "jq is required"
+command -v python3 >/dev/null 2>&1 || die 6 "python3 is required"
 command -v flock >/dev/null 2>&1 || die 6 "flock is required"  # prim-ok: presence check for the Linux-only kit's lock below
 
 stem="${doc##*/}"; stem="${stem%.md}"
@@ -108,13 +109,31 @@ case "$bucket" in
 esac
 rec="$bucket/worker-tokens.jsonl"
 
-for f in "$rec" "$rec.lock"; do
-    if [ -L "$f" ] || ! { [ -f "$f" ] || absent "$f"; }; then
-        [ "$sub" != gen ] || echo "current=- pending=-:- state=bad"
-        die 6 "refusing a symlink or a non-regular file: $f"
-    fi
-done
-exec 9>>"$rec.lock" || die 6 "cannot open $rec.lock"
+REC_IO='
+import os, stat, sys
+mode, path = sys.argv[1], sys.argv[2]
+flags = {"lock": os.O_RDONLY | os.O_CREAT, "read": os.O_RDONLY,
+         "append": os.O_RDWR | os.O_APPEND | os.O_CREAT}[mode]
+try:
+    fd = os.open(path, flags | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1:
+        sys.exit("worker-token: not a regular file with one name: " + path)
+    if mode == "read":
+        with os.fdopen(fd, "rb") as f:
+            sys.stdout.buffer.write(f.read())
+    elif mode == "append":
+        row = (sys.argv[3] + "\n").encode()
+        if st.st_size and os.pread(fd, 1, st.st_size - 1) != b"\n":
+            row = b"\n" + row
+        if os.write(fd, row) != len(row):
+            sys.exit("worker-token: short write: " + path)
+except OSError as e:
+    sys.exit("worker-token: " + str(e))
+'
+rec_io() { python3 -I -c "$REC_IO" "$@"; }
+rec_io lock "$rec.lock" || die 6 "cannot open $rec.lock"
+exec 9<"$rec.lock" || die 6 "cannot open $rec.lock"
 flock -w 60 9 || die 6 "cannot lock $rec.lock"  # prim-ok: one lock spans each read, decide and append
 
 key_id() {
@@ -137,9 +156,9 @@ kid="$(key_id)" || kid=""
 nrows=0; cur=""; pend=""; pto=""; maxg=0; dprefix=""; mkid=""; first=""; rotations=""; minted=""; bad=0
 parsed=""
 if ! absent "$rec"; then
-    if [ -f "$rec" ] && [ -r "$rec" ]; then
+    if body="$(rec_io read "$rec")"; then
         # shellcheck disable=SC2016  # a jq program, not shell
-        parsed="$(jq -Rrn --arg s "$stem" '
+        parsed="$(printf '%s' "${body:+$body$'\n'}" | jq -Rrn --arg s "$stem" '
             def name: type == "string" and test("^[A-Za-z0-9_.-]+$");
             def okrow: type == "object" and .v == 1 and (.stem | type) == "string"
                 and (.gen | type) == "number" and .gen >= 1 and .gen == (.gen | floor)
@@ -153,7 +172,7 @@ if ! absent "$rec"; then
             | if ($o | okrow) | not then "torn \($n)"
               elif $o.stem != $s then empty
               elif $o.event == "mint" then "mint \($o.gen) \($o.kind) \($o.prefix) \($o.to) \($o.keyid)"
-              else "\($o.event) \($o.gen) - - - \($o.keyid)" end' "$rec")" || bad=1
+              else "\($o.event) \($o.gen) - - - \($o.keyid)" end')" || bad=1
     else
         bad=1
     fi
@@ -201,10 +220,7 @@ append() {
     shift
     row="$(jq -cn --arg s "$stem" --arg k "$kid" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$@" "$filter")" \
         || die 6 "cannot build a record row"
-    if [ -s "$rec" ] && [ -n "$(tail -c 1 "$rec")" ]; then
-        printf '\n' >> "$rec" || die 6 "cannot write $rec"
-    fi
-    printf '%s\n' "$row" >> "$rec" || die 6 "cannot write $rec"
+    rec_io append "$rec" "$row" || die 6 "cannot write $rec"
 }
 
 if [ "$sub" = mint ]; then
