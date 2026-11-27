@@ -180,7 +180,7 @@ u2b_check() {
     ' "$1"
 }
 if out="$(u2b_check "$MATRIX")"; then ok "U2b inference allow, every other purpose a hard deny"; else bad "U2b $out"; fi
-if node "$MATRIX_EVAL" salus google-antigravity inference | grep -q '^allow'; then ok "U2b the CLI prints allow for inference"; else bad "U2b the CLI does not print allow for inference"; fi
+if grep -q '^allow' <<<"$(node "$MATRIX_EVAL" salus google-antigravity inference)"; then ok "U2b the CLI prints allow for inference"; else bad "U2b the CLI does not print allow for inference"; fi
 jq '.rules = [{corpus:"salus",provider:"google-antigravity",purpose:"*",verdict:"allow"}] + .rules' "$MATRIX" > "$TMP/matrix-open.json"
 if u2b_check "$TMP/matrix-open.json" >/dev/null; then bad "U2b mutation: an allow row before the wildcard passed"; else ok "U2b mutation: an allow row before the wildcard fails the check"; fi
 jq '.rules |= map(if .corpus == "salus" and .provider == "*" and .purpose == "*" then del(.hard) else . end)' "$MATRIX" > "$TMP/matrix-soft.json"
