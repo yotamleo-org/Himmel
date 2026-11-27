@@ -114,7 +114,7 @@ for gone in "$tmp/bucket11376/HIMMEL-9001-N1-archived.md" "$tmp/vanished-11376/p
     check "11376 ${gone##*/}: a missing recorded doc with a free lock ends ownership" "$TS_WORKER_STATE/$TS_DERIVED" 'wrapped/To Do'
     ts_owner HIMMEL-9001 >/dev/null
     check "11376 ${gone##*/}: the ticket has no owner" "$TS_OWNER_ANS" none
-    check "11376 ${gone##*/}: ts_worker_state reads it ended" "$(TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_worker_state "$gone")" wrapped
+    check "11376 ${gone##*/}: ts_worker_state still reads it unknown, so the dispatcher holds an unreadable sibling doc" "$(TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_worker_state "$gone")" unknown
     gonerec "$gone" "$tmp/lock-held.sh"
     check "11376 ${gone##*/}: control, a held lock still owns the ticket" "$TS_RULE/$TS_DERIVED" 'D5/In Progress'
 done

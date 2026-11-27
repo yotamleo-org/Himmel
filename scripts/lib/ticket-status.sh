@@ -477,6 +477,11 @@ _ts_no_live_session_on() {
     return 0
 }
 
+_ts_derive_worker_state() {
+    _ts_worker_state "$1"
+    [ "$TS_DOC_GONE" != yes ] || TS_WORKER_STATE=wrapped
+}
+
 # _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
@@ -484,7 +489,7 @@ _ts_no_live_session_on() {
 # passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD="" TS_OPEN_EVIDENCE="" TS_ABANDONED="" TS_DOC_GONE=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal="" marker_unread="" doc_absent=""
     case "${2-}" in
@@ -513,7 +518,7 @@ _ts_worker_state() {
     if [ "$rc" -eq 12 ]; then
         if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_LOCK_DEAD=yes; else TS_LOCK_DEAD=no; fi
     fi
-    if [ -n "$doc_absent" ] && [ "$TS_LOCK_HELD" = no ] && [ "$attempt_protected" != '"launched"' ]; then TS_WORKER_STATE=wrapped; return 0; fi
+    if [ -n "$doc_absent" ] && [ "$TS_LOCK_HELD" = no ] && [ "$attempt_protected" != '"launched"' ]; then TS_DOC_GONE=yes; fi
     # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
     # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
     if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ] && [ -z "$marker_unread" ]; then TS_WORKER_STATE=wrapped; return 0; fi
@@ -885,7 +890,7 @@ ts_derive() {
     TS_GONE=$(jq -r '.lock_gone_sweeps // 0' <<<"$TS_REC")
     case "$TS_GONE" in ''|*[!0-9]*) TS_GONE=0 ;; esac
     if [ -n "$doc" ]; then
-        _ts_worker_state "$doc"
+        _ts_derive_worker_state "$doc"
         # A held lock is seen and resets the count; only a sweep counts a gone lock,
         # and only for a lock this station saw held, so a cloud worker never reaches D6.
         if [ "$TS_LOCK_HELD" = yes ]; then
@@ -899,7 +904,7 @@ ts_derive() {
         recorded=$(jq -r '(.docs // [])[]' <<<"$TS_REC")
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
-            _ts_worker_state "$other"
+            _ts_derive_worker_state "$other"
             _ts_other_worker_keeps_ownership || continue
             owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
         done <<<"$recorded"
@@ -907,7 +912,7 @@ ts_derive() {
             while IFS= read -r other; do
                 [ -n "$other" ] && [ "$other" != "$doc" ] || continue
                 grep -qxF -- "$other" <<<"$recorded" && continue
-                _ts_worker_state "$other"
+                _ts_derive_worker_state "$other"
                 _ts_unrecorded_sibling_keeps_ownership || continue
                 owner=$TS_WORKER_STATE; TS_OWNER_DOC=$other; break
             done <<<"$(_ts_bucket_docs "$key" "$doc")"
