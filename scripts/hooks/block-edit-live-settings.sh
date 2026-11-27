@@ -1052,6 +1052,14 @@ mentions_harness_registry() {
     _text_names "$HRN_DIRS" "$c" 1
 }
 
+cwd_in_harness_registry() {
+    local here
+    case "$cwd" in *harnesses*) ;; *) return 1 ;; esac
+    here=$(canon "$cwd") || return 0
+    fence_paths
+    _fence_match "$HRN_DIRS" "$here" under
+}
+
 harness_deny_message() {
     cat >&2 <<EOF
 ⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write the live
@@ -5214,7 +5222,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     if [ "$agy_dest" = 0 ] && agy_cli_writes; then
         agy_dest=1
     fi
-    if [ "$harness_dest" = 0 ] && mentions_harness_registry "$cmd_lc"; then
+    if [ "$harness_dest" = 0 ] && { mentions_harness_registry "$cmd_lc" || cwd_in_harness_registry; }; then
         harness_dest=1
     fi
 

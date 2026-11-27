@@ -4446,6 +4446,7 @@ assert_rc "9256e8 cp through a symlinked dir onto ~/.claude/settings.json denies
     "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $SANDBOX/s9256dlink/settings.json" HOME="$S9H")"
 
 H11="$SANDBOX/hrn"
+H11_INPLACE="sed -i.bak '1d' codex.json" # gnu-ok: fed to the hook as text, never run
 mkrepo "$H11"
 mkdir -p "$H11/scripts/harnesses"
 cp -R "$(dirname "$HOOK")" "$(dirname "$HOOK")/../lib" "$(dirname "$HOOK")/../guardrails" "$H11/scripts/"
@@ -4470,6 +4471,12 @@ for h11_from in "$H11" "$H11WT"; do
         "$(bash_rc_of "$H11WT" "cp /tmp/x.json $H11/scripts/harnesses/" HOME="$FAKEHOME")"
     assert_rc "11089 ($h11_at hook) relative redirect from the primary denies" 2 \
         "$(bash_rc_of "$H11" "echo {} > scripts/harnesses/codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) an in-place edit from inside the live registry denies" 2 \
+        "$(bash_rc_of "$H11/scripts/harnesses" "$H11_INPLACE" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) cat from inside the live registry allows" 0 \
+        "$(bash_rc_of "$H11/scripts/harnesses" "cat codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) an in-place edit from inside the worktree's registry allows" 0 \
+        "$(bash_rc_of "$H11WT/scripts/harnesses" "$H11_INPLACE" HOME="$FAKEHOME")"
     assert_rc "11089 ($h11_at hook) cat of a live descriptor allows" 0 \
         "$(bash_rc_of "$H11WT" "cat $H11/scripts/harnesses/codex.json" HOME="$FAKEHOME")"
     assert_rc "11089 ($h11_at hook) redirect onto the worktree's own descriptor allows" 0 \
