@@ -513,7 +513,7 @@ def scope_of(body):
                 files.extend(path for path in files_in(value) if path not in files)
                 nowrite = nowrite or bool(NO_WRITE_RE.search(value))
                 state = state or bool(SPECS_RE.search(value))
-                named = named or bare_name(value)
+                named = named or bool(files_in(line)) or bare_name(line)
         nowrite = nowrite or (state and not named)
         if files or nowrite:
             return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
@@ -527,7 +527,7 @@ def scope_of(body):
             writes_hit = writes_hit or kind == 'w'
         elif kind == 'w':
             state_line = state_line or bool(SPECS_RE.search(value))
-            named_line = named_line or bare_name(value)
+            named_line = named_line or bool(files_in(line)) or bare_name(line)
             nowrite_line = nowrite_line or bool(NO_WRITE_RE.search(value))
     state_line = state_line and not named_line
     if (state_line or nowrite_line) and not writes_hit:

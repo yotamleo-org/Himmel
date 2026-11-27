@@ -6,8 +6,8 @@
 #
 # Real pieces: `release core-check` (rows A3.b, A3.b.ctl) and the real ADF renderer: the stub post re-renders the fixture
 # issue file through the exported renderIssue of dist/commands/mirror.js, so a comment lands in the mirror text exactly as a
-# mirror run would write it (rows A1.b, A1.b.ctl, whose control builds the same lines through markdownToAdf, the route
-# `--comment-file` takes). The real next-dispatchable.sh judges every ticket. A checkout without the build fails by name
+# mirror run would write it (rows A1.b, A1.b.ctl, which builds the same lines through markdownToAdf, the route
+# `--comment-file` takes: it joins them, and the joined mid-line Writes: still reads). The real next-dispatchable.sh judges every ticket. A checkout without the build fails by name
 # (PREREQUISITE-ABSENT): this is not a test-*.sh suite, which the shell runner would also run where there is no build.
 # CI runs it in the node-suites (jira) job, after the build. SCOPE_APPROVE_SUITE_CLI names another build.
 set -uo pipefail
@@ -140,8 +140,8 @@ has "A1.b the rendered mirror keeps one Writes line per path (one paragraph per 
 
 fresh; tkt SCOPE-801; row SCOPE-801 '["scripts/lib/a.sh"]'
 STUB_POST=markdown sa
-has "A1.b.ctl the markdown route leaves the ticket STAYS" "$OUT" 'STAYS SCOPE-801'; check "A1.b.ctl exit 1" 1 "$RC"
-has "A1.b.ctl ND still gates no-scope" "$(nd_why SCOPE-801)" 'GATE SCOPE-801 no-scope:'
+has "A1.b.ctl the markdown route's joined line reads: CLEARED" "$OUT" 'CLEARED SCOPE-801'; check "A1.b.ctl exit 0" 0 "$RC"
+lacks "A1.b.ctl ND prints no no-scope gate" "$(nd_why SCOPE-801)" 'no-scope:'
 
 fresh; tkt SCOPE-811; tkt SCOPE-812 Bug; tkt SCOPE-813
 row SCOPE-811 '["scripts/handover/chief-kit/next-dispatchable.sh"]'; row SCOPE-812 '["scripts/handover/chief-kit/next-dispatchable.sh"]'; row SCOPE-813 '["scripts/lib/a.sh"]'
