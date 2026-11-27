@@ -41,7 +41,7 @@ read-only `t3 thread list`.
 
 ## No keepalive
 
-T3 closes a thread's claude process 30 minutes after its last turn unless it has background work running.
-The relay runs none, so an idle relay costs nothing and the chief launches a fresh one. `scripts/t3/keepalive.sh`
-is retired from the relay contract and from `docs/handover/running-a-chief.md`; it stays in the tree only for a
+T3 closes a thread's claude process 120 s after its last turn unless it has background work running (a hold
+of at most 4 hours). The relay runs none, so an idle relay costs nothing and the chief launches a fresh one.
+`scripts/t3/keepalive.sh` is retired from the relay contract and from `docs/handover/running-a-chief.md`; it stays in the tree only for a
 session an operator pins by hand.
