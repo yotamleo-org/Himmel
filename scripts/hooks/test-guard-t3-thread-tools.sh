@@ -275,10 +275,13 @@ run "S13: a settings directory with a space: refused" 2 "\"claudeAgent_worker-im
     "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$CT/l p"
 mkdir -p "$TMP/shastub"
 cp -P "$TMP/nosha/"* "$TMP/shastub/"
-SHA_REAL=$(command -v sha256sum)
-[ -n "$SHA_REAL" ] || SHA_REAL="$(command -v shasum) -a 256"
-printf '#!/usr/bin/env bash\n: > %q\nexec %s "$@"\n' "$TMP/sha-called" "$SHA_REAL" > "$TMP/shastub/sha256sum"
+if SHA_REAL=$(command -v sha256sum); then
+    printf '#!/usr/bin/env bash\n: > %q\nexec %q "$@"\n' "$TMP/sha-called" "$SHA_REAL" > "$TMP/shastub/sha256sum"
+else
+    printf '#!/usr/bin/env bash\n: > %q\nexec %q -a 256 "$@"\n' "$TMP/sha-called" "$(command -v shasum)" > "$TMP/shastub/sha256sum"
+fi
 chmod +x "$TMP/shastub/sha256sum"
+run "S14: a call that names no Claude instance needs no sha256 tool" 0 - "$(from_to codex antigravity)" PATH="$TMP/nosha"
 run "S14: a call that names no Claude instance: allowed" 0 - "$(from_to codex antigravity)" PATH="$TMP/shastub"
 N=$((N+1))
 if [ ! -e "$TMP/sha-called" ]; then echo "ok   S14: it ran no hash tool"; else echo "FAIL S14: a call naming no Claude instance ran the hash tool"; FAIL=$((FAIL+1)); fi
