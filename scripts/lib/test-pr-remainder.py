@@ -7,7 +7,7 @@ import importlib.util
 import json
 import os
 import unittest
-from pr_remainder import pr_remainder_units
+from pr_remainder import coverage_done, pr_remainder_units
 
 HERE = Path(__file__).resolve().parent
 
@@ -255,6 +255,36 @@ class Remainders(unittest.TestCase):
         self.assertIn('throwaway-repo', got)
         self.assertIn('unknown', got)
         self.assertNotIn('unknown', [n[0] for n in ps.needs('', [pr_remainder_units('## Ticket coverage\n- x: deferred -> HIMMEL-9\n')])])
+
+    def test_coverage_done_10944(self):
+        body = (
+            'Remaining: the HIMMEL-8731 seven-key build, the HIMMEL-10220 mixed-owner\n'
+            'build and the HIMMEL-10012 refill follow in later pull requests (the\n'
+            'second pull request carries HIMMEL-9335 and HIMMEL-10228). This merge\n'
+            'completes no ticket; each ticket closes on its own proof.\n'
+            '\n## Ticket coverage\n\n'
+            'One line per ask.\n\n'
+            '- HIMMEL-10215 one readiness check that lists every hold and dependency\n'
+            'reason: done\n'
+            '- HIMMEL-10012 the chief round-extension, the lagging kind\'s refused\n'
+            'review round and the review approval replay guard: done\n'
+            '- sign the spec: owed -> chief by 2026-12-03\n')
+        self.assertTrue(coverage_done(body, 'HIMMEL-10215'))
+        self.assertFalse(coverage_done(body, 'HIMMEL-10012'))
+        self.assertFalse(coverage_done(body, 'HIMMEL-10220'))
+        head = '## Ticket coverage\n'
+        self.assertTrue(coverage_done(head + '- HIMMEL-5 ask\n  more: done\n', 'HIMMEL-5'))
+        for second in ('- HIMMEL-5 other ask\n', '- HIMMEL-5 other: deferred -> HIMMEL-9\n',
+                       '- HIMMEL-5 other: owed -> proof by 2026-12-01\n', '- the rest: deferred -> HIMMEL-5\n'):
+            with self.subTest(second=second):
+                self.assertFalse(coverage_done(head + '- HIMMEL-5 ask: done\n' + second, 'HIMMEL-5'))
+        self.assertFalse(coverage_done('- HIMMEL-5 ask: done\n\n## Ticket coverage\n- other: done\n', 'HIMMEL-5'))
+        self.assertFalse(coverage_done(head + '- x: done\n## Notes\n- HIMMEL-5 ask: done\n', 'HIMMEL-5'))
+        self.assertFalse(coverage_done(head + '- HIMMEL-123 ask: done\n', 'HIMMEL-12'))
+        for left in ('Remaining: the himmel-5 rest\n\n', ''):
+            tail = '- HIMMEL-5 ask: done\n' + ('' if left else '- himmel-5 rest: deferred -> HIMMEL-9\n')
+            with self.subTest(left=left):
+                self.assertFalse(coverage_done(left + head + tail, 'HIMMEL-5'))
 
 
 if __name__ == '__main__':

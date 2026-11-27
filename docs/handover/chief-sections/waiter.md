@@ -102,6 +102,23 @@ silent on a waiter's baseline: with no saved key, or a saved key taken under dif
 tick args or manifest worker set, the first sample only records what is on the line,
 so a chief that starts or takes over reads the tick line for `rm-blocked=` (the
 release-manager section, "A blocked ruling wakes you").
+
+**`WAKE held-priority n=<n> <first 10 keys> [+<m> more]`.** The tick's `held-hi=` names
+the tickets the dispatcher holds (no readable scope, or a merged PR with no remainder)
+that are High or above or `operator-directed`, in any version, or carry a fixVersion and
+are `TICK_HELD_OLD_DAYS` (30) or more days old. A key new to the set wakes on the next
+sample, a standing set again every 60 minutes (`CHIEF_WAIT_HELDHI_REWAKE_MIN`), at any
+capacity, and never through the housekeeping digest. The wake prints one fix line per
+class present; clear each key by that fix. `held-hi=?` (the pool snapshot is stale,
+quota-paused or stalled) neither wakes nor resets the set; no field clears it.
+
+`close-cand=<keys>` names To Do tickets that block others although every coverage item
+naming them in a commit of `origin/main` is done. Each new value adds one
+`close-candidate <keys>` housekeeping line, never a wake of its own (nothing is queued
+with `HOUSEKEEPING_DIGEST_SECS=0`). It is look-only: read the tick's
+`# close-candidate <key> blocks <keys> done-in <sha>` line and that commit, then close the
+ticket only if nothing remains.
+
 The detailed one-shot behavior below remains the default without `--stream`.
 In one-shot mode a printed `WAKE owed-actions` also leaves its notification
 open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>

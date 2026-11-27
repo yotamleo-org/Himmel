@@ -141,6 +141,47 @@ def pr_remainder_units(body, own_keys=()):
     return dict(kind='remaining', handed=[], text=text, **extra)
 
 
+DONE_ITEM_RE = re.compile(r':[ \t]*done[ \t.]*$', re.I)
+
+
+def _blocks(body):
+    out, cur, in_coverage = [], None, False
+    for raw in body.replace('\r', '').splitlines():
+        line = raw.strip()
+        heading = HEADING_RE.match(line)
+        if heading or not line:
+            cur = None
+            if heading and COVERAGE_HEAD_RE.match(line):
+                in_coverage = True
+            elif heading and len(heading.group(1)) <= 2:
+                in_coverage = False
+            continue
+        item = bool(LIST_RE.match(line))
+        if cur is None or item or REMAINING_RE.match(line):
+            cur = [in_coverage, item, line]
+            out.append(cur)
+        else:
+            cur[2] += ' ' + line
+    return out
+
+
+def coverage_done(body, key):
+    """True when at least one ## Ticket coverage item names `key`, every such item ends `: done`, and no `Remaining:`,
+    deferred or owed text in the body names it."""
+    named = re.compile(r'(?<![\w-])' + re.escape(key) + r'(?![\w-])', re.I)
+    done = False
+    for in_coverage, item, text in _blocks(body):
+        if not named.search(text):
+            continue
+        if REMAINING_RE.match(text) or DEFERRED_RE.search(text) or OWED_ANY_RE.search(text):
+            return False
+        if in_coverage and item:
+            if not DONE_ITEM_RE.search(text):
+                return False
+            done = True
+    return done
+
+
 def live_answers(answers):
     """The live answers of a ticket's partial PRs, given in merge order: a clear answer (any kind but none) supersedes every
     older PR that records none, and a PR newer than it that records none is still a question. A newer hand-off or owed
