@@ -302,7 +302,7 @@ if [ -n "$halted" ]; then
 fi
 
 owe_next_step() {
-    local stem key flag results ready sha actor=chief step due id out bucket chief
+    local stem key flag results ready wrapped sha actor=chief step due id out bucket chief
     stem="${worker##*/}"; stem="${stem%.md}"
     [[ $stem =~ ^([A-Z][A-Z0-9]*-[0-9]+)- ]] || return 0
     key="${BASH_REMATCH[1]}"
@@ -311,10 +311,11 @@ owe_next_step() {
     results="$(awk '/^## Results/ { r = 1; next } r && /^- /' "$worker")"
     ready="$(printf '%s\n%s\n' "$results" "$body" | grep -F 'READY-TO-SIGN')" || ready=""
     step="launch the next slice, or close $key by hand when nothing remains"
-    if [ -n "$ready" ] && ! printf '%s\n%s\n' "$(printf '%s\n' "$results" | grep -E '^- ([0-9:]+ )?WRAPPED' | tail -n 1)" "$body" | grep -qiE 'signed by'; then
+    wrapped="$(grep -E '^- ([0-9:]+ )?WRAPPED' <<< "$results" | tail -n 1)"
+    if [ -n "$ready" ] && ! grep -qi 'signed by' <<< "$wrapped"$'\n'"$body"; then
         sha="$(printf '%s\n' "$ready" | grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' | tail -n 1 | grep -oE '[0-9a-f]+$' | cut -c1-12)" || sha=""
         step="sign the design${sha:+ (spec $sha)}, then dispatch the build"
-        if printf '%s\n' "$ready" | grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign"; then
+        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ready"; then
             actor=operator
             step="ask the operator to sign the design${sha:+ (spec $sha)}, then dispatch the build"
         fi

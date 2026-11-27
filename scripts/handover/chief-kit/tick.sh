@@ -3258,7 +3258,7 @@ if [ -n "$console_doc" ] && [ -n "$stale_summary" ]; then
                 unowned_queued="$(printf '%s\n' "$unowned_queued" | cut -f4,6; grep '^queue:' "$console_doc")"
                 unowned_list="" unowned_n=0
                 for un_key in $unowned_keys; do
-                    printf '%s\n' "$unowned_queued" | grep -qE "(^|[^A-Za-z0-9-])$un_key([^0-9]|$)" && continue
+                    grep -qE "(^|[^A-Za-z0-9-])$un_key([^0-9]|$)" <<< "$unowned_queued" && continue
                     unowned_n=$((unowned_n + 1))
                     unowned_list="${unowned_list:+$unowned_list,}$un_key"
                 done
