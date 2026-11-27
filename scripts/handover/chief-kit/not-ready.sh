@@ -500,7 +500,6 @@ def holders(p_lines, key):
 
 
 def design_class(p, f, key):
-    """Classes 7 and 8, for a key with a DESIGN row."""
     reason = p.design[key]
     if f['rounds'] is None:
         return 'unsigned-design', '%s; rounds unread' % reason
