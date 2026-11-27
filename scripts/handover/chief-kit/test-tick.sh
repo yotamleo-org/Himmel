@@ -1945,7 +1945,16 @@ hh_same "(10944 T10) the tick's priority set is the dispatcher's rank 1 or bette
 mkdir -p "$hh/t8-mirror/HIMMEL" "$hh/t8-workers"
 cp "$hh/mirror/HIMMEL/HIMMEL-1.md" "$hh/t8-mirror/HIMMEL/"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$hh/gh-empty"; chmod +x "$hh/gh-empty"
-NEXT_DISPATCH_MIRROR="$hh/t8-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$hh/gh-empty" bash "$HERE/next-dispatchable.sh" --dispositions --top 1000 --workers-dir "$hh/t8-workers" --no-classify > "$hh/t8.rows" 2>/dev/null
+mkdir -p "$hh/t8-git" "$hh/t8-jira"
+git -C "$hh/t8-git" init -q -b main
+GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/t8-git" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m init
+cat > "$hh/t8-jira/index.js" <<'STUB'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUB
+NEXT_DISPATCH_JIRA_CLI="$hh/t8-jira/index.js" NEXT_DISPATCH_GIT_DIR="$hh/t8-git" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_BODY_CACHE=off \
+    NEXT_DISPATCH_MIRROR="$hh/t8-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$hh/gh-empty" bash "$HERE/next-dispatchable.sh" --dispositions --top 1000 --workers-dir "$hh/t8-workers" --no-classify > "$hh/t8.rows" 2>/dev/null
 contains '(10944 T8) control: the real dispatcher holds the key' "$(cat "$hh/t8.rows")" 'NEEDS-CHIEF-NOTE HIMMEL-1: no readable scope'
 out="$(hh_tick t8 "$hh/t8.rows")"
 contains '(10944 T8) the tick reads the real dispatcher line' "$out" ' held-hi=HIMMEL-1'
