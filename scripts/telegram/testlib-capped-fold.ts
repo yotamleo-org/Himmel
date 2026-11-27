@@ -211,9 +211,18 @@ export async function buildFreshSingleFixture(scratchRoot: string): Promise<Roun
     declarations: false, returns });
 }
 
+async function lintUnavailableForSignerOnlyCitation(scratchRoot: string): Promise<void> {
+  const dir = join(scratchRoot, 'no-lint-bin');
+  await mkdir(dir);
+  await writeFile(join(dir, 'bash'), `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) echo 'fixture: the citation is for the signing root' >&2; exit 2;; esac\nexec '${Bun.which('bash')}' "$@"\n`, { mode: 0o755 });
+  process.env.PATH = `${dir}:${process.env.PATH}`;
+}
+
 if (import.meta.main) {
-  const input = JSON.parse(await Bun.stdin.text()) as RoundFixtureRequest | SelectorRequest;
+  const raw = await Bun.stdin.text();
+  const input = JSON.parse(raw) as RoundFixtureRequest | SelectorRequest;
   const { builder, scratchRoot, ...options } = input as { builder?: string; scratchRoot: string };
+  if (/(?:branch|primary)-only\//.test(raw)) await lintUnavailableForSignerOnlyCitation(scratchRoot);
   const fixture = builder === undefined ? await buildRoundFixture(input as RoundFixtureRequest)
     : builder === 'group' ? await buildGroupFixture(scratchRoot, options as GroupOptions)
     : builder === 'known-single' ? await buildKnownSingleFixture(scratchRoot, options as KnownSingleOptions)

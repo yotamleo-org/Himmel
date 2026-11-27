@@ -4948,7 +4948,7 @@ const cappedKey = "HIMMEL-10205";
 const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; planText?: string; pageName?: string } = {}) => {
   const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const r = root();
-  const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
   const planText = options.planText ?? `---\ntickets: ${cappedKey}\n---\nKey: ${cappedKey}\n${fixturePlanText}`;
   const returns = [1, 2, 3, 4, 5].slice(0, options.rounds ?? 5).flatMap(round => (["spec", "plan"] as const).map(kind => {
     const findings = round === 1 && options.historical ? options.historical : kind === "spec" ? options.specFindings ?? "- **F1** (minor) carry this wording fix" : options.planFindings ?? "";
@@ -8540,7 +8540,7 @@ test("DoD 11: the capped fold refuses while a restore check is owed", async () =
 });
 
 test("T-T1..T-T4: v1 capped-fold reads the tickets line with the one parser", async () => {
-  const headerless = (tickets: string) => `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const headerless = (tickets: string) => `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
   const kinds = (r: P1Run) => ["tickets must declare only", "header must declare only"].filter(t => r.err.includes(t));
   const titled = await cappedFixture({ specText: headerless(`${cappedKey} (a title)`) });
   expect(kinds(p1Fold(titled.args)), "T-T1: a titled tickets line with no Key header passes the v1 header checks").toEqual([]);
@@ -8705,7 +8705,7 @@ test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets tab
   const { declaredTickets } = await import("../jira/src/release/pinned.ts");
   const rows: [string, boolean][] = [[cappedKey, true], [`${cappedKey} (a title)`, true], [`[${cappedKey}]`, true], [`${cappedKey} ()`, true], [`${cappedKey} (Relates: HIMMEL-2)`, false]];
   const got = await Promise.all(rows.map(async ([tickets]) => {
-    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
     const f = await cappedFixture({ specText });
     const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
     const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
@@ -9238,4 +9238,182 @@ test("short answer: a reused decision is refused", async () => {
 test("short answer: an older block file is refused as not newer", async () => {
   const t = await criticalTree(); askedFile(t.specs, 1442, "a1", {}, true);
   await refusedWith(critical(true, t.specs, "C1", 1442, "a1"), t.specs, "is not newer than the latest round");
+});
+
+const LINT_REFUSAL = "reads bytes the signer's trace lint refuses";
+const LINT_ESTIMATE = '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n';
+const lintSpecText = (o: { cite?: string; inv?: string; plan?: boolean } = {}) =>
+  `---\ntickets: HIMMEL-1\n${o.plan ? "plan: ../plans/HIMMEL-1-p.md\n" : ""}---\n# D\n\nEstimate record: estimate.json\n\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| route | \`${o.cite ?? "scripts/telegram/chief-route.ts"}\` | route | n/a |\n\n## Invariants\n\n${o.inv ?? "none"}\n`;
+const plainSpecText = (inv: string) => `---\ntickets: HIMMEL-1\nplan: ../plans/HIMMEL-1-p.md\n---\n# D\n\nEstimate record: estimate.json\n\n## Invariants\n\n${inv}\n`;
+const lintShim = (mode: "log" | "exit2" = "log", also = "") => {
+  const dir = root(); const log = join(dir, "lint.log");
+  const answer = mode === "exit2" ? "; echo 'shim: lint cannot run' >&2; exit 2" : also;
+  writeFileSync(join(dir, "bash"), `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) printf '%s\\n' "$*" >> '${log}'` + answer + `;; esac\nexec '${Bun.which("bash")}' "$@"\n`);
+  chmodSync(join(dir, "bash"), 0o755);
+  return { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, runs: () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").length : 0 };
+};
+const routeRun = (argv: string[], env: Record<string, string | undefined> = process.env): P1Run => {
+  const p = Bun.spawnSync(["bun", P1_ROUTE, ...argv], { stdout: "pipe", stderr: "pipe", timeout: 60_000, env });
+  return { code: p.exitCode, signal: p.signalCode ?? null, out: p.stdout.toString(), err: p.stderr.toString() };
+};
+const lintTree = async (specText: string, planText?: string, specs = specsTree().specs) => {
+  const spec = join(specs, "designs", "HIMMEL-1-d.md"); writeFileSync(spec, specText);
+  const plan = join(specs, "plans", "HIMMEL-1-p.md"); if (planText !== undefined) writeFileSync(plan, planText);
+  const page = join(specs, "designs", "HIMMEL-1-d.html"); writeFileSync(page, "<h1>D</h1>\n");
+  const estimate = join(specs, "designs", "estimate.json"); writeFileSync(estimate, LINT_ESTIMATE);
+  await seedIfNeeded(specs);
+  return { specs, spec, plan, page, estimate };
+};
+const lintReturn = (spec: string, kind: "spec" | "plan", reads: string[]) => {
+  const v = `${spec}.critic-${kind}-r1.md`;
+  writeFileSync(v, `read ${reads.map(f => sha(readFileSync(f, "utf8"))).join(" and ")}\n${kind.toUpperCase()} CLEAN\n`);
+  return v;
+};
+const sealRead = (v: string, f: string) => seal(v, f, sha(readFileSync(f, "utf8")));
+const refusedEveryCall = async (specs: string, v: string, reads: string[], label: string) => {
+  const before = wTree(roundsDir(specs)); const text = readFileSync(v, "utf8");
+  for (const f of reads) {
+    const res = await sealRead(v, f);
+    expect(res.err, `${label} ${basename(f)}`).toContain(LINT_REFUSAL);
+    expect(res.code, `${label} ${basename(f)}`).toBe(1);
+    expect(wTree(roundsDir(specs)), `${label} ${basename(f)} ledger`).toEqual(before);
+    expect(readFileSync(v, "utf8"), `${label} ${basename(f)} return`).toBe(text);
+  }
+};
+
+test("lint: sign-shape --lint refuses a path:line citation, with and without a plan", async () => {
+  const f = await lintTree(lintSpecText({ cite: "scripts/telegram/chief-route.ts:12" }), "# P\n\n- Task 1: build.\n");
+  for (const argv of [["--plan", f.plan, "--lint"], ["--lint"]]) {
+    const res = routeRun(["sign-shape", f.spec, ...argv]);
+    expect(res.code, argv.join(" ")).toBe(3);
+    expect(res.out, argv.join(" ")).toMatch(/^SIGN-SHAPE REFUSED: minerva-trace-lint: .*chief-route\.ts:12/m);
+  }
+});
+
+test("lint: sign-shape --lint accepts a lint-clean spec, with and without a plan, given as relative paths too", async () => {
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule." }), "# P\n\n- I1: test-x.sh\n");
+  const ok = { code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" };
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", f.spec, "--lint"])).toEqual(ok);
+  expect(routeRun(["sign-shape", relative(process.cwd(), f.spec), "--plan", relative(process.cwd(), f.plan), "--lint"])).toEqual(ok);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  const bad = routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"]);
+  expect(bad.code, "the named plan is linted").toBe(3);
+  expect(bad.out).toContain("I1 has no plan line naming its acceptance test");
+});
+
+test("lint: sign-shape without --lint runs no trace lint", async () => {
+  const f = await lintTree(lintSpecText({ cite: "scripts/telegram/chief-route.ts:12" }), "# P\n\n- Task 1: build.\n");
+  const shim = lintShim();
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan], shim.env)).toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" });
+  expect(shim.runs()).toBe(0);
+  expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"], shim.env).code, "control: the shim sees the lint").toBe(3);
+  expect(shim.runs()).toBe(1);
+});
+
+test("lint seal: a spec return whose spec cites a bare file name is refused on every call", async () => {
+  const f = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  await refusedEveryCall(f.specs, lintReturn(f.spec, "spec", [f.spec, f.page]), [f.spec, f.page], "spec return");
+});
+
+test("lint seal: a plan return whose plan names no test for an invariant is refused in either call order", async () => {
+  for (const order of [["plan", "spec"], ["spec", "plan"]] as const) {
+    const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), "# P\n\n- I1: build it.\n");
+    const reads = order.map(k => f[k]);
+    await refusedEveryCall(f.specs, lintReturn(f.spec, "plan", reads), reads, order.join(","));
+  }
+});
+
+test("lint seal: a lint-clean plan return seals the plan, the spec and the estimate record", async () => {
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), "# P\n\n- I1: test-x.sh\n");
+  const reads = [f.plan, f.spec, f.estimate]; const v = lintReturn(f.spec, "plan", reads);
+  for (const read of reads) expect(await sealRead(v, read), basename(read)).toEqual({ code: 0, err: "" });
+  expect(ledgerRows(f.specs, "HIMMEL-1").map(r => r.row)).toEqual(["round", "seal", "seal"]);
+});
+
+const onPath = async (path: string, run: () => Promise<void>) => {
+  const prior = process.env.PATH; process.env.PATH = path;
+  try { await run(); } finally { process.env.PATH = prior; }
+};
+
+test("lint seal: one process remembers only a passing lint of the same spec and plan bytes", async () => {
+  const { sealRound } = await import("./chief-route");
+  const cleanPlan = "# P\n\n- I1: test-x.sh\n";
+  const f = await lintTree(plainSpecText("I1. one rule."), cleanPlan);
+  const v = lintReturn(f.spec, "plan", [f.plan, f.spec]);
+  const shim = lintShim();
+  await onPath(shim.env.PATH, async () => { await sealRound(v, f.plan); await sealRound(v, f.spec); });
+  expect(shim.runs(), "a pass on the same bytes is linted once").toBe(1);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  await expect(sealRound(v, f.spec), "changed plan bytes").rejects.toThrow(LINT_REFUSAL);
+  await expect(sealRound(v, f.spec), "a refusal is not remembered").rejects.toThrow(LINT_REFUSAL);
+  writeFileSync(f.plan, cleanPlan);
+  writeFileSync(f.spec, plainSpecText("I1. one rule.\n- a stray line"));
+  await expect(sealRound(v, f.plan), "changed spec bytes").rejects.toThrow(LINT_REFUSAL);
+  const g = await lintTree(plainSpecText("a stray line"));
+  const w = lintReturn(g.spec, "spec", [g.spec]);
+  await onPath(lintShim("exit2").env.PATH, () => sealRound(w, g.spec));
+  await expect(sealRound(w, g.spec), "an unavailable lint is not remembered").rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a plan swapped while the lint runs does not remember a pass for the bytes hashed before it", async () => {
+  const { sealRound } = await import("./chief-route");
+  const badPlan = "# P\n\n- I1: build it.\n";
+  const f = await lintTree(plainSpecText("I1. one rule."), badPlan);
+  const v = lintReturn(f.spec, "plan", [f.spec]);
+  const clean = join(root(), "clean-plan.md"); writeFileSync(clean, "# P\n\n- I1: test-x.sh\n");
+  await onPath(lintShim("log", `; cp '${clean}' '${f.plan}'`).env.PATH, () => sealRound(v, f.spec));
+  writeFileSync(f.plan, badPlan);
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a cited file removed after a passing seal is noticed by the next seal", async () => {
+  const { sealRound } = await import("./chief-route");
+  const t = specsTree();
+  expect(Bun.spawnSync(["git", "init", "-q", t.specs]).exitCode).toBe(0);
+  mkdirSync(join(t.specs, "only-here")); writeFileSync(join(t.specs, "only-here", "source.ts"), "export {};\n");
+  const f = await lintTree(lintSpecText({ cite: "only-here/source.ts" }), undefined, t.specs);
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  await sealRound(v, f.spec);
+  unlinkSync(join(t.specs, "only-here", "source.ts"));
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a spec-kind and a plan-kind closure return whose diff adds a bare-name cell are refused", async () => {
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const { closureMarker, returnSha } = await import("./chief-route");
+  for (const kind of ["spec", "plan"] as const) {
+    const clean = lintSpecText();
+    const f = await buildRoundFixture({ scratchRoot: root(), key: "HIMMEL-1", specText: clean, planText: "# P\n\n- Task 1: build.\n",
+      returns: [1, 2, 3, 4, 5].map(round => ({ kind, round,
+        text: `- **M${round}** (${round === 5 ? "major" : "minor"}) a finding\n${kind.toUpperCase()} FINDINGS 1\n`,
+        reads: kind === "spec" ? ["spec"] : ["spec", "plan"] })) });
+    writeFileSync(f.spec, clean.replace("\n\n## Invariants", "\n| other | `chief-route.ts` | route | n/a |\n\n## Invariants"));
+    const reads = kind === "spec" ? [f.spec] : [f.spec, f.plan];
+    const v = `${f.spec}.critic-${kind}-r6.md`;
+    writeFileSync(v, `read ${reads.map(p => sha(readFileSync(p, "utf8"))).join(" and ")}\n${closureMarker("HIMMEL-1", kind, 6, returnSha(readFileSync(f.verdicts.at(-1)!, "utf8")))}\n${kind.toUpperCase()} CLEAN\n`);
+    await refusedEveryCall(f.specsRoot, v, reads, `${kind} closure`);
+  }
+});
+
+test("lint seal: a spec in another git repo may cite a path of that repo", async () => {
+  const t = specsTree();
+  expect(Bun.spawnSync(["git", "init", "-q", t.specs]).exitCode).toBe(0);
+  mkdirSync(join(t.specs, "only-here")); writeFileSync(join(t.specs, "only-here", "source.ts"), "export {};\n");
+  const f = await lintTree(lintSpecText({ cite: "only-here/source.ts" }), undefined, t.specs);
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  expect(await sealRead(v, f.spec)).toEqual({ code: 0, err: "" });
+});
+
+test("lint seal: a trace lint that cannot run is a NOTE, not a refusal, at the seal and at sign-shape --lint", async () => {
+  const f = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  const shim = lintShim("exit2");
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  const note = "NOTE: trace lint unavailable (shim: lint cannot run); not checked\n";
+  const sealed = routeRun(["critic-round-check", v, f.spec], shim.env);
+  expect(sealed.err).toBe(note);
+  expect(sealed.code).toBe(0);
+  expect(ledgerRows(f.specs, "HIMMEL-1").map(r => r.row)).toEqual(["round"]);
+  expect(routeRun(["sign-shape", f.spec, "--lint"], shim.env)).toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: note });
+  expect(shim.runs()).toBe(2);
 });
