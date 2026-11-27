@@ -2459,14 +2459,15 @@ label_spans() {
 
 brief_seed_tokens() (
     letter="$1"; shift
-    # shellcheck source=scripts/handover/chief-kit/go-deliver.sh
-    # shellcheck disable=SC1091
+    # shellcheck source=/dev/null
     . "$repo/scripts/handover/chief-kit/go-deliver.sh" || exit 1
-    t="$(mktemp "${TMPDIR:-/tmp}/chief-seed.XXXXXX")" || exit 1
-    trap 'rm -f "$t"' EXIT
     for doc in "$@"; do
-        gd_brief_token "$doc" >"$t" || continue
-        token="$(cat "$t")"
+        read_out="$(gd_brief_token "$doc" && printf '/ok' || printf '/no')"
+        case "$read_out" in
+            */ok) token="${read_out%/ok}"; token="${token%$'\n'}" ;;
+            */no) continue ;;
+            *) exit 1 ;;
+        esac
         gd_token_usable "$token" || continue
         case "$token" in "$letter"-*) continue ;; esac
         printf '%s\t%s\n' "$doc" "$token"
@@ -2521,7 +2522,7 @@ EOF
             [ "${p_where[i]}" != block ] || block="${block%%"${p_span[i]}"*}$span${block#*"${p_span[i]}"}"
             printf "next: seeded %s from its brief's RETASK line\n" "$label" >&2
         fi
-        [ "${p_where[i]}" = block ] || add="$add$span "
+        case "${p_where[i]}:$add" in block:* | add:*"$span "*) ;; *) add="$add$span " ;; esac
     done
     [ -n "$add" ] || { printf '%s\n' "$block"; return 0; }
     add="${add% }"

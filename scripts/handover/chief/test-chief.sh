@@ -4884,4 +4884,21 @@ check "11277 CN13 two docs with one label each carry their own token" "$(spans11
 clean11277 CN13
 clean11277 "CN13 second" CJ-N9-0f0f0f0f
 rel11277
+
+for p11277 in on off; do
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    mk11277 "cn14$p11277-11277" "$p11277" "$tok11277" '`N9:NONCE-UNKNOWN:lock-9:99`'
+    if [ "$p11277" = on ]; then
+        add11277 DEMO-10-N9-worker.md N9 CJ-N9-0f0f0f0f
+    else
+        # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+        printf '%s\n' '# worker' '> **RETASK:** your nonce is `CJ-N9-0f0f0f0f`.' '## Results' '- 10:00 LIVE — fixture' > "$D11277/DEMO-10-N9-worker.md"
+        lock11277 "$D11277/DEMO-10-N9-worker.md"
+    fi
+    nx11277 "cn14$p11277" "$A11277" "cn14${p11277}dst-11277"
+    check "11277 CN14 one span and two live docs under its label: kept as written, once (N9 $p11277 the manifest)" "$RC11277 $(live11277 "$S11277" | grep '^workers:')" "0 workers: \`N1:nonce-1:lock-1:11\` \`N9:NONCE-UNKNOWN:lock-9:99\`"
+    clean11277 "CN14 $p11277"
+    clean11277 "CN14 $p11277 second" CJ-N9-0f0f0f0f
+    rel11277
+done
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
