@@ -1151,8 +1151,8 @@ else
     fail "C33 locked reason line -> $c33_line"
 fi
 c33_lock_row "$walk_err"
-if grepq "$c33_line" -F 'FAILED (credit ledger locked at that fire: lock age not recorded;'; then
-    pass "C33 -> WARN names a locked ledger whose error records no age"
+if grepq "$c33_line" -F 'FAILED (credit ledger locked or unwritable at that fire: lock age not recorded;'; then
+    pass "C33 -> WARN names a locked or unwritable ledger whose error records no age"
 else
     fail "C33 locked walk with no lock left -> $c33_line"
 fi

@@ -3181,13 +3181,17 @@ check_c33_graph_stale() {
             *"no account has room"*|*"ledger-locked-or-unwritable"*)
                 if lock_now="$(_c33_ledger_lock)"; then
                     why=" (credit ledger locked: $lock_now)"
-                    fail_remedy="the ledger is locked, so do not top up an account on this row: the next ledger call reclaims an empty lock with no running holder once it is older than the call timeout (HIMMEL_API_CALL_TIMEOUT_S, default 3600s); for any other lock, confirm the process in the lock's .pid file is not running, then remove the lock folder (docs/internals/api-lane.md)"
+                    fail_remedy="clear the lock before topping up any account; it is on disk now and may not be what failed that fire, so if the next fire still reports no room, check credit. The next ledger call reclaims an empty lock with no running holder once it is older than the call timeout (HIMMEL_API_CALL_TIMEOUT_S, default 3600s); for any other lock, with no other API-lane job running, confirm the process in the lock's .pid file is not running, then remove the lock folder (docs/internals/api-lane.md)"
                 else
                     case "$err" in
                         *"ledger-locked-or-unwritable"*)
                             lock_age="$(printf '%s' "$err" | sed -n 's/.*\.lock age \([0-9][0-9]*s\),.*/\1/p' | head -n 1)"
-                            why=" (credit ledger locked at that fire: lock age ${lock_age:-not recorded}; no lock older than 60s is on disk now)"
-                            fail_remedy="the ledger was locked, not out of credit: the armed cadence's next --semantic fire retries; if it fails the same way, read docs/internals/api-lane.md" ;;
+                            if [ -n "$lock_age" ]; then
+                                why=" (credit ledger locked at that fire: lock age $lock_age; no lock older than 60s found now)"
+                            else
+                                why=" (credit ledger locked or unwritable at that fire: lock age not recorded; no lock older than 60s found now)"
+                            fi
+                            fail_remedy="that fire could not use the ledger, which says nothing about credit: the armed cadence's next --semantic fire retries; if it fails the same way, check that the ledger folder is writable (docs/internals/api-lane.md)" ;;
                     esac
                 fi ;;
         esac
