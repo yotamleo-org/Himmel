@@ -4958,7 +4958,7 @@ check "11407 TR3 state=keymismatch: NONCE-UNKNOWN as today" "$RC11277 $(shape112
 rel11277
 mk11277 tr3bad-11407 on "$tok11277" "" "$relayed11407"
 wt11407 mint "$N9doc11277" CJ-N9 >/dev/null
-BAD11407="$(find "$D11277" -maxdepth 1 -name '*.jsonl')"; rm -f "$BAD11407"; mkdir "$BAD11407"
+for BAD11407 in "$D11277"/*.jsonl; do rm -f "$BAD11407"; mkdir "$BAD11407"; done
 check "11407 TR3 fixture: the replaced record reads bad" "$(wt11407 gen "$N9doc11277")" "current=- pending=-:- state=bad"
 nx11277 tr3bad-11407 "$A11277" tr3baddst-11407
 check "11407 TR3 state=bad: NONCE-UNKNOWN as today" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
