@@ -193,6 +193,8 @@ assert_deny "denies mcp0 prefix collision" "provider home" \
     "$(mk_read "${OWN_MCP}0/playwright/browser_navigate.json")"
 assert_deny "denies a non-schema file under own mcp/" "provider home" \
     "$(mk_read "$OWN_MCP/playwright/notes.txt")"
+mkdir -p "$OWN_MCP/playwright/sub"
+printf '{}\n' > "$OWN_MCP/playwright/sub/browser_navigate.json"
 assert_deny "denies a deeper path under own mcp/" "provider home" \
     "$(mk_read "$OWN_MCP/playwright/sub/browser_navigate.json")"
 assert_deny "denies the own mcp/ directory itself" "provider home" "$(mk_read "$OWN_MCP")"
@@ -227,11 +229,13 @@ assert_deny "denies mcp schema with empty ARTIFACT_DIR" "provider home" \
 assert_deny "denies mcp schema with ARTIFACT_DIR spoofed at provider root" "provider home" \
     "$(mk_read "$OWN_MCP/playwright/browser_navigate.json")" HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$PROV/hash1"
 mkdir -p "$PROV/hash1/config/antigravity-acp/mcp/playwright"
+printf '{}\n' > "$PROV/hash1/config/antigravity-acp/mcp/playwright/browser_navigate.json"
 assert_deny "denies spoofed ARTIFACT_DIR with extra components before antigravity-acp" "provider home" \
     "$(mk_read "$PROV/hash1/config/antigravity-acp/mcp/playwright/browser_navigate.json")" \
     HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$PROV/hash1/config/antigravity-acp/brain/conv-1"
 SPOOF_PROV="$TMP/elsewhere/userdata/providers/antigravity/hash1/antigravity-acp"
 mkdir -p "$SPOOF_PROV/mcp/playwright"
+printf '{}\n' > "$SPOOF_PROV/mcp/playwright/browser_navigate.json"
 assert_deny "denies spoofed ARTIFACT_DIR outside every T3 home" "provider home" \
     "$(mk_read "$SPOOF_PROV/mcp/playwright/browser_navigate.json")" \
     HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$SPOOF_PROV/brain/conv-1"
