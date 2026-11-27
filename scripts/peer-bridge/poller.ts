@@ -565,15 +565,15 @@ export class Poller {
     }
   }
 
-  private uncountReplay(m: any): void {
+  private chainedCard(m: any): PeerCardRec | undefined {
     const peer = Object.entries(this.cfg.peers).find(([, p]) => p.chatId === m?.chat?.id)?.[0];
-    if (!peer) return;
-    const seen = readChain(this.file(peer, "inbox.jsonl")).some(r => r.kind === "peer-card" && r.chat_id === m.chat.id && r.message_id === m.message_id && this.now() - (r.ts as number) * 1000 < 60_000);
-    if (seen) this.gate.rate.get(peer)?.pop();
+    if (!peer) return undefined;
+    return readChain(this.file(peer, "inbox.jsonl")).find(r => r.kind === "peer-card" && r.chat_id === m.chat.id && r.message_id === m.message_id) as unknown as PeerCardRec | undefined;
   }
 
   private async onCard(u: any): Promise<void> {
-    this.uncountReplay(u?.message);
+    const chained = this.chainedCard(u?.message);
+    if (chained && Number.isSafeInteger(u.update_id) && u.update_id > this.gate.committed) return this.offerCard(chained.peer, chained);
     const r = admitCard(u, this.cfg, this.gate);
     if (!r.ok) {
       this.log(r.log);

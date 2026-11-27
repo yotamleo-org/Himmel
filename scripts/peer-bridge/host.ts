@@ -1,4 +1,3 @@
-// A leaf module: no bridge imports, so config.ts and egress.ts can both use it.
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function privateIPv4(a: number, b: number): boolean {

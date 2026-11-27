@@ -2065,7 +2065,7 @@ test("an ordinary peer reply whose body starts with #pair stays a peer message",
   expect(inboxOf(e).map(r => r.kind)).toEqual(["peer-msg", "peer-msg"]);
 });
 
-test("an offer that expires while the tap waits for the lock is closed EXPIRED and writes nothing", async () => {
+test("an offer that expires after the tap takes the lock is closed EXPIRED and writes nothing", async () => {
   let at: PairEnv;
   const e = at = await open({}, { peersHooks: { afterRead: () => { at.c.t += 31 * MIN; } } });
   await refusedTap(e, {}, "Already expired.", [["EXPIRED", null]]);
@@ -2081,4 +2081,17 @@ test("a card replayed after a crash before its offer is not dropped by the rate 
   await again.recover();
   await again.processBatch([u]);
   expect(offersOf(e).map(o => o.key)).toEqual([KEY_A]);
+  expect(inboxOf(e).filter(r => r.kind === "peer-card").length).toBe(1);
+});
+
+test("a replayed card takes no rate charge from another message", async () => {
+  const e = await pairEnv({ peerOver: { maxPerMinute: 3 } });
+  await e.poller.processBatch([askRoot("c3d4e5f6")]);
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const charged = (e.poller as any).gate.rate.get("example").length;
+  await e.poller.processBatch([u]);
+  expect([(e.poller as any).gate.rate.get("example").length, offersOf(e).length]).toEqual([charged, 1]);
 });

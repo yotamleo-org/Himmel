@@ -1,5 +1,3 @@
-// Host-safe rows for setup.ts and the peers.json lock: HOME is a temp dir, every
-// host-impact seam is stubbed, and uninstall and runner are never called.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import fs from "node:fs";
 import { tmpdir } from "node:os";

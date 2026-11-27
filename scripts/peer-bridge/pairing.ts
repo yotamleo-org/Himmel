@@ -1,5 +1,3 @@
-// The states of a pairing offer, as drafts.ts owns the draft states. The poller
-// alone writes S/<peer>/pairing.jsonl.
 import { utcDay } from "./ids";
 
 export const PAIR_OFFER_TTL_MS = 30 * 60_000;

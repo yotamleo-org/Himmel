@@ -275,7 +275,7 @@ test("the matrix row decides: peer-jobs to peer-telegram is allowed, and no rule
   await envRefused(outLines(ours("halt", {})), "egress-matrix", { matrix: textOnly });
 });
 
-const slashed = [TE.keyWithShape(/\+\//), TE.keyWithShape(/^\//)];
+const slashed = [TE.keyWithShape(/\+\/[A-Za-z0-9]/), TE.keyWithShape(/^\/[A-Za-z0-9]/)];
 afterAll(() => { for (const s of slashed) TE.dropStation(s); });
 const cardPeer = () => peer({ theirs: { ...peer().theirs, username: "their_bot" } });
 const cardCtx = (st: TE.Station, over: Record<string, unknown> = {}) => ({ peer: cardPeer(), self: "yotam", keyDir: st.dir, himmelRoot: HIMMEL_ROOT, hostname: "box.lan", ...over }) as any;
