@@ -2962,6 +2962,13 @@ fi   # DO_EXTRACT -- end of the copy + extraction region (--promote-only rejoins
   # graphify/cluster-only failure exit code above (a refuse-to-clobber is a
   # fence/tooling failure, not a usage error).
   _promote_lock_acquire || exit 2
+  if [ -e "$OUT_DIR/.graph.pre-ast.json" ]; then
+    _ast_out=""
+    if [ "$OUT_OF_CORPUS" -eq 1 ]; then _ast_out="GRAPHIFY_OUT='$OUT_DIR' "
+    elif [ "$GRAPHIFY_OUT_NAME" != graphify-out ]; then _ast_out="GRAPHIFY_OUT='$GRAPHIFY_OUT_NAME' "; fi
+    echo "refresh-graph-map: REFUSING to merge or promote: $OUT_DIR/.graph.pre-ast.json is left by a code-graph rebuild that did not finish, so graph.json may lack facts -- graph.json untouched. Recover: ${_ast_out}bash '$HERE/ast-update.sh' '$CORPUS_ROOT' (the next AST run restores it), then rerun" >&2
+    exit 2
+  fi
   # Test-only hook: hold the lock for N seconds before doing any
   # promote work, so a concurrency test can create a deterministic overlap
   # window. No-op unless set.

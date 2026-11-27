@@ -77,6 +77,11 @@ hook), 11, 12 and 13 need the clone and get it back for their row only; row 1
 stub, so a live authenticated verdict is not proven. `--expect-red` deletes the adopted
 no-force-push gate and passes only when row 3 alone fails. The VM is restored and powered
 off afterwards.
+**Adopt-plugins stage (opt-in).** `bash scripts/vm/adopt-plugins-e2e.sh --billed <vm>`
+takes the vm-lock, restores `suite-ready-v4`, stages this tree on the clone, adopts a
+sandbox repo with `adopt.sh --scope project`, checks the shared, local and user settings
+files, and runs the one `claude -p` init-message probe for himmel-ops. The VM is restored
+and powered off afterwards.
 **Record-once model check (opt-in).** `scripts/vm/replay-poc-check.sh` runs the
 trivial headless `claude -p` dispatch through `scripts/vm/lib/model-replay.sh`:
 the first run records the model's artifact (one call), later runs with the same

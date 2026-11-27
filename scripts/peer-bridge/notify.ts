@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import { dirname, join } from "node:path";
 import type { Chain } from "./chain";
+import { canonicalKey } from "./config";
+import { STATION_NAME_RE } from "./envelope";
+import { fingerprint, keyId } from "./sign";
 import { PEER_NAME_RE, SESSION_ID_RE } from "./ids";
 import { sanitize } from "./sanitize";
 import { WAKE_LABELS, type Dir, type WakeLabel } from "./threads";
@@ -18,7 +21,11 @@ export type BudgetNotify = Base & { type: "budget"; which: "wake" | "escalate"; 
 export type AlertNotify = Base & { type: "alert"; count: number };
 export const UNPAIRED_STEPS = ["their-key", "our-name", "their-name"] as const;
 export type UnpairedNotify = Base & { type: "unpaired"; missing: (typeof UNPAIRED_STEPS)[number]; key: string };
-export type NotifyRec = WakeNotify | EscalateNotify | DraftNotify | ResultNotify | DailyNotify | BudgetNotify | AlertNotify | UnpairedNotify;
+export type PairOfferNotify = Base & { type: "pair-offer"; offer: string; station: string; key: string; exp: number };
+export type PairResultNotify = Base & { type: "pair-result"; offer: string; state: "APPROVED" | "REJECTED" | "EXPIRED" | "REFUSED"; key: string; rule?: string };
+export type PairAlertNotify = Base & { type: "pair-alert" };
+export type NotifyRec = WakeNotify | EscalateNotify | DraftNotify | ResultNotify | DailyNotify | BudgetNotify | AlertNotify | UnpairedNotify | PairOfferNotify | PairResultNotify | PairAlertNotify;
+export type Keyboard = { prefix: "peer" | "pair"; peer: string; id: string };
 
 export const notifyFile = (stateDir: string) => join(stateDir, "notify", "notify.jsonl");
 
@@ -52,7 +59,7 @@ const origin = (rec: DraftNotify) => (rec.source === "chief" ? `via tell.ts, unv
 const desk = (himmelRoot: string, peer: string) => `bash ${himmelRoot}/scripts/peer-bridge/desk.sh ${peer}`;
 const by = (ms: number | undefined) => (ms ? ` · reply by ${stamp(ms)}` : "");
 
-export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string; keyboard?: { peer: string; draft: string } } {
+export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string; keyboard?: Keyboard } {
   need(PEER_NAME_RE.test(rec.peer), "peer");
   switch (rec.type) {
     case "wake":
@@ -74,7 +81,7 @@ export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string
       need(rec.source === "telegram" || rec.source === "send.ts" || rec.source === "chief", "source");
       need(Number.isSafeInteger(rec.deadline), "deadline");
       need(rec.session === undefined || (rec.source === "chief" && SESSION_ID_RE.test(rec.session)), "session");
-      return { text: `${head(rec)} · draft ${rec.draft} ${origin(rec)} · approve by ${stamp(rec.deadline)}\nText to send, exactly:\n${rec.text}`, keyboard: { peer: rec.peer, draft: rec.draft } };
+      return { text: `${head(rec)} · draft ${rec.draft} ${origin(rec)} · approve by ${stamp(rec.deadline)}\nText to send, exactly:\n${rec.text}`, keyboard: { prefix: "peer", peer: rec.peer, id: rec.draft } };
     case "result": {
       need(DRAFT_RE.test(rec.draft), "draft");
       const words: Record<string, string> = { SENT: `sent as message ${rec.message_id}`, FAILED: "failed", REJECTED: "rejected", EXPIRED: "expired", REFUSED: `refused (${rec.rule})` };
@@ -108,6 +115,26 @@ export function renderNotify(rec: NotifyRec, himmelRoot: string): { text: string
       need(rec.missing in step, "missing");
       return { text: `peer ${rec.peer} · a signed message was dropped: ${step[rec.missing]}` };
     }
+    case "pair-offer": {
+      need(DRAFT_RE.test(rec.offer), "offer");
+      need(STATION_NAME_RE.test(rec.station), "station");
+      need(canonicalKey(rec.key), "key");
+      need(Number.isSafeInteger(rec.exp), "expiry");
+      return {
+        text: `peer ${rec.peer} · pairing card from station ${rec.station} · approve by ${stamp(rec.exp)}\nfingerprint: ${fingerprint(rec.key)}\nCompare all five groups with the fingerprint ${rec.peer}'s operator reads to you by call or another messenger. Approve only if every group matches.`,
+        keyboard: { prefix: "pair", peer: rec.peer, id: rec.offer },
+      };
+    }
+    case "pair-result": {
+      need(DRAFT_RE.test(rec.offer), "offer");
+      need(canonicalKey(rec.key), "key");
+      const words: Record<string, string> = { APPROVED: `approved: key ${keyId(rec.key)} is trusted`, REJECTED: "rejected", EXPIRED: "expired", REFUSED: `refused (${rec.rule})` };
+      need(Object.hasOwn(words, rec.state), "state");
+      if (rec.state === "REFUSED") need(REASON_RE.test(rec.rule ?? ""), "rule");
+      return { text: `peer ${rec.peer} · pairing offer ${rec.offer} · ${words[rec.state]}` };
+    }
+    case "pair-alert":
+      return { text: `peer ${rec.peer} · two different keys were offered for ${rec.peer} within 30 minutes; nothing was trusted; pair at the terminal with the fingerprint their operator reads to you` };
     default:
       throw new Error("notify: unknown type");
   }

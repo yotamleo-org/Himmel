@@ -58,6 +58,7 @@ function mk(over: Over = {}): { deps: Deps; lines: string[] } {
     gitCwd: REPO,
     loadToken: () => TOKEN,
     stopUnit: () => {},
+    cardWait: { timeoutMs: 0, sleep: async () => {}, now: () => 0 },
     ...over,
   };
   return { deps, lines };

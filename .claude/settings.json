@@ -1,4 +1,14 @@
 {
+  "enabledPlugins": {
+    "lean-skills@himmel": true,
+    "pstack@himmel": true,
+    "qmd@himmel": true,
+    "handover@himmel": true,
+    "himmel-ops@himmel": true,
+    "find-docs@himmel": true,
+    "graphify@himmel": true,
+    "himmel-guard@himmel": true
+  },
   "permissions": {
     "allow": [
       "Bash(cp *)",

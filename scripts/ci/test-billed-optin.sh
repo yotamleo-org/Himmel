@@ -273,6 +273,7 @@ account_accepted() { # <letter>
 account_accepted A
 account_accepted D
 refuse scripts/codex/hook-smoke-demo.sh bash 2 "HIMMEL_BILLED_OK"
+refuse scripts/vm/adopt-plugins-e2e.sh bash 2 "HIMMEL_BILLED_OK" no-such-vm
 refuse scripts/handover/chief-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
 
 echo

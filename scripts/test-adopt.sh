@@ -81,8 +81,10 @@ echo "ok: core/project idempotent on re-run"
 # `himmelctl config set initiative.<step> on` writes the himmel clone's .env,
 # which only the inject-initiative hook reads -- a project-scope install that
 # never wired the hook silently ignored the setting.
-ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$s")
-[ -n "$ss_cmd" ] || fail "core/project did not wire the inject-initiative SessionStart hook"
+ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | .[0] // empty' "$proj/.claude/settings.local.json")
+[ -n "$ss_cmd" ] || fail "core/project did not wire the inject-initiative SessionStart hook into the local file"
+[ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "0" ] \
+  || fail "core/project wired the clone-path inject-initiative hook into the shared file"
 mkdir -p "$work/ss-clone"
 printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
 # The config layer (himmel.conf) outranks .env, so a station's own
@@ -102,7 +104,7 @@ case "$ss_out" in
 esac
 ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-no-conf" HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
 [ -z "$ss_idle" ] || fail "the project-scope SessionStart hook injected with no step set: $ss_idle"
-[ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
+[ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$proj/.claude/settings.local.json")" = "1" ] \
   || fail "idempotent re-run left more than one inject-initiative hook"
 echo "ok: HIMMEL-6956 core/project wires inject-initiative; a set step reaches the session, an unset one injects nothing"
 

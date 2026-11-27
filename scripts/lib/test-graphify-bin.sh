@@ -1823,17 +1823,8 @@ assert "setup.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/
 assert "adopt.sh sources graphify-bin.sh" grep -q 'lib/graphify-bin.sh' "$repo_root/scripts/adopt.sh"
 assert "adopt.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/scripts/adopt.sh"
 
-# MCP registration is the shared graphify_register_mcp impl, exposed
-# via the `register-mcp` CLI case, called by both installers (adopt at its scope,
-# setup at user scope).
 assert "graphify-bin.sh defines graphify_register_mcp" grep -q 'graphify_register_mcp()' "$SCRIPT_DIR/graphify-bin.sh"
 assert "graphify-bin.sh CLI exposes register-mcp" grep -q 'register-mcp) graphify_register_mcp' "$SCRIPT_DIR/graphify-bin.sh"
-# Scope forwarding: adopt.sh forwards its own $SCOPE to the project registration;
-# user/local installs register on demand (asserted below).
-# The grep pattern intentionally matches the LITERAL string graphify_register_mcp "$SCOPE"
-# in adopt.sh (\$ = a literal $ in the BRE); it is not meant to expand here.
-# shellcheck disable=SC2016
-assert "adopt.sh forwards its SCOPE to register" grep -q 'graphify_register_mcp "\$SCOPE"' "$repo_root/scripts/adopt.sh"
 # Project scope must NOT embed a machine-specific absolute path in the committed
 # .mcp.json — the helper branches to the bare name for project scope (CR C14).
 assert "graphify_register_mcp uses bare name for project scope" grep -q 'mcp_arg="graphify-mcp"' "$SCRIPT_DIR/graphify-bin.sh"
@@ -1897,22 +1888,24 @@ rm -rf "$od_dir"
 # shellcheck disable=SC2016
 assert "setup.sh registers graphify on demand, not at user scope" \
   bash -c 'grep -q "graphify_register_mcp_on_demand" "$1" && ! grep -q "graphify_register_mcp user" "$1"' _ "$repo_root/scripts/setup.sh"
-# The two registrars must sit in their own branches of adopt.sh's scope switch:
-# project keeps the committed .mcp.json entry, every other scope goes on demand.
-adopt_branch() {
-  awk -v want="$1" '
-    /^  if \[\[ "\$SCOPE" == "project" \]\]; then$/ { inside = 1; branch = "project"; next }
-    inside && /^  else$/ { branch = "other"; next }
-    inside && /^  fi$/ { inside = 0 }
-    inside && branch == want { print }
-  ' "$repo_root/scripts/adopt.sh"
+graphify_registrations() {
+  # shellcheck disable=SC2016
+  bash -c '
+    eval "$(awk "/^wire_graphify_core\\(\\) \\{\$/,/^}\$/" "$1")"
+    graphify_install() { :; }
+    graphify_price_hooks() { :; }
+    graphify_register_mcp() { echo "registered: claude-scope $*"; }
+    graphify_register_mcp_on_demand() { echo "registered: on-demand"; }
+    SCOPE="$2" DRY_RUN=0 TARGET=/nonexistent
+    wire_graphify_core
+  ' _ "$repo_root/scripts/adopt.sh" "$1" | grep '^registered:' || true
 }
-# shellcheck disable=SC2016
-assert "adopt.sh project branch registers graphify_register_mcp, not on demand" \
-  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp \"\$SCOPE\"" && ! printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand"' _ "$(adopt_branch project)"
-# shellcheck disable=SC2016
-assert "adopt.sh non-project branch registers on demand, not claude mcp add" \
-  bash -c 'printf "%s" "$1" | grep -q "graphify_register_mcp_on_demand" && ! printf "%s" "$1" | grep -qE "graphify_register_mcp( |$)"' _ "$(adopt_branch other)"
+assert "adopt.sh project scope registers graphify on demand, once, with no claude mcp scope" \
+  test "$(graphify_registrations project)" = "registered: on-demand"
+assert "adopt.sh user scope registers graphify on demand, once, with no claude mcp scope" \
+  test "$(graphify_registrations user)" = "registered: on-demand"
+assert "adopt.sh local scope registers graphify on demand, once, with no claude mcp scope" \
+  test "$(graphify_registrations local)" = "registered: on-demand"
 
 # ─── graphify_price_hooks ──────────────────────────────────────
 # node checker: reads a fixture's .claude/settings.json + .codex/hooks.json

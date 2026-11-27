@@ -766,6 +766,40 @@ check "10776 L2: lint-clean key-bearing RESUME, stub Jira CLI answering IN and N
 check "10776 L2.ctl: the stub CLI answers CORE with NO-SPEC -> block" block "$LS" "$REAL" GUARD_TEST_CORE=nospec
 has "10776 L2.ctl: the deny says stuck" "[lint: stuck]" "$(deny_text "$LS" "$REAL" GUARD_TEST_CORE=nospec)"
 
+G13_LINT="GUARD_CONTEXT_HANDOFF_BRIEF_LINT=$HOOKS/../handover/chief-kit/brief-lint.sh"
+G13_WT="$T/g13-wt"
+git init -q "$T/g13-base" && git -C "$T/g13-base" -c user.name=t -c user.email=t@t -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q --allow-empty -m base \
+    && git -C "$T/g13-base" worktree add -q -b g13 "$G13_WT"
+mkdir -p "$G13_WT/.claude" "$G13_WT/scripts/hooks" "$G13_WT/scripts/lib"
+# shellcheck disable=SC2016  # literal fixture source line and command
+printf '. "$(dirname "$0")/../lib/g-lib.sh"\n' > "$G13_WT/scripts/hooks/guard-g.sh"
+printf '# g-lib\n' > "$G13_WT/scripts/lib/g-lib.sh"; printf '# other\n' > "$G13_WT/scripts/lib/other.sh"
+# shellcheck disable=SC2016
+printf '%s\n' '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh\""}]}]}}' > "$G13_WT/.claude/settings.json"
+g13_doc() {
+    resume_doc "$C1" yes
+    sed -i.bak -e "s|^resume_cwd:.*|resume_cwd: $G13_WT|" -e "s|^> \*\*Writes:\*\* none named|> **Writes:** $1|" "$C1" && rm -f "$C1.bak"
+}
+g13_row() {
+    local label="$1" expect="$2" bypass="$3" text="" n rc got; shift 3
+    for n in 1 2; do
+        text="$(printf '%s' "$LS" | run_worker "$G13_LINT" HIMMEL_HOOK_INTEGRITY_BYPASS_OK="$bypass" bash "$HOOK" 2>&1 >/dev/null)"; rc=$?
+        case "$text" in *"did not answer"*|*unlinted*) continue ;; esac
+        break
+    done
+    case "$text" in *"did not answer"*|*unlinted*) printf 'SKIP: %s (the linter missed the hook budget twice: %s)\n' "$label" "$text"; return ;; esac
+    case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
+    if [ "$got" != "$expect" ]; then bad "$label - expected $expect got $got: $text"; return; fi
+    for n in "$@"; do case "$text" in *"$n"*) ;; *) bad "$label - lacks '$n' - got: $text"; return ;; esac; done
+    ok "$label"
+}
+g13_doc scripts/lib/g-lib.sh
+g13_row "11216 G13: a RESUME naming a guard-run lib is stuck without the bypass, fix in the deny" block '' \
+    "[lint: stuck]" "launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "You cannot clear this"
+g13_row "11216 G13.bypass: the same doc unlocks with the bypass in the hook env" allow 1
+g13_doc scripts/lib/other.sh
+g13_row "11216 G13.ctl: the same doc naming an unrelated lib unlocks" allow ''
+
 echo "-- candidates and verdicts (stub linter) --"
 fresh
 resume_doc "$C1" yes; resume_doc "$C2" yes; age "$C1" 5; age "$C2" 10

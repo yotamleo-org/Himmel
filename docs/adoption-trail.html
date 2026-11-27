@@ -150,6 +150,11 @@ p.ok b { color: var(--ship); font-weight: 600; }
 .footnote { font-size: var(--fs-xs); color: var(--muted); border-top: 1px solid var(--rule); padding-top: var(--s3); margin-top: var(--s5); }
 
 /* trail */
+.trk-core { --trk: var(--camp); --trk-soft: var(--camp-soft); }
+.trk-review { --trk: var(--accent); --trk-soft: var(--accent-soft); }
+.trk-shifts { --trk: var(--alpha); --trk-soft: var(--alpha-soft); }
+.trk-fleet { --trk: var(--road); --trk-soft: var(--road-soft); }
+.trk-brain { --trk: var(--note); --trk-soft: var(--note-soft); }
 .legend { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); font-size: var(--fs-sm); color: var(--muted); align-items: center; margin-top: var(--s4); }
 .legend span { display: inline-flex; gap: var(--s2); align-items: center; }
 .resume { margin-top: var(--s3); font-size: var(--fs-sm); }
@@ -157,36 +162,32 @@ p.ok b { color: var(--ship); font-weight: 600; }
 .rail { position: sticky; top: var(--s4); font-size: var(--fs-sm); }
 .rail ol { list-style: none; padding: 0; margin: 0; }
 .rail .band { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: var(--s3) 0 var(--s2) 34px; }
-.rail .band.camp { color: var(--camp); }
-.rail .band.climb { color: var(--accent); }
+.rail .band { color: var(--trk); }
 .rail a { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: center; padding: 5px 0; color: var(--ink); text-decoration: none; position: relative; }
 .rail a::before { content: ""; position: absolute; left: 11px; top: 0; bottom: 0; border-left: 1px solid var(--rule-strong); }
 .rail .knot { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule-strong); background: var(--surface); display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; transition: background .2s, color .2s; }
-.rail .camp-l .knot { border-color: var(--camp); color: var(--camp); }
+.rail li .knot { border-color: var(--trk); color: var(--trk); }
 .rail a:hover .knot { background: var(--accent-soft); }
 .rail a[aria-current="true"] .knot { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .rail a[aria-current="true"] { font-weight: 600; }
 .stepper { display: none; }
-.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .stepper a { display: grid; place-items: center; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 4px; text-decoration: none; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink); background: var(--surface); font-variant-numeric: tabular-nums; }
-.stepper .camp-l a { border-color: var(--camp); color: var(--camp); }
+.stepper li a { border-color: var(--trk); color: var(--trk); }
 .stepper a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.stepper .bands { display: grid; grid-template-columns: 2fr 6fr; gap: 4px; margin-top: 4px; }
-.stepper .bands i { display: block; height: 3px; border-radius: 2px; background: var(--accent); }
-.stepper .bands i:first-child { background: var(--camp); }
 .cards { display: grid; gap: var(--s3); min-width: 0; }
 .bandhead { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: baseline; margin-top: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--rule); }
 .bandhead h3 { font-size: var(--fs-md); font-weight: 600; }
 .bandhead .bn { font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; }
-.bandhead.camp .bn { color: var(--camp); }
-.bandhead.climb .bn { color: var(--accent); }
+.bandhead .bn { color: var(--trk); }
 .bandhead p { font-size: var(--fs-sm); color: var(--muted); flex-basis: 100%; }
+.bandhead .needs { color: var(--ink); font-weight: 600; }
 .lvl { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); scroll-margin-top: 72px; }
-.lvl > summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
+.lvl > summary { position: relative; cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
 .lvl > summary::-webkit-details-marker { display: none; }
+.lvl .alias { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }
 .lvl .lk { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--rule-strong); display: grid; place-items: center; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lvl.camp .lk { border-color: var(--camp); color: var(--camp); background: var(--camp-soft); }
-.lvl.climb .lk { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.lvl .lk { border-color: var(--trk); color: var(--trk); background: var(--trk-soft); }
 .lvl .lt { display: grid; gap: 2px; min-width: 0; }
 .lvl .lt strong { font-size: var(--fs-md); font-weight: 600; }
 .lvl .lt span { font-size: var(--fs-sm); color: var(--muted); }
@@ -313,7 +314,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
       </div>
     </div>
     <div class="ctas">
-      <a class="btn-primary" href="adoption-trail-levels.html#trial">Take a practice climb <span aria-hidden="true">→</span></a>
+      <a class="btn-primary" href="adoption-trail-levels.html#trial">Take a practice run <span aria-hidden="true">→</span></a>
       <a class="link-sec" href="adoption-trail-questions.html">Questions and words</a>
     </div>
   </div>
@@ -660,8 +661,8 @@ p.ok b { color: var(--ship); font-weight: 600; }
     </figure>
     <ul class="proofs" aria-label="What it does">
       <li><span class="ptitle">One road for every change</span><span class="pdesc">Each change gets its own worktree. For merges run through Claude Code on GitHub or Bitbucket Cloud, the merge gate checks CI and review evidence before allowing the merge, sending failed checks back to the worktree with the reason.</span><span class="ptag"><a href="guide/dev-graph.html">How a change ships</a></span></li>
-      <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-1">Level 1</a> · in your project</span></li>
-      <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="adoption-trail-levels.html#lvl-5">Level 5</a></span></li>
+      <li><span class="ptitle">Guardrails that hold</span><span class="pdesc">Edits and commits on main, pushes to main, reads of secret files, <code>rm -rf</code>, hard resets and force pushes are refused before they run.</span><span class="ptag"><a href="adoption-trail-levels.html#m-guardrails">Ship with guardrails</a> · in your project</span></li>
+      <li><span class="ptitle">Cost you can see</span><span class="pdesc">Heavy work checks your remaining Claude usage first, and the fleet records the cost of what it merges.</span><span class="ptag"><a href="adoption-trail-levels.html#m-spend">Spend &amp; context</a></span></li>
     </ul>
     <p class="shipstat"><b>himmel is built this way.</b> 4,630 PRs reviewed on himmel with 19,982 review findings logged (as of 2026-11-11). <a href="guide/dev-graph.html">See the graph they went through</a></p>
     <p>New words such as worktree, gate and hook are explained on <a href="adoption-trail-questions.html#glossary">Questions and words</a>.</p>
@@ -684,7 +685,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
 </footer>
 <script>
 var h = location.hash;
-if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);
+if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|m-[a-z-]+|t-[a-z]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);
 else if (h === '#control' || h === '#control-h') location.replace('adoption-trail-questions.html#q-control');
 </script>
 </body>

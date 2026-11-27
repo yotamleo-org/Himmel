@@ -4,7 +4,7 @@
     <p class="sec-lede">The questions people ask before they install himmel, then every word the trail uses that you may not know. What himmel is, what it installs and how to undo it are on <a href="adoption-trail.html">Start here</a>.</p>
     <div class="faq">
       <h2 id="q-claude-code">I have never used Claude Code. What is it?</h2>
-      <p>Claude Code is Anthropic's coding assistant. You start it with <code>claude</code> in a terminal, inside a project; it reads the code, edits files and runs commands, and asks your permission before it does. It needs a Claude account. himmel works only on top of it, so install Claude Code and sign in first: steps 1 and 2 of the <a href="adoption-trail-levels.html#trial">practice climb</a> do both.</p>
+      <p>Claude Code is Anthropic's coding assistant. You start it with <code>claude</code> in a terminal, inside a project; it reads the code, edits files and runs commands, and asks your permission before it does. It needs a Claude account. himmel works only on top of it, so install Claude Code and sign in first: steps 1 and 2 of the <a href="adoption-trail-levels.html#trial">practice run</a> do both.</p>
 
       <h2 id="q-control">Who is in control?</h2>
       <ul>
@@ -22,7 +22,7 @@
       <p>Not until you start it. A scheduled job runs only once you arm it, and <code>disarm</code> stops it again. A shift while you are away starts only when you type <code>/afk-shift</code>, and <code>/stop</code> ends it. The guardrails apply to every session, the unattended ones too.</p>
 
       <h2 id="q-cost">What does it cost?</h2>
-      <p>himmel is open source. The work it runs uses your Claude plan's usage, like any Claude Code session; heavy work checks how much you have left before it starts (<a href="adoption-trail-levels.html#lvl-5">Level 5</a>). A second reviewer from another model family uses that provider's subscription (<a href="adoption-trail-levels.html#lvl-4">Level 4</a>).</p>
+      <p>himmel is open source. The work it runs uses your Claude plan's usage, like any Claude Code session; heavy work checks how much you have left before it starts (<a href="adoption-trail-levels.html#m-spend">Spend &amp; context</a>). A second reviewer from another model family uses that provider's subscription (<a href="adoption-trail-levels.html#t-review">Cross-model review</a>).</p>
 
       <h2 id="q-platforms">Which systems does it run on?</h2>
       <p>Linux and macOS. Where the steps differ, such as installing the tools, the trail shows a Linux and a macOS block.</p>
@@ -58,7 +58,7 @@
       <dt id="g-cr">CR (code review)</dt>
       <dd>The review a change gets before it merges. <code>/pr-check</code> runs it: reviewer models read the change, and each point they raise is fixed or answered before the merge.</dd>
       <dt id="g-panel">Panel</dt>
-      <dd>The reviewers that read one change together. The starter panel is Claude; adding a second model family at <a href="adoption-trail-levels.html#lvl-4">Level 4</a> widens it.</dd>
+      <dd>The reviewers that read one change together. The starter panel is Claude; adding a second model family with the <a href="adoption-trail-levels.html#t-review">Cross-model review</a> track widens it.</dd>
       <dt id="g-critic">Critic</dt>
       <dd>One reviewer model on the panel.</dd>
       <dt id="g-attestation">Attestation</dt>
@@ -66,7 +66,7 @@
       <dt id="g-handover">Handover</dt>
       <dd>A short written note a session leaves so the next one can pick up where it stopped. A Claude Code session forgets everything when it ends; the note does not.</dd>
       <dt id="g-vault">Vault</dt>
-      <dd>A folder of markdown notes, the kind Obsidian opens. himmel can fill it, link it and search it: your second brain, <a href="adoption-trail-levels.html#lvl-2">Level 2</a>.</dd>
+      <dd>A folder of markdown notes, the kind Obsidian opens. himmel can fill it, link it and search it: your second brain, in the <a href="adoption-trail-levels.html#t-brain">Second brain &amp; mobile</a> track.</dd>
       <dt id="g-cadence">Cadence</dt>
       <dd>A job that runs on a schedule, such as re-indexing your notes every night. None runs until you arm it.</dd>
       <dt id="g-lane">Lane</dt>

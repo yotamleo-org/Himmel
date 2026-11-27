@@ -206,6 +206,17 @@ test("a send spool record is malformed; draft and tap validate", () => {
   expect(drainSpool(dir2).map(d => ("rec" in d ? d.rec : "malformed"))).toEqual(good as any);
 });
 
+test("spool: a card record carries no field of its own, and there is no pair-tap type", () => {
+  const dir = peerDirWithSpool();
+  const cases: [string, unknown, string][] = [
+    ["01-card.json", { type: "card" }, "ok"],
+    ["02-card-text.json", { type: "card", text: "x" }, "card: takes no field"],
+    ["03-pair-tap.json", { type: "pair-tap", verb: "ok", offer: "0a1b2c3d", by: "42" }, "unknown type"],
+  ];
+  cases.forEach(([n, body]) => writeFileSync(join(dir, "spool", n), JSON.stringify(body), { mode: 0o600 }));
+  expect(drainSpool(dir).map(d => ("malformed" in d ? d.why : "ok"))).toEqual(cases.map(c => c[2]));
+});
+
 test("a malformed spool file names why, in fixed words and never with its content", () => {
   const dir = peerDirWithSpool();
   const cases: [string, string, string][] = [

@@ -34,6 +34,7 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/resolve-bun.sh"       "$CLONE/scripts/lib/resolve-bun.sh" \
     && cp "$src_scripts/lib/claude-version.sh"    "$CLONE/scripts/lib/claude-version.sh" \
     && cp "$src_scripts/lib/update-channel.sh"    "$CLONE/scripts/lib/update-channel.sh" \
+    && cp "$src_scripts/lib/plugin-cache-drift.sh"    "$CLONE/scripts/lib/plugin-cache-drift.sh" \
     && cp "$src_scripts/t3/provider-instances.sh" "$CLONE/scripts/t3/provider-instances.sh" \
     && cp "$src_scripts/t3/antigravity-profiles.sh" "$CLONE/scripts/t3/antigravity-profiles.sh" \
     && cp "$src_scripts/lib/flags.sh"             "$CLONE/scripts/lib/flags.sh" \

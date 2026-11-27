@@ -1997,6 +1997,7 @@ c79_setup() {   # <cache hooks.json content>
     printf '{"name":"himmel","plugins":[{"name":"p1","source":"./plugins/p1"}]}\n' > "$c79_t/repo/marketplace/.claude-plugin/marketplace.json"
     printf '{"name":"p1","version":"1.0.0"}\n' > "$c79_t/repo/marketplace/plugins/p1/.claude-plugin/plugin.json"
     printf '%s\n' "$c79_main" > "$c79_t/repo/marketplace/plugins/p1/hooks/hooks.json"
+    cp -R "$c79_t/repo/marketplace/plugins/p1/." "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/"
     printf '%s\n' "$1" > "$c79_t/claude/plugins/cache/himmel/p1/1.0.0/hooks/hooks.json"
     printf '{"version":2,"plugins":{"p1@himmel":[{"scope":"user","installPath":"%s","version":"1.0.0"}]}}\n' \
         "$c79_t/claude/plugins/cache/himmel/p1/1.0.0" > "$c79_t/claude/plugins/installed_plugins.json"
@@ -2058,6 +2059,138 @@ if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'skills/s/SKILL
     pass "C79 skills-only drift -> WARN naming the skill file"
 else
     fail "C79 skills-only drift -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+c79_paths() { c79_tree="$c79_t/repo/marketplace/plugins/p1"; c79_cachedir="$c79_t/claude/plugins/cache/himmel/p1/1.0.0"; }
+c79_run() { CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$DOC" --only C79 --no-color --root "$c79_t/repo" 2>&1; }
+
+echo "== C79 (11344-e1): an agents/ drift -> WARN naming the file =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents" "$c79_cachedir/agents"
+printf 'new\n' > "$c79_tree/agents/a.md"; printf 'old\n' > "$c79_cachedir/agents/a.md"
+out="$(c79_run)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'agents/a.md'; then
+    pass "(11344-e1) agents/ drift -> WARN naming the file"
+else
+    fail "(11344-e1) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e2): a cache-only node_modules/ -> OK =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_cachedir/node_modules/x"; printf 'x\n' > "$c79_cachedir/node_modules/x/index.js"
+out="$(c79_run)"
+if grepq "$out" 'OK   C79-plugin-cache-drift' && ! grepq "$out" 'WARN C79-plugin-cache-drift'; then
+    pass "(11344-e2) node_modules/ -> OK"
+else
+    fail "(11344-e2) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e3): an unreadable checkout dir -> WARN cannot compare =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP (11344-e3): running as root"
+else
+    c79_setup "$c79_main"; c79_paths
+    mkdir -p "$c79_tree/agents"; printf 'a\n' > "$c79_tree/agents/a.md"
+    chmod 000 "$c79_tree/agents"
+    out="$(c79_run)"
+    chmod 755 "$c79_tree/agents"
+    if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'cannot compare'; then
+        pass "(11344-e3) unreadable tree -> WARN cannot compare"
+    else
+        fail "(11344-e3) -> $(printf '%s' "$out" | grep -A1 C79)"
+    fi
+    rm -rf "$c79_t"
+fi
+
+echo "== C79 (11344-e4): a file the cache lacks is drift, not a failed compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"; printf 'n\n' > "$c79_tree/agents/new.md"
+out="$(c79_run)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'agents/new.md' && ! grepq "$out" -F 'cannot compare'; then
+    pass "(11344-e4) added file -> WARN naming it"
+else
+    fail "(11344-e4) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+c79_want_warn() {
+    out="$(c79_run)"
+    if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F "$2"; then
+        pass "$1"
+    else
+        fail "$1 -> $(printf '%s' "$out" | grep -A1 C79)"
+    fi
+    rm -rf "$c79_t"
+}
+echo "== C79 (11344-e5): a checkout git cannot read -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+printf 'gitdir: %s/nonexistent\n' "$c79_t" > "$c79_t/repo/.git"
+c79_want_warn "(11344-e5) unreadable git checkout -> WARN cannot compare" 'cannot compare'
+
+echo "== C79 (11344-e6): a script that lost its executable bit -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/bin" "$c79_cachedir/bin"
+printf 'x\n' > "$c79_tree/bin/tool"; cp "$c79_tree/bin/tool" "$c79_cachedir/bin/tool"; chmod 755 "$c79_tree/bin/tool"
+c79_want_warn "(11344-e6) mode drift -> WARN naming the file" 'bin/tool'
+
+echo "== C79 (11344-e7): a shipped symlink the cache lacks -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"
+ln -s ../hooks/hooks.json "$c79_tree/agents/link.json"
+c79_want_warn "(11344-e7) missing symlink -> WARN naming it" 'agents/link.json'
+
+echo "== C79 (11344-e8): a cache-only symlink is not drift, since the repair never removes a link =="
+c79_setup "$c79_main"; c79_paths
+ln -s hooks/hooks.json "$c79_cachedir/runtime-link.json"
+out="$(c79_run)"
+if grepq "$out" 'OK   C79-plugin-cache-drift' && ! grepq "$out" 'WARN C79-plugin-cache-drift'; then
+    pass "(11344-e8) cache-only symlink -> OK"
+else
+    fail "(11344-e8) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e9): a dangling .git link is still a git checkout -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+ln -s "$c79_t/nonexistent" "$c79_t/repo/.git"
+c79_want_warn "(11344-e9) dangling .git link -> WARN cannot compare" 'cannot compare'
+
+echo "== C79 (11344-e10): a plugin file with a newline in its name -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents" "$c79_cachedir/agents"
+c79_odd=$'agents/a\nb.md'
+printf 'n\n' > "$c79_tree/$c79_odd"; cp "$c79_tree/$c79_odd" "$c79_cachedir/$c79_odd"
+c79_want_warn "(11344-e10) newline in a file name -> WARN cannot compare" 'cannot compare'
+
+echo "== C79 (11344-e11): a tracked file whose name git quotes -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"
+printf 'q\n' > "$c79_tree/"$'agents/a\tb.md'
+if git init -q "$c79_t/repo" && git -C "$c79_t/repo" add -A; then
+    c79_want_warn "(11344-e11) git-quoted tracked name -> WARN cannot compare" 'cannot compare'
+else
+    fail "(11344-e11) setup: git fixture failed"; rm -rf "$c79_t"
+fi
+
+echo "== C79 (11344-e12): the compare lib missing from both places -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+c79_bare="$c79_t/bare"
+mkdir -p "$c79_bare/lib"
+for c79_e in "$(dirname "$DOC")"/*; do
+    case "${c79_e##*/}" in lib|himmel-doctor.sh) ;; *) ln -s "$c79_e" "$c79_bare/${c79_e##*/}" ;; esac
+done
+for c79_e in "$(dirname "$DOC")"/lib/*; do
+    [ "${c79_e##*/}" = plugin-cache-drift.sh ] || ln -s "$c79_e" "$c79_bare/lib/${c79_e##*/}"
+done
+cp "$DOC" "$c79_bare/himmel-doctor.sh"
+out="$(CLAUDE_DIR="$c79_t/claude" HOME="$c79_t/home" bash "$c79_bare/himmel-doctor.sh" --only C79 --no-color --root "$c79_t/repo" 2>&1)"
+if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F 'plugin-cache-drift.sh missing'; then
+    pass "(11344-e12) missing lib -> WARN naming it"
+else
+    fail "(11344-e12) -> $(printf '%s' "$out" | grep -A1 C79)"
 fi
 rm -rf "$c79_t"
 
