@@ -754,7 +754,7 @@ blocked_by() {
     esac
     rs_err=$(mktemp "${TMPDIR:-/tmp}/ready-check-blocked.XXXXXX" 2>/dev/null) || { echo "       blocked by: unknown (no scratch file)"; return 0; }  # prim-ok: removed on every path below
     # shellcheck disable=SC2016  # the body expands in the child shell
-    if ! rset=$("$tb" -k 5 30 bash -c '. "$1" >/dev/null 2>&1 || exit 3; ts_required_set "$2"' _ "$SELF_DIR/../../lib/ticket-status.sh" "$base" 2>"$rs_err"); then  # read-sink-ok: $1 is the own lib path built from this script dir
+    if ! rset=$(env -u GH_READ_REFUSED_FILE "$tb" -k 5 30 bash -c '. "$1" >/dev/null 2>&1 || exit 3; ts_required_set "$2"' _ "$SELF_DIR/../../lib/ticket-status.sh" "$base" 2>"$rs_err"); then  # read-sink-ok: $1 is the own lib path built from this script dir
         why=$(head -n 1 "$rs_err" | tr -cd '[:print:]' | cut -c1-120)
         lines="       blocked by: unknown (the required checks of $base are unreadable${why:+: $why})"
     fi
