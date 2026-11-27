@@ -164,23 +164,25 @@ relay_text() {
     printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
 }
 not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state workers:; relay by hand if it is live"; }
-notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor"; }
+notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).%s\n' "$sender" "$successor" "${1:-}"; }
 notice_dir=""; notice_t0=0
 # send_notice <label> <session>: a claudex worker's bus record, sent as soon as its inbox
 # relay lands. The notices share ONE deadline (RELAY_BATCH_BUS_TIMEOUT), so a stalled store
 # cannot outlast relay-on-live's kill; a notice past it is skipped. Fail-soft: a failure
 # prints BUS-RELAY-FAIL only, the worker already has its inbox relay.
 send_notice() {
-    local label="$1" session="$2" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rem err rc wait_for=""
+    local label="$1" session="$2" limit="${RELAY_BATCH_BUS_TIMEOUT:-15}" rem err rc wait_for="" body=notice
     [ -n "${HIMMEL_BUS_NAME:-}" ] || return 0
     if [ -z "$notice_dir" ]; then
         notice_dir="$(tmpdir)" || { notice_dir=""; echo "BUS-RELAY-FAIL $label (mktemp failed)"; return 0; }
         notice_text > "$notice_dir/notice"; notice_t0=$SECONDS
+        notice_text " Your inbox relay also carries a fresh token: read it before you write your quote-back." > "$notice_dir/notice-fresh"
     fi
+    [ -z "${ftok:-}" ] || body=notice-fresh
     rem=$((10#$limit - (SECONDS - notice_t0)))
     [ "$rem" -ge 1 ] || { echo "BUS-RELAY-FAIL $label (bus deadline spent)"; return 0; }
     command -v timeout >/dev/null 2>&1 && wait_for="timeout $rem"
-    if err="$($wait_for "$bus" send "$session" "$notice_dir/notice" 2>&1 >/dev/null)"; then
+    if err="$($wait_for "$bus" send "$session" "$notice_dir/$body" 2>&1 >/dev/null)"; then
         echo "BUS-RELAY $label ok"
     else
         rc=$?
@@ -357,16 +359,24 @@ if [ -f "$manifest" ]; then
         if wrapped "$mdoc"; then continue; fi
         total=$((total + 1))
         if ! printf '%s\n' "$entries" | cut -d: -f1 | grep -Fxq -- "$mlabel"; then
-            pending=1
-            case "$mlane" in native|claudex) pending=0; record_pending "$mdoc" || pending=$? ;; esac
-            if [ "$pending" -eq 0 ]; then
+            pending=1; wanted=0
+            case "$mlane" in
+                native|claudex)
+                    pending=0; record_pending "$mdoc" || pending=$?
+                    if fresh_wanted "$mlabel"; then wanted=1; fi ;;
+            esac
+            if [ "$pending" -eq 0 ] || { [ "$wanted" -eq 1 ] && [ "$pending" -eq 1 ]; }; then
                 if [ "$mlane" = claudex ]; then lsession="$(basename "$mdoc" .md)"; hits=1; else resolve_session "$mdoc"; fi
                 if [ "$hits" -ne 1 ]; then not_in_live "$mlabel" "$mdoc"; continue; fi
                 offer_fresh "$mlabel" "$mdoc"
-                if ! record_token "$mdoc" -; then unreadable "$mlabel"
-                elif [ -z "$qtok" ]; then no_token "$mlabel"
-                else quoted_send "$mlabel" "$mlane" "$lsession" "$mdoc"; fi
-            elif [ -n "${HIMMEL_BUS_NAME:-}" ] && [ "$mlane" = native ] && resolve_session "$mdoc" && [ "$hits" -eq 1 ]; then
+                if [ -n "$ftok" ] || [ "$pending" -eq 0 ]; then
+                    if ! record_token "$mdoc" -; then unreadable "$mlabel"
+                    elif [ -z "$qtok" ]; then no_token "$mlabel"
+                    else quoted_send "$mlabel" "$mlane" "$lsession" "$mdoc"; fi
+                    continue
+                fi
+            fi
+            if [ -n "${HIMMEL_BUS_NAME:-}" ] && [ "$mlane" = native ] && resolve_session "$mdoc" && [ "$hits" -eq 1 ]; then
                 if [ "$pending" -eq 2 ]; then unreadable "$mlabel"
                 else bus_queue="${bus_queue}offlive $mlabel $lsession - $mdoc"$'\n'; fi
             else

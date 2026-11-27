@@ -68,7 +68,7 @@ Run these, in order, and write the result as the first bullet under
    or `worker-token.sh rotate`, but rotation is not a precondition of succession. If the
    predecessor is gone, send the token-chain form yourself — **both** the worker's current
    token (`worker-token.sh current <doc>`) and a fresh one
-   (`worker-token.sh rotate <doc> --to <itself>`; the token chain always rotates).
+   (`worker-token.sh rotate <doc> --to <itself>`; no record: mint by hand; the token chain always rotates).
    `worker-preface.md` (`worker-sections/succession.md`) is the authority.
    A worker's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
    waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**. On the

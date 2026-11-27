@@ -1178,7 +1178,8 @@ complete (the worker keeps its own): native and claudex workers are not rotated 
 bus succession, and `WAKE relay-on-live` passes no `--fresh`. A successor that wants fresh
 tokens before any batch ran has the outgoing chief run `relay-batch.sh <this doc> --successor <it>`
 once with one `--fresh <label>` per worker (that run disarms the waiter). A fresh token comes
-only from `--fresh` or from a chain through `worker-token.sh rotate`; never mint one by hand.
+only from `--fresh` or from a chain through `worker-token.sh rotate`; never mint one by hand for
+a worker the record covers.
 Each token the run quotes is the record's current one (`worker-token.sh current <doc>`), the
 `## Live state` span only when the record has none; `UNRESOLVED <label> (token record
 unreadable)` or `(no usable token)` sent nothing. `--fresh` rotates that worker's record at
@@ -1212,7 +1213,9 @@ generation answered.
 
 A successor that arrives after you have left can prove itself only with the
 two-token chain form (the current token from `worker-token.sh current <doc>`, the fresh
-one from `worker-token.sh rotate <doc> --to <itself>`); a worker that cannot verify that is stranded (it keeps
+one from `worker-token.sh rotate <doc> --to <itself>`). A worker with no record (`current`
+exits 1) is outside it: take the current token from its span or brief and mint the fresh
+one by hand. A worker that cannot verify the chain is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
 tick reads `nonces=UNCONFIRMED:<worker>` until each worker's own `SUCCESSION
 accepted` bullet names the successor (`RELAYED:<worker>`, a relay that kept the

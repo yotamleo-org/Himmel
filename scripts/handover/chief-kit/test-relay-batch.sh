@@ -362,7 +362,7 @@ rbfix() {
     census "$RSTEM"
     : > "$WORK/send.log"; : > "$WORK/bus.log"; : > "$WORK/bus.body"
 }
-recmint() { bash "$WT" mint "$RLEG" A-N1 2>/dev/null; printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$RLEG"; }
+recmint() { bash "$WT" mint "$RLEG" A-N1 2>/dev/null || echo mint-failed; printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$RLEG"; }
 rbrun() {
     local id="$1"; shift
     HIMMEL_BUS_NAME="$id" bash "$RB" "$RDOC" --successor "$SUCC" "$@" 2>&1
@@ -435,6 +435,21 @@ o="$(rbrun "$RBC" --fresh N1)"
 t2="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"
 check "--fresh: the claudex inbox relay quotes the current and the fresh token" "1" "$(grep -- "--token $t1 " "$WORK/send.log" | grep -c "$t2")"
 check "--fresh: no bus record carries a token" "0" "$(grep -c 'A-N1-' "$WORK/bus.body")"
+check "--fresh: the claudex bus notice says the inbox relay carries a fresh token to read first" "1" "$(grep -c 'fresh token: read it before you write your quote-back' "$WORK/bus.body")"
+rbfix claudex tok-stale; recmint >/dev/null
+o="$(rbrun "$RBC")"
+check "--fresh: a claudex notice with no fresh token says nothing about one" "0" "$(grep -c 'fresh token' "$WORK/bus.body")"
+rbfix native tok-span; t1="$(recmint)"
+printf '# chief\n\n## Live state\n\nworkers: none\nqueue: none\n\n## Results\n' > "$RDOC"
+o="$(rbrun "$RBC" --fresh N1)"
+t2="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"
+check "--fresh: an off-Live-state worker is sent current and fresh by SendMessage" "$t1 $t2" "$(quoted "$o")"
+check "--fresh: and no bus record" "" "$(cat "$WORK/bus.log")"
+check "--fresh: and the label is not reported unused" "0" "$(cnt "$o" '^FRESH-UNUSED')"
+rbfix native tok-span; : > "$RLEG"
+printf '# chief\n\n## Live state\n\nworkers: none\nqueue: none\n\n## Results\n' > "$RDOC"
+o="$(rbrun "$RBC" --fresh N1)"
+check "--fresh: an off-Live-state worker with no record is refused and bus-relayed as before" "1 1" "$(cnt "$o" '^FRESH-REFUSED N1 (') $(cnt "$o" '^BUS-RELAY N1 ok$')"
 
 rbfix native tok-span; t1="$(recmint)"
 o="$(rbrun "$RBC")"

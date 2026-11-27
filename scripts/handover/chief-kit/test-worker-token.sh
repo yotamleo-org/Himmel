@@ -183,6 +183,13 @@ wt current "$D" >/dev/null; rc=$?
 eq "WT8: with no key current exits 1" "$rc" 1
 [ ! -e "$KEYF" ] && pass "WT8: current mints no key" || fail "WT8: current minted a key"
 setkey "$K1"
+mkdir -p "$WORK/broken-bin"; printf '#!/bin/sh\nexit 1\n' > "$WORK/broken-bin/openssl"; chmod +x "$WORK/broken-bin/openssl"
+PATH="$WORK/broken-bin:$PATH" wt current "$D" >/dev/null; rc=$?
+eq "WT8b: a present key that cannot be used is bad (rc 6), not a fallback" "$rc" 6
+bucket; mkdoc "$D"; chmod 000 "$B"
+wt current "$D" >/dev/null; rc=$?
+eq "WT9d: a record directory that cannot be entered is bad (rc 6), not a fallback" "$rc" 6
+chmod 700 "$B"
 bucket; mkdoc "$D"
 out="$(wt gen "$D")"; rc=$?
 eq "a stem with no rows reads none" "$out" "current=- pending=-:- state=none"

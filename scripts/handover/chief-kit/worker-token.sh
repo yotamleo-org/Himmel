@@ -84,6 +84,7 @@ stem="${doc##*/}"; stem="${stem%.md}"
 case "$doc" in */*) docdir="${doc%/*}" ;; *) docdir=. ;; esac
 bucket="$(cd "${docdir:-/}" 2>/dev/null && pwd -P)" || bucket=""  # swallow-ok: an empty bucket is handled just below, per subcommand
 if [ -z "$bucket" ]; then
+    [ ! -d "${docdir:-/}" ] || die 6 "cannot enter the doc's directory: $docdir"
     case "$sub" in
         mint) die 6 "the doc's directory does not exist: $docdir" ;;
         rotate|set) die 4 "no record for $stem (its directory does not exist)" ;;
@@ -177,6 +178,7 @@ EOF
 if [ "$bad" -eq 1 ]; then state=bad
 elif [ "$nrows" -eq 0 ]; then state=none
 elif [ -z "$cur" ] || [ -z "$dprefix" ]; then state=bad
+elif [ -z "$kid" ] && grep -qxE '[0-9a-f]{64}' "$(go_key_file)" 2>/dev/null; then state=bad
 elif [ -z "$kid" ] || [ "$mkid" != "$kid" ]; then state=keymismatch
 else state=ok
 fi
