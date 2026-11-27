@@ -3,8 +3,6 @@
 # would refuse each open ticket.
 #
 # Platform guard: Linux bash 3.2+ (GNU touch -d, stat -c, pgrep), as the script itself.
-# SUT=<path> runs the rows against a copy of the script; NR_SRC_ROOT=<dir> points R-markers at a copy of
-# the upstream sources. Both exist for mutation runs.
 # shellcheck disable=SC2016  # single-quoted text here is a stand-in body or a literal pinned in a source file
 set -uo pipefail
 
@@ -475,7 +473,6 @@ except (OSError, AttributeError, ValueError, SyntaxError) as e:
     sys.exit('no MARKERS table in the script: %s' % e)
 FILES = {'dispatcher': 'scripts/handover/chief-kit/next-dispatchable.sh', 'tick': 'scripts/handover/chief-kit/tick.sh',
          'bucket': 'scripts/jira/src/release/operator-acts.ts', 'rounds': 'scripts/telegram/chief-route.ts'}
-# every disposition prefix, blind marker, tick line, verdict word and round field of spec D2 and D1
 WANT = '''owner-unknown blocker-unknown open-prs-unknown status-unreadable core-check-failed core-unknown
 spec-signer-unknown classification-none below-top unknown-reason owned-by in-flight listed merged-not-closed done-pending
 needs-chief-note blocker partial-merge resume-brief no-scope proof-missing label type platform residual-depth cloud-only
@@ -546,7 +543,7 @@ r_deadline() {
     [ "$ms" -le 8000 ] || fail "escape: a child that left the group held the run for ${ms} ms"
     if [ ! -f "$C/marker-child.up" ] || [ "$ms" -lt 3000 ]; then fail "escape: the escaped child never held the run (${ms} ms)"; fi
     expect HIMMEL-9432 cannot-judge 'bucket-check:'
-    pkill -f "$C/marker-child" 2>/dev/null || true  # swallow-ok: nothing left to stop is the clean case
+    pkill -f "$C/marker-child" 2>/dev/null || true
 }
 
 r_usage() {

@@ -91,7 +91,7 @@ if [ -z "$specs" ]; then
     . "$LIB/handover-path.sh"
     # shellcheck source=../../lib/user-slug.sh
     . "$LIB/user-slug.sh"
-    load_dotenv HANDOVER_DIR 2>/dev/null || true  # swallow-ok: no .env leaves handover_root its own fallback
+    load_dotenv HANDOVER_DIR 2>/dev/null || true
     root="$(handover_root 2>/dev/null)" || root=""  # swallow-ok: no root leaves specs empty and the round read is blind
     slug="$(cd "$HERE/../../.." && user_slug 2>/dev/null)" || slug=""  # swallow-ok: no slug leaves specs empty and the round read is blind
     if [ -n "$root" ] && [ -n "$slug" ]; then specs="$root/$slug/himmel/specs"; fi
@@ -141,7 +141,6 @@ def seam(name):
 # holds). test-not-ready.sh R-markers checks every pin against its source file, so a reworded line fails
 # there instead of passing here unseen.
 MARKERS = {
-    # dispositions the dispatcher could not judge; any text not matched below is judged the same way
     'owner-unknown': ('dispatcher', 'owner unknown', ("OWNER_UNKNOWN_DROP = 'owner unknown: ",)),
     'blocker-unknown': ('dispatcher', 'blocker-unknown ', ("'blocker-unknown ' + ', '.join(unknown)",)),
     'open-prs-unknown': ('dispatcher', 'open PRs unknown', ("'open PRs unknown (gh failed): ownership cannot be checked'",)),
@@ -152,12 +151,10 @@ MARKERS = {
     'classification-none': ('dispatcher', 'classification none', ("'classification ' + (", "else 'none (cloud-route gave no verdict)'")),
     'below-top': ('dispatcher', 'below --top', ("r = 'below --top %d' % top",)),
     'unknown-reason': ('dispatcher', 'unknown (', ("d = 'unknown (no drop reason recorded)'",)),
-    # running, needs closing
     'owned-by': ('dispatcher', 'owned by ', ("drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))",)),
     'in-flight': ('dispatcher', 'in-flight owned by ', ("d = 'in-flight owned by ' + owner.get(k, 'a live worker')",)),
     'merged-not-closed': ('dispatcher', 'MERGED-NOT-CLOSED', ("lane_of[i['key']] = 'MERGED-NOT-CLOSED'",)),
     'done-pending': ('dispatcher', 'done-pending', ("'done-pending (a contract=yes merge row; the mirror lags)'",)),
-    # refusals: dispatch:<word>, and the operator's signature
     'needs-chief-note': ('dispatcher', 'NEEDS-CHIEF-NOTE ', ("print('NEEDS-CHIEF-NOTE %s: ",)),
     'blocker': ('dispatcher', 'blocker ', ("'blocker ' + ', '.join(known)",)),
     'partial-merge': ('dispatcher', 'partial-merge', ("r = 'partial-merge (",)),
@@ -174,7 +171,6 @@ MARKERS = {
     'stackable': ('dispatcher', 'stackable on ', ("'stackable on %s (%d/%d)'",)),
     'unowned': ('dispatcher', 'unowned ', ("d = 'unowned %s (",)),
     'spec-needs-operator': ('dispatcher', 'spec-needs-operator ', ("'spec-needs-operator ' + t[-1]",)),
-    # listed lanes and the rows beside them
     'listed': ('dispatcher', 'listed ', ("d = 'listed ' + lane_of[k]",)),
     'lane-local': ('dispatcher', 'LOCAL', ("return ('CLOUD' if c == 'CLOUD-OK' else 'LOCAL'), c", "return 'LOCAL?', ''")),
     'lane-cloud': ('dispatcher', 'CLOUD', ("return ('CLOUD' if c == 'CLOUD-OK' else 'LOCAL'), c",)),
@@ -182,7 +178,6 @@ MARKERS = {
     'lane-series': ('dispatcher', 'SERIES ', ("lane_of[k] = 'SERIES ' + h",)),
     'lane-design': ('dispatcher', 'DESIGN', ("lane_of[i['key']] = 'DESIGN'",)),
     'design-row': ('dispatcher', 'DESIGN', ("say('\\t'.join(['DESIGN', i['key'], design[i['key']]",)),
-    # a shared file's holders, and the lines that blind a check
     'overlap': ('dispatcher', '# overlap ', ("say('# overlap %s %s with %s%s' %",)),
     'hold-live-worker': ('dispatcher', 'live worker ', ("'live worker %s'",)),
     'hold-open-pr': ('dispatcher', 'open PR ', ("'open PR %s' % num",)),
@@ -199,14 +194,12 @@ MARKERS = {
     'summary-prs': ('dispatcher', 'open PRs unknown', ("', open PRs unknown (gh failed)'",)),
     'summary-merged': ('dispatcher', 'merged PRs unknown', ("', merged PRs unknown (gh failed)'",)),
     'owner-unknown-line': ('dispatcher', '# owner unknown: ', ("'# owner unknown: %s (",)),
-    # the tick's reading
     'pool-parked': ('tick', '# pool-parked ', ('print("# pool-parked " + key)',)),
     'readiness-held': ('tick', '# readiness-held ', ('"# readiness-held c %s blocker=%s age=%s"', '"# readiness-held d %s blocker=%s age=%s%s"')),
     'pool-unchecked': ('tick', '# pool-unresolved unchecked ', ('print("# pool-unresolved %s %s %s" % (cls, key, reason))', 'held[key] = ("unchecked",')),
     'readiness-blind': ('tick', '# readiness ?', ('print("# readiness ?")',)),
     'counts-blind': ('tick', '# pool-counts ?', ('print("# pool-counts ?")',)),
     'counts': ('tick', '# pool-counts ', ('print("# pool-counts %d/%d/%d/%d" %',)),
-    # bucket-check verdicts and round-status fields
     'bucket-failed': ('bucket', 'FAILED', ('`FAILED ${key} ${why',)),
     'bucket-none': ('bucket', 'NONE', ('`NONE ${key} ${mirrorRoot}`',)),
     'bucket-approved': ('bucket', 'APPROVED', ('`APPROVED ${key} decision=',)),
@@ -216,7 +209,6 @@ MARKERS = {
     'rounds-keys': ('rounds', 'keys', ('console.log(JSON.stringify({ cap: CRITIC_ROUND_CAP, classes: OPERATOR_CRITICAL_CLASSES, keys: out }));',)),
     'rounds-next': ('rounds', 'next none full closure why spec plan', ('next: "full" | "closure" | "none"; why: string;', 'key: string; epoch: number; spec: number; plan: number;')),
     'rounds-error': ('rounds', 'error', ('({ key, error: e.message })',)),
-    # lines that make the whole pass unusable
     'quota-pause': ('dispatcher', '# quota-pause', ("printf '# quota-pause %s\\n'",)),
     'gh-stall': ('dispatcher', '# gh-stall', ("printf '# gh-stall %s\\n'",)),
     'dropped-from': ('dispatcher', '# dropped from ', ("'# dropped from %s: %d of %d To Do (%s)'",)),
@@ -274,7 +266,7 @@ def clean(text):
 
 
 class Unusable(Exception):
-    """No usable dispatcher pass: the banner form, with no key line."""
+    pass
 
 
 def header(pass_age, owner_unknown, blind):
@@ -313,7 +305,6 @@ def read_snapshot(now):
 
 
 KEY = r'[A-Z][A-Z0-9_]*-[0-9]+'
-# the dispatch:<word> of each refusing disposition
 DISPATCH = (('blocker', 'blocker'), ('partial-merge', 'partial-merge'), ('resume-brief', 'resume-brief'),
             ('no-scope', 'no-scope'), ('proof-missing', 'proof'), ('label', 'label'), ('type', 'type'),
             ('platform', 'platform'), ('residual-depth', 'residual-depth'), ('cloud-only', 'cloud-only'),
@@ -322,7 +313,6 @@ DISPATCH = (('blocker', 'blocker'), ('partial-merge', 'partial-merge'), ('resume
 
 
 class Pass:
-    """What one usable snapshot says, per key."""
 
     def __init__(self, lines):
         self.lines = lines
@@ -379,7 +369,6 @@ def command(name, default):
 
 
 class Blind:
-    """The kept blind markers, in the order found. A marker only stops a key from reading ready."""
 
     def __init__(self):
         self.marks = []  # (name, the line or reason, the one key it blinds or None for every key)
@@ -392,7 +381,6 @@ class Blind:
 
 
 def tick_reading(data, blind):
-    """(held lines per key, unchecked park lines per key) from tick.sh's own reading of the snapshot."""
     out = run(command('NOT_READY_TICK_CMD', ['bash', os.path.join(PRIMARY, 'scripts/handover/chief-kit/tick.sh')])
               + ['--pool-dispositions', '--doc', DOC], 20, data=data, env=dict(os.environ, NEXT_DISPATCH_MIRROR=MIRROR))
     held, unchecked = {}, {}
@@ -417,7 +405,6 @@ def tick_reading(data, blind):
 
 
 def bucket_check(keys, blind):
-    """{key: (verdict, rest of line)}. A verdict about another version is blind and is not applied."""
     if not keys:
         return {}
     env = dict(os.environ)
@@ -451,7 +438,6 @@ def bucket_check(keys, blind):
 
 
 def round_state(specs, blind):
-    """round-status's {key: state}, or None when the call failed."""
     out = None
     if specs:
         out = run(command('NOT_READY_ROUNDS_CMD', ['bun', os.path.join(PRIMARY, 'scripts/telegram/chief-route.ts')])
@@ -468,8 +454,6 @@ def round_state(specs, blind):
 
 
 def read_chains(named, blind):
-    """({key: why it waits}, {key: why its chain state is unknown}) from focus-chains.json. With no --chains,
-    a missing file beside the doc means there are no chains; a named file that is missing is blind."""
     path = named or os.path.join(os.path.dirname(os.path.abspath(DOC)), 'focus-chains.json')
     waits, unknown = {}, {}
     try:
@@ -502,7 +486,6 @@ def read_chains(named, blind):
 
 
 def holders(p_lines, key):
-    """(the first overlap that blocks a launch, the first overlap line whose holder is not one we know)."""
     blocking, odd = None, None
     blockers = (M('hold-live-worker'), M('hold-open-pr'), M('hold-held-list'), M('hold-series'))
     for line in p_lines:
@@ -534,8 +517,6 @@ def design_class(p, f, key):
 
 
 def snapshot_marks(lines, blind):
-    """The blind markers the pass itself carries. It is clean only when its summary line has the clean form
-    and it holds no WARN, no unknown overlap and no unreadable-file or missing-file warning."""
     summary = next((line for line in lines if line.startswith(M('summary'))), None)
     if summary is None:
         blind.add('summary', 'the pass has no summary line')
@@ -630,7 +611,7 @@ def main():
     except Unusable as e:
         banner(str(e))
         return 0
-    except Exception as e:  # the trailer is always printed; a crash is never a ready list
+    except Exception as e:
         banner('internal error: %s: %s' % (type(e).__name__, e))
         return 0
     sys.stdout.write('\n'.join(out) + '\n')
