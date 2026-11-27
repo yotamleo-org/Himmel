@@ -951,8 +951,6 @@ def tier_of(i):
     return 4 if first_ver is not None else 5  # no version list: nothing is known to be current
 
 def band(i):
-    # leads the rank, so no label or priority-line position puts lower work first: 0 Highest/High of the earliest
-    # unreleased version, 1 the rest of that version, 2 later or versionless work (all of it with no version list)
     if first_ver is None or first_ver not in i['ver']:
         return 2
     return 0 if PRIO.get(i['prio'], 5) <= 1 else 1
@@ -2476,13 +2474,11 @@ def classify(batch):
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 
 def proof_row(i):
-    # a RESUME row that writes nothing and whose only open item is a dated proof: it has its own budget, never a build
-    # slot. nowrite is required: a proof replaced by a worker step keeps proof_only but writes
     steps = i.get('owed_next')
     return not i['merged'] and bool(i.get('nowrite')) and bool(i.get('proof_only') or (steps and all(s['actor'] == 'proof' for s in steps)))
 
 proof_rows = []
-if not resume_only:  # --resume-only keeps the one list
+if not resume_only:
     proof_rows = sorted((i for i in resume if proof_row(i)), key=ranked)
     resume = [i for i in resume if not proof_row(i)]
 if rate_limited:
@@ -2745,15 +2741,13 @@ def list_resume(i):
                   + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
                   + ([proof_field(i)] if i.get('nowrite') else [])))
 
-proof_cut = {}  # key -> the budget that left a proof row out
+proof_cut = {}
 
-def emit_proof():
-    # after the build rows: the proof rows have half of --top, plus every build slot the walk left empty. They hold no
-    # files and never count in n. Returns how many printed
+def emit_proof(built_rows):
     rows = [i for i in proof_rows if not pool_only or tier_of(i) <= 4]
     if not rows:
         return 0
-    budget = half_up(top) + (top - n)
+    budget = half_up(top) + (top - built_rows)
     shown, cut = rows[:budget], rows[budget:]
     for i in shown:
         list_resume(i)
@@ -2871,13 +2865,11 @@ if pool_only:
         for t in (1, 2, 3, 4):
             emit_resume([i for i in resume if tier_of(i) == t])
     else:
-        # band by band, then tier by tier. A tier's worker-less In Progress rows lead its To Do rows in the first
-        # band that has fresh work
-        bstar = min((band(i) for i in free), default=0)
+        first_fresh_band = min((band(i) for i in free), default=0)
         for b in (0, 1, 2):
             for t in (1, 2, 3, 4):
                 tier_free = [i for i in free if band(i) == b and tier_of(i) == t]
-                if b != bstar:
+                if b != first_fresh_band:
                     emit_free(tier_free)
                     continue
                 skipped = emit_resume([i for i in resume if tier_of(i) == t], half_up(top - n))
@@ -2885,7 +2877,7 @@ if pool_only:
                 emit_free(tier_free)
                 emit_resume(skipped)
                 held_back[:] = []
-    proofs = emit_proof()
+    proofs = emit_proof(n)
     flush_rows()
     if not resume_only:
         emit_stackable()
@@ -2911,9 +2903,9 @@ held_back[:] = skipped
 emit_free(free)
 emit_resume(skipped)
 held_back[:] = []
-emit_proof()
+emit_proof(n)
 flush_rows()
-print('# resume=%d'% sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
+print('# resume=%d' % sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
 emit_stackable()
 warn_missing()
 drop_summary()
