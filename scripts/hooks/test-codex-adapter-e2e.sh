@@ -17,6 +17,9 @@ unset CODEX_EXTERNAL_WRITES_OK T3_THREAD_TOOLS_OK T3CODE_UNWATCH_OK 2>/dev/null 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/codex-adapter-e2e.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/home/.himmel" "$TMP/home/.t3/userdata" "$TMP/bin"
+chmod 700 "$TMP/home/.himmel"
+export HOME="$TMP/home" XDG_CONFIG_HOME="$TMP/home/.config" GIT_CONFIG_NOSYSTEM=1 HIMMEL_POLICY_FOLLOWS_HOME=1
+unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_DIR GIT_WORK_TREE 2>/dev/null || true
 export T3CODE_HOME="$TMP/home/.t3"
 printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$T3CODE_HOME/userdata/settings.json"
 cat > "$TMP/bin/gh" <<'EOF'
@@ -136,6 +139,52 @@ case "$out" in
   *permissionDecision*) bad "wired MCP chain allows benign T3 read (rc=$rc out=$out)";;
   *) if [ "$rc" -eq 0 ]; then ok "wired MCP chain allows benign T3 read"; else bad "wired MCP chain allows benign T3 read (rc=$rc)"; fi;;
 esac
+
+echo "== (g) lane grants through the adapter (HIMMEL-11204) =="
+FIX="$(cd "$TMP" && pwd -P)/fix"; FIXWT="$FIX-wt"
+mkdir -p "$FIX/scripts"
+cp -R "$REPO/.codex" "$FIX/.codex"
+cp -R "$REPO/scripts/hooks" "$REPO/scripts/guardrails" "$REPO/scripts/lib" "$FIX/scripts/"
+git init -q -b main "$FIX"
+git -C "$FIX" add -A >/dev/null 2>&1
+git -C "$FIX" -c user.name=t -c user.email=t@example.invalid commit -q --no-verify -m fixture
+git -C "$FIX" remote add origin 'https://github.com/acme/fixture.git'
+git -C "$FIX" worktree add -q -b feat/x "$FIXWT"
+GRANT_CFG="$TMP/home/.himmel/config.json"
+grant() {
+    printf '{"lane_grants":{"%s":["%s"]},"lane_grants_origin":"github.com/acme/fixture"}\n' "$1" "$2" > "$GRANT_CFG"
+    chmod 600 "$GRANT_CFG"
+}
+run_fix() {
+    jq -cn --arg c "$2" --arg d "$FIXWT" \
+        '{hook_event_name:"PreToolUse",tool_name:"Bash",tool_input:{command:$c},cwd:$d,session_id:"lane-grant-e2e"}' |
+        jq -c "${3:-.}" |
+        ( cd "$FIXWT" && PATH="$TMP/bin:$PATH" CLAUDE_PROJECT_DIR="$FIX" bash "$FIX/.codex/codex-hook-adapter.sh" "$1" 2>/dev/null )
+}
+allowed() {
+    if [ "$3" != 0 ]; then bad "$1 (adapter exit $3)"; return; fi
+    if [ -z "$2" ]; then ok "$1"; else bad "$1 ($2)"; fi
+}
+denied_by() { case "$2" in *'"permissionDecision":"deny"'*"$3"*) ok "$1";; *) bad "$1 ($2)";; esac; }
+
+grant codex git-push-branch
+out="$(run_fix block-terminal-write-fence.sh 'git push -u origin feat/x')"; rc=$?
+allowed "T11a granted branch push -> allow" "$out" "$rc"
+grant antigravity git-push-branch
+out="$(run_fix block-terminal-write-fence.sh 'git push -u origin feat/x' '. + {himmel_lane:"antigravity"}')"
+denied_by "T11b a payload's own himmel_lane is overwritten" "$out" 'git push is refused'
+FIX_CHAIN="$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[0].command' "$FIX/.codex/hooks.json" | sed -n 's/.*run-hook\.sh --sandbox \([^ ]*\).*/\1/p')"
+grant codex gh-pr-create
+mkdir -p "$FIX/.git/cr-pending/feat"
+git -C "$FIXWT" rev-parse HEAD > "$FIX/.git/cr-pending/feat/x"
+out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"
+denied_by "T11c full chain: a review marker refuses a granted pr create" "$out" 'Automated review pending for feat/x'
+rm -rf "$FIX/.git/cr-pending"
+out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"; rc=$?
+allowed "T11d full chain: no marker -> granted pr create allowed" "$out" "$rc"
+rm -f "$GRANT_CFG"
+out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"
+denied_by "T11 no config: the full chain refuses pr create" "$out" 'external-write'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

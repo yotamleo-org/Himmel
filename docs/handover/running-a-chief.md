@@ -1524,7 +1524,7 @@ is not seen. No ledger is deleted to recover signability, and no automatic recov
 
 ## Chief threads in T3 Code
 
-T3 Code closes a thread's claude process 30 minutes after its last turn ended,
+T3 Code closes a thread's claude process 120 s after its last turn ended,
 unless the thread has background work running (a background Bash or Monitor, a
 scheduled wakeup, a running subagent). That hold lasts at most 4 hours; a new
 turn resets it. **Settling a thread closes its process at once**, and T3 settles
@@ -1539,7 +1539,7 @@ its subagent children too.
   last one has gone silent, run `bash scripts/t3/relay-launch.sh`: it refuses a second
   live relay and prints the launch block (provider `claudeAgent_t3-relay`, model, title,
   brief) that you send through the guarded `mcp__t3-code__` launch tool. The relay
-  holds no background task, so T3 closes it 30 minutes after its last turn and you
+  holds no background task, so T3 closes it 120 s after its last turn and you
   launch a fresh one. [`docs/internals/t3-relay.md`](../internals/t3-relay.md).
   `scripts/t3/keepalive.sh` is no longer part of any relay contract.
 - **A chief wakes a released thread** with

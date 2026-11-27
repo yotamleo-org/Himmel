@@ -38,6 +38,9 @@ const LOCK_WAIT_MS = 5000;
 const holderPid = (lock) => {
   try { const pid = Number(readFileSync(`${lock}.pid`, 'utf8').trim()); return Number.isSafeInteger(pid) && pid > 0 ? pid : null; } catch { return null; }
 };
+const recordHolder = (lock) => {
+  try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { }
+};
 const running = (pid) => {
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 };
@@ -55,13 +58,39 @@ function removeLock(lock, f) {
   console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
   return true;
 }
+const lockId = (lock) => { const s = statSync(lock); return `${s.ino}-${Math.floor(s.mtimeMs)}`; };
+function takeGuard(stem, env) {
+  const spent = [];
+  for (let n = 0; ; n += 1) {
+    const guard = `${stem}.${n}`;
+    try { mkdirSync(guard, { mode: 0o700 }); } catch {
+      if (!isCrashedLock(lockFacts(guard), env)) return null;
+      spent.push(guard);
+      continue;
+    }
+    recordHolder(guard);
+    return { guard, spent };
+  }
+}
+function removeGuards(guards) {
+  for (const g of guards) {
+    try { unlinkSync(`${g}.pid`); } catch { }
+    try { rmdirSync(g); } catch { }
+  }
+}
 function reclaim(lock, env) {
-  const guard = `${lock}.reclaim`;
-  try { mkdirSync(guard, { mode: 0o700 }); } catch { return false; }
+  let held = null;
   try {
+    const seen = lockId(lock);
+    held = takeGuard(`${lock}.reclaim.${seen}`, env);
+    if (!held) return false;
     const f = lockFacts(lock);
-    return isCrashedLock(f, env) && removeLock(lock, f);
-  } catch { return false; } finally { try { rmdirSync(guard); } catch { /* already gone */ } }
+    if (lockId(lock) !== seen || !isCrashedLock(f, env)) return false;
+    removeLock(lock, f);
+    const unkeyed = `${lock}.reclaim`;
+    removeGuards([...held.spent, ...(isCrashedLock(lockFacts(unkeyed), env) ? [unkeyed] : [])]);
+    return true;
+  } catch { return false; } finally { if (held) removeGuards([held.guard]); }
 }
 function takeLock(lock, env) {
   // An empty value is unset (Number('') is 0, which would disable the retry).
@@ -81,7 +110,7 @@ function takeLock(lock, env) {
       Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
       continue;
     }
-    try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { }
+    recordHolder(lock);
     return;
   }
 }
