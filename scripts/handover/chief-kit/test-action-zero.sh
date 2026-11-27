@@ -248,10 +248,23 @@ printf '# chief\n\n## Live state\nworkers: none\n' > "$ISUCC"
 : > "$ROOT/DEMO-35-N35-worker.md"
 printf '{"schema":1,"workers":[]}\n' > "${IPRED%.md}.fleet.json"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N35","lane":"native","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-35-N35-worker.md" > "${IPRED%.md}.fleet.moved.json"
+cp "${IPRED%.md}.fleet.moved.json" "${IPRED%.md}.fleet.moved.json.pending"
 printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${IPRED%.md}.fleet.json" > "${ISUCC%.md}.fleet.json"
 bash "$AZ" --doc "$ISUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
 check "a late row an interrupted carry left only in the moved rows is carried by the next acquire" "1" "$(jq -r --arg d "$ROOT/DEMO-35-N35-worker.md" '[.workers[] | select(.doc == $d)] | length' "${ISUCC%.md}.fleet.json" 2>/dev/null)"
 check "the retried row stays in the moved rows" "1" "$(jq -r '.workers | length' "${IPRED%.md}.fleet.moved.json" 2>/dev/null)"
+check "a published row is no longer pending" "0" "$(jq -r '.workers | length' "${IPRED%.md}.fleet.moved.json.pending" 2>/dev/null)"
+MPRED="$ROOT/DEMO-nextleg-2026-11-25G-chief.md"; MSUCC="$ROOT/DEMO-nextleg-2026-11-25H-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$MSUCC"
+: > "$ROOT/DEMO-36-N36-worker.md"; : > "$ROOT/DEMO-37-N37-worker.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N36","lane":"native","added":"2026-11-25T04:27:00Z"},{"doc":"%s","label":"N37","lane":"native","arm":"999k","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-36-N36-worker.md" "$ROOT/DEMO-37-N37-worker.md" > "${MPRED%.md}.fleet.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${MPRED%.md}.fleet.json" > "${MSUCC%.md}.fleet.json"
+# shellcheck disable=SC2016 # literal backticks
+mtok="$(bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only 2>&1 | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$MSUCC" "$mtok" >/dev/null 2>&1
+bash "$HERE/fleet-manifest.sh" remove "${MSUCC%.md}.fleet.json" "$ROOT/DEMO-36-N36-worker.md" >/dev/null 2>&1
+bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
+check "after a partly failed carry, a carried row removed since is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-36-N36-worker.md" '[.workers[] | select(.doc == $d)] | length' "${MSUCC%.md}.fleet.json" 2>/dev/null)"
 check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
 check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 

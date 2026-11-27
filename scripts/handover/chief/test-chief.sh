@@ -4556,6 +4556,13 @@ CHIEF_SEED_TEST_DROP='' chief next --bucket again10728dst --doc "$A10877" >/dev/
 check "10728 a second hand-over into the same successor keeps the rows of both, from a legs manifest too" "$(jq -r '[.workers[].label] | sort | join(",")' "${G10728%.md}.fleet.json" 2>/dev/null)" "N1,N60"
 check "10728 a second hand-over keeps the earlier moved rows" "$(jq -r '[.workers[].label] | sort | join(",")' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "N1,N60"
 rel10877
+mk10877 killed10728
+printf '{"schema":1,"workers":[]}\n' > "${A10877%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"/x/DEMO-61-N61.md","label":"N61"}]}\n' > "${A10877%.md}.fleet.moved.json.pending"
+chief next --bucket killed10728dst --doc "$A10877" >/dev/null 2>"$tmp/killed10728.err"
+check "10728 a next killed between the removal and the publish: the retry publishes the pending rows" "$(jq -r '[.workers[].label] | join(",")' "$root/tester/killed10728dst/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)" "N61"
+check "10728 a published hand-over leaves no pending rows" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
+rel10877
 mk10877 fail10728
 mkdir -p "$root/tester/fail10728dst/DEMO-nextleg-${today}B-chief.fleet.json"
 before10728="$(jq -cS '.workers' "${A10877%.md}.fleet.json")"
