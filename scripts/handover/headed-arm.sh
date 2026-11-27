@@ -186,8 +186,7 @@
 #    failure into "no match" would let a broken scan silently read as
 #    "nothing running" and bypass dedup. An indeterminate answer must never
 #    be reported as a confirmed one; every one of its four call sites refuses
-#    with the distinct exit 9 on the latter rather than treating it as either
-#    a dedup hit or a green light to launch.
+#    with exit 9. The three pre-spawn sites write scan-indeterminate.
 #  - `pgrep -f` matches a FLATTENED command line, so an unrelated claude
 #    session whose PROMPT happened to contain "-n <our name> ", or whose OWN
 #    name merely had ours as a prefix, could satisfy the dedup pattern and
@@ -849,9 +848,9 @@ if [ "$DRY_RUN" -eq 1 ]; then
     exit 0
 fi
 
-# Exit 0 means launched OR already running: the launcher's attempt record (headed-arm-worker.sh) cannot tell them
-# apart from the status, so the decision point writes its typed result to HEADED_ARM_OUTCOME_FILE when given.
-# Best-effort: a write that fails leaves the record indeterminate, never changes this exit.
+# Exit 0 writes launched or already-running. Exit 9 writes scan-indeterminate only for the three pre-spawn session scans.
+# The post-launch scan, headless service checks before launch and headless census after launch leave exit 9 wordless.
+# Writes to HEADED_ARM_OUTCOME_FILE are best-effort and never change the exit status.
 _ha_outcome() {
     [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null
     if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$1" = launched ]; then
@@ -1066,6 +1065,7 @@ if [ "$sc_rc" -eq 0 ]; then
 elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
+    _ha_outcome scan-indeterminate
     exit 9
 fi
 
@@ -1523,6 +1523,7 @@ while :; do
     elif [ "$sc_rc" -eq 2 ]; then
         echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
         echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
+        _ha_outcome scan-indeterminate
         exit 9
     fi
     if claim_lock; then claimed=1; break; fi
@@ -1562,6 +1563,7 @@ elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed re-checking for $NAME after claiming the lock - releasing rather than launch blind" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
+    _ha_outcome scan-indeterminate
     exit 9
 fi
 
