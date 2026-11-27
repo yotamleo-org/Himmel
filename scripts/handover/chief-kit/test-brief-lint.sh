@@ -25,9 +25,6 @@
 #      (its .git a directory, no .single-writer) is refused, exit 3 in two lines, with and without --core-only; a
 #      classifier crash refuses too; worktrees, plain directories and .single-writer repos pass; the lint agrees with
 #      the guard's main_checkout_verdict on a tracked file at the directory's top.
-#   15. a brief whose Writes name a file the pinned guards run (a member of a PreToolUse-style hook command, or a lib it
-#      sources) is refused, exit 3, unless HIMMEL_HOOK_INTEGRITY_BYPASS_OK is exactly 1, --core-only and the launcher
-#      included; an unreadable hook command, wiring file, resolver or missing node refuses; a kit copy with no resolver skips.
 set -u
 export UNGUARDED_LAUNCH_OK=1
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
@@ -1585,6 +1582,10 @@ g22 g22b "$(python3 -I -c 'import json; print(json.dumps("L=\"$CLAUDE_PROJECT_DI
 g_err3 "G22b a launcher path held in a variable (empty segment) is refused" 'cannot read hook command'
 g22 g22c "$(gw_cmd '--lifecycle "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22c a lone --lifecycle is refused" 'cannot read hook command'
 g22 g22d "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh" startup')"; g_refused "G22d an argument word after a single member is an argument" "$tmp/g22d.md" 'scripts/lib/g-lib.sh (run by scripts/hooks/guard-g.sh)'
+
+CW_G26="$tmp/cwd-g26"; mk_gw "$CW_G26" || exit 1
+rm -f "$CW_G26/scripts/hooks/guard-g.sh"; ln -s guard-g.sh "$CW_G26/scripts/hooks/guard-g.sh"
+mk_g g26 'scripts/lib/g-lib.sh' "$CW_G26"; lint_g '' "$tmp/g26.md"; g_err3 "G26 a member that cannot be statted (a symlink loop) refuses, never read as missing" 'cannot work out which files the pinned guards run'
 
 NONODE="$tmp/nonode-bin"; mkdir -p "$NONODE"
 for t in bash sh python3 git dirname basename awk tr sed grep cat wc head tail sort mktemp rm mkdir env readlink uname date cut find id; do

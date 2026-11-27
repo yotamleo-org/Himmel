@@ -25,8 +25,7 @@
 # guard runs or sources is locked out by the hook-integrity pin, so Writes naming one needs
 # HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the lint's own environment. The files are the project members of each
 # run-hook-with-bash.js command on an event where a failed check stops the next action, plus all they source, walked with
-# this checkout's hook-integrity.js; nothing from the brief's resume_cwd runs. The bypass is honoured only in a linked
-# worktree (honourBypass), so a bypass launch into a primary checkout holding .single-writer is still locked out.
+# this checkout's hook-integrity.js; nothing from the brief's resume_cwd runs.
 #
 # Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, the guard-lib
 # rule, a salus-marked brief that names a search, a resume_cwd the classifier cannot answer for, front matter that does not parse as YAML, or a
@@ -401,7 +400,6 @@ roots = [root.rstrip('/'), os.path.realpath(root)]
 sys.path.insert(0, kit)
 
 def under_root(p):
-    # the name of an absolute path under either spelling of the root ('' for the root itself); None when outside
     for r in roots:
         if p == r:
             return ''
@@ -423,7 +421,8 @@ try:
             rel = under_root(os.path.normpath(p)) if os.path.isabs(p) else os.path.normpath(p)
             if rel is not None:
                 out.append(('tree', '' if rel in ('', '.') else holds.canon(rel, root).rstrip('/') + '/'))
-except Exception:  # swallow-ok: a broken holds.py falls back to the raw split of the Writes text, as the core rule does
+except Exception as ex:
+    print('brief-lint: holds.py could not read the Writes line (%s: %s); reading it by the raw split' % (type(ex).__name__, ex), file=sys.stderr)
     out = []
     lines = text.splitlines()
     scope = ''
@@ -445,8 +444,8 @@ except Exception:  # swallow-ok: a broken holds.py falls back to the raw split o
             out.append(('tree', '' if rel == '' else rel + '/'))
         else:
             out.append(('file', rel))
-# every closure file ends in .sh, so without a .sh file or a tree no node process is needed
-if not any(k == 'tree' or p.endswith('.sh') for k, p in out):
+could_name_a_closure_file = any(k == 'tree' or p.endswith('.sh') for k, p in out)
+if not could_name_a_closure_file:
     sys.exit(10)
 for k, p in out:
     print('%s\t%s' % (k, p))
@@ -478,8 +477,7 @@ try {
   const PROJECT = [/^"\$CLAUDE_PROJECT_DIR\/([A-Za-z0-9._/-]+\.sh)"$/, /^"\$\{CLAUDE_PROJECT_DIR\}\/([A-Za-z0-9._/-]+\.sh)"$/,
     /^\$CLAUDE_PROJECT_DIR\/([A-Za-z0-9._/-]+\.sh)$/, /^\$\{CLAUDE_PROJECT_DIR\}\/([A-Za-z0-9._/-]+\.sh)$/];
   const bare = (w) => w.replace(/["']/g, '');
-  // One launcher segment, read the way parseHookArgs in run-hook-with-bash.js reads its argv.
-  const readSegment = (segment, where) => {
+  const readSegmentAsParseHookArgs = (segment, where) => {
     const bad = (word) => { throw new Unreadable(`cannot read hook command ${where} as members (${word}): refusing rather than reading it as none`); };
     const words = segment.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+|["']/g) || [];
     let chain = false;
@@ -526,7 +524,7 @@ try {
           const command = String(hook.command || '');
           const found = /run-hook-with-bash\.js["']?/g;
           while (found.exec(command)) {
-            readSegment(command.slice(found.lastIndex).split(/;|&&|\|\|/)[0], `${shown} ${event} #${n}`);
+            readSegmentAsParseHookArgs(command.slice(found.lastIndex).split(/;|&&|\|\|/)[0], `${shown} ${event} #${n}`);
           }
         }
       }
@@ -534,7 +532,9 @@ try {
   }
   const libsOf = new Map();
   const closure = new Map();
-  const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch (_e) { return false; } };
+  const isFile = (f) => {
+    try { return fs.statSync(f).isFile(); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return false; throw e; }
+  };
   for (const member of members) {
     const start = path.join(root, member);
     if (!isFile(start)) continue;
