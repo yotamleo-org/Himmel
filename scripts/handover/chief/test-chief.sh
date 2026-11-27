@@ -4526,6 +4526,7 @@ state() {
 [ -z "${FM10728_LOG:-}" ] || state before "$1" "$2"
 bash "$0.real" "$@"; rc=$?
 [ -z "${FM10728_LOG:-}" ] || state after "$1" "$2"
+if [ -n "${FM10728_NEWER:-}" ] && [ "$1" = remove ]; then bash "$0.real" add "$2" "$FM10728_NEWER" --lane native --arm 400k >/dev/null 2>&1; fi
 exit "$rc"
 STUB
 mk10877 mv10728
@@ -4579,6 +4580,37 @@ chief next --bucket noremove10728dst --doc "$A10877" >/dev/null 2>"$tmp/n10728.e
 check "10728 a refused removal refuses the hand-over" "$([ "$rcn10728" -ne 0 ] && echo refused || echo "rc=$rcn10728")" "refused"
 check "10728 a refused removal leaves no row pending that the outgoing manifest still lists" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
 check "10728 a refused removal leaves no saved copy of a row the outgoing manifest still lists" "$(jq -r '.workers | length' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "0"
+rel10877
+mk10877 newer10728
+mkdir -p "$root/tester/newer10728dst/DEMO-nextleg-${today}B-chief.fleet.json"
+FM10728_NEWER="$W10877/DEMO-1-N1-worker.md" chief next --bucket newer10728dst --doc "$A10877" >/dev/null 2>"$tmp/newer10728.err"
+check "10728 a restore keeps a row written since the removal" "$(jq -r '[.workers[] | select(.label == "N1") | .arm // "-"] | join(",")' "${A10877%.md}.fleet.json")" "400k"
+check "10728 a restore still puts the other rows back" "$(jq -r '[.workers[].label] | sort | join(",")' "${A10877%.md}.fleet.json")" "N1,N2,N3,N4,N5,N9"
+rel10877
+mk10877 twice10728
+printf '#!/usr/bin/env bash\nbash "%s" remove "%s" N2 >/dev/null 2>&1\necho "== STUB action-zero"\n' \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" > "$tmp/az-twice10728.sh"
+ACTION_ZERO_SCRIPT="$tmp/az-twice10728.sh" chief next --bucket twice10728dst --doc "$A10877" >/dev/null 2>"$tmp/twice10728.err"
+check "10728 a row that left the outgoing manifest after it was staged is not published" "$(jq -r '[.workers[].label] | join(",")' "$root/tester/twice10728dst/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)" "N1,N3,N4,N5"
+rel10877
+mk10877 latedead10728
+printf '%s\n' '# worker' '## Results' '- 09:00 LIVE — fixture' '- 09:30 WRAPPED — done' > "$W10877/DEMO-8-N8-late-dead.md"
+ql10728="$fixture_repo/scripts/handover/queue-lock.sh"
+cp "$ql10728" "$ql10728.real"
+cat > "$ql10728" <<'STUB'
+#!/usr/bin/env bash
+if [ -n "${QL10728_ADD:-}" ] && [ ! -e "$QL10728_FLAG" ]; then
+    : > "$QL10728_FLAG"
+    bash "$QL10728_FM" add "$QL10728_ADD" "$QL10728_DOC" --lane native >/dev/null 2>&1
+fi
+exec bash "$0.real" "$@"
+STUB
+QL10728_ADD="${A10877%.md}.fleet.json" QL10728_DOC="$W10877/DEMO-8-N8-late-dead.md" QL10728_FLAG="$tmp/ql10728.flag" \
+    QL10728_FM="$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" \
+    chief next --bucket latedead10728dst --doc "$A10877" >/dev/null 2>"$tmp/latedead10728.err"
+mv "$ql10728.real" "$ql10728"
+check "10728 the late dead row was added while next ran (control)" "$([ -e "$tmp/ql10728.flag" ] && echo yes || echo no)" "yes"
+check "10728 a dead row added after the staging is still retired from the outgoing manifest" "$(jq -r '[.workers[] | select(.label == "N8")] | length' "${A10877%.md}.fleet.json")" "0"
 rel10877
 mv "$fm10728.real" "$fm10728"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

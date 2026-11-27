@@ -65,6 +65,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/prim.sh
+. "$HERE/../../lib/prim.sh"
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 # shellcheck source=../../lib/worker-identity.sh
@@ -2562,7 +2564,7 @@ EOF
             && mv -f "$pend.tmp" "$pend" \
             && jq --slurpfile o "$old" '.workers as $n | .workers = $n + [($o[0].workers // [])[] | select(.doc as $x | any($n[]; .doc == $x) | not)]' "$pend" > "$moved.tmp" \
             && mv -f "$moved.tmp" "$moved" \
-            && out="$(jq --slurpfile n "$pend" '.workers = [(.workers // .legs)[] | . as $r | if type == "object" then ([$n[0].workers[] | select(.doc == $r.doc)][0] // $r) else $r end] | del(.legs)' "$staged")" \
+            && out="$(jq --arg d "$docs" --slurpfile n "$pend" '($d | split("\n")) as $c | .workers = [(.workers // .legs)[] | . as $r | if type != "object" then $r else (first($n[0].workers[] | select(.doc == $r.doc)) // (if any($c[]; . == $r.doc) then empty else $r end)) end] | del(.legs)' "$staged")" \
             && printf '%s\n' "$out" > "$staged"; }; then
             rm -f "$pend.tmp" "$moved.tmp"
             err "could not save the outgoing rows of $pred to $moved; nothing was moved"
@@ -2596,7 +2598,7 @@ drop_listed_rows() {
 restore_manifest_rows() (
     # prim-ok: the manifest writers' own bounded lock on fd 9
     exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
-    jq --slurpfile m "$2" '$m[0].workers as $b | .workers = $b + [(.workers // [])[] | select(.doc as $x | any($b[]; .doc == $x) | not)]' "$1" > "$1.restore" \
+    jq --slurpfile m "$2" '(.workers // []) as $cur | .workers = [$m[0].workers[] | select(.doc as $x | any($cur[]; .doc == $x) | not)] + $cur' "$1" > "$1.restore" \
         && mv -f "$1.restore" "$1"
 )
 
@@ -3394,7 +3396,7 @@ cmd_next() {
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
     if [ -f "$staged_manifest" ]; then
-        move_manifest_rows "$predecessor_manifest" "$staged_manifest" "$successor_manifest" "$carried_docs" || exit 1
+        with_lock "$predecessor_manifest.next.lock" move_manifest_rows "$predecessor_manifest" "$staged_manifest" "$successor_manifest" "$carried_docs" || exit 1
     fi
     trap - EXIT
     local load_window=1000000 load_mode="$CHIEF_CONTEXT_RESOLVED_MODE" load_record
@@ -3409,6 +3411,7 @@ cmd_next() {
         --spans-unknown "$(grep -o ':NONCE-UNKNOWN:' "$doc" | grep -c .)" \
         --reason "$REASON" --fill-percent "$fill_percent" --window "$load_window" \
         || err "warning: could not append the shift's load row to the load record in $state_dir"
+    retire_manifest_rows "$predecessor_manifest" "$dead_rows"
     retire_manifest_rows "${predecessor_manifest%.json}.moved.json" "$dead_rows"
     retire_manifest_rows "$successor_manifest" "$dead_rows"
     console_metadata "$inbox"

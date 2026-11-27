@@ -115,7 +115,7 @@ put_back_late_row() (
     # prim-ok: the manifest writers' own bounded lock on fd 9
     exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
     moved="${1%.json}.moved.json"
-    jq --arg d "$2" --slurpfile m "$moved" '.workers = [(.workers // [])[] | select(.doc != $d)] + [$m[0].workers[] | select(.doc == $d)]' "$1" > "$1.restore" \
+    jq --arg d "$2" --slurpfile m "$moved" '(.workers // []) as $cur | .workers = $cur + [$m[0].workers[] | select(.doc == $d and (any($cur[]; .doc == $d) | not))]' "$1" > "$1.restore" \
         && mv -f "$1.restore" "$1" \
         && drop_row "$moved" "$2" && drop_row "$moved.pending" "$2"
 )

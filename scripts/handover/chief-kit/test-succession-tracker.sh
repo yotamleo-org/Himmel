@@ -532,6 +532,8 @@ printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{
 out="$(run)"
 has "a moved row still resolves its worker doc (quoted-back)" "$out" "N1 quoted-back"
 has "a moved row with no quote-back is missing, not closed" "$out" "N2 missing"
+lacks "the missing worker is not also classified closed" "$out" "N2 closed"
+lacks "the quoted-back worker is not also classified closed" "$out" "N1 closed"
 rm -f "${MAN%.json}.moved.json"
 
 printf '\n%d failure(s)\n' "$fails"
