@@ -2,6 +2,17 @@
   "profiles": {
     "design": {
       "fromProfiles": ["design", "design-imagegen"],
+      "excludePlugins": ["builder-visual@himmel"],
+      "mcpServers": {
+        "context7": {
+          "serverUrl": "https://mcp.context7.com/mcp?client=claude-code-plugin"
+        },
+        "shadcn": {
+          "command": "npx",
+          "args": ["-y", "shadcn@4.21.0", "mcp"]
+        }
+      },
+      "optionalMcpServers": ["playwright"],
       "pinnedSkills": [
         {
           "repo": "https://github.com/google-gemini/demolab.git",

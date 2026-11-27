@@ -56,7 +56,7 @@ Semantics.)*
   - `luna-personal × zai-glm × inference` stayed **deny** — extraction only,
     and it still denies by *default* (the GLM de-listing added explicit deny rows only
     for the four cells that were open, it did not invent new rows).
-  - `salus × * × *` stays **deny, hard** — no override can flip it. The two interactive inference carve-outs ahead of it are `salus × openai-codex × inference` (operator ruling 2026-10-08) and `salus × google-antigravity × inference` (operator ruling 2026-11-23, Decision 1259; interactive Antigravity/agy via Google trusted route, distinct from hard-denied API-key `google-gemini`).
+  - `salus × * × *` stays **deny, hard** — no override can flip it. The six inference carve-outs ahead of it are `salus × openai-codex × inference` (operator ruling 2026-10-08), `salus × google-antigravity × inference` (operator ruling 2026-11-23, Decision 1259; interactive Antigravity/agy via Google trusted route, distinct from hard-denied API-key `google-gemini`) and, from decision 1375 R2 (operator ruling 2026-11-26: gemini, cursor, x, copilot, anthropic, openai), `salus × anthropic × inference`, `salus × cursor × inference`, `salus × grok-harness × inference` and `salus × copilot-cli × inference`. The Grok harness id is `grok-harness`, not `grok`, because hermes resolves `--provider grok` to its xai provider; `xai-grokbot` stays hard-denied. These rows open the egress fence only: the Cursor, Grok and Copilot lane descriptors still refuse a launch.
   - **Not a default.** `refresh-graph-map.sh` keeps `BACKEND=claude-cli`
     (the claude-only adopter story). GLM is a per-run opt-in for an
     operator who has a Coding Plan; an adopter without one is never expected to
@@ -366,7 +366,10 @@ review, not a code edit.
   ruling 2026-11-23, Decisions 1246 & 1259, which allows interactive
   Antigravity/agy inference on `himmel-code`, `handover-state`,
   `luna-personal`, `luna-clippings`, and `salus`, while denying `voice-audio`
-  and all non-inference purposes); API-key/hermes `google-gemini` stays hard-denied everywhere (keys stay
+  and all non-inference purposes) and, from decision 1375 R2 (operator ruling
+  2026-11-26), `salus × anthropic|cursor|grok-harness|copilot-cli × inference`
+  (inference only; `grok-harness` is not `grok`, which hermes resolves to xai);
+  API-key/hermes `google-gemini` stays hard-denied everywhere (keys stay
   unset); there are now **zero `pending-operator` cells** (the five
   Alibaba embedding/rerank cells were demoted to explicit `deny`); **DeepSeek +
   Alibaba are de-listed** for vault/handover egress (explicit `deny`), and stay
