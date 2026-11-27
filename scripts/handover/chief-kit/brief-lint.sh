@@ -21,8 +21,15 @@
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
-# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, a salus-marked
-# brief that names a search, a resume_cwd the classifier cannot answer for, front matter that does not parse as YAML, or a
+# The guard-lib rule also runs on every brief but a judge's, --core-only included. A worker that saves an edit to a file a
+# guard runs or sources is locked out by the hook-integrity pin, so Writes naming one needs
+# HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the lint's own environment. The files are the project members of each
+# run-hook-with-bash.js command on an event where a failed check stops the next action, plus all they source, walked with
+# this checkout's hook-integrity.js; nothing from the brief's resume_cwd runs. The bypass is honoured only in a linked
+# worktree (honourBypass), so a bypass launch into a primary checkout holding .single-writer is still locked out.
+#
+# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, the guard-lib
+# rule, a salus-marked brief that names a search, a resume_cwd the classifier cannot answer for, front matter that does not parse as YAML, or a
 # worker brief whose resume_cwd is in a primary checkout.
 set -u
 
@@ -385,6 +392,223 @@ PY
     fi
 }
 
+IFS= read -r -d '' GL_TOKENS_PY <<'PY' || true  # swallow-ok: read -d '' returns 1 at the end of the text, by design
+import os, re, sys
+
+doc, root, kit = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(doc, encoding='utf-8', errors='replace').read()
+roots = [root.rstrip('/'), os.path.realpath(root)]
+sys.path.insert(0, kit)
+
+def under_root(p):
+    # the name of an absolute path under either spelling of the root ('' for the root itself); None when outside
+    for r in roots:
+        if p == r:
+            return ''
+        if p.startswith(r + '/'):
+            return p[len(r) + 1:]
+    return None
+
+out = []
+try:
+    import holds
+    for kind, p in holds.parse_text(text, root):
+        if kind == 'file':
+            for r in roots:
+                got = holds.normalize(r, p)
+                if got and got[0] != '_abs':
+                    out.append(('file', got[1]))
+                    break
+        else:
+            rel = under_root(os.path.normpath(p)) if os.path.isabs(p) else os.path.normpath(p)
+            if rel is not None:
+                out.append(('tree', '' if rel in ('', '.') else holds.canon(rel, root).rstrip('/') + '/'))
+except Exception:  # swallow-ok: a broken holds.py falls back to the raw split of the Writes text, as the core rule does
+    out = []
+    lines = text.splitlines()
+    scope = ''
+    for i, line in enumerate(lines):
+        if line.startswith('> **Writes:**'):
+            scope += ' ' + line[len('> **Writes:**'):]
+            for nxt in lines[i + 1:]:
+                if not nxt.startswith('> ') or nxt.startswith('> **'):
+                    break
+                scope += ' ' + nxt[2:]
+    for tok in (t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', scope)):
+        if not tok.strip('./-'):
+            continue
+        n = os.path.normpath(tok)
+        rel = under_root(n) if os.path.isabs(n) else n
+        if rel is None:
+            continue
+        if tok.endswith('/') or rel == '' or os.path.isdir(os.path.join(root, rel)):
+            out.append(('tree', '' if rel == '' else rel + '/'))
+        else:
+            out.append(('file', rel))
+# every closure file ends in .sh, so without a .sh file or a tree no node process is needed
+if not any(k == 'tree' or p.endswith('.sh') for k, p in out):
+    sys.exit(10)
+for k, p in out:
+    print('%s\t%s' % (k, p))
+PY
+
+IFS= read -r -d '' GL_WALK_JS <<'JS' || true  # swallow-ok: read -d '' returns 1 at the end of the text, by design
+const fs = require('fs');
+const path = require('path');
+const [resolver, rootArg, pluginsDir, tokenText, eventText] = process.argv.slice(1);
+function Unreadable(m) { this.message = m; }
+try {
+  const kit = require(path.resolve(resolver));
+  const root = fs.realpathSync(rootArg);
+  const tokens = tokenText.split('\n').filter(Boolean).map((l) => l.split('\t'));
+  const pinned = tokens.some(([k, p]) => kit.PIN_DIRS.some((d) => (k === 'file'
+    ? p.startsWith(`${d}/`) : `${d}/`.startsWith(p) || p.startsWith(`${d}/`))));
+  if (!pinned) process.exit(0);
+  const files = [];
+  const settings = path.join(root, '.claude', 'settings.json');
+  if (fs.existsSync(settings)) files.push([settings, '.claude/settings.json']);
+  if (fs.existsSync(pluginsDir)) {
+    for (const name of fs.readdirSync(pluginsDir).sort()) {
+      const f = path.join(pluginsDir, name, 'hooks', 'hooks.json');
+      if (fs.existsSync(f)) files.push([f, `marketplace/plugins/${name}/hooks/hooks.json`]);
+    }
+  }
+  const skip = new Set(eventText.split(' '));
+  const members = new Set();
+  const PROJECT = [/^"\$CLAUDE_PROJECT_DIR\/([A-Za-z0-9._/-]+\.sh)"$/, /^"\$\{CLAUDE_PROJECT_DIR\}\/([A-Za-z0-9._/-]+\.sh)"$/,
+    /^\$CLAUDE_PROJECT_DIR\/([A-Za-z0-9._/-]+\.sh)$/, /^\$\{CLAUDE_PROJECT_DIR\}\/([A-Za-z0-9._/-]+\.sh)$/];
+  const bare = (w) => w.replace(/["']/g, '');
+  // One launcher segment, read the way parseHookArgs in run-hook-with-bash.js reads its argv.
+  const readSegment = (segment, where) => {
+    const bad = (word) => { throw new Unreadable(`cannot read hook command ${where} as members (${word}): refusing rather than reading it as none`); };
+    const words = segment.match(/(?:"[^"]*"|'[^']*'|[^\s"'])+|["']/g) || [];
+    let chain = false;
+    let lifecycle = false;
+    let optional = false;
+    let failClosed = false;
+    let i = 0;
+    while (i < words.length && bare(words[i]).startsWith('--')) {
+      const flag = bare(words[i]);
+      if (flag === '--chain') chain = true;
+      else if (flag === '--lifecycle') lifecycle = true;
+      else if (flag === '--optional') optional = true;
+      else if (flag === '--fail-closed-when') {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*=/.test(bare(words[i + 1] || ''))) bad(words[i + 1] || flag);
+        failClosed = true;
+        i += 1;
+      } else bad(flag);
+      i += 1;
+    }
+    const rest = words.slice(i);
+    if (!rest.length) bad('(no member)');
+    if (failClosed && !optional) bad('--fail-closed-when');
+    if (chain && (optional || failClosed)) bad('--chain');
+    if (lifecycle && !chain) bad('--lifecycle');
+    for (const word of chain ? rest : [rest[0]]) {
+      if (word.startsWith('${CLAUDE_PLUGIN_ROOT}') || word.startsWith('"${CLAUDE_PLUGIN_ROOT}')) continue;
+      const hit = PROJECT.map((re) => word.match(re)).find(Boolean);
+      if (!hit || hit[1].split('/').includes('..')) bad(word);
+      if (!chain) {
+        process.env.CLAUDE_PROJECT_DIR = root;
+        if (kit.isWatchdogMember(path.join(root, hit[1]))) continue;
+      }
+      members.add(hit[1]);
+    }
+  };
+  for (const [file, shown] of files) {
+    const hooks = JSON.parse(fs.readFileSync(file, 'utf8')).hooks || {};
+    for (const event of Object.keys(hooks)) {
+      if (skip.has(event)) continue;
+      let n = 0;
+      for (const group of hooks[event]) {
+        for (const hook of group.hooks || []) {
+          n += 1;
+          const command = String(hook.command || '');
+          const found = /run-hook-with-bash\.js["']?/g;
+          while (found.exec(command)) {
+            readSegment(command.slice(found.lastIndex).split(/;|&&|\|\|/)[0], `${shown} ${event} #${n}`);
+          }
+        }
+      }
+    }
+  }
+  const libsOf = new Map();
+  const closure = new Map();
+  const isFile = (f) => { try { return fs.statSync(f).isFile(); } catch (_e) { return false; } };
+  for (const member of members) {
+    const start = path.join(root, member);
+    if (!isFile(start)) continue;
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const file = queue.shift();
+      const rel = path.relative(root, file);
+      if (!closure.has(rel)) closure.set(rel, new Set());
+      closure.get(rel).add(member);
+      if (!libsOf.has(file)) libsOf.set(file, kit.sourcedClosure(file, root).libs);
+      for (const lib of libsOf.get(file)) {
+        const inside = path.relative(root, lib);
+        if (seen.has(lib) || inside.startsWith('..') || path.isAbsolute(inside) || !isFile(lib)) continue;
+        seen.add(lib);
+        queue.push(lib);
+      }
+    }
+  }
+  for (const rel of [...closure.keys()].sort()) process.stdout.write(`${[rel, ...[...closure.get(rel)].sort()].join('\t')}\n`);
+} catch (e) {
+  process.stdout.write(`${String((e && e.message) || e).split('\n')[0]}\n`);
+  process.exitCode = e instanceof Unreadable ? 4 : 5;
+}
+JS
+
+IFS= read -r -d '' GL_VERDICT_PY <<'PY' || true  # swallow-ok: read -d '' returns 1 at the end of the text, by design
+import os, sys
+
+doc, tokens, closure = sys.argv[1], sys.argv[2], sys.argv[3]
+rows = [l.split('\t') for l in closure.splitlines() if l]
+toks = [l.split('\t') for l in tokens.splitlines() if l]
+hits = sorted((r for r in rows if any(r[0] == p if k == 'file' else r[0].startswith(p) for k, p in toks)), key=lambda r: r[0])
+if not hits:
+    sys.exit(0)
+more = ', and %d more' % (len(hits) - 5) if len(hits) > 5 else ''
+if os.environ.get('HIMMEL_HOOK_INTEGRITY_BYPASS_OK') == '1':
+    print('brief-lint: guard-lib bypass=hook-integrity %s%s' % (', '.join(r[0] for r in hits[:5]), more), file=sys.stderr)
+    sys.exit(0)
+named = ', '.join('%s (run by %s%s)' % (r[0], r[1], ' +%d' % (len(r) - 2) if len(r) > 2 else '') for r in hits[:5])
+print('brief-lint: %s: launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 ("hook": true in workers.json) only if the ticket edits these files the pinned guards run, else drop them from Writes: %s%s' % (doc, named, more), file=sys.stderr)
+print('fix: gen-briefs.py exports the bypass in the launcher of a "hook": true worker; for a hand launch, export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the shell that runs headed-arm-worker.sh. The bypass switches off the integrity pin and the worker write fence\'s pin-dir and anchor fences for the whole session', file=sys.stderr)
+sys.exit(3)
+PY
+
+guard_lib_rule() {
+    local NON_LOCKOUT_EVENTS kit resolver tokens closure rc=0
+    NON_LOCKOUT_EVENTS="Stop SubagentStop TeammateIdle TaskCompleted PreCompact PostToolUse PostToolUseFailure SessionStart SessionEnd Notification PermissionDenied"
+    [ "$judge" -eq 0 ] || return 0
+    { [ "${cwd#/}" != "$cwd" ] && [ -d "$cwd" ]; } || return 0
+    kit="$(cd "$(dirname "$0")" && pwd)"
+    tokens="$(python3 -I -c "$GL_TOKENS_PY" "$doc" "$cwd" "$kit")" || rc=$?
+    [ "$rc" -ne 10 ] || return 0
+    if [ "$rc" -ne 0 ]; then
+        echo "brief-lint: $doc: cannot work out which files the pinned guards run under $cwd (the Writes line could not be read, exit $rc): refusing rather than reading it as none" >&2
+        exit 3
+    fi
+    resolver="$kit/../../hooks/hook-integrity.js"
+    if [ ! -f "$resolver" ]; then
+        echo "brief-lint: guard-lib skipped=no-resolver $resolver" >&2
+        return 0
+    fi
+    closure="$(node -e "$GL_WALK_JS" "$resolver" "$cwd" "$kit/../../../marketplace/plugins" "$tokens" "$NON_LOCKOUT_EVENTS")" || rc=$?
+    if [ "$rc" -eq 4 ]; then
+        echo "brief-lint: $doc: $closure" >&2
+        exit 3
+    elif [ "$rc" -ne 0 ]; then
+        echo "brief-lint: $doc: cannot work out which files the pinned guards run under $cwd (${closure:-node exited $rc}): refusing rather than reading it as none" >&2
+        exit 3
+    fi
+    rc=0; python3 -I -c "$GL_VERDICT_PY" "$doc" "$tokens" "$closure" || rc=$?
+    [ "$rc" -eq 0 ] || exit 3
+}
+
 # The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
 # stripped, a leading ~ expanded. This block is the launcher's, line for line (test-brief-lint.sh compares them).
 cwd="$(awk '
@@ -567,6 +791,7 @@ if [ "$judge" -eq 0 ] && [ -n "$cwd" ] && grep -Eq '^> \*\*Contract:\*\*' "$doc"
 fi
 
 if [ "$core_only" -eq 1 ]; then
+    guard_lib_rule
     mirror_heal
     core_rule
     bucket_rule
@@ -706,6 +931,7 @@ if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_
     fi
 fi
 
+guard_lib_rule
 mirror_heal
 core_rule
 bucket_rule

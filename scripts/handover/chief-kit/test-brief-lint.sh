@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-worker.sh
+# shellcheck disable=SC2015,SC2016  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-worker.sh; section 15's hook commands are literal text
 # scripts/handover/chief-kit/test-brief-lint.sh - suite for brief-lint.sh
 # the arming-time check that a worker or judge brief carries a
 # filled `> **Prior art:**` line, plus the headed-arm-worker.sh call site that
@@ -25,6 +25,9 @@
 #      (its .git a directory, no .single-writer) is refused, exit 3 in two lines, with and without --core-only; a
 #      classifier crash refuses too; worktrees, plain directories and .single-writer repos pass; the lint agrees with
 #      the guard's main_checkout_verdict on a tracked file at the directory's top.
+#   15. a brief whose Writes name a file the pinned guards run (a member of a PreToolUse-style hook command, or a lib it
+#      sources) is refused, exit 3, unless HIMMEL_HOOK_INTEGRITY_BYPASS_OK is exactly 1, --core-only and the launcher
+#      included; an unreadable hook command, wiring file, resolver or missing node refuses; a kit copy with no resolver skips.
 set -u
 export UNGUARDED_LAUNCH_OK=1
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
@@ -1408,6 +1411,187 @@ FAKEBIN_P="$tmp/fakebin-primary"; mkdir -p "$FAKEBIN_P"
 printf '#!/bin/sh\ncase "$*" in *"salus_marked.py primary"*) exit 7 ;; esac\nexec %s "$@"\n' "$REAL_PY" > "$FAKEBIN_P/python3"; chmod +x "$FAKEBIN_P/python3"
 lint_rc=0; err="$(PATH="$FAKEBIN_P:$PATH" bash "$LINT" "$tmp/p_prim.md" 2>&1 >/dev/null)" || lint_rc=$?
 { [ "$lint_rc" -eq 3 ] && grep -Fq 'salus_marked.py primary exited 7' <<< "$err"; } && ok "14N9 a primary classifier that crashes is refused, naming it" || bad "14N9 crashing primary classifier (rc=$lint_rc): $err"
+
+KITROOT="$(cd "$HERE/../../.." && pwd)"
+gw_cmd() {
+    python3 -I -c 'import json,sys
+l="\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\""
+m=sys.argv[1]
+print(json.dumps("if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" %s %s; else node %s %s; fi" % (l, m, l, m)))' "$1"
+}
+gw_settings() {
+    printf '{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":%s}]}],"SessionStart":[{"hooks":[{"type":"command","command":%s}]}]}}\n' \
+        "$2" "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/start-s.sh"')" > "$1/.claude/settings.json"
+}
+mk_gw() {
+    mk_wt "$1" || return 1
+    mkdir -p "$1/.claude" "$1/scripts/hooks" "$1/scripts/lib" "$1/scripts/handover/chief-kit"
+    : > "$1/scripts/handover/chief-kit/headed-arm-worker.sh"
+    # shellcheck disable=SC2016  # literal fixture source lines
+    printf '. "$(dirname "$0")/../lib/g-lib.sh"\n' > "$1/scripts/hooks/guard-g.sh"
+    # shellcheck disable=SC2016
+    printf '. "$(dirname "$0")/../lib/s-lib.sh"\n' > "$1/scripts/hooks/start-s.sh"
+    local l; for l in g-lib s-lib other; do printf '# %s\n' "$l" > "$1/scripts/lib/$l.sh"; done
+    gw_settings "$1" "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"
+}
+mk_g() {
+    mkc "$1" "${3:-$CW_G}" '# brief' "$VAGUE" "$DIR_LINE" '' "> **Writes:** $2" '> **Contract:** y' "$RES"
+}
+G_LINT="$LINT"
+lint_g() {
+    local b="$1"; shift
+    lint_rc=0; err="$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK="$b" HANDOVER_DIR="$tmp" bash "$G_LINT" "$@" 2>&1 >/dev/null)" || lint_rc=$?
+}
+g_line1() { grep -F 'launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' <<< "$err" | head -n 1; }
+g_refused() {
+    local label="$1" doc="$2" l1 n; shift 2
+    l1="$(g_line1)"
+    if [ "$lint_rc" -eq 3 ] && [[ "$l1" == "brief-lint: $doc: launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1"* ]] \
+        && grep -q '^fix: ' <<< "$(grep -F -A1 'launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' <<< "$err" | tail -n 1)"; then
+        for n in "$@"; do [[ "$l1" == *"$n"* ]] || { bad "$label (line 1 lacks '$n'): $l1"; return; }; done
+        ok "$label"
+    else bad "$label (rc=$lint_rc): $err"; fi
+}
+g_passed() {
+    if [ "$lint_rc" -eq 0 ] && ! grep -Fq 'guard-lib' <<< "$err"; then ok "$1"; else bad "$1 (rc=$lint_rc): $err"; fi
+}
+g_err3() {
+    if [ "$lint_rc" -eq 3 ] && grep -Fq -- "$2" <<< "$err"; then ok "$1"; else bad "$1 (rc=$lint_rc): $err"; fi
+}
+CW_G="$tmp/cwd-guard"; mk_gw "$CW_G" || exit 1
+mk_g g_ctl 'docs/x.md'; lint_g '' "$tmp/g_ctl.md"; g_passed "15.0 control: the fixture brief with a docs Writes line passes"
+mk_g g1 'scripts/lib/g-lib.sh'
+lint_g '' "$tmp/g1.md"; g_refused "G1 a sourced lib with no bypass is refused, naming the lib and its guard" "$tmp/g1.md" 'scripts/lib/g-lib.sh (run by scripts/hooks/guard-g.sh)'
+lint_g 1 "$tmp/g1.md"; [ "$lint_rc" -eq 0 ] && ok "G2 the bypass 1 passes" || bad "G2 bypass 1 (rc=$lint_rc): $err"
+grep -Fq 'guard-lib bypass=hook-integrity' <<< "$err" && ok "G2h the pass says guard-lib bypass=hook-integrity" || bad "G2h no bypass line: $err"
+lint_g true "$tmp/g1.md"; g_refused "G2b the value true is not 1" "$tmp/g1.md" 'scripts/lib/g-lib.sh'
+mk_g g3 'scripts/lib/other.sh'; lint_g '' "$tmp/g3.md"; g_passed "G3 a lib no guard sources passes"
+mk_g g4 'scripts/hooks/guard-g.sh'
+lint_g '' "$tmp/g4.md"; g_refused "G4a a member script with no bypass is refused" "$tmp/g4.md" 'scripts/hooks/guard-g.sh'
+lint_g 1 "$tmp/g4.md"; [ "$lint_rc" -eq 0 ] && ok "G4b and passes with the bypass" || bad "G4b (rc=$lint_rc): $err"
+mk_g g5 'scripts/lib/'; lint_g '' "$tmp/g5.md"; g_refused "G5 a tree holding a closure file is refused" "$tmp/g5.md" 'scripts/lib/g-lib.sh'
+mkdir -p "$CW_G/scripts/other"; mk_g g6 'scripts/other/'; lint_g '' "$tmp/g6.md"; g_passed "G6 a tree with no closure file passes"
+lint_g '' --core-only "$tmp/g1.md"; g_refused "G7 --core-only does not clear it" "$tmp/g1.md" 'scripts/lib/g-lib.sh'
+lint_g 1 --core-only "$tmp/g1.md"; [ "$lint_rc" -eq 0 ] && ok "G7.ctl --core-only with the bypass passes" || bad "G7.ctl (rc=$lint_rc): $err"
+lint_g '' --judge "$tmp/g1.md"; g_passed "G8 a judge brief is not held to it"
+
+CW_REAL="$tmp/cwd-real"; mk_wt "$CW_REAL" || exit 1
+mkdir -p "$CW_REAL/.claude" "$CW_REAL/scripts/handover/chief-kit" "$CW_REAL/marketplace/plugins/himmel-ops"
+: > "$CW_REAL/scripts/handover/chief-kit/headed-arm-worker.sh"
+cp "$KITROOT/.claude/settings.json" "$CW_REAL/.claude/settings.json"
+cp -R "$KITROOT/scripts/hooks" "$KITROOT/scripts/lib" "$KITROOT/scripts/guardrails" "$CW_REAL/scripts/"
+cp -R "$KITROOT/marketplace/plugins/himmel-ops/hooks" "$CW_REAL/marketplace/plugins/himmel-ops/hooks"
+mk_g g9 'scripts/lib/worker-tail-status.sh scripts/lib/canon-path.sh scripts/hooks/block-worker-write-fence.sh' "$CW_REAL"
+lint_g '' "$tmp/g9.md"; g_refused "G9a the real wiring yields both sampled libs and a plugin-wired member" "$tmp/g9.md" 'scripts/lib/worker-tail-status.sh' 'scripts/lib/canon-path.sh' 'scripts/hooks/block-worker-write-fence.sh'
+lint_g 1 "$tmp/g9.md"; [ "$lint_rc" -eq 0 ] && ok "G9b and passes with the bypass" || bad "G9b (rc=$lint_rc): $err"
+mk_g g9c 'scripts/lib/no-such-lib.sh' "$CW_REAL"; lint_g '' "$tmp/g9c.md"; g_passed "G9.ctl a lib nothing sources passes on the same copy"
+mk_g g21 'scripts/lib/session-lane.sh' "$CW_REAL"; lint_g '' "$tmp/g21.md"; g_passed "G21 a lib reached only through the single-mode watchdog passes"
+
+mk_kit() {
+    mkdir -p "$1/scripts/handover" "$1/scripts/hooks" "$1/marketplace/plugins/himmel-ops/hooks"
+    cp -R "$HERE" "$1/scripts/handover/chief-kit"; cp -R "$HERE/../../lib" "$1/scripts/lib"; cp -R "$HERE/../../guardrails" "$1/scripts/guardrails"
+    cp "$KITROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" "$1/marketplace/plugins/himmel-ops/hooks/hooks.json"
+    [ "$2" != resolver ] || cp "$KITROOT/scripts/hooks/hook-integrity.js" "$1/scripts/hooks/hook-integrity.js"
+}
+mk_kit "$tmp/kit15f" resolver
+python3 -I - "$tmp/kit15f/marketplace/plugins/himmel-ops/hooks/hooks.json" <<'PY'
+import json, sys
+f = sys.argv[1]
+d = json.load(open(f))
+for groups in d['hooks'].values():
+    for g in groups:
+        g['hooks'] = [h for h in g.get('hooks', []) if 'block-worker-write-fence.sh' not in h.get('command', '')]
+json.dump(d, open(f, 'w'))
+PY
+G_LINT="$tmp/kit15f/scripts/handover/chief-kit/brief-lint.sh"
+lint_g '' "$tmp/g9.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq 'canon-path.sh' <<< "$err" && ! grep -Fq 'block-worker-write-fence.sh' <<< "$err"; } \
+    && ok "G9.ctl2 without the plugin command the write fence is no longer named" || bad "G9.ctl2 (rc=$lint_rc): $err"
+G_LINT="$LINT"
+
+CW_G10="$tmp/cwd-g10"; mk_gw "$CW_G10" || exit 1; printf '{\n' > "$CW_G10/.claude/settings.json"
+mk_g g10 'scripts/lib/g-lib.sh' "$CW_G10"; lint_g '' "$tmp/g10.md"; g_err3 "G10 unparsable settings.json refuses" 'cannot work out which files the pinned guards run'
+
+CW_G11="$tmp/cwd-g11"; mk_gw "$CW_G11" || exit 1
+printf "require('fs').writeFileSync(%s, 'ran');\nmodule.exports = {PIN_DIRS: [], sourcedClosure: () => ({libs: [], unresolved: []}), isWatchdogMember: () => false};\n" \
+    "$(python3 -I -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$tmp/g11-ran")" > "$CW_G11/scripts/hooks/hook-integrity.js"
+mk_g g11 'scripts/lib/g-lib.sh' "$CW_G11"; lint_g '' "$tmp/g11.md"; g_refused "G11 the refusal stands with a hostile worktree resolver" "$tmp/g11.md" 'scripts/lib/g-lib.sh'
+[ ! -e "$tmp/g11-ran" ] && ok "G11b the worktree's hook-integrity.js never ran" || bad "G11b the worktree's resolver ran"
+
+mkdir -p "$tmp/g12-root"
+rc=0; out="$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK='' HANDOVER_DIR="$tmp/g12-root" run_worker "$tmp/g1.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -ne 0 ] && grep -Fq 'launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' <<< "$out"; } && ok "G12a the launcher refuses without the bypass" || bad "G12a (rc=$rc): $out"
+rc=0; out="$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HANDOVER_DIR="$tmp/g12-root" run_worker "$tmp/g1.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 0 ] && ! grep -Fq 'launch with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' <<< "$out"; } && ok "G12b and does not with it" || bad "G12b (rc=$rc): $out"
+
+mk_g g14a "$CW_G/scripts/lib/g-lib.sh"; lint_g '' "$tmp/g14a.md"; g_refused "G14a an absolute path under the worktree is refused" "$tmp/g14a.md" 'scripts/lib/g-lib.sh'
+ln -s "$CW_G" "$tmp/g-link"
+mk_g g14b "$tmp/g-link/scripts/lib/g-lib.sh" "$tmp/g-link"; lint_g '' "$tmp/g14b.md"; g_refused "G14b through a symlinked root and resume_cwd" "$tmp/g14b.md" 'scripts/lib/g-lib.sh'
+mk_g g14c "$CW_G/scripts/lib/"; lint_g '' "$tmp/g14c.md"; g_refused "G14c an absolute tree under the worktree is refused" "$tmp/g14c.md" 'scripts/lib/g-lib.sh'
+
+LONG="$tmp/$(printf 'a%.0s' {1..90})/$(printf 'b%.0s' {1..90})/$(printf 'c%.0s' {1..40})"; mkdir -p "$LONG"
+mk_g g15 'scripts/lib/' "$CW_REAL"; mv "$tmp/g15.md" "$LONG/g15.md"
+lint_g '' "$LONG/g15.md"; l1="$(g_line1)"
+{ [ "$lint_rc" -eq 3 ] && [ "${#l1}" -gt 600 ] && [[ "${l1:0:600}" == *"else drop them from Writes"* ]] && [[ "$l1" =~ and\ [0-9]+\ more$ ]]; } \
+    && ok "G15 the fix survives the 600-character cut and the list ends with 'and <n> more'" || bad "G15 (rc=$lint_rc len=${#l1}): $err"
+lint_g 1 "$LONG/g15.md"; [ "$lint_rc" -eq 0 ] && ok "G15.ctl the same brief with the bypass passes" || bad "G15.ctl (rc=$lint_rc): $err"
+
+cat > "$tmp/g16.py" <<'PY'
+import re, sys
+launcher, lint = open(sys.argv[1]).read(), open(sys.argv[2]).read()
+m = re.search(r'NON_GATING_EVENTS = new Set\(\[([^\]]*)\]\)', launcher)
+n = re.search(r'^\s*(?:local )?NON_LOCKOUT_EVENTS="([^"]*)"$', lint, re.M)
+if not m or not n:
+    sys.exit('no literal (launcher=%s lint=%s)' % (bool(m), bool(n)))
+gating = set(re.findall(r"'([^']+)'", m.group(1)))
+stderr_only = {'PostToolUse', 'PostToolUseFailure', 'SessionStart', 'SessionEnd', 'Notification', 'PermissionDenied'}
+got = n.group(1).split()
+if sorted(got) != sorted(gating | stderr_only):
+    sys.exit('mismatch: %s' % sorted(set(got) ^ (gating | stderr_only)))
+PY
+g16_check() { python3 -I "$tmp/g16.py" "$1" "$HERE/brief-lint.sh" 2>&1; }
+out="$(g16_check "$KITROOT/scripts/hooks/run-hook-with-bash.js")" && ok "G16 the lint's non-lockout events are the launcher's five plus the six stderr-only names" || bad "G16 $out"
+sed "s/'PreCompact'\]);/'PreCompact', 'Extra']);/" "$KITROOT/scripts/hooks/run-hook-with-bash.js" > "$tmp/g16-add.js"
+sed "s/'Stop', 'SubagentStop'/'SubagentStop'/" "$KITROOT/scripts/hooks/run-hook-with-bash.js" > "$tmp/g16-del.js"
+g16_check "$tmp/g16-add.js" >/dev/null && bad "G16.ctl1 an added launcher name passed" || ok "G16.ctl1 an added launcher name fails the check"
+g16_check "$tmp/g16-del.js" >/dev/null && bad "G16.ctl2 a removed launcher name passed" || ok "G16.ctl2 a removed launcher name fails the check"
+
+mk_kit "$tmp/kit17" none; G_LINT="$tmp/kit17/scripts/handover/chief-kit/brief-lint.sh"
+lint_g '' "$tmp/g1.md"; [ "$lint_rc" -eq 0 ] && ok "G17 a kit copy with no resolver passes" || bad "G17 (rc=$lint_rc): $err"
+grep -Fq 'guard-lib skipped=no-resolver' <<< "$err" && ok "G17h and says guard-lib skipped=no-resolver" || bad "G17h no skip line: $err"
+mk_kit "$tmp/kit18" resolver; printf 'raise RuntimeError("broken holds")\n' > "$tmp/kit18/scripts/handover/chief-kit/holds.py"
+G_LINT="$tmp/kit18/scripts/handover/chief-kit/brief-lint.sh"
+lint_g '' "$tmp/g1.md"; g_refused "G18 a broken holds.py falls back to the raw split" "$tmp/g1.md" 'scripts/lib/g-lib.sh'
+lint_g '' "$tmp/g14a.md"; g_refused "G18b the fallback relativizes an absolute token" "$tmp/g14a.md" 'scripts/lib/g-lib.sh'
+lint_g '' "$tmp/g3.md"; g_passed "G18.ctl the fallback passes an unrelated lib"
+mk_kit "$tmp/kit23" none; printf 'throw new Error("boom");\n' > "$tmp/kit23/scripts/hooks/hook-integrity.js"
+G_LINT="$tmp/kit23/scripts/handover/chief-kit/brief-lint.sh"
+lint_g '' "$tmp/g1.md"; g_err3 "G23 a resolver that throws refuses" 'cannot work out which files the pinned guards run'
+G_LINT="$LINT"
+
+CW_G19="$tmp/cwd-g19"; mk_gw "$CW_G19" || exit 1
+gw_settings "$CW_G19" "$(gw_cmd '"$CLAUDE_PROJECT_DIR"/scripts/hooks/guard-g.sh')"
+mk_g g19 'scripts/lib/g-lib.sh' "$CW_G19"; lint_g '' "$tmp/g19.md"; g_err3 "G19 a quote closing before the slash is refused, not dropped" 'cannot read hook command'
+mk_g g20 'scripts/lib/s-lib.sh'; lint_g '' "$tmp/g20.md"; g_passed "G20 a lib reached only from a SessionStart member passes"
+
+g22() {
+    local d="$tmp/cwd-$1"
+    mk_gw "$d" || exit 1; gw_settings "$d" "$2"
+    mk_g "$1" 'scripts/lib/g-lib.sh' "$d"; lint_g '' "$tmp/$1.md"
+}
+g22 g22a "$(gw_cmd 'scripts/hooks/guard-g.sh')"; g_err3 "G22a a relative member is refused" 'cannot read hook command'
+# shellcheck disable=SC2016  # literal command text
+g22 g22b "$(python3 -I -c 'import json; print(json.dumps("L=\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\"; node \"$L\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh\""))')"
+g_err3 "G22b a launcher path held in a variable (empty segment) is refused" 'cannot read hook command'
+g22 g22c "$(gw_cmd '--lifecycle "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22c a lone --lifecycle is refused" 'cannot read hook command'
+g22 g22d "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh" startup')"; g_refused "G22d an argument word after a single member is an argument" "$tmp/g22d.md" 'scripts/lib/g-lib.sh (run by scripts/hooks/guard-g.sh)'
+
+NONODE="$tmp/nonode-bin"; mkdir -p "$NONODE"
+for t in bash sh python3 git dirname basename awk tr sed grep cat wc head tail sort mktemp rm mkdir env readlink uname date cut find id; do
+    p="$(command -v "$t")" && ln -sf "$p" "$NONODE/$t"
+done
+lint_rc=0; err="$(PATH="$NONODE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK='' HANDOVER_DIR="$tmp" bash "$LINT" "$tmp/g1.md" 2>&1 >/dev/null)" || lint_rc=$?
+g_err3 "G25 with no node on PATH the rule refuses" 'cannot work out which files the pinned guards run'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

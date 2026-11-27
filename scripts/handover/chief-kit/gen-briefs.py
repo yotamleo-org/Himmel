@@ -22,7 +22,8 @@ ONLY this field supplies the brief's Writes paths, never scope or prior. An abso
 stays on the line; any other absolute path is dropped. Missing writes leaves an
 empty Writes line, which the brief-lint run below refuses; `none named` explicitly
 means no writes. scope and prior also appear on Writes note, which holds nothing), hook (true: the launcher exports
-the hook-integrity bypass, the brief says so; default false), judge (true: the
+the hook-integrity bypass, the brief says so; brief-lint refuses a brief whose Writes
+name a file the pinned guards run unless hook is true; default false), judge (true: the
 chief runs an opus judge before GO; default false), env (true: the ticket touches CI, infra or the
 environment, so the RED-first contract requires a fixture copied from the real environment; default
 false), extra (appended to the
@@ -182,8 +183,8 @@ def fit_slug(key, label, slug, date):
     return cut.rstrip('-')
 RM_MODEL = 'claude-opus-5-5'
 RM_TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'docs', 'handover', 'rm-brief-template.md')
-HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file; "
-             "that flag covers ONLY the integrity pin. No other `*_OK=1` bypass. Probe a guard only by feeding JSON to the worktree "
+HOOK_LINE = ("> - **Native lane.** You are launched with the hook-integrity bypass flag because this ticket edits a hook file or a file a hook sources; "
+             "that flag covers ONLY the integrity pin and the worker write fence's pin-dir and anchor fences. No other `*_OK=1` bypass. Probe a guard only by feeding JSON to the worktree "
              "copy (as its test file does); keep payloads in fixture files, never on your own Bash command line.")
 PLAIN_LINE = "> - **Native lane, no bypass.**"
 JUDGE_LINE = ("This touches a guard/gate, so the chief runs an opus judge before GO. If your diff touches a pattern in "
@@ -1720,8 +1721,10 @@ def drop_refused_brief(doc, l):
 
 def lint_brief(doc, l, hroot):
     lint = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'brief-lint.sh')
+    env = lint_env(hroot)
+    env['HIMMEL_HOOK_INTEGRITY_BYPASS_OK'] = '1' if l.get('hook') else ''
     try:
-        r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=lint_env(hroot))
+        r = subprocess.run(['bash', lint, '--skip-bucket', doc], capture_output=True, text=True, timeout=120, env=env)
     except (OSError, subprocess.SubprocessError) as e:
         drop_refused_brief(doc, l)
         die('worker %s: brief-lint could not run (%s), so no brief or launcher is kept for it or the workers after it' % (l['label'], e))
