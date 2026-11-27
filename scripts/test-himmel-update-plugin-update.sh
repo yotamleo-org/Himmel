@@ -904,7 +904,8 @@ assert_not_contains "(11344-d8) it is not reported as a failed compare" "compare
 if [ -f "$p1c/commands/new.md" ]; then assert_pass "(11344-d8) the cache has the new file"; else assert_fail "(11344-d8) new file missing — out: $out_d"; fi
 
 echo "Test: (11344-d9) a UTF-8 locale does not disturb the set compare"
-if locale -a 2>/dev/null | grep -qix -E 'en_US\.utf-?8'; then
+d9_locales="$(locale -a 2>/dev/null)" || d9_locales=""
+if grep -qix -E 'en_US\.utf-?8' <<<"$d9_locales"; then
     drift_new d9
     for d9_d in "$samet" "$samec"; do
         drift_put "$d9_d/skills/s/SKILL.md" s; drift_put "$d9_d/skills/s/references/r.md" r

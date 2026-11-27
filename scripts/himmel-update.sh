@@ -3444,7 +3444,7 @@ _remove_cache_extras() {
         [ "$kind" = X ] && [ -n "$rel" ] || continue
         case "/$rel/" in //*|*/../*) continue ;; esac
         [ -f "$cache/$rel" ] && [ ! -L "$cache/$rel" ] && [ ! -e "$tree/$rel" ] || continue
-        rm -f -- "$cache/$rel"
+        rm -f -- "$cache/$rel" || echo "    could not remove $cache/$rel" >&2
     done <<<"$3"
 }
 
