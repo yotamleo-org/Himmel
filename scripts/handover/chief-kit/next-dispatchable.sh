@@ -415,7 +415,7 @@ excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 PRIO = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
 
-PATH_TOKEN_RE = re.compile(r"(?<![\w./~-])([\w.+@-]+(?:/[\w.+@-]+)*\.[A-Za-z0-9]{1,8})(?![\w/-])")
+PATH_TOKEN_RE = re.compile(r"(?<![\w./~-])([\w.+@-]+(?:/[\w.+@-]+)*\.[A-Za-z0-9]{1,8})(?![\w/-]|\.\w)")
 
 @functools.lru_cache(maxsize=None)
 def suffix_index():
@@ -491,6 +491,10 @@ def marker(line):
     m = EXPLICIT_RE.match(line) or MID_MARKER_RE.search(line)
     return (m.group(1)[0].lower(), line[m.end():]) if m else None
 
+def state_write(value):
+    # a specs/ path with no ambiguous file name beside it: an ambiguous one may be a repo file, so the ticket stays held
+    return bool(SPECS_RE.search(value)) and not any(len(suffix_index().get(t, [])) > 1 for t in PATH_TOKEN_RE.findall(value) if not t.startswith('specs/'))
+
 def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
     cut = body.find('\n## Comments')
@@ -509,7 +513,7 @@ def scope_of(body):
             kind, value = marker(line) or ('', '')
             if kind == 'w':
                 files.extend(path for path in files_in(value) if path not in files)
-                nowrite = nowrite or bool(NO_WRITE_RE.search(value) or SPECS_RE.search(value))
+                nowrite = nowrite or bool(NO_WRITE_RE.search(value)) or state_write(value)
         if files or nowrite:
             return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
     explicit, kinds, nowrite_line, state_line, writes_hit = [], set(), False, False, False
@@ -521,7 +525,7 @@ def scope_of(body):
             kinds.add(kind)
             writes_hit = writes_hit or kind == 'w'
         elif kind == 'w':
-            state_line = state_line or bool(SPECS_RE.search(value))
+            state_line = state_line or state_write(value)
             nowrite_line = nowrite_line or bool(NO_WRITE_RE.search(value))
     if (state_line or nowrite_line) and not writes_hit:
         return {'files': [], 'src': 'Writes: line (state repo)' if state_line else 'Writes: line', 'reads': [], 'no_scope': False, 'nowrite': True}
