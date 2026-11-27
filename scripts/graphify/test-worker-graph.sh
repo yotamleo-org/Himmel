@@ -2,7 +2,7 @@
 # test-worker-graph.sh — worker-graph.sh points graphify at the PRIMARY
 # checkout's graphify-out/ from a linked worktree, passes `path` through, and says so
 # when the graph is behind the worktree. A graphify stub on PATH echoes what it
-# was given, so no real graph is needed. It also answers from the wrapper's own checkout graph when the cwd repo has none, and explains the file node when an ambiguity sits in one file.
+# was given, so no real graph is needed.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/worker-graph.sh"
