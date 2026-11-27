@@ -584,7 +584,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 </dl>
 </div>
 </details>
-<div class="bandhead trk-shifts" id="t-shifts" data-needs="core"><span class="bn">Autonomous shifts &amp; spend protection</span><h3>Work that runs while you are away, within your usage</h3><p>Needs a place for handover notes, and no notes vault or chat bot.</p><p class="needs">Needs: Guarded Core</p></div>
+<div class="bandhead trk-shifts" id="t-shifts" data-needs="core"><span class="bn">Autonomous shifts &amp; spend protection</span><h3>Work that runs while you are away, within your usage</h3><p>Always-on needs a place for handover notes. Neither module needs a notes vault or chat bot.</p><p class="needs">Needs: Guarded Core</p></div>
 <details class="lvl trk-shifts" id="m-spend" data-track="shifts">
 <summary><span class="alias" id="lvl-5"></span><span class="lk">1</span><span class="lt"><strong>Spend &amp; context</strong><span>Heavy work checks your remaining usage first, and each session can read its own context fill.</span></span><span class="lc"><span class="badge b-road">1 planned</span></span></summary>
 <div class="lvl-body">
@@ -920,7 +920,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
   var hash = location.hash.slice(1);
   if (ANCHOR.test(hash)) {
     openModule(hash, true);
-  } else {
+  } else if (!/^t-[a-z]+$/.test(hash)) {
     var v = stored();
     var d = v === null ? null : card(/^[0-9]+$/.test(v) ? 'lvl-' + v : 'm-' + v);
     var note = document.getElementById('resume');

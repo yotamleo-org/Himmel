@@ -3,7 +3,7 @@
   "tracks": [
     { "id": "core", "name": "Guarded Core", "short": "Core", "title": "Guardrails for any project", "lede": "Install and guardrails. You can stop here, and that is a complete result." },
     { "id": "review", "name": "Cross-model review", "short": "Review", "title": "A second model family reads every diff", "lede": "Needs a ChatGPT or Codex login, and no notes vault or chat bot." },
-    { "id": "shifts", "name": "Autonomous shifts & spend protection", "short": "Shifts", "title": "Work that runs while you are away, within your usage", "lede": "Needs a place for handover notes, and no notes vault or chat bot." },
+    { "id": "shifts", "name": "Autonomous shifts & spend protection", "short": "Shifts", "title": "Work that runs while you are away, within your usage", "lede": "Always-on needs a place for handover notes. Neither module needs a notes vault or chat bot." },
     { "id": "fleet", "name": "Parallel fleet", "short": "Fleet", "title": "Many workers under one chief", "lede": "For many tickets at once. Needs a ticket tracker, and no notes vault or chat bot." },
     { "id": "brain", "name": "Second brain & mobile", "short": "Brain", "title": "A notes vault, and your phone", "lede": "Needs a notes vault, and a Telegram bot for mobile. Nothing else on this page needs this track." }
   ],

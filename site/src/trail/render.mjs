@@ -113,7 +113,7 @@ function moduleCard(m, pos) {
   const docs = m.docs.map((d) => `<a href="${esc(d.href)}">${esc(d.label)}</a>`).join(' · ');
   return [
     `<details class="lvl trk-${m.track}" id="m-${m.id}" data-track="${m.track}">`,
-    `<summary><span class="alias" id="lvl-${m.legacy_n}"></span><span class="lk">${pos}</span><span class="lt"><strong>${esc(m.title)}</strong><span>${m.summary}</span></span><span class="lc">${chips}</span></summary>`,
+    `<summary>${Number.isInteger(m.legacy_n) ? `<span class="alias" id="lvl-${m.legacy_n}"></span>` : ''}<span class="lk">${pos}</span><span class="lt"><strong>${esc(m.title)}</strong><span>${m.summary}</span></span><span class="lc">${chips}</span></summary>`,
     '<div class="lvl-body">',
     `<p class="outcome">${m.outcome}</p>`,
     '<dl class="schema">',

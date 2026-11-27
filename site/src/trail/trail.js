@@ -58,7 +58,7 @@
   var hash = location.hash.slice(1);
   if (ANCHOR.test(hash)) {
     openModule(hash, true);
-  } else {
+  } else if (!/^t-[a-z]+$/.test(hash)) {
     var v = stored();
     var d = v === null ? null : card(/^[0-9]+$/.test(v) ? 'lvl-' + v : 'm-' + v);
     var note = document.getElementById('resume');

@@ -105,7 +105,7 @@ fi
 # Prints one line per module or component whose text a reader without JavaScript
 # would not see (empty = all present).
 nojs_missing() {
-  python3 -I - "$1" "$2" <<'PY'
+  python3 -I - "$1" "$2" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html, json, re, sys
 page = open(sys.argv[1], encoding="utf-8").read()
 data = json.load(open(sys.argv[2], encoding="utf-8"))
@@ -479,7 +479,7 @@ fi
 # answer is an element with id what / where / undo, outside any <details>.
 SCREEN=1400
 first_screen_gaps() {
-  python3 -I - "$1" "$SCREEN" <<'PY'
+  python3 -I - "$1" "$SCREEN" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html.parser, re, sys
 page = open(sys.argv[1], encoding="utf-8").read()
 screen = int(sys.argv[2])
@@ -559,7 +559,7 @@ else
 fi
 
 order_gaps() {
-  python3 -I - "$1" <<'PY'
+  python3 -I - "$1" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import json, sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 mods, tracks = d.get("modules") or [], d.get("tracks") or []
@@ -634,7 +634,7 @@ if [ "$have_data" = 1 ]; then
 fi
 
 needs_gaps() {
-  python3 -I - "$1" "$2" <<'PY'
+  python3 -I - "$1" "$2" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html, json, re, sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 page = open(sys.argv[2], encoding="utf-8").read()
@@ -686,7 +686,7 @@ if [ "$have_data" = 1 ]; then
 fi
 
 alias_gaps() {
-  python3 -I - "$1" "$2" "$3" <<'PY'
+  python3 -I - "$1" "$2" "$3" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import json, re, sys
 d = json.load(open(sys.argv[1], encoding="utf-8"))
 page = open(sys.argv[2], encoding="utf-8").read()
@@ -724,7 +724,7 @@ if [ "$have_data" = 1 ]; then
 fi
 
 vocab_hits() {
-  python3 -I - "$@" <<'PY'
+  python3 -I - "$@" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html, json, re, sys
 WORDS = re.compile(r"\bbase camp\b|\bclimb\w*|\blevels?\b", re.I)
 def strings(v):
