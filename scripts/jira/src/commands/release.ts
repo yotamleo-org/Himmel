@@ -1235,7 +1235,7 @@ export function registerRelease(program: Command): void {
       console.log(`${r.id} recorded; cite it as --authority operator --ref ${r.id}`);
     });
   operator.command('go-answer')
-    .description('Record the operator\'s Telegram answer to a go-code ask (the bypass daemon only; refused in any Claude session)') // t13b-ok: help text naming the existing bypass daemon; no service is added
+    .description('Record the operator\'s Telegram answer to a go-code ask (the bypass service only; refused in any Claude session)')
     .requiredOption('--request <file>', 'The <bucket>/bypass-queue/<name>.answer.pending request')
     .requiredOption('--request-sha256 <sha>', 'The request\'s sha256, taken at the ask')
     .option('--check', 'Check the request and the environment and print the ask line; writes nothing')
