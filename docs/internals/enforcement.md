@@ -3312,6 +3312,21 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   variables, so this rule allows it. If the settings file or the registry is missing,
   unreadable or malformed, every instance id is denied, since the guard cannot
   tell. A null value counts as absent; any other non-string value denies.
+- **Own settings.** A Claude instance (driver `claudeAgent`, or no driver and an
+  id of `claudeAgent` or `claudeAgent_*`) is denied, rule `own-settings-instance`,
+  unless each of its `launchArgs` and `config.launchArgs` is empty or exactly the
+  line `scripts/t3/provider-instances.sh` writes: `--settings <D>/<h>/<n>.json`,
+  optionally followed by `--mcp-config <D>/mcp-<h2>/<n2>.mcp.json --strict-mcp-config`.
+  Inline settings JSON, a hand-pointed file, an extra flag or a file outside `<D>`
+  denies. `<D>` is `${HIMMEL_PROFILE_SETTINGS_DIR:-$HOME/.himmel/launch-profiles}`,
+  matched as a string prefix and usable only when canonical (absolute,
+  `[A-Za-z0-9._/-]`, no `//`, no trailing `/`, no `.` or `..` segment). For each
+  named id the files must be readable regular files whose sha256 starts with
+  their `<h>` / `<h2>`, so a file edited in place denies. A non-canonical `<D>`
+  or no sha256 tool denies under `own-settings-unverifiable`. A file named
+  `maintainer-hooks` or `maintainer-billed` (any case) makes the instance a
+  maintainer instance, whatever its id. A refusal line prints a value only when
+  it is a path, never inline JSON, a file's content or a flag's value.
 - **Harness registry.** `scripts/harnesses/<id>.json` describes one coding
   harness each, loaded by `scripts/harnesses/registry.jq`. An id outside
   `delegatedFrom` must resolve to a T3 driver (the settings entry's `driver`, or
