@@ -36,6 +36,7 @@ if [ -f "$FIXTURE/$seam.slow" ]; then
         exec setsid --wait bash -c 'echo up > "$0.up"; sleep 12; :' "$FIXTURE/marker-child"
     fi
     [ "$(cat "$FIXTURE/$seam.slow")" != trap ] || trap '' TERM
+    ps -o pgid= $$ | tr -d ' ' > "$FIXTURE/$seam.pgid"
     bash -c 'echo up > "$0.up"; sleep 10; :' "$FIXTURE/marker-child" &
     sleep 10
 fi
@@ -536,6 +537,8 @@ r_deadline() {
         if pgrep -f "$C/marker-child" >/dev/null 2>&1 || pgrep -f "$C/seam/NOT_READY_JIRA_CLI" >/dev/null 2>&1; then
             fail "$mode: a stand-in process outlived the run"
         fi
+        local pg; pg="$(cat "$C/NOT_READY_JIRA_CLI.pgid" 2>/dev/null)"
+        if [ -z "$pg" ] || pgrep -g "$pg" >/dev/null 2>&1; then fail "$mode: the stand-in's group [$pg] is unread or still alive"; fi
     done
     newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432
     echo escape > "$C/NOT_READY_JIRA_CLI.slow"
