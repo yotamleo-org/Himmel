@@ -39,6 +39,7 @@ unclosed	label-set	enter	60	unclosed	absent
 OWED	unreceipted-doc-keys	enter	0	owed-undelivered	delivered-receipt
 rm-lease	dead-holder-aged	enter	60	rmlease	free-live-fresh-or-takeover
 INTAKE	positive-underfilled-6h	enter	360	intake	zero
+held-hi	keys	enter	60	heldhi	zero
 capacity	underfilled-successful-probe	positive	30	underfill	full-or-paused
 station	BEHIND	enter	60	station	absent-or-current
 repair	off:unreviewed,lost,unavailable,unread	enter	0	repair	absent-or-running

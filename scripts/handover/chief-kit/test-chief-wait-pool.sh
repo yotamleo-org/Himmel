@@ -1202,5 +1202,71 @@ t11_wait main "$T11/noroot"
 check "T11 RED control: with no read token configured the READY still wakes" "ci=GREEN" "$(printf '%s\n' "$t11_out" | grep -oE 'ci=[A-Z]+')"
 check "T11 RED control: its CI read goes out on main, as today" "main pr checks 77" "$(cat "$T11/main.log")"
 
+rm -f "$STUB/pool.rows" "$STUB/dispositions" "$STUB/pool.intake"
+hh_line() {
+    local cap="$1" extra="${2:-}"
+    shift; [ "$#" -eq 0 ] || shift
+    {
+        printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=15/15 capacity=%s gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none%s\n' "$cap" "${extra:+ $extra}"
+        [ "$#" -eq 0 ] || printf '%s\n' "$@"
+    } > "$STUB/tick.line"
+}
+hh_s1='# held-hi HIMMEL-1 no-scope prio=High age=2d ver=-'
+hh_s2='# held-hi HIMMEL-2 merged-no-remainder prio=High age=2d ver=-'
+hh_wakes() { grep -c '^WAKE held-priority' "$1" 2>/dev/null; }
+hh_quiet() { if [ -e "$1" ]; then echo present; else echo absent; fi; }
+hh_first() {
+    I="$(new_inbox "hh-$1")"
+    hh_line FULL 'held-hi=HIMMEL-1' "$hh_s1"
+    arm "$I" "$WORK/hh-$1.first" 20
+}
+hh_first w1
+check '(10944 W1) at full capacity a held key wakes' '0:WAKE held-priority n=1 HIMMEL-1' "$rc:$(grep '^WAKE ' "$WORK/hh-w1.first" | head -n 1)"
+check '(10944 W1) the wake names the no-scope fix' 1 "$(grep -c '^fix no-scope: a readiness: comment with a Writes: line, or close; --why-ticket <KEY> names every gate$' "$WORK/hh-w1.first")"
+check '(10944 W1) and writes neither the housekeeping buffer nor the digest' 'absent:absent' "$(hh_quiet "$I.wait.housekeeping"):$(hh_quiet "$I.wait.digest")"
+arm_quiet "$I" "$WORK/hh-w2.out" 8
+check '(10944 W2) the same set inside the window does not wake' '124:0:absent:absent' "$rc:$(hh_wakes "$WORK/hh-w2.out"):$(hh_quiet "$I.wait.housekeeping"):$(hh_quiet "$I.wait.digest")"
+CHIEF_WAIT_HELDHI_REWAKE_MIN=0 arm "$I" "$WORK/hh-w3.out" 20
+check '(10944 W3) past the rewake window the same set wakes again' '0:1' "$rc:$(hh_wakes "$WORK/hh-w3.out")"
+hh_first w4
+hh_line FULL 'held-hi=HIMMEL-1,HIMMEL-2' "$hh_s1" "$hh_s2"
+arm "$I" "$WORK/hh-w4.out" 20
+check '(10944 W4) a key new to the set wakes at once' '0:WAKE held-priority n=2 HIMMEL-1,HIMMEL-2' "$rc:$(grep '^WAKE ' "$WORK/hh-w4.out" | head -n 1)"
+check '(10944 W9) a set with both classes prints both fix lines' '1:1' "$(grep -c '^fix no-scope: ' "$WORK/hh-w4.out"):$(grep -c "^fix merged-no-remainder: a Remaining: or deferred line in the merged PR's body, or close$" "$WORK/hh-w4.out")"
+touch -d '5 minutes ago' "$I.wait.heldhi"
+hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # swallow-ok: no marker reads empty and fails the row  # gnu-ok: Linux-only kit
+for hh_set in HIMMEL-2,HIMMEL-1 HIMMEL-1; do
+    hh_line FULL "held-hi=$hh_set" "$hh_s1"
+    arm_quiet "$I" "$WORK/hh-w8.out" 8
+    check "(10944 W8) $hh_set inside the window does not wake" '124:0' "$rc:$(hh_wakes "$WORK/hh-w8.out")"
+done
+check '(10944 W8) the marker holds the shrunk set and keeps its clock' "$KP-1:$hh_mtime" "$(cat "$I.wait.heldhi" 2>/dev/null):$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
+hh_first w5
+touch -d '5 minutes ago' "$I.wait.heldhi"
+hh_mtime="$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # swallow-ok: no marker reads empty and fails the row  # gnu-ok: Linux-only kit
+hh_line FULL 'held-hi=?'
+arm_quiet "$I" "$WORK/hh-w5.out" 8
+check '(10944 W5) an unknown set neither wakes nor touches the marker' "124:0:$KP-1:$hh_mtime" "$rc:$(hh_wakes "$WORK/hh-w5.out"):$(cat "$I.wait.heldhi" 2>/dev/null):$(stat -c %Y "$I.wait.heldhi" 2>/dev/null)"  # gnu-ok: Linux-only kit
+hh_line FULL
+arm_quiet "$I" "$WORK/hh-w6.out" 8
+check '(10944 W6) an absent field removes the marker without a wake' '124:0:absent' "$rc:$(hh_wakes "$WORK/hh-w6.out"):$(hh_quiet "$I.wait.heldhi")"
+I="$(new_inbox hh-w7)"
+hh_line UNDERFILLED:3 'held-hi=HIMMEL-1' "$hh_s1"
+arm "$I" "$WORK/hh-w7.out" 20
+check '(10944 W7) an underfilled fleet wakes the same way' '0:WAKE held-priority n=1 HIMMEL-1' "$rc:$(grep '^WAKE ' "$WORK/hh-w7.out" | head -n 1)"
+I="$(new_inbox hh-w10)"
+hh_line FULL 'held-hi=HIMMEL-1,HIMMEL-2,HIMMEL-3,HIMMEL-4,HIMMEL-5,HIMMEL-6,HIMMEL-7,HIMMEL-8,HIMMEL-9,HIMMEL-10,HIMMEL-11,HIMMEL-12'
+arm "$I" "$WORK/hh-w10.out" 20
+check '(10944) a long set names ten keys and counts the rest' 'WAKE held-priority n=12 HIMMEL-1,HIMMEL-2,HIMMEL-3,HIMMEL-4,HIMMEL-5,HIMMEL-6,HIMMEL-7,HIMMEL-8,HIMMEL-9,HIMMEL-10 +2 more' "$(grep '^WAKE ' "$WORK/hh-w10.out" | head -n 1)"
+I="$(new_inbox hh-c5)"
+hh_line FULL 'close-cand=HIMMEL-102'
+arm_quiet "$I" "$WORK/hh-c5.out" 8
+check '(10944 C5) a close candidate queues one housekeeping line and no wake' '124:0:1' "$rc:$(grep -c '^WAKE ' "$WORK/hh-c5.out"):$(grep -c "^close-candidate $KP-102\$" "$I.wait.housekeeping" 2>/dev/null)"
+arm_quiet "$I" "$WORK/hh-c5b.out" 8
+check '(10944 C5) the same value is queued once' 1 "$(grep -c '^close-candidate ' "$I.wait.housekeeping" 2>/dev/null)"
+hh_line FULL 'close-cand=HIMMEL-102,HIMMEL-103'
+arm_quiet "$I" "$WORK/hh-c5c.out" 8
+check '(10944 C5) a changed value is queued again, still without a wake' '124:2' "$rc:$(grep -c '^close-candidate ' "$I.wait.housekeeping" 2>/dev/null)"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
