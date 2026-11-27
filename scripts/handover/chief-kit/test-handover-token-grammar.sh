@@ -28,6 +28,8 @@ fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/token-grammar-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+export HOME="$WORK/home"; mkdir -p "$HOME" "$WORK/handovers"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 # The grammar is the line after the `handover-token grammar` marker comment.
 GRAMMAR="$(awk '/# handover-token grammar/ { getline; print; exit }' "$CONFIG" \

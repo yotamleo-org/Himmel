@@ -16,8 +16,12 @@ check() { # <name> <expected> <actual>
 }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/relay-batch-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
-trap 'rm -rf "$WORK"' EXIT
+trap 'chmod -R u+rw "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 export BRIDGE_ROOT="$WORK/bridge"
+export HOME="$WORK/home" HANDOVER_DIR="$WORK/handover-root"
+mkdir -p "$HOME" "$HANDOVER_DIR"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
+WT="$HERE/worker-token.sh"
 
 DOC="$WORK/DEMO-nextleg-2026-10-08A-chief.md"
 LEG1="$WORK/DEMO-1-N7-alpha.md"
@@ -344,25 +348,113 @@ check "a relay with an empty Live state exits 0" "0" "$rc21"
 check "an empty Live state still bus-relays a manifest worker" "1" "$(grep -cx 'send DEMO-16-N61-off-2026-10-24' "$WORK/bus.log")"
 check "an empty Live state tallies the manifest worker" "1" "$(printf '%s\n' "$out21" | grep -c '^RELAYED 1 of 1$')"
 
-# --- --fresh <label>=<token> puts the successor's fresh token next to the
-# held one, in the native SendMessage line and the claudex inbox relay (never in a bus record).
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/send.log"\n' "$WORK" > "$SEND"
 printf '%s\n' "$LOGBUS" > "$BUS"
-census DEMO-1-N7-alpha DEMO-2-N8-beta
-: > "$WORK/send.log"; : > "$WORK/bus.log"; : > "$WORK/bus.body"
-outf="$(HIMMEL_BUS_NAME='' bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-seven --fresh N8=fresh-eight 2>&1)"; rcf=$?
+RBC=DEMO-nextleg-2026-11-27A-chief
+SUCC=DEMO-nextleg-2026-11-27B-chief
+rbn=0
+rbfix() {
+    rbn=$((rbn + 1)); RDIR="$WORK/handover-root/u/rb$rbn"; mkdir -p "$RDIR"
+    RSTEM="DEMO-60-N1-rec$rbn"; RLEG="$RDIR/$RSTEM.md"; RDOC="$RDIR/$RBC.md"
+    # shellcheck disable=SC2016  # the backticks are literal Live state markers
+    printf '# chief\n\n## Live state\n\nworkers: `N1:%s:lock1:11`\nqueue: none\n\n## Results\n' "$2" > "$RDOC"
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$RLEG" "$1" > "${RDOC%.md}.fleet.json"
+    census "$RSTEM"
+    : > "$WORK/send.log"; : > "$WORK/bus.log"; : > "$WORK/bus.body"
+}
+recmint() { bash "$WT" mint "$RLEG" A-N1 2>/dev/null; printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$RLEG"; }
+rbrun() {
+    local id="$1"; shift
+    HIMMEL_BUS_NAME="$id" bash "$RB" "$RDOC" --successor "$SUCC" "$@" 2>&1
+}
+sm() { printf '%s\n' "$1" | grep '^SENDMESSAGE '; }
+cnt() { printf '%s\n' "$1" | grep -c -- "$2"; }
+# shellcheck disable=SC2016  # the backticks are literal token delimiters
+quoted() { sm "$1" | grep -o '`[^`]*`' | tr -d '`' | tr '\n' ' ' | sed 's/ $//'; }
+otherkey() { cp "$HOME/.config/himmel/go-hmac.key" "$WORK/key.keep"; printf 'f%.0s' $(seq 1 64) > "$HOME/.config/himmel/go-hmac.key"; }
+samekey() { cp "$WORK/key.keep" "$HOME/.config/himmel/go-hmac.key"; }
+
+rbfix native NONCE-UNKNOWN; t1="$(recmint)"
+o="$(rbrun "")"
+check "RB1: with a NONCE-UNKNOWN span the SendMessage quotes the record token" "$t1" "$(quoted "$o")"
+rbfix native NONCE-UNKNOWN; : > "$RLEG"
+o="$(rbrun "$RBC")"
+check "RB1c: no record and a bus identity: bus-relayed token-free as before" "1" "$(cnt "$o" '^BUS-RELAY N1 ok$')"
+
+rbfix native @record; recmint >/dev/null; otherkey
+o="$(rbrun "")"
+check "RB5: a keymismatch with an @record span is UNRESOLVED, no usable token" "1" "$(cnt "$o" '^UNRESOLVED N1 (no usable token)')"
+check "RB5: and no SendMessage is printed" "0" "$(cnt "$o" '^SENDMESSAGE')"
+samekey
+rbfix native @record; recmint >/dev/null; otherkey
+printf '#!/usr/bin/env bash\necho "bus: down" >&2; exit 1\n' > "$BUS"
+o="$(rbrun "$RBC")"
+check "RB5b: a failed bus send with no usable token is UNRESOLVED" "1" "$(cnt "$o" '^UNRESOLVED N1 (no usable token)')"
+check "RB5b: and prints no SendMessage" "0" "$(cnt "$o" '^SENDMESSAGE')"
+samekey
+rbfix native NONCE-UNKNOWN; t1="$(recmint)"
+o="$(rbrun "$RBC")"
+check "RB5b: the bus fallback quotes the record token" "$t1" "$(quoted "$o")"
+printf '%s\n' "$LOGBUS" > "$BUS"
+rbfix claudex tok-stale; t1="$(recmint)"
+o="$(rbrun "")"
+check "RB5c: the claudex inbox relay is sent with the record token" "1" "$(grep -c -- "--token $t1 --doc $RLEG" "$WORK/send.log")"
+check "RB5c: and never quotes the stale span" "0" "$(grep -c 'tok-stale' "$WORK/send.log")"
+
+rbfix native tok-span; recmint >/dev/null; chmod 000 "$RDIR"/*.jsonl
+o="$(rbrun "")"
+check "RB4: an unreadable record is UNRESOLVED" "1" "$(cnt "$o" '^UNRESOLVED N1 (token record unreadable)')"
+check "RB4: with nothing sent" "0" "$(cnt "$o" '^SENDMESSAGE')"
+o="$(rbrun "$RBC")"
+check "RB4: a bus identity sends no record either" "" "$(cat "$WORK/bus.log")"
+o="$(HIMMEL_CONSOLE_LEG=1 rbrun "")"
+check "RB4c: where the record is not consulted (a worker), the span is quoted as before" "tok-span" "$(quoted "$o")"
+chmod 600 "$RDIR"/*.jsonl
+
+rbfix native tok-span; t1="$(recmint)"
+o="$(rbrun "$RBC" --fresh N1)"; rcf=$?
 check "--fresh: the run succeeds" "0" "$rcf"
-check "--fresh: a native SENDMESSAGE line quotes the held and the fresh token" "1" "$(printf '%s\n' "$outf" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep 'tok-seven' | grep -c 'fresh-seven')"
-check "--fresh: the claudex inbox relay quotes the held and the fresh token" "1" "$(grep -- '--token tok-eight' "$WORK/send.log" | grep -c 'fresh-eight')"
-check "--fresh: a worker given no fresh token is relayed as before" "0" "$(printf '%s\n' "$outf" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep -c 'fresh-eight')"
-# a bus record carries no token, so a native worker owed a fresh token is sent the SendMessage instead
-outfb="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-08A-chief bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-seven --fresh N8=fresh-eight 2>&1)"
-check "--fresh: a native worker owed a fresh token gets the SendMessage, not a bus record" "1" "$(printf '%s\n' "$outfb" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep -c 'fresh-seven')"
-check "--fresh: that worker is sent no bus record" "0" "$(grep -cx 'send DEMO-1-N7-alpha' "$WORK/bus.log")"
-check "--fresh: the claudex bus record is still sent" "1" "$(grep -cx 'send DEMO-2-N8-beta' "$WORK/bus.log")"
-check "--fresh: no bus record carries a token" "0" "$(grep -c 'tok-\|fresh-' "$WORK/bus.body")"
-check "--fresh: a fresh token naming no relayed worker is reported" "1" "$(HIMMEL_BUS_NAME='' bash "$RB" "$DOC" --successor S9 --fresh N99=fresh-x 2>&1 | grep -c '^FRESH-UNUSED N99 ')"
-check "--fresh: a value with no label=token shape is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh nonsense >/dev/null 2>&1; echo $?)"
+t2="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"
+check "RB2: --fresh quotes the current and the fresh token" "$t1 $t2" "$(quoted "$o")"
+check "RB2: the fresh token keeps the dispatch prefix" "1" "$(printf '%s\n' "$t2" | grep -cxE 'A-N1-[0-9a-f]{8}')"
+check "RB2: a worker owed a fresh token is sent no bus record" "" "$(cat "$WORK/bus.log")"
+printf -- '- 10:05 SUCCESSION accepted: %s replaces %s\n' "$SUCC" "$RBC" >> "$RLEG"
+o="$(rbrun "")"
+check "RB2: after the quote-back the next relay quotes gen 2 alone" "$t2" "$(quoted "$o")"
+o="$(rbrun "" --fresh N1=tok-x)"; rcf=$?
+check "RB2c: the old --fresh <label>=<token> form is a usage error" "2" "$rcf"
+check "RB2c: naming the new form" "1" "$(cnt "$o" '\-\-fresh <label>')"
+check "--fresh: a repeated label is a usage error" "2" "$(bash "$RB" "$RDOC" --successor "$SUCC" --fresh N1 --fresh N1 >/dev/null 2>&1; echo $?)"
+check "--fresh: a label naming no relayed worker is reported" "1" "$(rbrun "" --fresh N99 | grep -c '^FRESH-UNUSED N99 ')"
+rbfix native tok-span; : > "$RLEG"
+o="$(rbrun "$RBC" --fresh N1)"
+check "--fresh: a worker with no record is FRESH-REFUSED" "1" "$(cnt "$o" '^FRESH-REFUSED N1 (')"
+check "--fresh: and relayed as with no --fresh" "1" "$(cnt "$o" '^BUS-RELAY N1 ok$')"
+rbfix claudex tok-stale; t1="$(recmint)"
+o="$(rbrun "$RBC" --fresh N1)"
+t2="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"
+check "--fresh: the claudex inbox relay quotes the current and the fresh token" "1" "$(grep -- "--token $t1 " "$WORK/send.log" | grep -c "$t2")"
+check "--fresh: no bus record carries a token" "0" "$(grep -c 'A-N1-' "$WORK/bus.body")"
+
+rbfix native tok-span; t1="$(recmint)"
+o="$(rbrun "$RBC")"
+check "RB3c: with nothing pending a bus identity sends the bus record as before" "1" "$(cnt "$o" '^BUS-RELAY N1 ok$')"
+t2="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"; : > "$WORK/bus.log"
+o="$(rbrun "$RBC")"
+check "RB3: a pending rotation is re-offered by SendMessage, current and pending" "$t1 $t2" "$(quoted "$o")"
+check "RB3: with no bus record" "" "$(cat "$WORK/bus.log")"
+printf '# chief\n\n## Live state\n\nworkers: none\nqueue: none\n\n## Results\n' > "$RDOC"
+: > "$WORK/bus.log"
+o="$(rbrun "$RBC")"
+check "RB3b: the off-Live-state path re-offers it too" "$t1 $t2" "$(quoted "$o")"
+check "RB3b: with no bus record" "" "$(cat "$WORK/bus.log")"
+check "RB3b: and counts it relayed" "1" "$(cnt "$o" '^RELAYED 1 of 1$')"
+rbfix native tok-span; recmint >/dev/null; census
+o="$(rbrun "" --fresh N1)"
+check "RB3d: an unresolved worker is UNRESOLVED" "1" "$(cnt "$o" '^UNRESOLVED N1 ')"
+check "RB3d: and its token is not rotated" "current=1 pending=-:- state=ok" "$(bash "$WT" gen "$RLEG" 2>/dev/null)"
+printf '%s\n' "$LOGBUS" > "$BUS"
+census DEMO-1-N7-alpha DEMO-2-N8-beta
 # the claudex bus record follows its own inbox relay at once, not after the whole loop
 ORDER="$WORK/order.log"; : > "$ORDER"
 OSEND="$WORK/osend.sh"; OBUS="$WORK/obus.sh"
@@ -387,7 +479,6 @@ chmod +x "$OSLOW"
 outslow="$(INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OSLOW" RELAY_BATCH_BUS_TIMEOUT=1 HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 2>&1)"
 check "a spent bus deadline skips the later notices" "1" "$(grep -c '^bus ' "$ORDER")"
 check "a skipped notice is reported" "1" "$(printf '%s\n' "$outslow" | grep -c '^BUS-RELAY-FAIL N71 (bus deadline spent)')"
-check "--fresh: a repeated label is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-a --fresh N7=fresh-b >/dev/null 2>&1; echo $?)"
 # a run disarms the chief's relay-on-live marker for its successor, so a hand or --fresh run and the waiter never relay twice
 ROL="$BRIDGE_ROOT/consoles/DEMO-nextleg-2026-10-08A-chief.md.relay-on-live"
 mkdir -p "$BRIDGE_ROOT/consoles"

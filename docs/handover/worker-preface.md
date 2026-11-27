@@ -35,10 +35,9 @@ message either. `FINDING`, `BLOCKED`, `MAIN-RED`, `ORPHAN`, `CONSULT` go by
   ruling, `GO`, approval or token into a bullet. A token
   quote-back goes only in your `SendMessage` reply; a
   chief change's quote-back is its `SUCCESSION` bullet. [prose]
-- **A stated default applies if no ruling arrives.** When your
-  brief carries `default-if-no-ruling (<N> min): <action>` for a question you
-  raised as a `FINDING` and no ruling arrives in `<N>` minutes, proceed on the
-  action and say so in the next `LIVE` bullet. The default may only **narrow**
+- **A stated default applies if no ruling arrives.** With your brief's
+  `default-if-no-ruling (<N> min): <action>`, a `FINDING` unruled after `<N>`
+  minutes runs it; the next `LIVE` bullet says so. It may only **narrow**
   (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message. [prose]
 - **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]
@@ -57,6 +56,7 @@ no reply; so is a `bus #N from <named chief>:` record, no token. Named chief = t
 Adopt a fresh token if one came; then in your very next tool batch `append-results.sh`
 `SUCCESSION accepted: <new chief session> replaces <old>` (it runs
 `bus adopt <new chief>`; a `bus-adopt:` refusal is no reason to park: once the old one is gone, run it yourself), nothing after the old name, no token. **Else read `worker-sections/succession.md` first.**
+A `PROBE <g>` quoting your token: bullet `LIVE — PROBE <g> ok`; else ignore.
 
 ## Before you start
 

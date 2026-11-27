@@ -109,10 +109,16 @@ same 'no open drift issue prints drift=0' "$(drift_of "$out8")" 'drift=0'
 mk_holds 2026-11-24T08:00Z
 mk_body "$ROW_TASTE" "$HELD_LINE"
 mkdir -p "$W/bucket" "$W/wt"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
+mkdir -p "$HANDOVER_DIR"
 brief_out="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
     --out "$W/bucket" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24)"
 brief="$(printf '%s\n' "$brief_out" | tail -n 1)"
 [ -f "$brief" ] && pass 'the generator writes a brief into the bucket and prints its path' || fail "no brief at '$brief'"
+drift_tok="$(grep -o 'D-D1-[0-9a-f]*' "$brief" 2>/dev/null | head -n 1)"
+[ -n "$drift_tok" ] && [ "$(bash "$HERE/worker-token.sh" current "$brief" 2>/dev/null)" = "$drift_tok" ] \
+    && pass "DB1: the drift brief's token is the record's current token" || fail "DB1: brief token '$drift_tok' is not the record's current token"
+printf '%s\n' "$drift_tok" | grep -qxE 'D-D1-[0-9a-f]{8}' && pass 'DB1c: the token keeps the D-<worker>-<8 hex> shape' || fail "DB1c: token '$drift_tok'"
 contains 'the brief names a Needs-update row' "$(cat "$brief" 2>/dev/null)" 'taste-skill-core'
 contains 'the brief names a buffer-cleared hold row' "$(cat "$brief" 2>/dev/null)" 'oxlint'
 contains 'the brief reads the issue body, not only its metadata' "$(cat "$brief" 2>/dev/null)" '--json body'

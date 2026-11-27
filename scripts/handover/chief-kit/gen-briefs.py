@@ -357,6 +357,23 @@ def die(msg, rc=1):
     sys.exit(rc)
 
 
+def mint_nonce(l, doc, letter, hroot):
+    prefix = '%s-RM-%s' % (letter, l['release']) if l.get('kind') == 'rm' else '%s-%s' % (letter, l['label'])
+    writer = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'worker-token.sh')
+    try:
+        r = subprocess.run(['bash', writer, 'mint', doc, prefix], capture_output=True, text=True, timeout=120,
+                           env=dict(os.environ, HANDOVER_DIR=hroot))
+    except (OSError, subprocess.SubprocessError) as e:
+        die('worker %s: worker-token.sh could not run (%s), so no brief is written for it or the workers after it' % (l['label'], e))
+    if r.returncode == 3:
+        print('gen-briefs: token not recorded (worker-token.sh refused)', file=sys.stderr)
+        return '%s-%s' % (prefix, secrets.token_hex(4))
+    if r.returncode != 0 or not r.stdout.strip():
+        die('worker %s: worker-token.sh mint failed (rc %d), so no brief is written for it or the workers after it: %s' % (
+            l['label'], r.returncode, ' '.join(r.stderr.split())))
+    return r.stdout.strip()
+
+
 def tier_gate(model):
     # Same MODEL-PREFIX match as headed-arm-worker.sh's Tier-line gate.
     m = re.match(r'^(?:anthropic/)?claude-(opus|fable)-', model or '')
@@ -1923,10 +1940,8 @@ def main():
         if l.get('ab_arm') and l.get('lane', 'native') == 'native' and l['model'].startswith('claude-sonnet-5') and sonnet_ceiling_profile(l['profile']):
             die('worker %s: ab_arm %s needs the plain 200000 ceiling, but profile %s gives a claude-sonnet-5 launch its Sonnet ceiling; set "profile": "worker-docs" for the A/B arm' % (l['label'], l['ab_arm'], l['profile']))
         if rm:
-            l['nonce'] = '%s-RM-%s-%s' % (letter, l['release'], secrets.token_hex(4))
             l['stem'] = '%s-%s-rm-%s-%s' % (l['keys'][0], l['label'], l['release'], a.date)
         else:
-            l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             fitted = fit_slug(l['keys'][0], l['label'], l['slug'], a.date)
             if fitted != l['slug']:
                 print('%s slug trimmed to fit the bus limit of %d (room kept for -RESUME): %s -> %s' % (l['label'], BUS_NAME_MAX, l['slug'], fitted))
@@ -1992,6 +2007,7 @@ def main():
                 if anc.returncode != 0:
                     die('worktree %s is not based on %s; no brief written for %s or the workers after it' % (l['wt'], a.base, l['label']))
         doc = os.path.join(a.bucket, l['stem'] + '.md')
+        l['nonce'] = mint_nonce(l, doc, letter, a.handover_root)
         if l.get('series_plan'):
             create_series_ledger(l['series_plan'], doc)
         with open(doc, 'w') as f:

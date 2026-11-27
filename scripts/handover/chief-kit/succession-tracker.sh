@@ -132,6 +132,8 @@ fi
 . "$HERE/../../lib/worker-successor.sh"
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
+# shellcheck source=../../lib/succession-bullet.sh
+. "$HERE/../../lib/succession-bullet.sh"
 
 # lock_token_held <token>: success when a held, not provably dead, queue lock carries this session
 # token (the third field of a Live-state entry). Only a worker with no readable doc gets here.
@@ -177,7 +179,7 @@ unquoted_state() {
 
 # state of one worker doc: prints replaced, own, quoted-back, closed or missing
 worker_state() {
-    local ldoc="$1" token="${2:-}" line inc brief
+    local ldoc="$1" token="${2:-}" inc brief
     if [ ! -f "$ldoc" ]; then
         # no doc to read: closed only when no held lock carries the entry's lock token
         if [ -n "$token" ] && ! lock_token_held "$token"; then echo closed; else echo missing; fi
@@ -192,13 +194,7 @@ worker_state() {
     fi
     # the latest handshake bullet from the Results section on decides; the same text in the
     # brief confirms nothing
-    line="$(awk '/^## Results/ { s = 1; next } s && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted/ { l = $0 } END { print l }' "$ldoc")"
-    [ -n "$line" ] || { unquoted_state "$ldoc"; return; }
-    # backticks come as a balanced pair or not at all
-    # shellcheck disable=SC2016
-    inc="$(printf '%s\n' "$line" | sed -nE \
-        -e 's/^- ([0-9]{2}:[0-9]{2} )?(LIVE — )?SUCCESSION accepted: `([A-Za-z0-9_.-]+)` replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/\3/p' \
-        -e 's/^- ([0-9]{2}:[0-9]{2} )?(LIVE — )?SUCCESSION accepted: ([A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/\3/p' | head -n 1)"
+    inc="$(succession_incoming "$ldoc")"
     if [ -n "$inc" ] && [ "$inc" = "$successor" ]; then echo quoted-back; else unquoted_state "$ldoc"; fi
 }
 

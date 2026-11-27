@@ -30,6 +30,9 @@ the relays below follow in the very next turn.
    n counts only the batch's own deliveries, so n below m names nobody: LIVE
    repeats the workers the predecessor's `RELAYED` message names as still unrelayed;
    the predecessor relays each by hand before it wraps. If it is already gone, send each the token-chain form yourself.
+   Take the current token from `worker-token.sh current <doc>` and the fresh one from
+   `worker-token.sh rotate <doc> --to <itself>` (your own session name); the only other
+   source of a fresh token is `relay-batch.sh --fresh <label>`.
    **Then close the predecessor's window.** Once its doc's lock is
    free and its last Results bullet reads `WRAPPED`, run
    `bash scripts/handover/chief-kit/close-wrapped-worker.sh --chief <predecessor doc>`

@@ -1173,25 +1173,46 @@ successor's `WAKE succession partial` is the backstop for one that never quotes 
 session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's
 waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. That run is the
 relay: never re-run it (a retry resends the claudex inbox relays). Unless you pass
-`--fresh <label>=<token>`, it never carries a fresh token, and a relay with none is
+`--fresh <label>`, it never carries a fresh token, and a relay with none is
 complete (the worker keeps its own): native and claudex workers are not rotated on a
-bus succession, and `WAKE relay-on-live` passes no `--fresh`. A successor that issued fresh
+bus succession, and `WAKE relay-on-live` passes no `--fresh`. A successor that wants fresh
 tokens before any batch ran has the outgoing chief run `relay-batch.sh <this doc> --successor <it>`
-once with one `--fresh <label>=<token>` per worker (that run disarms the waiter). After the
-waiter has relayed, each fresh token goes to its worker by direct message, never a second
-batch. In the `--fresh` run the `SENDMESSAGE` line and the claudex inbox
-relay quote the held token and the fresh one, and a native worker owed a fresh token gets
+once with one `--fresh <label>` per worker (that run disarms the waiter). A fresh token comes
+only from `--fresh` or from a chain through `worker-token.sh rotate`; never mint one by hand.
+Each token the run quotes is the record's current one (`worker-token.sh current <doc>`), the
+`## Live state` span only when the record has none; `UNRESOLVED <label> (token record
+unreadable)` or `(no usable token)` sent nothing. `--fresh` rotates that worker's record at
+the send, and a rotation already pending to the successor is offered again without the flag;
+`FRESH-REFUSED <label> (<reason>)` relays the worker as with no `--fresh`. With a fresh
+token, the `SENDMESSAGE` line and the claudex inbox
+relay quote the current token and the fresh one, and a native worker owed a fresh token gets
 that `SENDMESSAGE` rather than a bus record (a bus record is token-free). A claudex worker's
 bus record is sent right after its inbox relay. `FRESH-UNUSED <label>` means no relayed
-worker took that token: hand it over. It prints `RELAYED <n> of <m>` last, and n
+worker carries that label: relay it by hand. It prints `RELAYED <n> of <m>` last, and n
 counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor,
 naming every worker still unrelayed (n alone does not say which). A batch that fails or
 times out (`WAKE relay-on-live ... relay-failed rc=<n>`) prints its partial output and no
 `RELAYED` line. On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line,
 then send `RELAYED <n> of <m>` yourself, n the delivered lines.
 The quote-backs are the successor's to tally; you do not wait for them.
+
+**Before any hand relay, run `worker-token.sh gen <doc>`.** With a rotation pending to the
+successor, relay by SendMessage or inbox quoting `current` and the pending token
+(`worker-token.sh rotate <doc> --to <successor>` prints it again), never by bus record.
+Take the current token from `worker-token.sh current <doc>`, never from the span (the
+span only when `current` exits 1: no record).
+
+**A refused quote.** The chief learns of it from the worker's silence after a quoted
+message; for a GO that is `WAKE silent-go` with its `SILENT-WORKER-MERGE`,
+`SILENT-WORKER-MERGE-FAILED` or `SILENT-WORKER-MERGE-HELD` line. Run
+`worker-token.sh tokens <doc>`, send one direct message per listed generation, each
+quoting one token and carrying no revision, asking for a `LIVE — PROBE <g> ok` bullet
+(`PROBE <g>` in the message), then run `worker-token.sh set <doc> <g>` for the
+generation answered.
+
 A successor that arrives after you have left can prove itself only with the
-two-token chain form; a worker that cannot verify that is stranded (it keeps
+two-token chain form (the current token from `worker-token.sh current <doc>`, the fresh
+one from `worker-token.sh rotate <doc> --to <itself>`); a worker that cannot verify that is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
 tick reads `nonces=UNCONFIRMED:<worker>` until each worker's own `SUCCESSION
 accepted` bullet names the successor (`RELAYED:<worker>`, a relay that kept the

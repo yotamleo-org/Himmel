@@ -64,10 +64,11 @@ Run these, in order, and write the result as the first bullet under
    names the predecessor (the one it last accepted), and until it verifies the succession it can only refuse
    you. Per worker, ask the predecessor to re-brief that worker **from its own socket**,
    naming your session name, by bus record or quoting the worker's token. That relay
-   is complete on its own: it MAY also carry a fresh `{{LETTER}}-<worker>-<hex>`
-   token you mint, but rotation is not a precondition of succession. If the
+   is complete on its own: it MAY carry a fresh token from `relay-batch.sh --fresh <label>`
+   or `worker-token.sh rotate`, but rotation is not a precondition of succession. If the
    predecessor is gone, send the token-chain form yourself — **both** the worker's current
-   token and a fresh one (the token chain always rotates).
+   token (`worker-token.sh current <doc>`) and a fresh one
+   (`worker-token.sh rotate <doc> --to <itself>`; the token chain always rotates).
    `worker-preface.md` (`worker-sections/succession.md`) is the authority.
    A worker's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
    waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**. On the

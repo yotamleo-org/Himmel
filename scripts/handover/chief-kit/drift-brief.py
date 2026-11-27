@@ -184,6 +184,22 @@ def primary_checkout():
     return os.path.dirname(out) if out.endswith("/.git") else os.path.realpath(os.path.join(HERE, "..", "..", ".."))
 
 
+def mint_token(doc, worker):
+    """Generation 1 of the worker's RETASK token from the token record, or None on failure.
+    The child reads the ambient HANDOVER_DIR, as the chief's readers do."""
+    prefix = "D-%s" % worker
+    r = subprocess.run(["bash", os.path.join(HERE, "worker-token.sh"), "mint", doc, prefix],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode == 3:
+        print("drift-brief: token not recorded (worker-token.sh refused)", file=sys.stderr)
+        return "%s-%s" % (prefix, secrets.token_hex(4))
+    if r.returncode != 0 or not r.stdout.strip():
+        print("drift-brief: worker-token.sh mint failed (rc %d): %s" % (r.returncode, " ".join(r.stderr.split())),
+              file=sys.stderr)
+        return None
+    return r.stdout.strip()
+
+
 def cmd_brief(args):
     rows, holds = actionable(read_body(args.body_file), args.holds)
     n = len(rows) + len(holds)
@@ -192,20 +208,27 @@ def cmd_brief(args):
         return 1
     lines = [row_line(r) for r in rows] + [hold_line(h) for h in holds]
     stem = "%s%s-drift-4470-%s.md" % (args.key + "-" if args.key else "", args.worker, args.date)
+    os.makedirs(args.out, exist_ok=True)
+    path = os.path.join(args.out, stem)
+    exists = "drift-brief: brief already exists: %s" % path
+    if os.path.exists(path):
+        print(exists, file=sys.stderr)
+        return 1
+    token = mint_token(path, args.worker)
+    if token is None:
+        return 1
     text = BRIEF.format(
         worktree=args.worktree, n=n, date=args.date, worker=args.worker, chief=args.chief,
-        token="D-%s-%s" % (args.worker, secrets.token_hex(4)),
+        token=token,
         title=args.key if args.key else "Drift 4470",
         key_text=args.key if args.key else "the ticket key the chief names",
         rows="\n".join(lines), primary=primary_checkout(),
         repo_flag=(" -R " + origin_slug()) if origin_slug() else "")
-    os.makedirs(args.out, exist_ok=True)
-    path = os.path.join(args.out, stem)
     try:
         with open(path, "x", encoding="utf-8") as f:
             f.write(text)
     except FileExistsError:
-        print("drift-brief: brief already exists: %s" % path, file=sys.stderr)
+        print(exists, file=sys.stderr)
         return 1
     print(path)
     return 0
