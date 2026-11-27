@@ -109,7 +109,7 @@ run_case() {
         'not-ready: complete '* | 'not-ready: partial '*) ;;
         *) fail "no usable trailer, last line [$trailer]"; return ;;
     esac
-    head -n 1 <<<"$OUT" | grep -qE '^# not-ready version=v1\.1\.3 pass_age_s=[0-9]+ owner_unknown=[0-9]+ blind=.+$' || fail "bad header [$(head -n 1 <<<"$OUT")]"
+    grep -qE '^# not-ready version=v1\.1\.3 pass_age_s=[0-9]+ owner_unknown=[0-9]+ blind=.+$' <<<"$(head -n 1 <<<"$OUT")" || fail "bad header [$(head -n 1 <<<"$OUT")]"
     [ "$(sed '1d;$d' <<<"$OUT" | cut -f1)" = "$(cat "$C/keys")" ] || fail "key lines differ from --keys: $OUT"
     [ "$(sed '1d;$d' <<<"$OUT" | awk -F'\t' 'NF != 3' | wc -l)" -eq 0 ] || fail "a key line is not 3 fields: $OUT"
     local n r nj ru re sum
@@ -136,7 +136,7 @@ has() { grep -qF -e "$1" <<<"$OUT" || fail "output lacks [$1]: $OUT"; }
 banner() {
     [ "$RC" -eq 0 ] || fail "exit $RC: $(cat "$C/err")"
     [ "$(wc -l <<<"$OUT" | tr -d ' ')" -eq 2 ] || fail "banner form is two lines: $OUT"
-    head -n 1 <<<"$OUT" | grep -qE '^# not-ready version=v1\.1\.3 .* banner=' || fail "no banner header: $OUT"
+    grep -qE '^# not-ready version=v1\.1\.3 .* banner=' <<<"$(head -n 1 <<<"$OUT")" || fail "no banner header: $OUT"
     case "$(tail -n 1 <<<"$OUT")" in 'not-ready: unavailable '*"$1"*) ;; *) fail "trailer lacks unavailable [$1]: $OUT" ;; esac
 }
 
@@ -508,7 +508,7 @@ NOT_READY_ROUNDS_CMD round-status --all --specs $C/specs --json"
     [ "$(cat "$C/calls.log" 2>/dev/null)" = "$want" ] || fail "calls: $(cat "$C/calls.log" 2>/dev/null)"
     [ ! -e "$C/forbidden.log" ] || fail "forbidden call: $(cat "$C/forbidden.log")"
     [ -r "$SUT" ] || { fail "no script to read"; return; }
-    if grep -vE '^[[:space:]]*#( |$)' "$SUT" | grep -q 'next-dispatchable\.sh'; then fail "a non-comment line names next-dispatchable.sh"; fi
+    if grep -q 'next-dispatchable\.sh' <<<"$(grep -vE '^[[:space:]]*#( |$)' "$SUT")"; then fail "a non-comment line names next-dispatchable.sh"; fi
     newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432; run_case
     ! grep -q '^NOT_READY_ROUNDS_CMD' "$C/calls.log" || fail "round-status ran with no DESIGN row"
 }
