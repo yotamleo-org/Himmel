@@ -705,8 +705,8 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 # The nested scan is linear: padding with shell words must not push the hook
 # past the chain's budget, where it would be skipped instead of deciding.
 # A fixed wall-clock budget failed on loaded CI: the faster of two padded runs
-# may take 3x two quarter-size runs between them, plus slack, so load scales
-# both sides; never past run-hook-with-bash.js's 15 s member timeout.
+# may take 3x the sum of two quarter-size runs interleaved with them, plus slack,
+# so load scales both sides; neither past run-hook-with-bash.js's 15 s timeout.
 run_ms() {
     local input t0 t1 rc
     input=$(j_bash "$1")
@@ -720,17 +720,16 @@ run_ms() {
     fi
 }
 within_bound() {
-    local c1 p p2 c2 bound slack=300
+    local c1 p p2 c2 slow bound slack=300
     [ -n "${EPOCHREALTIME:-}" ] || slack=5000
     c1=$(run_ms "$2"); p=$(run_ms "$1"); c2=$(run_ms "$2"); p2=$(run_ms "$1")
     bound_rc=${p%% *} p=${p#* } c1=${c1#* } c2=${c2#* }
     [ "${p2%% *}" = "$bound_rc" ] || bound_rc="$bound_rc then ${p2%% *}"
-    p2=${p2#* }
-    [ "$p2" -ge "$p" ] || p=$p2
+    p2=${p2#* } slow=$p
+    if [ "$p2" -lt "$p" ]; then p=$p2; else slow=$p2; fi
     bound=$(( 3 * (c1 + c2) + slack ))
-    [ "$bound" -le 15000 ] || bound=15000
-    bound_why="${p}ms (controls ${c1}ms and ${c2}ms, bound ${bound}ms)"
-    [ "$p" -le "$bound" ]
+    bound_why="${p}ms (slower run ${slow}ms of at most 15000ms, controls ${c1}ms and ${c2}ms, bound ${bound}ms)"
+    [ "$p" -le "$bound" ] && [ "$slow" -le 15000 ]
 }
 timed() {
     local ok=0
