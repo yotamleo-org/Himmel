@@ -1972,6 +1972,11 @@ printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) kill -TERM "$PPID"; exit 1 
 chmod +x "$hh/shim-order/git" "$hh/shim-dead/git"
 PATH="$hh/shim-order:$PATH" hh_tick c6 "$hh/c.rows" > /dev/null
 hh_same '(10944 C6) the snapshot rows are published before the git scan starts' "$(LC_ALL=C sort -u "$hh/order" 2>/dev/null)" 'published'
+mkdir -p "$hh/shim-old"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c1/tick-pool-*.closecand" > /dev/null; then echo old-cache; else echo no-cache; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/during" "$(command -v git)" > "$hh/shim-old/git"
+chmod +x "$hh/shim-old/git"
+PATH="$hh/shim-old:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows" > /dev/null
+hh_same '(10944 C8) no older cache is readable beside new rows while the scan runs' "$(LC_ALL=C sort -u "$hh/during" 2>/dev/null)" 'no-cache'
 out="$(PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows")"
 not_contains '(10944 C7) a scan that dies leaves no older candidate beside the new rows' "$out" 'close-cand'
 contains '(10944 C7) control: the rows were still published' "$out" ' pool=3/'

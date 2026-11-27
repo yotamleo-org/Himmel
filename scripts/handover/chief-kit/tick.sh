@@ -4087,7 +4087,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        pd_script='if timeout -k 2 300 bash "$1" "${@:7}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; then printf "%s\n" "$3" >"${2%.rows}.fp"; cc="${2%.rows}.closecand"; if timeout -k 2 60 python3 -I -c "$4" "$2" "$5" "$6" >"$cc.$$" 2>/dev/null; then mv -f "$cc.$$" "$cc"; else rm -f "$cc" "$cc.$$"; fi; fi; rm -f "$2.$$"'
+        pd_script='cc="${2%.rows}.closecand"; if timeout -k 2 300 bash "$1" "${@:7}" >"$2.$$" 2>/dev/null && rm -f "$cc" && mv -f "$2.$$" "$2"; then printf "%s\n" "$3" >"${2%.rows}.fp"; timeout -k 2 60 python3 -I -c "$4" "$2" "$5" "$6" >"$cc.$$" 2>/dev/null && mv -f "$cc.$$" "$cc"; rm -f "$cc.$$"; fi; rm -f "$2.$$"'
         pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "$close_cand_py" "$pr_repo" "$HERE/../../lib" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
