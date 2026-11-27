@@ -19,9 +19,9 @@
       "turn_on": "<code>node ~/himmel/scripts/himmelctl/bin.js install</code> and press Enter for the starter answers. The <a href=\"#trial\">practice run</a> walks it end to end; <a href=\"setup/profiles/\">install profiles</a> explains the other answers.",
       "outcome": "You know exactly what himmel put on your machine, and one command reports whether each part is still there.",
       "components": [
-        { "name": "himmelctl install and status", "status": "shipped", "detail": "<p>The installer previews every file, setting and plugin it would touch, asks before it writes, and records what it changed. <code>status</code> prints one row per item, worst first, then a count.</p>" },
-        { "name": "One install manifest", "status": "shipped", "detail": "<p>Every part the installer can add is one item of <code>scripts/install/manifest.json</code>, with the profiles that include it; <code>status</code> and <code>uninstall</code> read the same list.</p>" },
-        { "name": "Staying current: <code>/himmel-update</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Pulls your himmel clone, refreshes the plugin marketplace and the tools the install built, and lists anything that needs you. <code>/himmel-update --check</code> only reports.</p>" }
+        { "id": "himmelctl-install-and-status", "name": "himmelctl install and status", "status": "shipped", "detail": "<p>The installer previews every file, setting and plugin it would touch, asks before it writes, and records what it changed. <code>status</code> prints one row per item, worst first, then a count.</p>" },
+        { "id": "one-install-manifest", "name": "One install manifest", "status": "shipped", "detail": "<p>Every part the installer can add is one item of <code>scripts/install/manifest.json</code>, with the profiles that include it; <code>status</code> and <code>uninstall</code> read the same list.</p>" },
+        { "id": "staying-current-himmel-update", "name": "Staying current: <code>/himmel-update</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Pulls your himmel clone, refreshes the plugin marketplace and the tools the install built, and lists anything that needs you. <code>/himmel-update --check</code> only reports.</p>" }
       ],
       "example": {
         "title": "See what is installed",
@@ -52,11 +52,11 @@
       "turn_on": "included in the starter install, the destructive-command guard too.",
       "outcome": "Every change Claude makes lands on its own branch in its own worktree, and the moves that can hurt a project are refused before they run.",
       "components": [
-        { "name": "Worktree isolation", "status": "shipped", "detail": "<p>Claude may not edit files while your checkout is on main. The refusal names the command that cuts a worktree: <code>bash scripts/worktree.sh feat/&lt;scope&gt;</code>.</p>" },
-        { "name": "Secret-file protection", "status": "shipped", "detail": "<p>Reads of <code>.env</code> files, keys and similar secret files are refused. To read one on purpose, start Claude Code with <code>READ_SECRETS_OK=1</code> for that session.</p>" },
-        { "name": "Git gates: commit, message, push to main", "status": "shipped", "detail": "<p>If your project has no <code>.pre-commit-config.yaml</code>, the install places himmel's own git hooks. They refuse a commit on main, a direct push to main, and a commit message without a conventional type and a ticket reference such as <code>#1</code>. No tracker? Put <code>TICKET_ID_REQUIRED=0</code> in <code>~/.himmel/himmel.conf</code>.</p>" },
-        { "name": "Destructive-command guard", "status": "shipped", "plugin": "himmel-guard@himmel", "detail": "<p>On by default. It refuses <code>rm -rf</code>, <code>git reset --hard</code>, <code>git clean -f</code>, force pushes and similar before the command runs. To run one on purpose, start Claude Code with <code>DESTRUCTIVE_OK=1</code> for that session.</p>" },
-        { "name": "<code>/pr-check</code> review panel", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you turn on the <a href=\"#t-review\">Cross-model review</a> track), you rule on each finding, and a round repeats until nothing blocking is left.</p>" }
+        { "id": "worktree-isolation", "name": "Worktree isolation", "status": "shipped", "detail": "<p>Claude may not edit files while your checkout is on main. The refusal names the command that cuts a worktree: <code>bash scripts/worktree.sh feat/&lt;scope&gt;</code>.</p>" },
+        { "id": "secret-file-protection", "name": "Secret-file protection", "status": "shipped", "detail": "<p>Reads of <code>.env</code> files, keys and similar secret files are refused. To read one on purpose, start Claude Code with <code>READ_SECRETS_OK=1</code> for that session.</p>" },
+        { "id": "git-gates-commit-message-push-to-main", "name": "Git gates: commit, message, push to main", "status": "shipped", "detail": "<p>If your project has no <code>.pre-commit-config.yaml</code>, the install places himmel's own git hooks. They refuse a commit on main, a direct push to main, and a commit message without a conventional type and a ticket reference such as <code>#1</code>. No tracker? Put <code>TICKET_ID_REQUIRED=0</code> in <code>~/.himmel/himmel.conf</code>.</p>" },
+        { "id": "destructive-command-guard", "name": "Destructive-command guard", "status": "shipped", "plugin": "himmel-guard@himmel", "detail": "<p>On by default. It refuses <code>rm -rf</code>, <code>git reset --hard</code>, <code>git clean -f</code>, force pushes and similar before the command runs. To run one on purpose, start Claude Code with <code>DESTRUCTIVE_OK=1</code> for that session.</p>" },
+        { "id": "pr-check-review-panel", "name": "<code>/pr-check</code> review panel", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you turn on the <a href=\"#t-review\">Cross-model review</a> track), you rule on each finding, and a round repeats until nothing blocking is left.</p>" }
       ],
       "example": {
         "title": "Three refusals you will meet",
@@ -91,11 +91,11 @@
       "turn_on": "answer <code>codex</code> to the installer's lanes question (after <code>codex login</code>), or run the install again with <code>--with-codex</code>.",
       "outcome": "Every <code>/pr-check</code> round is read by two model families, and you can see which reviewer's findings hold up.",
       "components": [
-        { "name": "OpenAI GPT critic, via hermes", "status": "shipped", "detail": "<p>A <em>critic</em> is one reviewer model; hermes is the open-source agent runtime himmel uses to call it. With hermes installed and your ChatGPT/Codex login in place, <code>/pr-check</code> calls the GPT critic beside Claude.</p>" },
-        { "name": "<code>/cr-scores</code> critic scorecard", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Every <code>/pr-check</code> round records its findings and verdicts in a review ledger on your machine. <code>/cr-scores</code> shows, for each critic, how many of its findings held up and how often it was available, and says when a critic is worth dropping.</p>" },
-        { "name": "<code>/cr-tune</code> tuning proposals", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Drafts tuning proposals from the findings that were disproved, each citing its ledger rows, and never applies them itself.</p>" },
-        { "name": "<code>/cr-learnings-refresh</code> known findings", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p>" },
-        { "name": "Multi-model front end", "status": "roadmap", "detail": "<p>One place to drive Claude and the other model families side by side. Not built yet.</p>" }
+        { "id": "openai-gpt-critic-via-hermes", "name": "OpenAI GPT critic, via hermes", "status": "shipped", "detail": "<p>A <em>critic</em> is one reviewer model; hermes is the open-source agent runtime himmel uses to call it. With hermes installed and your ChatGPT/Codex login in place, <code>/pr-check</code> calls the GPT critic beside Claude.</p>" },
+        { "id": "cr-scores-critic-scorecard", "name": "<code>/cr-scores</code> critic scorecard", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Every <code>/pr-check</code> round records its findings and verdicts in a review ledger on your machine. <code>/cr-scores</code> shows, for each critic, how many of its findings held up and how often it was available, and says when a critic is worth dropping.</p>" },
+        { "id": "cr-tune-tuning-proposals", "name": "<code>/cr-tune</code> tuning proposals", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Drafts tuning proposals from the findings that were disproved, each citing its ledger rows, and never applies them itself.</p>" },
+        { "id": "cr-learnings-refresh-known-findings", "name": "<code>/cr-learnings-refresh</code> known findings", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Updates the list of known findings from the ledger, and from a CodeRabbit learnings export if you use CodeRabbit.</p>" },
+        { "id": "multi-model-front-end", "name": "Multi-model front end", "status": "roadmap", "detail": "<p>One place to drive Claude and the other model families side by side. Not built yet.</p>" }
       ],
       "example": {
         "title": "Read the reviewers' scorecard",
@@ -125,11 +125,11 @@
       "turn_on": "the status line comes with the starter install; the usage check runs by itself before scheduled work.",
       "outcome": "You see how full each session's context is, and scheduled work waits instead of eating the usage you need for your own sessions.",
       "components": [
-        { "name": "claude-hud status line", "status": "shipped", "detail": "<p>Shows the model, the context fill and your usage under every prompt. The install backs up your old <code>statusLine</code> and uninstall restores it.</p>" },
-        { "name": "Usage preflight", "status": "shipped", "detail": "<p>One word before a heavy run: go, or wait and why. Scheduled runs check it before they start, because they spend the same usage as your own sessions.</p>" },
-        { "name": "Self-read context fill", "status": "shipped", "detail": "<p><code>bash ~/himmel/scripts/context-fill.sh</code> prints how full the current session's context window is, read from the status line's own snapshot, so a session can hand off before it fills.</p>" },
-        { "name": "rtk output trimming", "status": "shipped", "detail": "<p>rtk filters long command output before Claude reads it, so a noisy build log does not fill the context.</p>" },
-        { "name": "Headless runs with a budget guard", "status": "roadmap", "detail": "<p>Unattended runs that stop at a spend limit you set. Not built yet.</p>" }
+        { "id": "claude-hud-status-line", "name": "claude-hud status line", "status": "shipped", "detail": "<p>Shows the model, the context fill and your usage under every prompt. The install backs up your old <code>statusLine</code> and uninstall restores it.</p>" },
+        { "id": "usage-preflight", "name": "Usage preflight", "status": "shipped", "detail": "<p>One word before a heavy run: go, or wait and why. Scheduled runs check it before they start, because they spend the same usage as your own sessions.</p>" },
+        { "id": "self-read-context-fill", "name": "Self-read context fill", "status": "shipped", "detail": "<p><code>bash ~/himmel/scripts/context-fill.sh</code> prints how full the current session's context window is, read from the status line's own snapshot, so a session can hand off before it fills.</p>" },
+        { "id": "rtk-output-trimming", "name": "rtk output trimming", "status": "shipped", "detail": "<p>rtk filters long command output before Claude reads it, so a noisy build log does not fill the context.</p>" },
+        { "id": "headless-runs-with-a-budget-guard", "name": "Headless runs with a budget guard", "status": "roadmap", "detail": "<p>Unattended runs that stop at a spend limit you set. Not built yet.</p>" }
       ],
       "example": {
         "title": "Ask before a heavy run",
@@ -159,11 +159,11 @@
       "turn_on": "<code>/handover-setup</code> once in your project. Shifts while you are away: <code>/afk-shift</code>.",
       "outcome": "A session that ends leaves a note the next one resumes from, and a shift while you sleep ends in one report you read over coffee.",
       "components": [
-        { "name": "Session handover", "status": "shipped", "plugin": "handover@himmel", "detail": "<p><code>/handover</code> at the end of a session saves what you did and where you left off; a fresh session resumes from it.</p>" },
-        { "name": "Shifts while you are away: <code>/afk-shift</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Starts a shift that keeps working through the queue you leave it, within the usage the preflight allows, and stops when the queue is empty or the usage runs low.</p>" },
-        { "name": "Morning report", "status": "shipped", "detail": "<p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p>" },
-        { "name": "Monitoring set up for you", "status": "roadmap", "detail": "<p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p>" },
-        { "name": "A morning report sent where you choose", "status": "roadmap", "detail": "<p>Choose where the report goes. Not built yet.</p>" }
+        { "id": "session-handover", "name": "Session handover", "status": "shipped", "plugin": "handover@himmel", "detail": "<p><code>/handover</code> at the end of a session saves what you did and where you left off; a fresh session resumes from it.</p>" },
+        { "id": "shifts-while-you-are-away-afk-shift", "name": "Shifts while you are away: <code>/afk-shift</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Starts a shift that keeps working through the queue you leave it, within the usage the preflight allows, and stops when the queue is empty or the usage runs low.</p>" },
+        { "id": "morning-report", "name": "Morning report", "status": "shipped", "detail": "<p><code>/morning-report</code> sums up what merged, what failed and what waits on you since you left. A template (<code>MORNING_REPORT_TEMPLATE</code>, or <code>morning-report.tmpl</code> in your handover root) picks its sections and their order.</p>" },
+        { "id": "monitoring-set-up-for-you", "name": "Monitoring set up for you", "status": "roadmap", "detail": "<p>Dashboards for the fleet's health, installed and wired by the installer. Not built yet.</p>" },
+        { "id": "a-morning-report-sent-where-you-choose", "name": "A morning report sent where you choose", "status": "roadmap", "detail": "<p>Choose where the report goes. Not built yet.</p>" }
       ],
       "example": {
         "title": "End a session so the next one can pick up",
@@ -194,15 +194,15 @@
       "turn_on": "<code>/chief new</code> starts a chief; <code>himmelctl ui</code> opens the fleet view.",
       "outcome": "You hand the chief a list of tickets, and workers ship them in parallel, each through the same review and merge gate as your own changes.",
       "components": [
-        { "name": "Written briefs for each worker", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>A <em>worker</em> is one Claude session that owns one ticket, one worktree and one pull request. The chief writes each worker a brief with its scope and the files it may touch.</p>" },
-        { "name": "Parallel workers, started in waves", "status": "shipped", "detail": "<p>The <em>chief</em> is the session you talk to: it hands out the tickets, starts workers in parallel waves, and keeps them off each other's files.</p>" },
-        { "name": "Coordination in writing, not memory", "status": "shipped", "detail": "<p>Every worker reports in its handover note and by message, so a chief that hands over its shift loses nothing.</p>" },
-        { "name": "Merge only on the chief's approval", "status": "shipped", "detail": "<p>A worker merges only when CI is green at its exact commit, every review point is decided, and the chief has approved that commit.</p>" },
-        { "name": "Session run view", "status": "shipped", "detail": "<p><code>himmelctl ui</code> serves a local page on <code>127.0.0.1</code> behind a per-launch key. Its Fleet page lists every live Claude session; click one to follow it as it runs.</p>" },
-        { "name": "Fleet board", "status": "beta", "detail": "<p>With a chief running, the same page groups the workers under it and shows each one's stage and whether it waits on you. Works, still changing.</p>" },
-        { "name": "Release manager", "status": "beta", "detail": "<p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p>" },
-        { "name": "Trends over days and weeks", "status": "shipped", "detail": "<p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p>" },
-        { "name": "Installable chief module", "status": "roadmap", "detail": "<p>The chief and its scripts as one installable part for your own project. Not built yet.</p>" }
+        { "id": "written-briefs-for-each-worker", "name": "Written briefs for each worker", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>A <em>worker</em> is one Claude session that owns one ticket, one worktree and one pull request. The chief writes each worker a brief with its scope and the files it may touch.</p>" },
+        { "id": "parallel-workers-started-in-waves", "name": "Parallel workers, started in waves", "status": "shipped", "detail": "<p>The <em>chief</em> is the session you talk to: it hands out the tickets, starts workers in parallel waves, and keeps them off each other's files.</p>" },
+        { "id": "coordination-in-writing-not-memory", "name": "Coordination in writing, not memory", "status": "shipped", "detail": "<p>Every worker reports in its handover note and by message, so a chief that hands over its shift loses nothing.</p>" },
+        { "id": "merge-only-on-the-chief-s-approval", "name": "Merge only on the chief's approval", "status": "shipped", "detail": "<p>A worker merges only when CI is green at its exact commit, every review point is decided, and the chief has approved that commit.</p>" },
+        { "id": "session-run-view", "name": "Session run view", "status": "shipped", "detail": "<p><code>himmelctl ui</code> serves a local page on <code>127.0.0.1</code> behind a per-launch key. Its Fleet page lists every live Claude session; click one to follow it as it runs.</p>" },
+        { "id": "fleet-board", "name": "Fleet board", "status": "beta", "detail": "<p>With a chief running, the same page groups the workers under it and shows each one's stage and whether it waits on you. Works, still changing.</p>" },
+        { "id": "release-manager", "name": "Release manager", "status": "beta", "detail": "<p>A session that rules which tickets go into each version and reports the burn-down. Works, still changing.</p>" },
+        { "id": "trends-over-days-and-weeks", "name": "Trends over days and weeks", "status": "shipped", "detail": "<p>The Trends tab on the Fleet page shows fleet velocity, fleet health, tool health and roadmap reality over time, fed by the weekly roll-up job.</p>" },
+        { "id": "installable-chief-module", "name": "Installable chief module", "status": "roadmap", "detail": "<p>The chief and its scripts as one installable part for your own project. Not built yet.</p>" }
       ],
       "example": {
         "title": "Open the fleet view",
@@ -233,13 +233,13 @@
       "turn_on": "run the installer again and pick the <code>luna</code> profile; it scaffolds a vault (or uses yours) and offers the scheduled jobs below.",
       "outcome": "A link you drop into your vault at midnight is a connected, summarized note by morning, and search over it stays fresh.",
       "components": [
-        { "name": "Your vault, from the template", "status": "shipped", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
-        { "name": "Scheduled jobs", "status": "shipped", "cadences": true, "detail": "<p>Recurring jobs on your system's scheduler (cron). You see a row only when its condition holds, and anything you decline is recorded as declined.</p>" },
-        { "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
-        { "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },
-        { "name": "Obsidian skills (claude-obsidian)", "status": "shipped", "plugin": "claude-obsidian@himmel", "detail": "<p>Comes from upstream, pinned to a release tag; not a himmel fork.</p>" },
-        { "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p>" },
-        { "name": "Memory compounding: <code>/memory-compound</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Claude Code keeps a memory index for each project and loads it into every session, within a fixed budget. When the index nears that budget, run <code>/memory-compound</code> in a session of its own. It moves the lasting lessons into vault notes, checks that qmd search finds them, and only then trims the index. The vault notes land on a branch for you to review and merge. It runs when you ask; there is no schedule.</p>" }
+        { "id": "your-vault-from-the-template", "name": "Your vault, from the template", "status": "shipped", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
+        { "id": "scheduled-jobs", "name": "Scheduled jobs", "status": "shipped", "cadences": true, "detail": "<p>Recurring jobs on your system's scheduler (cron). You see a row only when its condition holds, and anything you decline is recorded as declined.</p>" },
+        { "id": "vault-search-qmd", "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
+        { "id": "clip-triage-obsidian-triage", "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },
+        { "id": "obsidian-skills-claude-obsidian", "name": "Obsidian skills (claude-obsidian)", "status": "shipped", "plugin": "claude-obsidian@himmel", "detail": "<p>Comes from upstream, pinned to a release tag; not a himmel fork.</p>" },
+        { "id": "note-graph-graphify", "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p>" },
+        { "id": "memory-compounding-memory-compound", "name": "Memory compounding: <code>/memory-compound</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Claude Code keeps a memory index for each project and loads it into every session, within a fixed budget. When the index nears that budget, run <code>/memory-compound</code> in a session of its own. It moves the lasting lessons into vault notes, checks that qmd search finds them, and only then trims the index. The vault notes land on a branch for you to review and merge. It runs when you ask; there is no schedule.</p>" }
       ],
       "example": {
         "title": "Check a scheduled job",
@@ -269,11 +269,11 @@
       "turn_on": "with a vault, the installer asks whether to configure the Telegram bridge; you create a bot token and the two files below.",
       "outcome": "You send your bot a message or a link, and Claude answers in the chat or files it into the vault.",
       "components": [
-        { "name": "Telegram bridge", "status": "shipped", "plugin": "telegram-himmel@himmel", "detail": "<p>A small supervisor on your machine relays your messages to Claude Code and the replies back. Only the Telegram user ids in <code>access.json</code> are answered.</p>" },
-        { "name": "Bridge health checks", "status": "shipped", "detail": "<p>The supervisor restarts the bridge when it stops answering, and <code>himmelctl status</code> reports whether it runs.</p>" },
-        { "name": "Capture from chat", "status": "shipped", "detail": "<p>Send a link or a note; it lands in the vault for the pipeline to summarize and link.</p>" },
-        { "name": "Alerts", "status": "shipped", "detail": "<p>Scheduled jobs and health checks send their alerts to the same chat.</p>" },
-        { "name": "Voice notes", "status": "beta", "detail": "<p>Speak a message instead of typing it; the reply can be read aloud. Works, still changing.</p>" }
+        { "id": "telegram-bridge", "name": "Telegram bridge", "status": "shipped", "plugin": "telegram-himmel@himmel", "detail": "<p>A small supervisor on your machine relays your messages to Claude Code and the replies back. Only the Telegram user ids in <code>access.json</code> are answered.</p>" },
+        { "id": "bridge-health-checks", "name": "Bridge health checks", "status": "shipped", "detail": "<p>The supervisor restarts the bridge when it stops answering, and <code>himmelctl status</code> reports whether it runs.</p>" },
+        { "id": "capture-from-chat", "name": "Capture from chat", "status": "shipped", "detail": "<p>Send a link or a note; it lands in the vault for the pipeline to summarize and link.</p>" },
+        { "id": "alerts", "name": "Alerts", "status": "shipped", "detail": "<p>Scheduled jobs and health checks send their alerts to the same chat.</p>" },
+        { "id": "voice-notes", "name": "Voice notes", "status": "beta", "detail": "<p>Speak a message instead of typing it; the reply can be read aloud. Works, still changing.</p>" }
       ],
       "example": {
         "title": "Talk to Claude from your phone",

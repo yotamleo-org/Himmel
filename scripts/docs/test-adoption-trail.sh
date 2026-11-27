@@ -111,7 +111,7 @@ for mod in data["modules"]:
     for c in mod.get("components", []):
         name, detail = text(c["name"]), text(c["detail"])
         if not any(b.startswith(name) and detail in b for b in blocks):
-            print("module %s component %r: detail not in a <details> block" % (mod["id"], name))
+            print("module %s component %s: detail not in a <details> block" % (mod["id"], c.get("id", repr(name))))
 PY
 }
 
@@ -217,6 +217,10 @@ if [ "$have_data" = 1 ]; then
 
   bad_status="$(jq -r '.modules[].components[]? | select(.status | IN("shipped","beta","roadmap") | not) | .name' "$DATA" | tr '\n' ' ')"
   if [ -z "$bad_status" ]; then ok "every component status is shipped, beta or roadmap"; else bad "components with an unknown status" "$bad_status"; fi
+
+  no_id="$(jq -r '.modules[].components[] | select((.id // "") | test("^[a-z0-9]+(-[a-z0-9]+)*$") | not) | .name' "$DATA" | tr '\n' ' ')"
+  dup_id="$(jq -r '[.modules[].components[].id // empty] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$DATA" | tr '\n' ' ')"
+  if [ -z "$no_id$dup_id" ]; then ok "every component has a slug id, unique in the data file"; else bad "components without a slug id, or sharing one" "no id: ${no_id:-none}; shared: ${dup_id:-none}"; fi
 fi
 
 all_n="$(jq '.items | length' "$MANIFEST")"
@@ -674,6 +678,19 @@ if [ "$have_data" = 1 ]; then
   else
     bad "control: the TRACK-NEEDS check accepted a header missing a needed track"
   fi
+  trk_cols=""
+  no_col=""
+  for t in $(jq -r '.tracks[].id' "$DATA"); do
+    col="$(grep -o -E "\.trk-$t \{ --trk: var\(--[a-z]+\)" "$ROOT/site/src/trail/trail.css" | sed -E 's/.*var\((--[a-z]+)\)/\1/')"
+    if [ -n "$col" ]; then trk_cols="$trk_cols$col"$'\n'; else no_col="$no_col $t"; fi
+  done
+  n_tracks="$(jq '.tracks | length' "$DATA")"
+  n_cols="$(printf '%s' "$trk_cols" | sort -u | grep -c .)"
+  if [ -z "$no_col" ] && [ "$n_cols" -eq "$n_tracks" ]; then
+    ok "each of the $n_tracks tracks has its own colour in trail.css"
+  else
+    bad "every track needs its own --trk colour rule in trail.css" "no rule:${no_col:- none}; distinct colours $n_cols of $n_tracks"
+  fi
 fi
 
 alias_gaps() {
@@ -691,6 +708,14 @@ for m in d.get("modules") or []:
     s = re.search(r'<details\b[^>]*\bid="m-%s"[^>]*>\s*<summary>(.*?)</summary>' % re.escape(m["id"]), page, flags=re.S)
     if not s or not re.search(r'\bid="lvl-%d"' % n, s.group(1)):
         print("lvl-%d is not inside the summary of card m-%s" % (n, m["id"]))
+OLD = {0: "install", 1: "guardrails", 2: "second-brain", 3: "reach", 4: "review", 5: "spend", 6: "always-on", 7: "fleet"}
+got = {}
+for m in d.get("modules") or []:
+    if m.get("legacy_n") is not None:
+        got.setdefault(m["legacy_n"], []).append(m["id"])
+for n in sorted(set(OLD) | set(got), key=str):
+    if got.get(n) != [OLD.get(n)]:
+        print("legacy_n %s was %s on the old numbered page, the data gives it to %s" % (n, OLD.get(n), got.get(n)))
 f = re.search(r"if \(/\^#\((.*?)\)\$/\.test\(h\)\) location\.replace\('adoption-trail-levels\.html'", main)
 for h in ("lvl-4", "m-review", "t-core"):
     if not f or not re.fullmatch("(?:%s)" % f.group(1), h):
@@ -711,6 +736,15 @@ if [ "$have_data" = 1 ]; then
     ok "control: a lvl-4 anchor outside its card is reported"
   else
     bad "control: the ALIASES check accepted a lvl-4 anchor outside its card"
+  fi
+  jq '.modules |= map(if .id == "install" then .legacy_n = 1 elif .id == "guardrails" then .legacy_n = 0 else . end)' "$DATA" > "$tmp/swap.json"
+  jq '.modules |= map(if .id == "review" then del(.legacy_n) else . end)' "$DATA" > "$tmp/drop.json"
+  swapped="$(alias_gaps "$tmp/swap.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 0 was install')"
+  dropped="$(alias_gaps "$tmp/drop.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 4 was review')"
+  if [ -n "$swapped" ] && [ -n "$dropped" ]; then
+    ok "control: a swapped legacy_n (install and guardrails) and a dropped one (review) are each reported"
+  else
+    bad "control: the ALIASES check missed a swapped or dropped legacy_n" "swap: ${swapped:-none}; drop: ${dropped:-none}"
   fi
 fi
 
