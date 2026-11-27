@@ -57,7 +57,7 @@ chief new --bucket dgsrc >/dev/null 2>&1
 docA="$root/tester/dgsrc/DEMO-nextleg-${today}A-chief.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/dgsrc/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — working' > "$root/tester/dgsrc/DEMO-0-N1-live.md"
-printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N1","doc":"%s"}]}\n' "$root/tester/dgsrc/DEMO-1-N9-wrapped.md" "$root/tester/dgsrc/DEMO-0-N1-live.md" > "${docA%.md}.fleet.json"
+printf '{"schema":1,"legs":[{"label":"N9","doc":"%s"},{"label":"N1","doc":"%s"}]}\n' "$root/tester/dgsrc/DEMO-1-N9-wrapped.md" "$root/tester/dgsrc/DEMO-0-N1-live.md" > "${docA%.md}.fleet.json"
 bash "$fixture_repo/scripts/handover/chief-kit/owe.sh" add --bucket "$root/tester/dgsrc" --chief ZZ --kind proof --text 'run the live succession proof' >/dev/null
 mkdir -p "$root/tester/dgsrc/specs/designs"
 printf 'design\n' > "$root/tester/dgsrc/specs/designs/DEMO-951-digest-design.md"

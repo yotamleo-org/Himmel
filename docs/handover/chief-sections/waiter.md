@@ -9,7 +9,8 @@ with Monitor `timeout_ms: 1800000`, `--workers-from <manifest>` and
 services pending READY/cleanup through worker-event between full ticks and
 continues while the chief is busy. It reconciles existing READY at startup;
 replay never authorizes a second GO. Ambiguous exact-head GO delivery requires
-chief reconciliation before any resend.
+chief reconciliation before any resend. Stream mode also needs `renudge_step`
+before it is switched on.
 
 `WAKE#<seq>` names the saved block in `out=`; service continues while you
 handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
@@ -573,6 +574,24 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     bullet never wakes twice, and a successor's new inbox wakes once more (a tails= move
     never names a request). Read the worker's doc and act as on its message.
 
+    **A worker still owed a GO or an answer wakes you every 30 minutes.** A
+    `WAKE worker-renudge` line means a worker has waited `waited=` minutes and this is the
+    `n`-th reminder; there is no cap, and one wake per 30-minute slot of your inbox carries
+    every due worker. Read its doc and answer as on the first wake:
+    - **`go-owed`:** run `chief-duty-sweep.sh` first, and run `go.sh` only if the head is
+      the PR's current one and judged. For an `id=br-…` or a short `head=`, ask the worker
+      for a full `READY <pr> <head40> GREEN`. For `t3=ask`, answer through `t3-send.sh`,
+      then record the keyed hold below and close it at the thread's next marker.
+    - **`answer-owed`:** send a message the worker records with `RESOLVED` or a new marker.
+    - **A relaunch** from its RESUME doc: the reminders stop once the new session writes a
+      marker that changes the item.
+    - **`fleet-manifest.sh remove`** when you take the work over.
+    - **A hold on purpose**, for example while the item waits on the operator: run
+      `owe.sh add --bucket <dir> --chief <you> --kind ruling --text "<what it waits for>" --metadata '{"source_label":"<label>","source_id":"<hold id>"}'`.
+      When you answer, run `owe.sh close --bucket <dir> --id <oN> --key <hold id>`.
+
+    It repeats until one of these is true.
+
     **A manifest row that reads no doc wakes you once per path.** A row whose doc does
     not exist wakes `WAKE worker-doc-missing <label> <path>`; a row naming a `-RESUME`
     brief with no marker bullet, while the original doc beside it holds a newer one, wakes
@@ -711,7 +730,7 @@ recorded included. An ask on settings or `.github/`
 
     **A classifier-refused native worker.** The `DENIAL-PAGE` Telegram names the Remote Control session to open (the worker's session name) when that worker runs with `--remote-control`: the operator answers from the Claude app, in the worker's own window. A native plain-worker `--profile` launch carries the flag by default; claudex (the shim refuses the flag on a lane launcher), a judge, a relay, a release manager, a consult and a headless session never do. For a native worker that lacks it, `bash <kit>/enable-remote-control.sh [--relaunch] <session-name> <signal-file> <deadline-epoch> <log>` reports it (exit 5 plans the relaunch and ends nothing; `--relaunch` runs the launcher `--dry-run` first and ends nothing if that fails (exit 7), then ends that session and relaunches the same name on the same doc, model, profile, owning chief and `WORKER_SESSION_EFFORT`, destroying its context window; the profile comes from the launch record line whose `session_id` is the live session's own; a consult, judge, relay, release manager, A/B-arm or context-mode launch is refused, exit 4, since a relaunch would not restore it).
 
-**Chief duties: what the chief still owes.** The waiter wakes the chief on a change, so a duty that woke a busy chief once and was not acted on does not come back. `bash <kit>/chief-duty-sweep.sh --doc <chief doc> --workers-from <manifest>` reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the verdicts, the dispatcher's dispositions with the Jira mirror, and `owed.jsonl`, and prints one `DUTY <kind> <id> :: <why> :: next: <command>` line per owed action, or nothing when none is. The waiter runs it on each sample; run it by hand only to see it now. Apart from its two acts (a CI rerun and a judge spec write, below) it only reads; the one `gh pr list` it makes is cached 5 min, and the dispatcher's dispositions are refreshed in the background. A copy older than 1800 s, a copy carrying `open PRs unknown` or `core-check failed`, or no copy yet prints `DUTY? pool unread` and lists no `dispatch-owed` item. The kinds:
+**Chief duties: what the chief still owes.** The waiter wakes the chief on a change, and re-surfaces a standing `go-owed` or `answer-owed` every 30 minutes as `WAKE worker-renudge`; the other kinds still wake once. `bash <kit>/chief-duty-sweep.sh --doc <chief doc> --workers-from <manifest>` reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the verdicts, the dispatcher's dispositions with the Jira mirror, and `owed.jsonl`, and prints one `DUTY <kind> <id> :: <why> :: next: <command>` line per owed action, or nothing when none is. The waiter runs it on each sample; run it by hand only to see it now. Apart from its two acts (a CI rerun and a judge spec write, below) it only reads; the one `gh pr list` it makes is cached 5 min, and the dispatcher's dispositions are refreshed in the background. A copy older than 1800 s, a copy carrying `open PRs unknown` or `core-check failed`, or no copy yet prints `DUTY? pool unread` and lists no `dispatch-owed` item. The kinds:
 
 - `go-owed`: a standing READY (no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED after it) at the PR's current head with no GO file. A PR with a `judge-owed` item lists only the judge, which comes first.
 - `merge-owed`: the GO file is 10 min old or more, the PR is open at that head, and the lane is not `native` (a native worker merges itself; `silent-go-merge.sh` covers its silence).

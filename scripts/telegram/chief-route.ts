@@ -571,18 +571,11 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
 export const MAX_SEND_BYTES = 50 * 1024 * 1024;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// A spec or plan page goes to the operator to be signed, so it goes only after its latest-round
-// spec critic and plan critic ended in a clean line AND quoted the sha256 of the exact bytes
-// being sent (operator decisions 700 and 701), or, once the ticket's round ledger holds three
-// rounds of that kind (decision 763), with each open finding on the page. The critic files sit beside the spec as
-// `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
-// `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
-// A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
-// `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
 const NOT_FOR_SIGNATURE = "Not for signature";
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
 const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as const;
-export const CRITIC_ROUND_CAP = 3;
+export const CRITIC_ROUND_CAP = 5;
+const LEGACY_ROUND_CAP = 3;
 type Kind = "spec" | "plan";
 const verdictKind = (line: string): Kind | undefined => /^(SPEC|PLAN) (CLEAN|FINDINGS \d+)$/.exec(line)?.[1].toLowerCase() as Kind | undefined;
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
@@ -898,7 +891,7 @@ type Opener = { row: LedgerRow; epoch: number; round: number; kinds: Kind[]; nee
 // Whether an extension row opens a round it may: writer + 1 as it always did, or a lagging kind's own next refused round, once per kind.
 function extensionLands(opened: unknown, writer: number, aim: ReturnType<typeof extensionAim>, opens: (round: number, kinds: Kind[]) => boolean, kinds: Kind[]): boolean {
   if (Number(opened) === writer + 1) return !opens(writer + 1, kinds);
-  return !!aim && "round" in aim && aim.round > CRITIC_ROUND_CAP + 1 && Number(opened) === aim.round && !opens(aim.round, kinds);
+  return !!aim && "round" in aim && aim.round > LEGACY_ROUND_CAP + 1 && Number(opened) === aim.round && !opens(aim.round, kinds);
 }
 const spendsDecision = (r: LedgerRow) => r.row === "reset" || (r.row === "critical" && r.restore !== true) || r.row === "extension";
 const citesDecision = (r: LedgerRow) => r.decision !== undefined && ["reset", "critical", "extension"].includes(r.row);
@@ -998,10 +991,10 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
   const spend = (r: LedgerRow) => { spent.numbers.add(String(r.decision)); if (isText(r.decision_path)) spent.paths.add(r.decision_path); if (isText(r.decision_sha)) spent.shas.add(r.decision_sha); };
   const openers: Opener[] = [];
   const opensRound = (round: number, kinds: Kind[]) => openers.some(o => o.epoch === epoch && o.round === round && o.kinds.some(k => kinds.includes(k)));
-  const restores: (Restore & { epoch: number })[] = []; const capBlocked: Record<Kind, boolean> = { spec: false, plan: false };
-  const state = (): ReplayState => ({ openers: openers.filter(o => o.epoch === epoch), capBlocked: k => capBlocked[k], openBlocking: () => blocking.spec.length + blocking.plan.length > 0 });
+  const restores: (Restore & { epoch: number })[] = []; const capBlocked = new Set<string>();
+  const state = (): ReplayState => ({ openers: openers.filter(o => o.epoch === epoch), capBlocked: (k, cap) => capBlocked.has(`${k}:${cap}`), openBlocking: () => blocking.spec.length + blocking.plan.length > 0 });
   const take = (kind: Kind, round: number, r: Returned[]) => {
-    maxRound[kind] = round; latest[kind] = r; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); if (round === CRITIC_ROUND_CAP) capBlocked[kind] = r.some(leftBlocking);
+    maxRound[kind] = round; latest[kind] = r; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); if (r.some(leftBlocking)) capBlocked.add(`${kind}:${round}`); else capBlocked.delete(`${kind}:${round}`);
     for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), { cls: f.critical, rulings: f.rulings ?? [], kind, round });
   };
   const label = (r: LedgerRow) => r.decision === undefined ? r.row : `${r.row} ${r.decision}`;
@@ -1041,7 +1034,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
       const fresh = (a: { path: string; sha: string }) => !spent.numbers.has(d) && !spent.paths.has(a.path) && !spent.shas.has(a.sha);
       const unspent = !!q && !("error" in q) && fresh(q);
       sawReset = true; usedReset.add(d); spend(r);
-      if (unspent && q && !("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; capBlocked.spec = false; capBlocked.plan = false; classOf.clear(); ruled.clear(); }
+      if (unspent && q && !("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; capBlocked.clear(); classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical" && r.restore === true) {
       const info = await replayRestore(r);
@@ -1051,7 +1044,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
     } else if (r.row === "override") {
       const ids = Array.isArray(r.findings) ? r.findings.map((f: { id?: unknown }) => String(f?.id)) : [];
       const open = new Set([...blocking.spec, ...blocking.plan]);
-      const ok = !sawOverride && ids.length > 0 && ids.every(id => open.has(id)) && isText(r.why) && isText(r.chief) && Math.max(maxRound.spec, maxRound.plan) >= CRITIC_ROUND_CAP + 1 && Number(r.round_opened) === Math.max(maxRound.spec, maxRound.plan) + 1;
+      const ok = !sawOverride && ids.length > 0 && ids.every(id => open.has(id)) && isText(r.why) && isText(r.chief) && Math.max(maxRound.spec, maxRound.plan) >= LEGACY_ROUND_CAP + 1 && Number(r.round_opened) === Math.max(maxRound.spec, maxRound.plan) + 1;
       sawOverride = true;
       if (ok) {
         override = { row: r, epoch };
@@ -1065,7 +1058,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
       const named = namedKinds(r.findings, latest);
       const lands = extensionLands(r.round_opened, writer, extensionAim(maxRound, latest), opensRound, named);
       const ok = !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && !spent.paths.has(q.path) && !spent.shas.has(q.sha)
-        && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= CRITIC_ROUND_CAP + 1 && named.length > 0 && lands
+        && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= LEGACY_ROUND_CAP + 1 && named.length > 0 && lands
         && openFindingsOf(latest).length > 0 && findingsKey(r.findings) === findingsKey(openFindingsOf(latest)) && returnsKey(r.returns) === returnsKey(returnsOf(latest));
       spend(r);
       earlierExtensions.push(r);
@@ -1082,21 +1075,21 @@ function settleRestores(restores: Restore[], r: LedgerRow): void {
   }
 }
 
-type ReplayState = { openers: Opener[]; capBlocked: (k: Kind) => boolean; openBlocking: () => boolean };
+type ReplayState = { openers: Opener[]; capBlocked: (k: Kind, cap: number) => boolean; openBlocking: () => boolean };
 const openedBy = (s: ReplayState, kind: Kind, round: number) => s.openers.some(o => o.round === round && o.kinds.includes(kind) && (!o.needsOpenBlocking || s.openBlocking()));
-function roundNeedsRecord(s: ReplayState, kind: Kind, round: number): boolean {
-  if (round <= CRITIC_ROUND_CAP) return false;
-  if (round === CRITIC_ROUND_CAP + 1) return !(openedBy(s, kind, round) || KINDS.some(s.capBlocked));
+function roundNeedsRecord(s: ReplayState, kind: Kind, round: number, cap = CRITIC_ROUND_CAP): boolean {
+  if (round <= cap) return false;
+  if (round === cap + 1) return !(openedBy(s, kind, round) || KINDS.some(k => s.capBlocked(k, cap)));
   return !openedBy(s, kind, round);
 }
-const replayStateOf = (rows: Rows): ReplayState => ({ openers: rows.checked.openers, capBlocked: k => blockedAt(rows, k, CRITIC_ROUND_CAP), openBlocking: () => openBlocking(rows).length > 0 });
-function closureTargets(s: ReplayState, maxRound: Record<Kind, number>): { kind: Kind; round: number }[] {
-  return [...new Set(KINDS.map(k => maxRound[k] + 1))].sort((a, b) => a - b).flatMap(n => nextKinds(maxRound, n).filter(k => roundNeedsRecord(s, k, n)).map(kind => ({ kind, round: n })));
+const replayStateOf = (rows: Rows): ReplayState => ({ openers: rows.checked.openers, capBlocked: (k, cap) => blockedAt(rows, k, cap), openBlocking: () => openBlocking(rows).length > 0 });
+function closureTargets(s: ReplayState, maxRound: Record<Kind, number>, cap = CRITIC_ROUND_CAP): { kind: Kind; round: number }[] {
+  return [...new Set(KINDS.map(k => maxRound[k] + 1))].sort((a, b) => a - b).flatMap(n => nextKinds(maxRound, n).filter(k => roundNeedsRecord(s, k, n, cap)).map(kind => ({ kind, round: n })));
 }
 function closureKinds(r: LedgerRow, s: ReplayState, maxRound: Record<Kind, number>): Kind[] | null {
   const writer = Math.max(maxRound.spec, maxRound.plan); const opens = Number(r.opens);
-  if (r.critics === undefined) return opens === writer + 1 && writer >= CRITIC_ROUND_CAP ? nextKinds(maxRound, opens) : null;
-  const targets = closureTargets(s, maxRound); const critics: unknown[] = Array.isArray(r.critics) ? r.critics : [];
+  if (r.critics === undefined) return opens === writer + 1 && writer >= LEGACY_ROUND_CAP ? nextKinds(maxRound, opens) : null;
+  const targets = [CRITIC_ROUND_CAP, LEGACY_ROUND_CAP].flatMap(cap => closureTargets(s, maxRound, cap)); const critics: unknown[] = Array.isArray(r.critics) ? r.critics : [];
   const named = critics.length > 0 && new Set(critics).size === critics.length && critics.every(k => targets.some(t => t.kind === k && t.round === opens));
   return named ? critics as Kind[] : null;
 }
@@ -1272,7 +1265,7 @@ async function closureCheck(specs: string, key: string, kind: Kind, r: number, r
     const markers = prev.returns.map(x => closureMarker(key, kind, r, x.return_sha));
     if (!text.split("\n").map(l => l.trim()).some(l => markers.includes(l))) throw new Error(`${key} ${kind} round ${r} is a closure check of round ${r - 1}; build its input with closure-pack`);
   }
-  const baseline = prev.sealed.length || r !== CRITIC_ROUND_CAP + 1 ? null : await inferredBaseline(from);
+  const baseline = prev.sealed.length || ![CRITIC_ROUND_CAP + 1, LEGACY_ROUND_CAP + 1].includes(r) ? null : await inferredBaseline(from);
   const sealed = baseline ?? prev.sealed;
   const pageSha = baseline ? sha256(await readFile(page)) : null;
   if (!sealed.some(s => s.read_path === page && (pageSha === null || s.read_sha === pageSha))) throw new Error(`${key} ${kind} round ${r} is a closure check of the files round ${r - 1} read: ${[...new Set(sealed.map(s => s.read_path))].join(", ")}`);
@@ -1506,7 +1499,7 @@ async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<
     }
     if (row.row === "reset") { epoch++; rounds.spec = rounds.plan = 0; if (row.epoch !== epoch) throw new Error("capped-fold: invalid reset epoch"); }
     if (row.row === "round") {
-      if ((row.epoch ?? 0) !== epoch || row.round !== rounds[row.critic as Kind] + 1 || row.mode !== (row.round <= CRITIC_ROUND_CAP ? "full" : "closure")) throw new Error("capped-fold: invalid round epoch/order/mode");
+      if ((row.epoch ?? 0) !== epoch || row.round !== rounds[row.critic as Kind] + 1 || !(row.mode === "full" ? row.round <= CRITIC_ROUND_CAP : row.mode === "closure" && row.round > LEGACY_ROUND_CAP)) throw new Error("capped-fold: invalid round epoch/order/mode");
       rounds[row.critic as Kind] = row.round;
     }
     if (citesDecision(row)) await reader.decision(String(row.decision));
@@ -2280,7 +2273,7 @@ async function openFindingsBlock(open: Set<string>, rounds: Record<Kind, number>
   }));
   return `<section class="open-findings">
 <p><strong>Round count: spec ${rounds.spec}, plan ${rounds.plan}. ${open.size} critic${open.size === 1 ? "" : "s"} did not end clean.</strong></p>
-${critical.length ? `<p><strong>Open operator-critical findings:</strong> ${critical.map(c => esc(`${c.id} (${c.class})`)).join(", ")}. The signature is refused until you rule on each.</p>\n` : ""}<p><strong>Rule, don't just sign.</strong> These findings are still open. Rule on each one and add what is missing. Minors and mediums go to the build; a critic round past the cap needs a blocking finding in round 3, then a chief override or an operator-critical ruling.</p>
+${critical.length ? `<p><strong>Open operator-critical findings:</strong> ${critical.map(c => esc(`${c.id} (${c.class})`)).join(", ")}. The signature is refused until you rule on each.</p>\n` : ""}<p><strong>Rule, don't just sign.</strong> These findings are still open. Rule on each one and add what is missing. Minors and mediums go to the build; a critic round past the cap needs a blocking finding in round ${CRITIC_ROUND_CAP}, then a chief override or an operator-critical ruling.</p>
 ${returns.join("")}</section>
 `;
 }

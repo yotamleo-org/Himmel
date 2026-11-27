@@ -56,6 +56,7 @@ const GUARDS = [
   ['block-edit-on-main.sh', 'Edit|Write|MultiEdit|NotebookEdit'],
   ['block-read-secrets.sh', 'Bash|PowerShell|Read|Grep'],
 ];
+const WRAPPER_LIBS = ['lib/harness-tool-translate.js', 'lib/harness-tool-map.json'];
 
 function work() {
   const dir = makeTmpDir('gblock-');
@@ -140,6 +141,8 @@ function writeHookStubs(ctx, { wrapper = true, basenames = GUARDS.map(([basename
 function writeRealHookCopies(ctx) {
   const hooksDir = join(ctx.repo, 'scripts', 'hooks');
   writeFileSync(join(hooksDir, 'guardrail-skip-in-himmel.js'), readFileSync(join(HERE, 'guardrail-skip-in-himmel.js')));
+  mkdirSync(join(hooksDir, 'lib'), { recursive: true });
+  for (const rel of WRAPPER_LIBS) writeFileSync(join(hooksDir, rel), readFileSync(join(HERE, rel)));
   for (const [basename] of GUARDS) {
     writeFileSync(join(hooksDir, basename), readFileSync(join(HERE, basename)));
   }
@@ -162,6 +165,25 @@ function treeBody(entries) {
   ]));
 }
 
+function writeTreeObjects(gitDir, contentsByName) {
+  const files = [];
+  const dirs = new Map();
+  for (const [name, body] of Object.entries(contentsByName)) {
+    const slash = name.indexOf('/');
+    if (slash < 0) {
+      files.push({ mode: '100644', name, oid: writeLooseObject(gitDir, 'blob', body) });
+      continue;
+    }
+    const head = name.slice(0, slash);
+    if (!dirs.has(head)) dirs.set(head, {});
+    dirs.get(head)[name.slice(slash + 1)] = body;
+  }
+  const subtrees = [...dirs].map(([name, sub]) => ({ mode: '040000', name, oid: writeTreeObjects(gitDir, sub) }));
+  const sortKey = (entry) => Buffer.from(entry.mode === '040000' ? `${entry.name}/` : entry.name);
+  const entries = [...files, ...subtrees].sort((a, b) => Buffer.compare(sortKey(a), sortKey(b)));
+  return writeLooseObject(gitDir, 'tree', treeBody(entries));
+}
+
 // Builds loose blob/tree/commit objects for a tree of scripts/hooks/<files>
 // (name→body) under gitDir and returns the commit OID. Shared by the
 // primary-checkout fixture (commitHookTree) and the linked-worktree fixture
@@ -169,10 +191,7 @@ function treeBody(entries) {
 // tree-construction logic isn't duplicated.
 function commitHookObjects(gitDir, contentsByName) {
   mkdirSync(join(gitDir, 'objects'), { recursive: true });
-  const hooksEntries = Object.entries(contentsByName)
-    .map(([name, body]) => ({ mode: '100644', name, oid: writeLooseObject(gitDir, 'blob', body) }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const hooksTree = writeLooseObject(gitDir, 'tree', treeBody(hooksEntries));
+  const hooksTree = writeTreeObjects(gitDir, contentsByName);
   const scriptsTree = writeLooseObject(gitDir, 'tree', treeBody([{ mode: '040000', name: 'hooks', oid: hooksTree }]));
   const rootTree = writeLooseObject(gitDir, 'tree', treeBody([{ mode: '040000', name: 'scripts', oid: scriptsTree }]));
   const commit = Buffer.from(`tree ${rootTree}\n` +
@@ -194,7 +213,7 @@ function commitHookTree(repo, contentsByName) {
 }
 
 function commitHookCopies(ctx) {
-  const names = ['guardrail-skip-in-himmel.js', ...GUARDS.map(([basename]) => basename)];
+  const names = ['guardrail-skip-in-himmel.js', ...WRAPPER_LIBS, ...GUARDS.map(([basename]) => basename)];
   const contentsByName = Object.fromEntries(names.map((name) => [name, readFileSync(join(ctx.repo, 'scripts', 'hooks', name))]));
   commitHookTree(ctx.repo, contentsByName);
 }
@@ -1147,6 +1166,136 @@ test('status --json: syntactically-valid no-op wrapper at the correct anchor pat
   }
 });
 
+
+const MAP_REL = 'scripts/hooks/lib/harness-tool-map.json';
+
+function libFixture() {
+  const ctx = work();
+  writeRealHookCopies(ctx);
+  commitHookCopies(ctx);
+  return ctx;
+}
+
+function dropMapEntry(ctx) {
+  const file = join(ctx.repo, MAP_REL);
+  const table = JSON.parse(readFileSync(file, 'utf8'));
+  delete table.tools.run_terminal_command;
+  writeFileSync(file, `${JSON.stringify(table, null, 2)}\n`);
+}
+
+const libStatus = (ctx, data = installedData(ctx)) => withDeclaredRepo(ctx.repo, () => statusDetail(data, { repoRoot: ctx.repo }));
+const libEntry = (hook, rel) => (hook.wrapperLibIntegrity ?? []).find((e) => e.relativePath === rel);
+
+test('wrapper libs: fixture — the committed lib copies are readable from HEAD as nested tree entries', () => {
+  const ctx = libFixture();
+  assert.equal(readHeadBlob(ctx.repo, MAP_REL).ok, true);
+  assert.equal(readHeadBlob(ctx.repo, 'scripts/hooks/lib/harness-tool-translate.js').ok, true);
+});
+
+test('wrapper libs: G1 — committed lib copies attest healthy beside every wired wrapper', () => {
+  const out = libStatus(libFixture());
+  for (const hook of out.hooks) {
+    assert.deepEqual((hook.wrapperLibIntegrity ?? []).map((e) => e.relativePath), WRAPPER_LIBS.map((rel) => `scripts/hooks/${rel}`));
+    for (const lib of hook.wrapperLibIntegrity) {
+      assert.equal(lib.verdict, 'healthy', lib.relativePath);
+      assert.equal(lib.reason, 'matches-git-object', lib.relativePath);
+    }
+  }
+  assert.equal(out.contentIntegrityComplete, true);
+});
+
+test('wrapper libs: G2 — an uncommitted table edit degrades the lib and the attestation', () => {
+  const ctx = libFixture();
+  dropMapEntry(ctx);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) {
+    const lib = libEntry(hook, MAP_REL);
+    assert.ok(lib, `${hook.basename} reports ${MAP_REL}`);
+    assert.equal(lib.verdict, 'degraded');
+    assert.equal(lib.reason, 'content-mismatch');
+  }
+  assert.equal(out.contentIntegrityComplete, false);
+  assert.equal(out.attestationComplete, false);
+});
+
+test('wrapper libs: G2c — the same edit committed reads healthy (the HEAD limit)', () => {
+  const ctx = libFixture();
+  dropMapEntry(ctx);
+  commitHookCopies(ctx);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) assert.equal(libEntry(hook, MAP_REL)?.verdict, 'healthy');
+  assert.equal(out.contentIntegrityComplete, true);
+});
+
+test('wrapper libs: G3 — a deleted lib file reads degraded/unreadable', () => {
+  const ctx = libFixture();
+  rmSync(join(ctx.repo, MAP_REL));
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) {
+    const lib = libEntry(hook, MAP_REL);
+    assert.ok(lib, `${hook.basename} reports ${MAP_REL}`);
+    assert.equal(lib.verdict, 'degraded');
+    assert.equal(lib.reason, 'unreadable');
+  }
+  assert.equal(out.contentIntegrityComplete, false);
+});
+
+test('wrapper libs: G5 — a translator linked to an identical copy elsewhere reads degraded', () => {
+  const ctx = libFixture();
+  const other = join(ctx.repo, 'scripts', 'other');
+  mkdirSync(other, { recursive: true });
+  const xlate = join(ctx.repo, 'scripts', 'hooks', 'lib', 'harness-tool-translate.js');
+  writeFileSync(join(other, 'harness-tool-translate.js'), readFileSync(xlate));
+  rmSync(xlate);
+  fs.symlinkSync(join(other, 'harness-tool-translate.js'), xlate);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) {
+    const lib = libEntry(hook, 'scripts/hooks/lib/harness-tool-translate.js');
+    assert.equal(lib?.verdict, 'degraded');
+    assert.equal(lib?.reason, 'resolves-elsewhere');
+  }
+  assert.equal(out.contentIntegrityComplete, false);
+});
+
+test('wrapper libs: G6 — a symlinked wrapper is attested by the libs beside its real path', () => {
+  const ctx = libFixture();
+  const realHooks = join(ctx.dir, 'real-hooks');
+  mkdirSync(join(realHooks, 'lib'), { recursive: true });
+  const wrapper = join(ctx.repo, 'scripts', 'hooks', 'guardrail-skip-in-himmel.js');
+  writeFileSync(join(realHooks, 'guardrail-skip-in-himmel.js'), readFileSync(wrapper));
+  writeFileSync(join(realHooks, 'lib', 'harness-tool-translate.js'), readFileSync(join(ctx.repo, 'scripts', 'hooks', 'lib', 'harness-tool-translate.js')));
+  const table = JSON.parse(readFileSync(join(ctx.repo, MAP_REL), 'utf8'));
+  delete table.tools.run_terminal_command;
+  writeFileSync(join(realHooks, 'lib', 'harness-tool-map.json'), `${JSON.stringify(table, null, 2)}\n`);
+  rmSync(wrapper);
+  fs.symlinkSync(join(realHooks, 'guardrail-skip-in-himmel.js'), wrapper);
+  const out = libStatus(ctx);
+  for (const hook of out.hooks) {
+    assert.equal(libEntry(hook, MAP_REL)?.verdict, 'degraded');
+    assert.equal(libEntry(hook, MAP_REL)?.reason, 'content-mismatch');
+  }
+  assert.equal(out.contentIntegrityComplete, false);
+});
+
+test('wrapper libs: G4 — a guard that is not wired reports two missing-path lib elements', () => {
+  const ctx = libFixture();
+  const data = installedData(ctx);
+  const [unwired] = GUARDS[0];
+  data.hooks.PreToolUse = preToolUse(data)
+    .map((group) => ({ ...group, hooks: (group.hooks ?? []).filter((hook) => !hook.command?.includes(unwired)) }))
+    .filter((group) => group.hooks.length > 0);
+  const hook = libStatus(ctx, data).hooks.find((h) => h.basename === unwired);
+  assert.equal(hook.present, false);
+  assert.deepEqual(hook.wrapperLibIntegrity, WRAPPER_LIBS.map((rel) => ({
+    relativePath: `scripts/hooks/${rel}`,
+    verdict: 'degraded',
+    reason: 'missing-path',
+    sha256: null,
+    reference: `git:HEAD:scripts/hooks/${rel}`,
+    referenceSha256: null,
+  })));
+});
+
 // -- git env sanitization ----------------
 
 test('status --json: content integrity ignores a poisoned GIT_DIR pointing at a different repo (CR round 2, finding 2)', {
@@ -1242,7 +1391,7 @@ test('sanitizedGitEnv removes GIT_* overrides in every spelling and preserves GI
 test('status --json: a linked-worktree fixture resolves refs/objects from the common dir when git is forced off', () => {
   const ctx = work();
   writeRealHookCopies(ctx);
-  const names = ['guardrail-skip-in-himmel.js', ...GUARDS.map(([basename]) => basename)];
+  const names = ['guardrail-skip-in-himmel.js', ...WRAPPER_LIBS, ...GUARDS.map(([basename]) => basename)];
   const contentsByName = Object.fromEntries(names.map((name) => [name, readFileSync(join(ctx.repo, 'scripts', 'hooks', name))]));
   const commonDir = join(ctx.dir, 'common-checkout');
   commitHookTreeWorktree(ctx.repo, commonDir, contentsByName);

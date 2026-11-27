@@ -6,7 +6,8 @@
 #                  [--fresh <label>]...
 #
 # Reads the chief doc's `## Live state` `workers:` entries (`<label>:<nonce>:<lock>:<pid>`)
-# and its fleet manifest (label -> worker doc -> worker name). Per worker it builds
+# and its fleet manifest plus the rows `chief.sh next` moved out of it (<chief doc stem>.fleet.moved.json)
+# (label -> worker doc -> worker name). Per worker it builds
 # ONE relay message — "your chief is now <successor>; token `<nonce>`; quote back
 # to <successor>" — which is exactly the S1 relay of docs/handover/worker-preface.md
 # ("Chief succession"): sent by the outgoing chief, naming its successor and
@@ -109,6 +110,17 @@ wrapped() {
     bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(worker_tail_status "$1")" = WRAPPED ]
 }
 manifest="${doc%.md}.fleet.json"
+moved="${manifest%.json}.moved.json"
+if [ -f "$moved" ]; then
+    both_dir="$(tmpdir)" || { echo "relay-batch: mktemp failed, cannot read $moved" >&2; exit 1; }
+    trap 'rm -rf "$both_dir"' EXIT
+    own="$manifest"; [ -f "$own" ] || own="$moved"
+    if jq --slurpfile m "$moved" "$JQ_W"'(W // []) as $o | .workers = $o + [$m[0].workers[] | select(.doc as $x | any($o[]; .doc == $x) | not)] | del(.legs)' "$own" > "$both_dir/fleet.json"; then
+        manifest="$both_dir/fleet.json"
+    else
+        echo "relay-batch: cannot merge $moved into $own, nothing sent" >&2; exit 1
+    fi
+fi
 bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
 fresh_wanted() {
     case $'\n'"$fresh" in *$'\n'"$1"$'\n'*) fresh_used="${fresh_used}$1,"; return 0 ;; esac

@@ -1441,6 +1441,27 @@ function sourcedClosure(file, root) {
   return { libs: [...libs], unresolved };
 }
 
+const RUNNER_LIBS = ['lib/harness-tool-translate.js', 'lib/harness-tool-map.json'];
+
+function verifyRunnerLibs(runnerDir, sessionId) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR;
+  if (!projectDir) return { ok: true };
+  const runnerForeign = pathLocality(runnerDir, projectDir) === 'foreign';
+  const realRunnerDir = normalize(resolveReal(runnerDir));
+  for (const rel of RUNNER_LIBS) {
+    const file = path.join(runnerDir, rel);
+    if (runnerForeign && pathLocality(file, projectDir) === 'foreign') continue;
+    let verdict = verifyOneFile(file, sessionId, true);
+    const resolved = normalize(resolveReal(file));
+    if (verdict.ok && resolved !== normalize(path.join(realRunnerDir, rel))) {
+      verdict = { ok: false, relPath: normalize(path.relative(resolveReal(projectDir), file)), reason: `${SOURCED_DENY}it resolves through a link to ${resolved}, not to its place beside the runner` };
+    }
+    if (!verdict.ok && process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK === '1' && honourBypass(file, sessionId)) verdict = { ok: true };
+    if (!verdict.ok) return verdict;
+  }
+  return { ok: true };
+}
+
 function verifyIntegrityUnbypassed(scriptPath, sessionId) {
   const member = verifyOneFile(scriptPath, sessionId, false);
   if (!member.ok || !member.walk) return member;
@@ -1479,6 +1500,13 @@ function verifyIntegrityUnbypassed(scriptPath, sessionId) {
   return { ok: true };
 }
 
+function pathLocality(scriptPath, projectDir) {
+  const resolvedScript = normalize(resolveReal(scriptPath));
+  const resolvedProject = normalize(resolveReal(projectDir));
+  if (resolvedScript.toLowerCase().startsWith(`${resolvedProject.toLowerCase()}/`)) return 'local';
+  return normalize(scriptPath).toLowerCase().startsWith(`${normalize(projectDir).toLowerCase()}/`) ? 'escapes' : 'foreign';
+}
+
 // One file's check. `walk` on the result says a pin record exists and the file
 // is project-local, i.e. there is something to verify its closure against.
 // `strict` (a sourced lib): no pin for any of its identities denies.
@@ -1488,21 +1516,18 @@ function verifyOneFile(scriptPath, sessionId, strict) {
   if (!projectDir) return { ok: true };
   const resolvedScript = normalize(resolveReal(scriptPath));
   const resolvedProject = normalize(resolveReal(projectDir));
-  if (!resolvedScript.toLowerCase().startsWith(`${resolvedProject.toLowerCase()}/`)) {
-    // Resolves outside the project. A path that never claimed to be inside it is
-    // simply foreign (not this check's business); one that spelled itself
-    // `<project>/…` but leaves it via `..` or a link is neither project-local nor
-    // vouched for by any pin, so it is refused, and the bypass cannot rescue it
-    // (honourBypass wants the resolved script inside the worktree).
-    if (!normalize(scriptPath).toLowerCase().startsWith(`${normalize(projectDir).toLowerCase()}/`)) {
+  switch (pathLocality(scriptPath, projectDir)) {
+    case 'foreign':
       if (strict) return { ok: false, relPath: normalize(scriptPath), reason: `${SOURCED_DENY}a sourced lib outside the project` };
       return { ok: true };
-    }
-    return {
-      ok: false,
-      relPath: normalize(scriptPath).slice(normalize(projectDir).length + 1),
-      reason: `${ESCAPES_PROJECT_DENY}resolves to ${resolvedScript}, outside the project`,
-    };
+    case 'escapes':
+      return {
+        ok: false,
+        relPath: normalize(scriptPath).slice(normalize(projectDir).length + 1),
+        reason: `${ESCAPES_PROJECT_DENY}resolves to ${resolvedScript}, outside the project`,
+      };
+    default:
+      break;
   }
   const relPath = resolvedScript.slice(resolvedProject.length + 1);
   const loaded = loadRecordAcrossPublish(sessionId);
@@ -1753,6 +1778,7 @@ module.exports = {
   LOCK_MAX_WAIT_MS,
   LOCK_POLL_MS,
   PIN_DIRS,
+  RUNNER_LIBS,
   SAFE_SESSION_ID,
   acquireRecordLock,
   denyIntegrityMismatch,
@@ -1763,6 +1789,7 @@ module.exports = {
   isV2Record,
   isWatchdogMember,
   loadIntegrityRecord,
+  pathLocality,
   persistIntegrityRecord,
   reclaimIfDead,
   releaseRecordLock,
@@ -1770,4 +1797,5 @@ module.exports = {
   takeUnvouchedNotice,
   takeWatchdogSkipNotice,
   verifyProjectHookIntegrity,
+  verifyRunnerLibs,
 };

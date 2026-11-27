@@ -4052,6 +4052,7 @@ process.stdout.write(JSON.stringify({
       anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
       auditWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: true,
       wrapperIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'abc', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+      wrapperLibIntegrity: [{ relativePath: 'scripts/hooks/lib/harness-tool-translate.js', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x1', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-translate.js', referenceSha256: 'x1' }, { relativePath: 'scripts/hooks/lib/harness-tool-map.json', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x2', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-map.json', referenceSha256: 'x2' }],
       scriptPath: '/fake/script.sh', scriptResolves: true,
       anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
       auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
@@ -4148,6 +4149,7 @@ process.stdout.write(JSON.stringify({
       anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
       auditWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: true,
       wrapperIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'abc', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+      wrapperLibIntegrity: [{ relativePath: 'scripts/hooks/lib/harness-tool-translate.js', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x1', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-translate.js', referenceSha256: 'x1' }, { relativePath: 'scripts/hooks/lib/harness-tool-map.json', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x2', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-map.json', referenceSha256: 'x2' }],
       scriptPath: '/fake/script.sh', scriptResolves: true,
       anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
       auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
@@ -4195,6 +4197,7 @@ process.stdout.write(JSON.stringify({
       anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
       auditWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: true,
       wrapperIntegrity: { verdict: 'degraded', reason: 'content-mismatch', sha256: 'tampered', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+      wrapperLibIntegrity: [{ relativePath: 'scripts/hooks/lib/harness-tool-translate.js', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x1', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-translate.js', referenceSha256: 'x1' }, { relativePath: 'scripts/hooks/lib/harness-tool-map.json', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x2', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-map.json', referenceSha256: 'x2' }],
       scriptPath: '/fake/script.sh', scriptResolves: true,
       anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
       auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
@@ -4242,6 +4245,7 @@ process.stdout.write(JSON.stringify({
       anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
       auditWrapperPath: '/different/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: false,
       wrapperIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'abc', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+      wrapperLibIntegrity: [{ relativePath: 'scripts/hooks/lib/harness-tool-translate.js', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x1', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-translate.js', referenceSha256: 'x1' }, { relativePath: 'scripts/hooks/lib/harness-tool-map.json', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x2', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-map.json', referenceSha256: 'x2' }],
       scriptPath: '/fake/script.sh', scriptResolves: true,
       anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
       auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
@@ -4326,6 +4330,7 @@ process.stdout.write(JSON.stringify({
       anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
       auditWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: true,
       wrapperIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'abc', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+      wrapperLibIntegrity: [{ relativePath: 'scripts/hooks/lib/harness-tool-translate.js', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x1', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-translate.js', referenceSha256: 'x1' }, { relativePath: 'scripts/hooks/lib/harness-tool-map.json', verdict: 'healthy', reason: 'matches-git-object', sha256: 'x2', reference: 'git:HEAD:scripts/hooks/lib/harness-tool-map.json', referenceSha256: 'x2' }],
       scriptPath: '/fake/script.sh', scriptResolves: true,
       anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
       auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
@@ -4347,6 +4352,105 @@ echo "$outGBv2p" | jq -e '.actual == "degraded"' >/dev/null \
 echo "$outGBv2p" | jq -e '.detail | contains("incomplete")' >/dev/null \
   || fail "cmd:guardrail_block_status partial-v2 detail should name the payload as incomplete (got: $outGBv2p)"
 echo "ok: cmd:guardrail_block_status — a partial v2 payload (some fields present, set not whole) reads degraded, never a silent v1 present"
+
+wl_failed=0
+wl_fail() { echo "FAIL: $1" >&2; wl_failed=1; }
+gb_lib_stub() {
+  mkdir -p "$1/scripts/hooks"
+  printf "const VARIANT = '%s';\n" "$2" > "$1/scripts/hooks/guardrail-block.mjs"
+  cat >> "$1/scripts/hooks/guardrail-block.mjs" <<'JS'
+const lib = (rel, verdict) => ({
+  relativePath: `scripts/hooks/${rel}`, verdict,
+  reason: verdict === 'healthy' ? 'matches-git-object' : 'content-mismatch',
+  sha256: 'x1', reference: `git:HEAD:scripts/hooks/${rel}`, referenceSha256: verdict === 'healthy' ? 'x1' : 'x0',
+});
+const hook = {
+  basename: 'auto-approve-safe-bash.sh', matcher: 'Bash', expectedMatcher: 'Bash', matcherMatches: true,
+  present: true, entryCount: 1,
+  bashPath: '/fake/bash', bashResolves: true,
+  nodePath: '/fake/node', nodeResolves: true,
+  wrapperPath: '/fake/wrapper.js', wrapperResolves: true,
+  anchorWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAnchor: true,
+  auditWrapperPath: '/fake/repo/scripts/hooks/guardrail-skip-in-himmel.js', wrapperMatchesAuditAnchor: true,
+  wrapperIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'abc', reference: 'git:HEAD:scripts/hooks/guardrail-skip-in-himmel.js', referenceSha256: 'abc' },
+  wrapperLibIntegrity: [lib('lib/harness-tool-translate.js', 'healthy'), lib('lib/harness-tool-map.json', VARIANT === 'degraded-lib' ? 'degraded' : 'healthy')],
+  scriptPath: '/fake/script.sh', scriptResolves: true,
+  anchorScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAnchor: true,
+  auditScriptPath: '/fake/repo/scripts/hooks/auto-approve-safe-bash.sh', scriptMatchesAuditAnchor: true,
+  scriptIntegrity: { verdict: 'healthy', reason: 'matches-git-object', sha256: 'def', reference: 'git:HEAD:scripts/hooks/auto-approve-safe-bash.sh', referenceSha256: 'def' },
+  duplicates: [], nonCanonicalCount: 0, nonCanonical: [],
+};
+if (VARIANT === 'stripped') delete hook.wrapperLibIntegrity;
+const healthy = VARIANT !== 'degraded-lib';
+process.stdout.write(JSON.stringify({
+  mode: 'global',
+  anchor: { repo: '/fake/repo', source: 'HIMMEL_REPO' },
+  auditAnchor: { repo: '/fake/repo', source: 'self-checkout' },
+  anchorMatchesAudit: true,
+  complete: true,
+  contentIntegrityComplete: healthy,
+  auditAnchorComplete: true,
+  attestationComplete: healthy,
+  hooks: [hook],
+}) + '\n');
+JS
+}
+gb_lib_probe() {
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const item = { id: 'guardrail-status-fixture', probe: { type: 'cmd:guardrail_block_status', script: 'scripts/hooks/guardrail-block.mjs' } };
+const extra = process.argv[2] ? { CLAUDE_USER_SETTINGS: process.argv[2], HIMMEL_REPO: process.argv[3] } : {};
+const ctx = { repoRoot: process.argv[1], targetPath: '$repo_root_w', scope: 'user', env: Object.assign({}, process.env, extra) };
+console.log(JSON.stringify(runProbe(item, ctx)));
+" "$@"
+}
+
+gb_lib_stub "$work/gb-lib-w1" degraded-lib
+outW1=$(gb_lib_probe "$(winpath "$work/gb-lib-w1")")
+echo "$outW1" | jq -e '.actual == "degraded" and (.detail | contains("wrapper lib scripts/hooks/lib/harness-tool-map.json"))' >/dev/null \
+  || wl_fail "W1: a degraded wrapperLibIntegrity element must read degraded and name the lib (got: $outW1)"
+gb_lib_stub "$work/gb-lib-w2" stripped
+outW2=$(gb_lib_probe "$(winpath "$work/gb-lib-w2")")
+echo "$outW2" | jq -e '.actual == "degraded" and (.detail | contains("payload is incomplete"))' >/dev/null \
+  || wl_fail "W2: a v2 payload without wrapperLibIntegrity must read degraded as incomplete (got: $outW2)"
+gb_lib_stub "$work/gb-lib-w3" healthy
+outW3=$(gb_lib_probe "$(winpath "$work/gb-lib-w3")")
+echo "$outW3" | jq -e '.actual == "present"' >/dev/null \
+  || wl_fail "W3: a fully healthy payload with wrapperLibIntegrity must read present (got: $outW3)"
+
+w4="$work/gb-lib-w4"
+for rel in scripts/hooks/guardrail-block.mjs scripts/hooks/run-hook-with-bash.js scripts/hooks/hook-integrity.js \
+  scripts/lib/wire-pretooluse-hooks.sh scripts/lib/provenance.sh scripts/lib/canon-path.sh scripts/lib/claude-config-dir.sh scripts/lib/unwire-pretooluse-hooks.sh \
+  scripts/hooks/guardrail-skip-in-himmel.js scripts/hooks/auto-approve-safe-bash.sh scripts/hooks/block-edit-on-main.sh \
+  scripts/hooks/block-read-secrets.sh scripts/hooks/lib/harness-tool-translate.js scripts/hooks/lib/harness-tool-map.json; do
+  mkdir -p "$w4/$(dirname "$rel")"
+  cp "$repo_root/$rel" "$w4/$rel"
+done
+git -C "$w4" init -q
+git -C "$w4" -c user.email=t@t -c user.name=t add -A
+git -C "$w4" -c user.email=t@t -c user.name=t commit -q -m w4
+w4_w="$(winpath "$w4")"
+w4_settings="$work/gb-lib-w4-settings/.claude"; mkdir -p "$w4_settings"
+"$node_bin" -e "
+const fs = require('fs');
+const root = process.argv[1];
+const basenames = { 'auto-approve-safe-bash.sh': 'Bash', 'block-edit-on-main.sh': 'Edit|Write|MultiEdit|NotebookEdit', 'block-read-secrets.sh': 'Bash|PowerShell|Read|Grep' };
+const groups = Object.entries(basenames).map(([basename, matcher]) => ({
+  matcher,
+  hooks: [ { type: 'command', command: 'GUARDRAIL_BASH=' + JSON.stringify(process.argv[3]) + ' ' + JSON.stringify(process.argv[2]) + ' ' + JSON.stringify(root + '/scripts/hooks/guardrail-skip-in-himmel.js') + ' ' + JSON.stringify(root + '/scripts/hooks/' + basename) } ],
+}));
+fs.writeFileSync(process.argv[4], JSON.stringify({ hooks: { PreToolUse: groups } }, null, 2));
+" "$w4_w" "$(winpath "$gb_node_stub")" "$(winpath "$gb_bash_stub")" "$(winpath "$w4_settings")/settings.json"
+outW4a=$(gb_lib_probe "$w4_w" "$(winpath "$w4_settings")/settings.json" "$w4_w")
+echo "$outW4a" | jq -e '.actual == "present"' >/dev/null \
+  || wl_fail "W4 (G1 half): the real producer over committed lib copies must read present (got: $outW4a)"
+jq 'del(.tools.run_terminal_command)' "$w4/scripts/hooks/lib/harness-tool-map.json" > "$w4/map.new" \
+  && mv "$w4/map.new" "$w4/scripts/hooks/lib/harness-tool-map.json"
+outW4b=$(gb_lib_probe "$w4_w" "$(winpath "$w4_settings")/settings.json" "$w4_w")
+echo "$outW4b" | jq -e '.actual == "degraded" and (.detail | contains("wrapper lib scripts/hooks/lib/harness-tool-map.json"))' >/dev/null \
+  || wl_fail "W4 (G2 half): the real producer over an uncommitted table edit must read degraded naming the lib (got: $outW4b)"
+[ "$wl_failed" -eq 0 ] || exit 1
+echo "ok: cmd:guardrail_block_status — wrapperLibIntegrity is required, recomputed and named (W1-W4)"
 
 gb_bad_exit_dir="$work/gb-bad-exit"; mkdir -p "$gb_bad_exit_dir/scripts/hooks"
 cat > "$gb_bad_exit_dir/scripts/hooks/guardrail-block.mjs" <<'JS'

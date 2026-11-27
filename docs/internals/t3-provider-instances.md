@@ -16,6 +16,7 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 - The paths come from `scripts/lanes/profile-settings.sh`: content-addressed, so a
   path stays valid after the registry changes. Re-run the script after a registry
   change; it updates `launchArgs` of the `claudeAgent_<profile>` ids it owns.
+- A change to a Claude instance's launch settings that changes its tool set (a deny entry, plugins, an MCP config) costs each live thread on that instance one full prompt-cache rewrite at its first turn after its next idle release, about 300k to 450k tokens per thread (figures: the T3 restart prompt-cache audit in the state repo's `specs/audits/`).
 - `operator` resolves to no settings file, so its `claudeAgent_operator` instance gets a
   settings file holding only the resolver's default for a profile that sets nothing: the
   Artifact tool denied. The built-in default instance, `providerInstances.claudeAgent`

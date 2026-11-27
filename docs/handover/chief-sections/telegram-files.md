@@ -45,7 +45,7 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   `bun scripts/telegram/chief-route.ts ledger-verify <verdict file>`: its return is a sealed round of its ticket in
   the round ledger (`specs/ledgers/spec-rounds/<KEY>.jsonl`), it is that kind's latest round, and each
   `CONTENT-SHA256` line matches the ledger's seal rows, so an unsealed or hand-sealed return does not send. A page
-  whose latest critic ended `SPEC FINDINGS <n>` is refused until the ticket's round of that kind is 3 or more **in the
+  whose latest critic ended `SPEC FINDINGS <n>` is refused until the ticket's round of that kind is 5 or more **in the
   ledger**; from then a sealed `FINDINGS` page goes, with the block opening it: the round count, how many critics did
   not end clean, "Rule, don't just sign", each such return verbatim, and every open operator-critical finding of the
   ticket. An `.html` page is its sealed bytes with the block after `<body>`; a page with no `<body>` is refused.
@@ -54,9 +54,12 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
 
   | Round of a kind | Sealed when |
   |---|---|
-  | 1 to 3 | always, as a full round |
-  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round) opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
-  | 5 and on | only the operator's words open it: ask the operator one plain line, write the verbatim-decision file, run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure` (or `--finding <id>` for an operator-critical finding); under standing decision 1418 the chief writes that decision file itself: it names the ticket, quotes the operator's words of 1418 and gives its own reason (decision 1419 is the worked example); the chief never skips the file |
+  | 1 to 5 | always, as a full round |
+  | 6 | round 5 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record without `--restores` (a finding ruling or a `--closure` round) opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan> --specs <bucket>/specs` |
+  | 7 and on | only a `round-critical` record opens it: under standing decision 1418 the chief writes the verbatim-decision file itself (it names the ticket, quotes the operator's words of 1418 and gives the chief's own reason; decision 1419 is the worked example), then runs `round-critical <KEY> --decision <d> --quote "<operator words>" --closure` (or `--finding <id>` for an operator-critical finding); the chief never skips the file |
+
+  The cap was 3 before decision 1420. A ledger row sealed or recorded under that cap (a closure round 4 or 5, a record
+  opening one) still reads.
 
   A record opens a round only for the kind or kinds whose next round it is: a finding ruling or an unscoped `--closure`
   opens round N for each kind whose next round is N (both kinds when spec and plan are level), a `round-override` for the

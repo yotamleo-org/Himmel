@@ -2,11 +2,11 @@
  "status": {
   "key": "HIMMEL-9711",
   "epoch": 0,
-  "spec": 5,
-  "plan": 4,
-  "writer": 5,
+  "spec": 7,
+  "plan": 6,
+  "writer": 7,
   "next": "closure",
-  "why": "spec round 6: closure; plan round 5: closure",
+  "why": "spec round 8: closure; plan round 7: closure",
   "latest": {
    "spec": {
     "v": 1,
@@ -14,10 +14,10 @@
     "key": "HIMMEL-9711",
     "row": "round",
     "critic": "spec",
-    "round": 5,
+    "round": 7,
     "epoch": 0,
-    "return_sha": "1873a48bbd71f1e8cfcb7bdf06a5e5e8ad75855dd97c22a4266f51f17d850d53",
-    "verdict_path": "<root>/specs/designs/HIMMEL-9711-a.md.critic-spec-r5.md",
+    "return_sha": "3682e17dd25dd737c4645a14b15d4bbc2cb102387cdc4c914c0aba6df261f325",
+    "verdict_path": "<root>/specs/designs/HIMMEL-9711-a.md.critic-spec-r7.md",
     "read_path": "<root>/specs/designs/HIMMEL-9711-a.md",
     "read_sha": "3f6a34861f03aab85d17cfacd6baae56c41aeb4f000d671db63955ce1bf1695f",
     "verdict": "SPEC FINDINGS 2",
@@ -44,10 +44,10 @@
     "key": "HIMMEL-9711",
     "row": "round",
     "critic": "plan",
-    "round": 4,
+    "round": 6,
     "epoch": 0,
-    "return_sha": "b5c579765657488669b2db2415231c97a1bdc7bbf510b63753590b928e9eb3b1",
-    "verdict_path": "<root>/specs/designs/HIMMEL-9711-a.md.critic-plan-r4.md",
+    "return_sha": "625270e8bf6a49181cacf3140cdc1f9b2ebb07d542f2ff3c7db07882751bad37",
+    "verdict_path": "<root>/specs/designs/HIMMEL-9711-a.md.critic-plan-r6.md",
     "read_path": "<root>/specs/plans/HIMMEL-9711-a.md",
     "read_sha": "5294858c0041245af0cdfdf854ffd1adfdcdb0e020f044c8933de64a9d7fdce9",
     "verdict": "PLAN CLEAN",
@@ -58,7 +58,7 @@
   },
   "overrideUsed": false,
   "invalid": [],
-  "cap": 3,
+  "cap": 5,
   "critical_open": [],
   "unsealed": [],
   "unread": []
@@ -66,22 +66,22 @@
  "verify": [
   {
    "code": 0,
-   "out": "HIMMEL-9711 spec round 5 closure\n",
+   "out": "HIMMEL-9711 spec round 7 closure\n",
    "err": ""
   },
   {
    "code": 0,
-   "out": "HIMMEL-9711 spec round 5 closure\n",
+   "out": "HIMMEL-9711 spec round 7 closure\n",
    "err": ""
   },
   {
    "code": 0,
-   "out": "HIMMEL-9711 plan round 4 closure\n",
+   "out": "HIMMEL-9711 plan round 6 closure\n",
    "err": ""
   },
   {
    "code": 0,
-   "out": "HIMMEL-9711 plan round 4 closure\n",
+   "out": "HIMMEL-9711 plan round 6 closure\n",
    "err": ""
   }
  ]

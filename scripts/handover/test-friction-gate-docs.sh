@@ -10,7 +10,7 @@
 #   3. CI-queue orphans (claudex lane): a pending CI is never an external
 #      blocker; the worker re-runs check-ci until green or red and triages a red,
 #      bounded: past 3 re-runs or 90 min (or zero checks) it posts BLOCKED
-#      ci-pending and takes the bounded inbox hold.
+#      ci-pending and takes the uncapped inbox hold.
 # Docs-only reads. PLATFORM GUARD: Bash 3.2, grep/tr only.
 set -uo pipefail
 
@@ -111,10 +111,11 @@ if has "$CLAUDEX" 'at most 3 +`?DEADLINE-PENDING`? re-runs or 90 minutes[^.]*BLO
 else
     fail "claudex preface: the CI wait is bounded and escalates as BLOCKED ci-pending"
 fi
-if has "$CLAUDEX" 'BLOCKED ci-pending[^.]*bounded inbox hold[^.]*never wrap'; then
-    pass "claudex preface: BLOCKED ci-pending takes the bounded hold, never a wrap"
+if has "$CLAUDEX" 'BLOCKED ci-pending[^.]*take the inbox hold below' &&
+   has "$CLAUDEX" 'Re-arm 30-minute windows until a resolving ruling arrives, with no cap'; then
+    pass "claudex preface: BLOCKED ci-pending takes the uncapped hold"
 else
-    fail "claudex preface: BLOCKED ci-pending takes the bounded hold, never a wrap"
+    fail "claudex preface: BLOCKED ci-pending takes the uncapped hold"
 fi
 if has "$CLAUDEX" 'no checks registered[^.]*escalate the same way at once'; then
     pass "claudex preface: zero reported checks escalates at once, no wait"

@@ -15,6 +15,7 @@ const { spawnSync } = require('node:child_process');
 // marketplace/plugins/himmel-ops/hooks/hook-integrity.js. Both copies of that
 // module are byte-identical (test-plugin-hook-bash-wiring.sh proves it).
 const {
+  RUNNER_LIBS,
   denyIntegrityMismatch,
   gitBlobSha1,
   hookIntegrityDir,
@@ -24,6 +25,7 @@ const {
   takeUnvouchedNotice,
   takeWatchdogSkipNotice,
   verifyProjectHookIntegrity,
+  verifyRunnerLibs,
 } = require('./hook-integrity.js');
 
 // On these events exit 2 does not deny a single action, it keeps
@@ -1426,7 +1428,19 @@ function guardPayload(input, hookInput) {
   return JSON.stringify({ ...hookInput, tool_input: { ...toolInput, command: unrolled } });
 }
 
-function translatedInput(input) {
+function translatedInput(input, sessionId) {
+  let libs;
+  try {
+    libs = verifyRunnerLibs(__dirname, sessionId);
+  } catch (error) {
+    libs = { ok: false, relPath: RUNNER_LIBS.join(', '), reason: `the integrity check threw: ${error.message}` };
+  }
+  if (!libs.ok) {
+    const call = parseJsonObject(input);
+    if (!(call && typeof call.tool_name === 'string')) return { text: input };
+    denyIntegrityMismatch(__filename, libs.relPath, libs.reason);
+    return { refuse: `harness tool translation files failed their integrity check (${libs.relPath})` };
+  }
   let result;
   try {
     result = require('./lib/harness-tool-translate.js').translateToolCall(input);
@@ -1461,7 +1475,7 @@ function runChain(members, lifecycle = false) {
   // chain decisions, which stay per-member exactly as before.
   const hookInput = parseJsonObject(input);
   const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
-  const translated = translatedInput(input);
+  const translated = translatedInput(input, sessionId);
   if (translated.refuse) return 2;
   const memberInput = translated.text;
   const memberCall = memberInput === input ? hookInput : parseJsonObject(memberInput);
@@ -1550,7 +1564,7 @@ function main() {
   const input = readAllStdin();
   const hookInput = parseJsonObject(input);
   const sessionId = hookInput && typeof hookInput.session_id === 'string' ? hookInput.session_id : null;
-  const translated = translatedInput(input);
+  const translated = translatedInput(input, sessionId);
   if (translated.refuse) process.exit(2);
   const integrity = verifyProjectHookIntegrity(hookScript, sessionId);
   if (!integrity.ok) {
