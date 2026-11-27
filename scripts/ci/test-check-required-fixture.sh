@@ -78,6 +78,7 @@ expect "a fixture pin written as a string is drift, never equal to the number: e
 printf '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":false},{"context":"lint","integration_id":15368}]}}]' > "$tmp/rules.json"
 STUB_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build"},{"context":"lint","integration_id":15368}]}}]' run
 expect "a fixture pin of false is drift against an unpinned live check: exit 1" 1 'stale-in-rules-fixture: build (app invalid false)'
+if grep -qF -- 'missing-from-rules-fixture: build (app any)' <<< "$out"; then ok "the unpinned live check is named as missing"; else bad "the unpinned live check is named as missing (out: $out)"; fi
 rules_of lint build > "$tmp/rules.json"
 
 STUB_FAIL=1 STUB_RULES=x run
