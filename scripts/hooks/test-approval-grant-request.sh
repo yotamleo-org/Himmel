@@ -18,7 +18,7 @@ mkdir -p "$TMP/bin" "$TMP/marks" "$TMP/bridge/consoles"
 cat > "$TMP/bin/sudo" <<STUB
 #!/bin/sh
 case " \$* " in
-    *" status "*) printf '%s\n' "\$*" >> "$TMP/status.argv"; cat "$TMP/status"; exit \$(cat "$TMP/status.rc" 2>/dev/null || echo 0) ;;
+    *" status "*) printf '%s\n' "\$*" >> "$TMP/status.argv"; s=\$(cat "$TMP/status"); printf '%s\n' "\$s"; case "\$s" in result=unknown*) echo 1 > "$TMP/status.released" ;; esac; exit \$(cat "$TMP/status.rc" 2>/dev/null || echo 0) ;;
     *" mode "*) cat "$TMP/mode"; exit 0 ;;
 esac
 printf '%s\n' "\$*" >> "$TMP/argv"
@@ -348,6 +348,26 @@ quiet "a status query that fails first"
 printf 'result=expired\n' > "$TMP/status"
 if wait_sent "grant abcdefgh for \`npx\` [Code from External] from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a failed status query does not end the waiter"; else echo "FAIL a failed status query does not end the waiter"; FAILED=1; fi
 
+wait_nonempty() { local end=$(($(date +%s) + $2)); while [ ! -s "$1" ] && [ "$(date +%s)" -le "$end" ]; do sleep 0.2; done; }
+poll_row() {
+    local c1
+    wait_nonempty "$TMP/status.argv" "$1"
+    c1=$(lines "$(cat "$TMP/status.argv")")
+    if [ "$c1" -ge 1 ]; then echo "PASS the waiter polls the request status"; else echo "FAIL the waiter polls the request status (no status call)"; FAILED=1; fi
+}
+cap_row() {
+    if [ "$1" -eq 0 ] && [ "$2" -eq 0 ]; then echo "SKIP cap row not exercised: waiter missed its window"; else check "the waiter stops at expiry plus its margin" "$1" "$2"; fi
+}
+
+printf 'result=pending\n' > "$TMP/status"; : > "$TMP/status.argv"
+pending 0; MARGIN=130
+run Bash "$CMD"
+poll_row 20
+rm -f "$TMP/status.released"
+printf 'result=unknown\n' > "$TMP/status"
+wait_nonempty "$TMP/status.released" 20
+check "the poll row's waiter has exited before the cap case" "1" "$(cat "$TMP/status.released" 2>/dev/null)"
+
 printf 'result=pending\n' > "$TMP/status"; : > "$TMP/status.argv"
 pending 0; MARGIN=1
 run Bash "$CMD"
@@ -356,9 +376,15 @@ sleep 3
 c1=$(lines "$(cat "$TMP/status.argv")")
 sleep 1.5
 c2=$(lines "$(cat "$TMP/status.argv")")
-if [ "$c1" -ge 1 ]; then echo "PASS the waiter polls the request status"; else echo "FAIL the waiter polls the request status (no status call)"; FAILED=1; fi
-check "the waiter stops at expiry plus its margin" "$c1" "$c2"
+cap_row "$c1" "$c2"
 lacks "a waiter that hits its cap posts nothing" "expired, nothing ran" "$(cat "$TMP/curl" "$TMP/outbox")"
+
+: > "$TMP/status.argv"
+pending -10
+run Bash "$CMD"
+check "control: a waiter that never polls fails the poll row" "FAIL the waiter polls the request status (no status call)" "$(poll_row 2)"
+c1=$(lines "$(cat "$TMP/status.argv")")
+check "control: a waiter that never polls leaves the cap row not exercised" "SKIP cap row not exercised: waiter missed its window" "$(cap_row "$c1" "$c1")"
 
 MARGIN=130; pending
 printf 'result=error OSError\n' > "$TMP/status"; printf '5' > "$TMP/status.rc"
