@@ -722,7 +722,7 @@ echo 'HANDLED close-wrapped'
         self.assertEqual(result.stdout, (HERE / 'wake-rules.tsv').read_text())
         rows = [s.split('\t') for s in result.stdout.splitlines() if not s.startswith('#')]
         self.assertEqual(len(rows), len({r[0] for r in rows}))
-        self.assertTrue({'residual-cap', 'open', 'station', 'repair', 'rm-queue', 'mon-down', 'owed'} <= {r[0] for r in rows})
+        self.assertTrue({'residual-cap', 'open', 'station', 'repair', 'rm-queue', 'mon-down', 'owed', 'dependabot'} <= {r[0] for r in rows})
 
     def test_station_repair_aged_queue_and_mon_wakes(self):
         prefix = 'TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL '
@@ -736,7 +736,8 @@ echo 'HANDLED close-wrapped'
                  ('repair=off:unavailable', 'repair', 'off:unavailable'),
                  ('repair=off:unread', 'repair', 'off:unread'),
                  ('rm-queue=1,31m', 'rm-queue', 'rm-queue=1,31m'),
-                 ('mon-down=1234', 'mon', '1234')]
+                 ('mon-down=1234', 'mon', '1234'),
+                 ('dependabot=1:6m:6m:#3101', 'dependabot', '#3101 oldest=6m')]
         self.env.update(CHIEF_WAIT_INTERVAL='1', HIMMEL_RELEASE_STATE_DIR=str(self.root / 'release'),
                         CHIEF_WAIT_STREAM_MAX_PER_MIN='100')
         for field, kind, detail in cases:

@@ -4414,7 +4414,7 @@ operator whether Codex gets the fetch grant.
 |---|---|
 | `git-push-branch` | `git push origin B`, `git push -u origin B` or `git push --set-upstream origin B`; `B` is the cwd's current branch and not protected |
 | `gh-pr-create` | `gh pr create` with `--head B`, and at most once each: `--title`, `--body`, `--base`, `--draft`, `--fill` (or their short forms); `origin` is the only remote |
-| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Every host is allowed; there is no host allow or deny list yet |
+| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Hosts: see Fetch host lists below |
 
 The command must be one simple command of literal words: no expansion,
 operator, redirect, glob or continuation. Push and PR need `origin` to have
@@ -4425,6 +4425,38 @@ naming the pinned repo, no `remote.origin.push` and no mirror mode.
 the checkout holding `.codex` for Codex (the himmel checkout, or a
 himmel-adopter project). The payload cwd and `CLAUDE_PROJECT_DIR` must resolve
 to the same primary checkout.
+
+**Fetch host lists** narrow `net-read` for one lane:
+
+```json
+{
+  "lane_grants": { "codex": ["net-read"] },
+  "lane_grants_hosts": {
+    "codex": {
+      "allow": ["docs.example.org", "*.githubusercontent.com"],
+      "deny": ["tracker.example.org"]
+    }
+  }
+}
+```
+
+The default is open: with no list set, every host passes. A lane's list is set
+when it has an `allow` key, or a `deny` key with at least one entry; `{}` and
+`{"deny": []}` are not set, and `{"allow": []}` is set and lets the lane fetch
+nothing. A deny match refuses, even for a host the allow list also holds; with an
+`allow` list, every host it does not match is refused. `example.com` matches only
+`example.com`; `*.example.com` matches hosts under it but not `example.com`; list
+both to cover both. With a list set, the URL's host must be a DNS name or a
+dotted-quad IPv4 address (upper case and one trailing dot are accepted and
+normalised) and a port, if any, 1 to 5 digits: `127.1`, hex or integer
+addresses, `%` escapes, underscores and non-ASCII (IDN) hosts are refused, so
+list and fetch the `xn--` form. A malformed list (a value that is not an object,
+a key other than `allow` and `deny`, a list that is not an array, or an entry
+that is not a host or `*.host`) fails closed: a malformed list for one lane stops
+only that lane fetching; a `lane_grants_hosts` that is not an object stops every
+lane. A deny list names hosts, not servers (another name or the address of the
+same server passes), so the allow list is the narrowing that holds; a proxy or
+resolver in the lane's environment is the runtime steering ceiling below.
 
 ```mermaid
 flowchart LR
@@ -4457,9 +4489,10 @@ for its structural fix. A granted
 push, PR or fetch can publish whatever the lane can read, including in a URL.
 
 **Doctor** (`C102-lane-grants`) lists what each lane holds with its wiring
-state, and warns on each config problem. When `HOME` is not the account home it
-reads only the `$HOME` config and never the account-home file: it warns if that
-file holds `lane_grants`, and otherwise reports that grants were not checked.
+state and each lane's host lists, and warns on each config problem. When `HOME`
+is not the account home it reads only the `$HOME` config and never the
+account-home file: it warns if that file holds `lane_grants`, and otherwise
+reports that grants were not checked.
 
 ### `block-worker-write-fence.sh` — dispatched-worker write fence
 
