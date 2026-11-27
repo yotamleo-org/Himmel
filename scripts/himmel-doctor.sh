@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 C101 C102 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 C101 C102 C103 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -6375,6 +6375,54 @@ _c101_owned() {
     return 1
 }
 
+_c103_field() { printf '%s\n' "$2" | sed -n "s/^$1: //p" | head -n 1; }
+
+check_c103_bypass_launcher() {
+    local tb="" t secs out rc why unit status_cmd
+    for t in ${HIMMEL_DOCTOR_TIMEOUT_BINS:-timeout gtimeout}; do
+        tb="$(command -v "$t" 2>/dev/null)" && break
+        tb=""
+    done
+    if [ -z "$tb" ]; then
+        emit INFO C103-bypass-launcher "launcher state not read: no timeout or gtimeout to bound the call"
+        return 0
+    fi
+    secs="${HIMMEL_DOCTOR_BYPASS_TIMEOUT:-20}"
+    case "$secs" in ''|*[!0-9]*) secs=20 ;; esac
+    secs=$((10#$secs)); [ "$secs" -gt 0 ] || secs=20
+    if [ -n "${HIMMEL_DOCTOR_BYPASS_STATUS:-}" ]; then status_cmd=("$HIMMEL_DOCTOR_BYPASS_STATUS")
+    else status_cmd=(bash "$REPO_ROOT/scripts/station-ops/bypass-service.sh"); fi
+    out="$("$tb" -k 2 "$secs" "${status_cmd[@]}" status 2>&1 </dev/null)"; rc=$?
+    why=""
+    case "$rc" in
+        0|1) [ -n "$(_c103_field enabled "$out")" ] || why="rc $rc: ${out%%$'\n'*}" ;;
+        124|137) why="timeout" ;;
+        *) why="rc $rc: ${out%%$'\n'*}" ;;
+    esac
+    if [ -n "$why" ]; then
+        emit INFO C103-bypass-launcher "launcher state unreadable: $why"
+        return 0
+    fi
+    unit="$(_c103_field unit "$out")"
+    if [ "$(_c103_field bucket "$out")" = none ]; then
+        emit INFO C103-bypass-launcher "not installed as a service (optional)"
+    elif [ "$(_c103_field enabled "$out")" = no ]; then
+        emit INFO C103-bypass-launcher "off; from your own shell: himmelctl bypass on"
+    elif [ "$(_c103_field 'stop file' "$out")" = yes ]; then
+        emit WARN C103-bypass-launcher "enabled, but a stop file keeps it off; from your own shell: himmelctl bypass on"
+    elif [ "$(_c103_field active "$out")" = no ]; then
+        emit WARN C103-bypass-launcher "enabled but not running (failed or stopped); from your own shell: himmelctl bypass restart"
+    elif [ "${unit#STALE}" != "$unit" ]; then
+        emit WARN C103-bypass-launcher "unit: $unit, from your own shell"
+    elif [ "$(_c103_field code "$out")" = STALE ]; then
+        emit WARN C103-bypass-launcher "runs older code than the checkout; now: bash $REPO_ROOT/scripts/himmel-update.sh --only bypass_daemon; on a Linux chief station, the next handled merge's sync also restarts it" # t13b-ok: names the himmel-update step that restarts the bypass launcher
+    elif [ "$(_c103_field linger "$out")" = no ] && [ "${BYPASSD_SERVICE_OS:-$(uname -s)}" != Darwin ]; then
+        emit WARN C103-bypass-launcher "does not come back after a reboot; once, from your own shell: loginctl enable-linger $(id -un)"
+    else
+        emit OK C103-bypass-launcher "pid $(_c103_field pid "$out"), since $(_c103_field since "$out"), heartbeat $(_c103_field heartbeat "$out")"
+    fi
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -6546,6 +6594,7 @@ run_check C99 check_c99_gemini_local
 run_check C100 check_c100_fleet
 run_check C101 check_c101_guard_refusals
 run_check C102 check_c102_lane_grants
+run_check C103 check_c103_bypass_launcher
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

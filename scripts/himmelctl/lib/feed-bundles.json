@@ -61,7 +61,7 @@
     {
       "id": "bypass",
       "title": "Bypass flags",
-      "rows": ["flag:*"]
+      "rows": ["flag:*", "doctor:C103-bypass-launcher"]
     },
     {
       "id": "lanes",

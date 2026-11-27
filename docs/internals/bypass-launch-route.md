@@ -238,9 +238,12 @@ The normal route is the service (see "Run it as a service"): `himmelctl bypass o
 operator's own shell. The chief never starts it and a session cannot (`CLAUDECODE` is refused). On a Linux chief
 station the station sync that runs after each handled merge asks himmel-update's `bypass_daemon` step
 (`bypass-service.sh restart-if-changed`) to restart the unit onto the new code, so a merge that changes the daemon
-needs no operator step. The sync calls no `systemctl` or `launchctl` itself. Where no sync runs (a merge the chief's
-waiter never handled, a macOS station), run `bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon`;
-a session may run it, and a worktree's copy does nothing. A request that is waiting for your go when the restart
+needs no operator step. The doctor's `C103-bypass-launcher` row (`bash scripts/himmel-doctor.sh --only C103`) shows the
+launcher's state and names the way back; a launcher that is turned off or not installed is INFO there, not a WARN.
+The sync calls no `systemctl` or
+`launchctl` itself. Where no sync runs (a merge the chief's waiter never handled, a macOS station), run
+`bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon`; a session may run it, and a worktree's copy
+does nothing. A request that is waiting for your go when the restart
 lands is asked again with a new code, and the old code no longer works.
 
 What still needs the operator: a unit that is enabled but not running (`himmelctl bypass restart`; the sync reads
