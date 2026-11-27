@@ -1375,6 +1375,67 @@ test("an Approve tap in the operator DM approves the draft; a tap from another u
   expect(e.sent.filter(s => s.chat === CHAT)).toHaveLength(1);
 });
 
+const tapLines = (logs: string[]) => logs.filter(l => l.startsWith("tap"));
+
+test("every tap answer writes one log line with ids only, and a failing answerCallbackQuery is logged", async () => {
+  const e = await setup();
+  e.cfg.operatorDmChatId = Number(OP);
+  const logs: string[] = [];
+  const p = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  const id = await draftIt(e, { kind: "info", text: "SECRET-DRAFT-TEXT" });
+  const send = async (u: ReturnType<typeof tapUpdate>, answer: string, ids: string) => {
+    logs.length = 0;
+    await p.processBatch([u]);
+    expect(tapLines(logs)).toEqual([`tap update=${u.update_id} cb=${u.callback_query.id} from=${u.callback_query.from.id} chat=${u.callback_query.message.chat.id} ${ids}answer="${answer}"`]);
+    expect(logs.join("\n")).not.toContain("SECRET-DRAFT-TEXT");
+  };
+  const ids = `peer=example draft=${id} verb=ok `;
+  await send(tapUpdate("SECRET-DRAFT-TEXT"), "Unknown button.", "");
+  await send(tapUpdate(`peer:ok:example:${id}`, 777), "Not authorized.", ids);
+  await send(tapUpdate(`peer:ok:nobody:${id}`), "Unknown peer.", `peer=nobody draft=${id} verb=ok `);
+  await send(tapUpdate(`pair:ok:example:${id}`, 777), "Not authorized.", `peer=example offer=${id} verb=ok `);
+  writeFileSync(join(e.cfg.bridgeRoot, "lockdown"), "locked\n");
+  await send(tapUpdate(`peer:ok:example:${id}`), "locked, reset at the station", ids);
+  rmSync(join(e.cfg.bridgeRoot, "lockdown"));
+  await send(tapUpdate(`peer:ok:example:${id}`), "Received", ids);
+
+  const failing = await Poller.create({ ...e.deps, tg: { ...e.tg, answerCallbackQuery: async () => { throw new TelegramError("answerCallbackQuery not ok (400): query is too old", 400); } }, log: l => logs.push(l) });
+  logs.length = 0;
+  const u = tapUpdate("nonsense");
+  await failing.processBatch([u]);
+  expect(tapLines(logs).at(-1)).toBe(`tap-answer-failed update=${u.update_id} cb=${u.callback_query.id} error=answerCallbackQuery not ok (400): query is too old`);
+});
+
+test("every applied tap logs its result, including a tap that is not the operator's", async () => {
+  const e = await setup();
+  const logs: string[] = [];
+  const p = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  const id = await draftIt(e, { kind: "info", text: "SECRET-DRAFT-TEXT" });
+  const apply = async (over: Record<string, unknown>) => {
+    const rec = { ...tapRec(e, id), ...over };
+    logs.length = 0;
+    forge(e, { ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" } as any) });
+    await p.drainSpool();
+    expect(logs.join("\n")).not.toContain("SECRET-DRAFT-TEXT");
+    return tapLines(logs);
+  };
+  expect(await apply({ by: "777" })).toEqual([`tap-refused peer=example draft=${id} rule=not-operator`]);
+  expect(await apply({ draft: "00000000" })).toEqual(["tap-refused peer=example draft=00000000 rule=unknown-draft"]);
+  expect(await apply({})).toEqual([`tap-result peer=example draft=${id} result=approved`]);
+  expect(await apply({ ts: e.c.t + 1 })).toEqual([expect.stringMatching(new RegExp(`^tap-refused peer=example draft=${id} rule=already-[a-z-]+$`))]);
+});
+
+test("a Reject tap logs its result", async () => {
+  const e = await setup();
+  const logs: string[] = [];
+  const p = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  const id = await draftIt(e, { kind: "info", text: "no thanks" });
+  const rec = { ...tapRec(e, id), verb: "no" as const };
+  forge(e, { ...rec, sig: signTap(e.configDir, { ...rec, peer: "example" }) });
+  await p.drainSpool();
+  expect(tapLines(logs)).toEqual([`tap-result peer=example draft=${id} result=rejected`]);
+});
+
 test("notify records reach the operator DM once, a draft carries Approve and Reject, and the cursor survives a restart", async () => {
   const e = await setup();
   await e.poller.processBatch([askRoot()]);
