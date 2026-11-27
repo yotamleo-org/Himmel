@@ -5,7 +5,7 @@ import { type Getter } from './version-writes.js';
 import { appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, writeSigned } from './ledger.js';
 import { baselineId, effectOn, terminalOf } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
-import type { Baseline, Declaration, EventRow, IssueSnap, OperatorRow, OutOfVersionRow, RequestRow } from './types.js';
+import type { Baseline, Declaration, EventRow, GoProof, IssueSnap, OperatorRow, OutOfVersionRow, RequestRow } from './types.js';
 import { appendOperator, type Ctx, f, latestRequests, type Loaded, locked, lockedAcross, operatorFence, readMirror, readOperatorRecords, type ReleaseRecord, ts } from './engine-core.js';
 import { mirrorState, type MirrorState } from '../mirror-cursor.js';
 
@@ -79,29 +79,34 @@ export function decisionWords(ctx: Ctx, decision: string, words: string): Decisi
 
 const sameKeys = (a: string[] = [], b: string[]) => a.length === b.length && [...a].sort().every((k, i) => k === [...b].sort()[i]);
 
-export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string } & Partial<DecisionWords>): OperatorRow {
+type DecisionInput = { decision: string; keys: string[]; op: string; from_v: string | null; to_v: string | null; verbatim: string } & Partial<DecisionWords>;
+
+export function operatorDecision(ctx: Ctx, o: DecisionInput): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator decision: --keys names the exact keys it covers');
-  return locked(ctx, (l) => {
-    const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
-      && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v
-      && x.decision_sha256 === o.decision_sha256 && x.verbatim === o.verbatim);
-    if (again) return again;
-    const placement = placementOf(o);
-    const latest = placement === undefined ? new Map<string, RequestRow>() : latestRequests(l.requests);
-    const words = o.decision_sha256 === undefined ? {} : { decision_file: o.decision_file, decision_sha256: o.decision_sha256, words: 1 as const };
-    const row = appendOperator(ctx, l.k, {
-      kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim, ...words,
-    });
-    const named = [o.from_v, o.to_v].filter((v) => v !== null);
-    for (const r of latest.values()) {
-      const overlaps = [r.from_v, r.to_v].some((v) => v !== null && named.includes(v));
-      if (retirable(r) && o.keys.includes(r.key) && overlaps && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
-        appendWithdrawal(ctx, l.k, r, row.id, `contradicts operator decision ${o.decision} (${row.id})`);
-      }
-    }
-    return row;
+  return locked(ctx, (l) => recordDecision(ctx, l, o));
+}
+
+/** No fence: the caller fences and holds the release lock. A row gets a go block only from the `go` argument. */
+export function recordDecision(ctx: Ctx, l: Loaded, o: DecisionInput, go?: GoProof): OperatorRow {
+  const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
+    && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v
+    && x.decision_sha256 === o.decision_sha256 && x.verbatim === o.verbatim);
+  if (again) return again;
+  const placement = placementOf(o);
+  const latest = placement === undefined ? new Map<string, RequestRow>() : latestRequests(l.requests);
+  const words = o.decision_sha256 === undefined ? {} : { decision_file: o.decision_file, decision_sha256: o.decision_sha256, words: 1 as const };
+  const row = appendOperator(ctx, l.k, {
+    kind: 'decision', decision: o.decision, keys: o.keys, op: o.op, from_v: o.from_v, to_v: o.to_v, verbatim: o.verbatim, ...words, ...(go ? { go } : {}),
   });
+  const named = [o.from_v, o.to_v].filter((v) => v !== null);
+  for (const r of latest.values()) {
+    const overlaps = [r.from_v, r.to_v].some((v) => v !== null && named.includes(v));
+    if (retirable(r) && o.keys.includes(r.key) && overlaps && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
+      appendWithdrawal(ctx, l.k, r, row.id, `contradicts operator decision ${o.decision} (${row.id})`);
+    }
+  }
+  return row;
 }
 
 export function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {

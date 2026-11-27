@@ -14,6 +14,8 @@ import { pinnedSha } from '../release/pinned.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
 import { repairRun, RequestRefused } from '../release/repair-run.js';
 import { doorJudge, earlierThan } from '../release/door.js';
+import { bucketGitleaks, goAnswer } from '../release/go-answer.js';
+import { verifyUpdate } from '../release/operator-words-spawn.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
@@ -1231,6 +1233,31 @@ export function registerRelease(program: Command): void {
           : { verbatim: readBodyFile(o.verbatimFile as string, '--verbatim-file').trim() }),
       });
       console.log(`${r.id} recorded; cite it as --authority operator --ref ${r.id}`);
+    });
+  operator.command('go-answer')
+    .description('Record the operator\'s Telegram answer to a go-code ask (the bypass daemon only; refused in any Claude session)')
+    .requiredOption('--request <file>', 'The <bucket>/bypass-queue/<name>.answer.pending request')
+    .requiredOption('--request-sha256 <sha>', 'The request\'s sha256, taken at the ask')
+    .option('--check', 'Check the request and the environment and print the ask line; writes nothing')
+    .option('--lookup', 'Print the record --update already backs (exit 3 with none); never writes')
+    .option('--update <id>', 'The Telegram update id of the operator\'s reply')
+    .option('--code <code>', 'The ask\'s go code')
+    .option('--asked <epoch>', 'When the ask was sent, in epoch seconds')
+    .option('--ttl <seconds>', 'How long the ask stays open')
+    .action((o: { request: string; requestSha256: string; check?: boolean; lookup?: boolean; update?: string; code?: string; asked?: string; ttl?: string }) => {
+      const num = (s?: string) => (s === undefined ? undefined : /^\d+$/.test(s) ? Number(s) : Number.NaN);
+      try {
+        const out = goAnswer({ ...o, update: num(o.update), asked: num(o.asked), ttl: num(o.ttl) }, {
+          env: process.env, now: () => new Date(), platform: process.platform, ctxFor, mirrorRoot: defaultRoot,
+          verify: (id) => verifyUpdate(id), gitleaks: (file) => bucketGitleaks(file, process.env),
+        });
+        if (out.mode === 'check') console.log(`ok key=${out.key} from=${out.from}\nask=${out.ask}`);
+        else if (out.mode === 'record') console.log(JSON.stringify(out.record));
+        else process.exitCode = 3;
+      } catch (e) {
+        console.error((e as Error).message.replace(/[\r\n]+/g, ' '));
+        process.exitCode = 2;
+      }
     });
   operator.command('standing <release>')
     .description('Record a standing operator rule on a release declared before it existed (new releases get it at declare)')

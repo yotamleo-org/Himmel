@@ -104,6 +104,29 @@ afterEach(() => {
   judgeReply.hang = false;
 });
 
+describe('jira release operator go-answer wiring', () => {
+  const verb = () => {
+    const p = new Command();
+    registerRelease(p);
+    return ['release', 'operator', 'go-answer'].reduce((c, name) => c.commands.find((x) => x.name() === name) as Command, p);
+  };
+
+  it('C1: --help lists the eight flags, and an unknown flag exits non-zero', async () => {
+    const help = verb().helpInformation();
+    for (const flag of ['--update', '--code', '--asked', '--ttl', '--request', '--request-sha256', '--check', '--lookup']) {
+      expect(help).toMatch(new RegExp(`${flag}( |\\n|$)`));
+    }
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await expect(run('operator', 'go-answer', '--request', 'r', '--request-sha256', 's', '--nope')).rejects.toThrow(/unknown option '--nope'/);
+  });
+
+  it('G17 (pin): the desk verb takes no --go flag', async () => {
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await expect(run('operator', 'decision', 'v1', '--decision', '1', '--keys', 'K-1', '--op', 'remove', '--go', 'x'))
+      .rejects.toThrow(/unknown option '--go'/);
+  });
+});
+
 describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
   beforeEach(() => {
     vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
