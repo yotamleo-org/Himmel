@@ -1746,12 +1746,16 @@ function isPinDrift(reason) {
 // Exact and case-sensitive, on both sides: the path as wired names the watchdog
 // (so a guard swapped for a link to the watchdog keeps its deny) AND the file it
 // resolves to is the watchdog (so the watchdog path linked elsewhere keeps it).
-function isWatchdogMember(scriptPath) {
+function isProjectMember(scriptPath, rel) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   if (!projectDir || !scriptPath) return false;
-  const lexical = normalize(path.resolve(scriptPath)) === `${normalize(path.resolve(projectDir))}/${WATCHDOG_REL}`;
-  const resolved = normalize(resolveReal(scriptPath)) === `${normalize(resolveReal(projectDir))}/${WATCHDOG_REL}`;
+  const lexical = normalize(path.resolve(scriptPath)) === `${normalize(path.resolve(projectDir))}/${rel}`;
+  const resolved = normalize(resolveReal(scriptPath)) === `${normalize(resolveReal(projectDir))}/${rel}`;
   return lexical && resolved;
+}
+
+function isWatchdogMember(scriptPath) {
+  return isProjectMember(scriptPath, WATCHDOG_REL);
 }
 
 // Once per session, like takeUnvouchedNotice but with its own flag: `text` to
@@ -1786,6 +1790,7 @@ module.exports = {
   hookIntegrityDir,
   integrityRecordPath,
   isPinDrift,
+  isProjectMember,
   isV2Record,
   isWatchdogMember,
   loadIntegrityRecord,
