@@ -675,8 +675,9 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"BL1a
 md_ok="$(WORKERS='' bash "$SUT" --workers-from "$fm")"
 contains '(10901) control: the row whose doc exists is judged by its tail' "$md_ok" " tails=N61:LIVE,$md_lreal:READY "
 not_contains '(10901) control: a manifest whose docs all exist prints no workerdoc=' "$md_ok" ' workerdoc='
-not_contains '(10901) control: a --workers typo is not a manifest row' \
-    "$(WORKERS='' bash "$SUT" --workers "$md_gone" --workers-from "$fm" 2>/dev/null)" ' workerdoc='
+md_typo="$(WORKERS='' bash "$SUT" --workers "$md_gone" --workers-from "$fm" 2>/dev/null)"
+contains '(10901) control: the tick reads the --workers typo as NOTFOUND' "$md_typo" "$md_lgone:NOTFOUND"
+not_contains '(10901) control: a --workers typo is not a manifest row' "$md_typo" ' workerdoc='
 rm -f "$fm" "$md_real"
 
 # --- livestate= drift field --------------------------------
