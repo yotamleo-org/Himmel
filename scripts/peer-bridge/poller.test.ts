@@ -2084,6 +2084,21 @@ test("a card replayed after a crash before its offer is not dropped by the rate 
   expect(inboxOf(e).filter(r => r.kind === "peer-card").length).toBe(1);
 });
 
+test("a replayed card passes admission again: a changed peer bot id makes no offer", async () => {
+  const e = await pairEnv();
+  const u = cardUpdate("example", KEY_A);
+  mkdirSync(join(e.peerDir, "pairing.jsonl"));
+  await expect(e.poller.processBatch([u])).rejects.toThrow();
+  rmSync(join(e.peerDir, "pairing.jsonl"), { recursive: true });
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.peerBotId = "777000777";
+  doc.peers.example.allowFrom = [PEER_ID, "777000777"];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+  await e.poller.processBatch([u]);
+  expect(offersOf(e)).toEqual([]);
+});
+
 test("a replayed card takes no rate charge from another message", async () => {
   const e = await pairEnv({ peerOver: { maxPerMinute: 3 } });
   await e.poller.processBatch([askRoot("c3d4e5f6")]);

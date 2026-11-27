@@ -573,8 +573,8 @@ export class Poller {
 
   private async onCard(u: any): Promise<void> {
     const chained = this.chainedCard(u?.message);
-    if (chained && Number.isSafeInteger(u.update_id) && u.update_id > this.gate.committed) return this.offerCard(chained.peer, chained);
-    const r = admitCard(u, this.cfg, this.gate);
+    const r = admitCard(u, this.cfg, chained ? { ...this.gate, rate: new Map() } : this.gate);
+    if (r.ok && chained) return this.offerCard(r.peer, r.rec);
     if (!r.ok) {
       this.log(r.log);
       if (r.unknownChat) appendUnknownChat(join(this.deps.stateDir, "unknown-chats.jsonl"), r.unknownChat);
