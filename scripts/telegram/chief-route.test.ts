@@ -9296,6 +9296,10 @@ test("lint: sign-shape --lint accepts a lint-clean spec, with and without a plan
   expect(routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"])).toEqual(ok);
   expect(routeRun(["sign-shape", f.spec, "--lint"])).toEqual(ok);
   expect(routeRun(["sign-shape", relative(process.cwd(), f.spec), "--plan", relative(process.cwd(), f.plan), "--lint"])).toEqual(ok);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  const bad = routeRun(["sign-shape", f.spec, "--plan", f.plan, "--lint"]);
+  expect(bad.code, "the named plan is linted").toBe(3);
+  expect(bad.out).toContain("I1 has no plan line naming its acceptance test");
 });
 
 test("lint: sign-shape without --lint runs no trace lint", async () => {
