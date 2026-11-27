@@ -468,7 +468,7 @@ mkdir -p "$TMP/ro"; : > "$TMP/ro/blocker"
 run "row: an unwritable log path never changes the refusal" 2 '"claudeBypass"' "$LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$TMP/ro/blocker/x.jsonl"
 run "S10: an inline-settings launch still refuses" 2 '"inlineSettings"' "$(from_to codex inlineSettings)"
 check "S10: it writes one row naming the own-settings rule and the instance, never the settings" \
-    '[ "$(row_count "$ROWS")" = 6 ] && [ "$(tail -n1 "$ROWS" | jq -r "[.rule, .instance] | join(\"|\")")" = "own-settings-instance|inlineSettings" ] && ! tail -n1 "$ROWS" | grep -q "permissions\|allow"'
+    '[ "$(row_count "$ROWS")" = 6 ] && [ "$(tail -n1 "$ROWS" | jq -r "[.rule, .instance] | join(\"|\")")" = "own-settings-instance|inlineSettings" ] && ! grep -q "permissions\|allow" <<<"$(tail -n1 "$ROWS")"'
 
 FIFO="$TMP/fifo.jsonl"
 N=$((N+1))
