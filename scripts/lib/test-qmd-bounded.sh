@@ -294,6 +294,7 @@ printf '%s\n' '#!/bin/sh' \
     'case "$T10_MODE" in' \
     '  busy-ok) echo "SQLiteError: database is locked" >&2; echo "result: doc.md"; exit 0 ;;' \
     '  busy-124) echo "SQLiteError: database is locked" >&2; exit 124 ;;' \
+    '  busy-143) echo "SQLiteError: database is locked" >&2; exit 143 ;;' \
     'esac' \
     'if [ -n "$T10_WRITER_PID" ] && kill -0 "$T10_WRITER_PID" 2>/dev/null; then' \
     '  cat >&2 <<DDL' \
@@ -340,7 +341,9 @@ out=$(T10_MODE=busy-ok PATH="$TMP/t10bin:$PATH" BUN_INSTALL="$TMP/bun" QMD_VOCAB
 case "$(cat "$TMP/t10err")" in *"qmd-bounded: qmd index busy"*) named=yes ;; *) named=no ;; esac
 assert_eq "T10 a success with busy text on stderr keeps rc 0, its result on stdout and no busy line" "result: doc.md|0|no" "$out|$rc|$named"
 out=$(T10_MODE=busy-124 t10 query -c luna x); rc=$?
-assert_eq "T10 a deadline rc 124 with busy text on stderr stays 124" "124" "$rc"
+assert_eq "T10 a deadline rc 124 with busy text on stderr stays 124 with qmd's own text" "SQLiteError: database is locked|124" "$out|$rc"
+out=$(T10_MODE=busy-143 t10 query -c luna x); rc=$?
+assert_eq "T10 a signal rc 143 with busy text on stderr stays 143 with qmd's own text" "SQLiteError: database is locked|143" "$out|$rc"
 unset T10_WRITER_PID
 
 if command -v qmd >/dev/null 2>&1; then
