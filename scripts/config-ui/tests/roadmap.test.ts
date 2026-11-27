@@ -1802,7 +1802,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-1-clean-unsigned.md", 1, "SPEC CLEAN");          // owed
   critic("HIMMEL-2-signed.md", 1, "SPEC CLEAN");                  // signed below
   critic("HIMMEL-5-still-in-review", 1, "SPEC FINDINGS 2");       // the critics are not done: not yet the operator's
-  critic("HIMMEL-7-capped", 3, "SPEC FINDINGS 1");                // past the round cap: owed
+  critic("HIMMEL-7-capped", 5, "SPEC FINDINGS 1");                // past the round cap: owed
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
   critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
   seedSpecs(join(bucket, "specs"));
@@ -1821,7 +1821,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   expect(o.unread).toEqual([]);
   expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.title])).toEqual([[K(1), "Roadmap in the ui"], [K(7), "Ready work"]]);
   expect(o.items.find((i) => i.key === K(1))!.ctx).toContain("latest critic round 1 reads SPEC CLEAN");
-  expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 3 reads SPEC FINDINGS 1");
+  expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 5 reads SPEC FINDINGS 1");
   const chief = o.items.filter((i) => i.source === "chief doc");
   expect(chief.map((i) => i.key)).toEqual([K(5), K(4)]); // the previous version's open ticket keeps its identity; text after " || " is history
   expect(chief[0].title).toBe("Resumed work");
@@ -1904,9 +1904,9 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   critic("HIMMEL-1-seat.md", 2, "- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat", "SPEC FINDINGS 1");
   critic("HIMMEL-2-sec.md", 1, "- **s1** (minor; operator-critical: security) the page names a scanner", "SPEC FINDINGS 1");
   critic("HIMMEL-5-moved.md", 1, "notes", "SPEC FINDINGS 4");
-  critic("HIMMEL-5-moved.md", 3, "notes", "SPEC FINDINGS 2");
+  critic("HIMMEL-5-moved.md", 5, "notes", "SPEC FINDINGS 2");
   seedSpecs(specs);
-  rmSync(join(designs, "HIMMEL-5-moved.md.critic-spec-r3.md"));
+  rmSync(join(designs, "HIMMEL-5-moved.md.critic-spec-r5.md"));
   const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), HIMMEL_BUCKET_DIR: bucket, JIRA_PROJECT_KEY: "HIMMEL" };
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
@@ -1914,7 +1914,7 @@ test("readOwed: the round, the classes and the open operator-critical findings c
   expect(critical.map((i) => [i.key, i.title])).toEqual([[K(1), "Roadmap in the ui"]]);
   expect(critical[0].ctx).toContain("o1 (spend-grant)");
   expect(o.items.filter((i) => i.key === K(2))).toEqual([]);
-  expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.ctx])).toEqual([[K(5), "HIMMEL-5-moved.md: latest critic round 3 reads SPEC FINDINGS 4, no spec row in operator.jsonl"]]);
+  expect(o.items.filter((i) => i.source === "unsigned spec").map((i) => [i.key, i.ctx])).toEqual([[K(5), "HIMMEL-5-moved.md: latest critic round 5 reads SPEC FINDINGS 4, no spec row in operator.jsonl"]]);
   writeFileSync(join(specs, "decisions", "verbatim-decision-901-seat.txt"), `Operator, on ${K(1)}: sign it as it stands, the paid seat is approved.\n`);
   route(["round-critical", K(1), "--finding", "o1", "--decision", "901", "--quote", "sign it as it stands, the paid seat is approved", "--no-round", "--specs", specs], { HIMMEL_CONSOLE: "1" });
   const ruled = readOwed(env);
