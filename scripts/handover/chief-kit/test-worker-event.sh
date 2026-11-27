@@ -1015,6 +1015,10 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 
 run21 "WRAPPED N6021"
 contains "21e2 a signature recorded before a plain WRAPPED bullet still counts" "$(owed21 "$step21 | .text")" "launch the next slice"
 
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:02 LIVE — design signed by chief DY' '- 10:05 LIVE — READY-TO-SIGN sent: spec rev 2 sha256 2222222222222222' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+contains "21e4 a signature on an earlier revision does not sign the later one" "$(owed21 "$step21 | .text")" "sign the design (spec 222222222222)"
+
 doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design not yet signed by chief DY'
 run21 "WRAPPED N6021"
 contains "21e3 not yet signed is not signed" "$(owed21 "$step21 | .text")" "sign the design"
