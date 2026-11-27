@@ -4,6 +4,7 @@ import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHas
   FINDING_LINE, FINDING_SEVERITIES, findingTags, criticRounds, parseResidualLines,
   type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { isShort, namesKeyToken, normText, parseQuestion, shortAnswer } from "../jira/src/release/verbatim.ts";
+import { estimateLine, planOf, traceLint, type Lint } from "../jira/src/release/sign-lint.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -1329,11 +1330,31 @@ export async function refuseRoundPastCap(verdict: string, readPath: string): Pro
   if (t) await admit(t, await loadLedger(t.specs, t.key));
 }
 
+const lintPassed = new Set<string>();
+
+function lintLines(lint: Lint): string[] {
+  if ("unavailable" in lint) { console.error(`NOTE: trace lint unavailable (${lint.unavailable}); not checked`); return []; }
+  return lint.ok ? [] : lint.lines;
+}
+
 // What `critic-seal.sh` runs before it seals: the cap decision and the ledger row it allows, under one lock,
 // so two seals cannot both claim a round.
 export async function sealRound(verdict: string, readPath: string): Promise<void> {
   const t = await sealTarget(verdict, readPath);
   if (!t) return;
+  const governing = await readFile(t.governing, "utf8");
+  if (estimateLine(governing)) {
+    const plan = t.kind === "plan" ? planOf(t.governing) : null;
+    const keyOfBytes = async (spec: string) => JSON.stringify([t.governing, sha256(Buffer.from(spec)), plan, plan === null ? null : sha256(await readFile(plan))]);
+    const key = await keyOfBytes(governing);
+    if (!lintPassed.has(key)) {
+      const lint = traceLint(t.governing, plan);
+      const lines = lintLines(lint);
+      if (lines.length) throw new Error(`${t.v} reads bytes the signer's trace lint refuses; fix them and run the critic again for round ${kindRound(await loadLedger(t.specs, t.key), t.kind) + 1}: ${lines.join("\n")}`);
+      const citesNothing = !governing.includes("`");
+      if ("ok" in lint && lint.ok && citesNothing && await keyOfBytes(await readFile(t.governing, "utf8")) === key) lintPassed.add(key);
+    }
+  }
   const bytes = await readFile(t.page); const readSha = sha256(bytes); const sum = returnSha(t.text);
   await withLedgerLock(t.specs, t.key, async () => {
     const rows = await loadLedger(t.specs, t.key);
@@ -2764,12 +2785,16 @@ if (import.meta.main) {
         specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
     } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
   } else if (verb === "sign-shape") {
-    const a = verbArgs(args, ["--plan"], [], 1);
-    if (!a || (a.opts["--plan"] !== undefined && a.opts["--plan"].startsWith("--"))) { console.error("usage: bun chief-route.ts sign-shape <spec> [--plan <plan>]"); process.exit(2); }
+    const a = verbArgs(args, ["--plan"], ["--lint"], 1);
+    if (!a || (a.opts["--plan"] !== undefined && a.opts["--plan"].startsWith("--"))) { console.error("usage: bun chief-route.ts sign-shape <spec> [--plan <plan>] [--lint]"); process.exit(2); }
     let problems: string[];
     try {
       problems = signShapeProblems(a.pos[0], await readFile(a.pos[0], "utf8"), true);
       if (a.opts["--plan"] !== undefined) problems.push(...signShapeProblems(a.opts["--plan"], await readFile(a.opts["--plan"], "utf8"), false));
+      if (a.on.has("--lint")) {
+        const plan = a.opts["--plan"] === undefined ? null : resolve(a.opts["--plan"]);
+        problems.push(...lintLines(traceLint(resolve(a.pos[0]), plan)).map(l => `minerva-trace-lint: ${l}`));
+      }
     } catch (e) { console.error(`sign-shape: ${e instanceof Error ? e.message : e}`); process.exit(2); }
     for (const p of problems) console.log(`SIGN-SHAPE REFUSED: ${p}`);
     if (problems.length) process.exit(3);
@@ -2855,7 +2880,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--sign | --by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> --decision <d> --quote <words> [--specs <root>] | round-reclass <KEY> --round <spec|plan>:<round> --why <line> --chief <session> [--specs <root>] |round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-critical <KEY> --decision <d> --quote <words> --closure [--round <spec|plan>:<n>] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | kind-groups [--json] | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--sign | --by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> --decision <d> --quote <words> [--specs <root>] | round-reclass <KEY> --round <spec|plan>:<round> --why <line> --chief <session> [--specs <root>] |round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-critical <KEY> --decision <d> --quote <words> --closure [--round <spec|plan>:<n>] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] [--lint] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | kind-groups [--json] | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

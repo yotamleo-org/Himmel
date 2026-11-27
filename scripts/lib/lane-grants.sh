@@ -24,8 +24,10 @@
 #                                one per line. LC_ALL=C, so no locale collation
 #                                widens the unquoted allowlist; a word starting
 #                                with = is refused (zsh expands it to a path).
-#   lane_net_host_ok <host>      the one host check of a granted fetch; open by
-#                                default.
+#   lane_net_host_ok <lane> <host> <port>
+#                                the one host check of a granted fetch, against
+#                                the lane's allow and deny lists
+#                                (lane_grants_hosts); open with no list set.
 #   lane_grant_shape <payload>   the capability the command holds a grant for. A
 #                                JSON string holding NUL is refused because bash
 #                                would drop the byte. gh picks its base repo among
@@ -43,6 +45,30 @@ _lane_helpers() {
     done
     command -v jq >/dev/null 2>&1 || return 1
 }
+
+# shellcheck disable=SC2016
+_LANE_HOSTS_DEFS='
+def canon: ascii_downcase | rtrimstr(".");
+def name_ok: test("\\A([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z]([a-z0-9-]{0,61}[a-z0-9])?\\z") and length <= 253;
+def quad_ok: test("\\A((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\z");
+def host_ok: canon | (name_ok or quad_ok);
+def entry_ok: type == "string"
+    and (canon | (name_ok or quad_ok or (startswith("*.") and (.[2:] | name_ok))));
+def list_bad: type != "object" or ((keys - ["allow", "deny"]) != [])
+    or any(.[]; type != "array" or (all(.[]; entry_ok) | not));
+def state($l):
+    if has("lane_grants_hosts") | not then "none"
+    elif (.lane_grants_hosts | type) != "object" then "malformed-all"
+    elif .lane_grants_hosts | has($l) | not then "none"
+    else .lane_grants_hosts[$l]
+        | if list_bad then "malformed"
+          elif (has("allow") or ((.deny // []) != [])) | not then "none"
+          elif .allow == [] then "empty"
+          else "ok" end
+    end;
+def host_match($h): canon as $e
+    | if $e | startswith("*.") then $h | endswith($e[1:]) else $e == $h end;
+'
 
 lane_config_path() {
     local dir
@@ -183,7 +209,21 @@ lane_grant_argv() (
     printf '%s' "$out"
 )
 
-lane_net_host_ok() { [ -n "${1:-}" ]; }
+lane_net_host_ok() {
+    local lane="${1:-}" host="${2:-}" port="${3:-}" file
+    case "$lane" in antigravity|codex) ;; *) return 1 ;; esac
+    [ -n "$host" ] || return 1
+    file=$(_lane_trusted_config) || return 1
+    jq -e -s --arg l "$lane" --arg h "$host" --arg p "$port" "$_LANE_HOSTS_DEFS"'
+        length == 1 and (.[0] | type == "object") and ((.[0] | state($l)) as $s
+        | if $s == "none" then true
+          elif $s != "ok" and $s != "empty" then false
+          else ($h | host_ok) and ($p == "" or ($p | test("\\A[0-9]{1,5}\\z")))
+            and (.[0].lane_grants_hosts[$l] as $v | ($h | canon) as $c
+              | (any(($v.deny // [])[]; host_match($c)) | not)
+                and (($v | has("allow") | not) or any($v.allow[]; host_match($c))))
+          end)' "$file" >/dev/null 2>&1 || return 1
+}
 
 _lane_url_ok() {
     local url="${1:-}" auth
@@ -192,11 +232,14 @@ _lane_url_ok() {
     auth=${url#https://}
     auth=${auth%%[/?#]*}
     case "$auth" in ''|*@*|*\\*) return 1 ;; esac
-    lane_net_host_ok "${auth%%:*}" || return 1
+    [ -n "${auth%%:*}" ] || return 1
+    _LANE_NET_HOST=${auth%%:*}
+    case "$auth" in *:*) _LANE_NET_PORT=${auth#*:} ;; *) _LANE_NET_PORT='' ;; esac
 }
 
 _lane_shape_curl() {
     local globoff=0 urls=0
+    _LANE_NET_HOST=''; _LANE_NET_PORT=''
     shift 2
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -222,6 +265,7 @@ _lane_shape_curl() {
 
 _lane_shape_wget() {
     local noredirect=0 stdout=0 quiet=0 urls=0
+    _LANE_NET_HOST=''; _LANE_NET_PORT=''
     shift 2
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -352,6 +396,9 @@ lane_grant_shape() {
         *) return 1 ;;
     esac
     lane_grant_has "$lane" "$cap" || return 1
+    if [ "$cap" = net-read ]; then
+        lane_net_host_ok "$lane" "$_LANE_NET_HOST" "$_LANE_NET_PORT" || return 1
+    fi
     cwd=$(printf '%s' "$payload" | jq -r '.tool_input.cwd // .cwd // ""') || return 1
     _lane_scope_ok "$cwd" "$cap" "$named" || return 1
     printf '%s\n' "$cap"
@@ -383,7 +430,7 @@ lane_grants_report() {
         echo 'problem: config.json cannot be read as one JSON object; no lane holds anything'
         return 0
     fi
-    if jq -e 'has("lane_grants") | not' "$file" >/dev/null 2>&1; then
+    if jq -e 'has("lane_grants") or has("lane_grants_hosts") | not' "$file" >/dev/null 2>&1; then
         echo 'info: no lane grants (antigravity and codex run the full terminal fence)'
         return 0
     fi
@@ -398,12 +445,31 @@ lane_grants_report() {
         esac
         printf '%s: %s (%s)\n' "$lane" "${caps:-none}" "$state"
     done
+    lines=$(jq -r "$_LANE_HOSTS_DEFS"'
+        . as $cfg
+        | (["antigravity", "codex"][] as $l | ($cfg | state($l)) as $s
+            | select($s == "ok" or $s == "empty") | $cfg.lane_grants_hosts[$l] as $v
+            | [ (if $s == "empty" then "allow (none)"
+                 elif $v | has("allow") then "allow " + ([$v.allow[] | canon] | join(", "))
+                 else empty end),
+                (if ($v.deny // []) != [] then "deny " + ([$v.deny[] | canon] | join(", ")) else empty end) ]
+            | "\($l) hosts: " + join(" | ")),
+          (if $cfg | has("lane_grants_hosts") | not then empty
+           elif ($cfg.lane_grants_hosts | type) != "object" then "problem: lane_grants_hosts is not an object; no lane fetches"
+           else
+             (["antigravity", "codex"][] as $l | select(($cfg | state($l)) == "malformed")
+                | "problem: lane_grants_hosts.\($l) is malformed; that lane fetches nothing"),
+             (if (($cfg.lane_grants_hosts | keys) - ["antigravity", "codex"]) != []
+              then "problem: a key under lane_grants_hosts other than antigravity and codex is ignored" else empty end)
+           end)' "$file" 2>/dev/null) || lines='problem: lane_grants_hosts cannot be checked'
+    [ -z "$lines" ] || printf '%s\n' "$lines"
     lane_config_path >/dev/null || echo 'problem: the two config paths are not the same file; no grant applies'
     lane_config_trusted "$file" || echo 'problem: config.json or its directory is a symlink, not yours, or group- or world-writable; no grant applies'
     lines=$(jq -r '
         def known: ["git-push-branch", "gh-pr-create", "net-read", "manage-task-own"];
         .lane_grants as $g
-        | if ($g | type) != "object" then "problem: lane_grants is not an object; no lane holds anything"
+        | if has("lane_grants") | not then empty
+          elif ($g | type) != "object" then "problem: lane_grants is not an object; no lane holds anything"
           else
             (if (($g | keys) - ["antigravity", "codex"]) != [] then "problem: a key under lane_grants other than antigravity and codex is ignored" else empty end),
             (["antigravity", "codex"][] as $l | select($g | has($l)) | $g[$l]
