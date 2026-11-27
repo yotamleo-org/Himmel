@@ -64,8 +64,8 @@ wenv_quiet() {
         if [ $(( $(pr_reads) - n0 )) -ge 2 ]; then
             kill -STOP "$pid" 2>/dev/null
             j=0; while [ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" != T ] && [ "$j" -lt 100 ]; do sleep 0.01; j=$((j + 1)); done
-            quiet_state=""
-            [ "$j" -ge 100 ] || quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
+            if [ "$j" -ge 100 ]; then quiet_state=""; kill -CONT "$pid" 2>/dev/null; break; fi
+            quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
             [ "$quiet_state" != waiting ] || break
             kill -CONT "$pid" 2>/dev/null
         fi
