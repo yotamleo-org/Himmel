@@ -1952,5 +1952,14 @@ out=$(GRAPHIFY_STUB_SNAPSHOT="$C95C/graphify-out/.graph.pre-ast.json" run --name
   && [ "$(lastrun "$C95C" extract_rc)" = 2 ] \
   && pass "T95c refused before the merge, the billed run left its row" || fail "T95c (rc=$rc) ids: $(ids "$C95C") :: $out"
 
+echo "T95d: the refusal holds when its message cannot be written (stderr closed), deletion-only merge"
+C95D="$WS/c95d"; new_corpus "$C95D"
+run --name t95d --corpus-root "$C95D" --corpus-class himmel-code > /dev/null
+rm "$C95D/b.md"; cp "$C95D/graphify-out/graph.json" "$C95D/graphify-out/.graph.pre-ast.json"
+cp "$C95D/graphify-out/graph.json" "$WS/c95d.orig"
+PATH="$WS/bin:$PATH" bash "$SCRIPT" --backend claude-cli --name t95d --corpus-root "$C95D" --corpus-class himmel-code > "$WS/c95d.out" 2>&-; rc=$?
+[ "$rc" -eq 2 ] && cmp -s "$WS/c95d.orig" "$C95D/graphify-out/graph.json" \
+  && pass "T95d refused, graph.json byte-identical" || fail "T95d (rc=$rc) ids: $(ids "$C95D") :: $(cat "$WS/c95d.out")"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

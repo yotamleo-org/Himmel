@@ -320,6 +320,7 @@ pre_ast_leftover() {
   local env_part=""
   if [ -n "${GRAPHIFY_OUT:-}" ]; then env_part="GRAPHIFY_OUT='$GRAPHIFY_OUT' "; fi
   echo "semantic-update: REFUSING to merge: $OUT_DIR/.graph.pre-ast.json is left by a code-graph rebuild that did not finish, so graph.json may lack facts -- graph.json untouched. Recover: ${env_part}bash '$HERE/ast-update.sh' '$CORPUS_ROOT' (the next AST run restores it), then rerun" >&2
+  return 0
 }
 
 if [ "$SEED" -eq 1 ]; then
