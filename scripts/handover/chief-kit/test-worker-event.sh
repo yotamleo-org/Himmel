@@ -1019,6 +1019,19 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 111111111111111
 run21 "WRAPPED N6021"
 contains "21e4 a signature on an earlier revision does not sign the later one" "$(owed21 "$step21 | .text")" "sign the design (spec 222222222222)"
 
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:02 LIVE — design signed by chief DY'
+run21 "WRAPPED N6021 READY-TO-SIGN sent again: spec rev 2 sha256 3333333333333333"
+contains "21e5 a new sign request in the event message outlives the earlier signature" "$(owed21 "$step21 | .text")" "sign the design"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 1111111111111111, the operator signs this one' '- 10:05 LIVE — READY-TO-SIGN sent: the chief signs this revision' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+check "21e6 the latest request names the signer, not an older one" "$(owed21 "$step21 | .actor")" chief
+lacks "21e7 and an older request's spec hash is not carried onto it" "$(owed21 "$step21 | .text")" "111111111111"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 4444444444444444, the operator signs this one' '- 10:10 WRAPPED — READY-TO-SIGN sent, ticket left open'
+run21 "WRAPPED N6021"
+check "21e8 a WRAPPED bullet that only repeats the request keeps its signer and hash" "$(owed21 "$step21 | .actor + \"/\" + (.text | test(\"444444444444\") | tostring)")" operator/true
+
 doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design not yet signed by chief DY'
 run21 "WRAPPED N6021"
 contains "21e3 not yet signed is not signed" "$(owed21 "$step21 | .text")" "sign the design"
