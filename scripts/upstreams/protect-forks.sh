@@ -16,7 +16,8 @@
 # rules on applying the plan). Nobody else sets it.
 #
 # What it applies, per live fork, one repository ruleset `himmel-fork-protect`:
-#   - target: the fork's default branch and the registry's himmel_branch
+#   - target: the fork's default branch, the registry's himmel_branch and, when the
+#     row has one, its pin_branch
 #   - rules: deletion, non_fast_forward, pull_request (0 required approvals,
 #     review threads resolved, squash only)
 #   - bypass: the repository admin role, mode always. The actor is the operator
@@ -73,10 +74,10 @@ command -v jq >/dev/null 2>&1 || { echo "protect-forks: jq is required" >&2; exi
 rc=0
 POLICY_PAYLOAD='{"pull_request_creation_policy":"collaborators_only"}'
 
-# ruleset_payload <default-branch> <himmel-branch>
+# ruleset_payload <default-branch> <himmel-branch> [<pin-branch>]
 ruleset_payload() {
-  jq -cn --arg name "$RULESET_NAME" --arg d "$1" --arg h "$2" '
-    (if $d == $h then [$d] else [$d, $h] end | map("refs/heads/" + .)) as $refs
+  jq -cn --arg name "$RULESET_NAME" --arg d "$1" --arg h "$2" --arg p "${3:-}" '
+    ([$d, $h, $p] | map(select(. != "")) | reduce .[] as $b ([]; if index($b) then . else . + [$b] end) | map("refs/heads/" + .)) as $refs
     | {name: $name, target: "branch", enforcement: "active",
        bypass_actors: [{actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always"}],
        conditions: {ref_name: {include: $refs, exclude: []}},
@@ -118,11 +119,11 @@ state() {
   return 0
 }
 
-rows=$(jq -r 'if (type == "array" and length > 0) then .[] | [.nwo, .himmel_branch] | @tsv else error("empty or not an array") end' "$ADAPTERS") \
+rows=$(jq -r 'if (type == "array" and length > 0) then .[] | [.nwo, .himmel_branch, (.pin_branch // "")] | @tsv else error("empty or not an array") end' "$ADAPTERS") \
   || { echo "protect-forks: $ADAPTERS is not a usable registry" >&2; exit 2; }
 registered=""
 matched=0
-while IFS=$'\t' read -r nwo himmel; do
+while IFS=$'\t' read -r nwo himmel pin; do
   [ -n "$nwo" ] || continue
   registered="$registered $(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')"
   if [ -n "$ONLY" ] && [ "$(printf '%s' "$nwo" | tr '[:upper:]' '[:lower:]')" != "$ONLY" ]; then continue; fi
@@ -131,7 +132,7 @@ while IFS=$'\t' read -r nwo himmel; do
   if [ "$(printf '%s' "$repo" | jq -r '.fork')" != true ]; then echo "SKIP $nwo not-a-fork"; continue; fi
   if [ "$(printf '%s' "$repo" | jq -r '.archived')" = true ]; then echo "SKIP $nwo archived (read-only: no push, force push or new PR is possible)"; continue; fi
   def=$(printf '%s' "$repo" | jq -r '.default_branch')
-  payload=$(ruleset_payload "$def" "$himmel")
+  payload=$(ruleset_payload "$def" "$himmel" "$pin")
   if ! state "$nwo" "$payload"; then echo "ERROR $nwo cannot read rulesets"; rc=1; continue; fi
   echo "== $nwo (default $def, himmel $himmel)"
   if [ "$RS_SAME" = 1 ] && [ "$POLICY_SAME" = 1 ]; then echo "OK $nwo already protected"; continue; fi

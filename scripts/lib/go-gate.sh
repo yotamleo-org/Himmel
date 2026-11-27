@@ -1037,8 +1037,8 @@ _go_harness_ref() {
 }
 
 # go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a chief
-# merge into <target-nwo> may land on (its himmel_branch); rc 2 prints the
-# reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
+# merge into <target-nwo> may land on (pin_branch when set, else himmel_branch);
+# rc 2 prints the reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
 # DEFAULT branch of the harness repo the anchor's origin remote names (never gh's
 # default-repo setting), through the
 # API - never a worktree, a PR head or a local ref - so a worker cannot widen it by
@@ -1048,7 +1048,7 @@ _go_harness_ref() {
 go_adapter_entry() {
     # bracket ranges and case mapping must not follow the caller's locale
     local LC_ALL=C
-    local anchor="$1" target="$2" gh_bin=${GH:-gh} ref nwo dbranch raw br
+    local anchor="$1" target="$2" gh_bin=${GH:-gh} ref nwo dbranch raw br key
     case "$target" in
         */*/*|/*|*/|*[!A-Za-z0-9._/-]*|'') target="" ;;
         */*) ;;
@@ -1070,10 +1070,13 @@ go_adapter_entry() {
     raw=$("$gh_bin" api "repos/$nwo/contents/scripts/guardrails/himmel-adapters.json?ref=$dbranch" \
         -H 'Accept: application/vnd.github.raw' 2>/dev/null) || raw=""
     br=$(printf '%s' "$raw" | jq -r --arg n "$target" \
-        '[.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0].himmel_branch // "") else "" end' 2>/dev/null) || br=""
+        'def ok: type == "string" and test("\\A[A-Za-z0-9][A-Za-z0-9._/-]*\\z");[.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0] | if has("pin_branch") then (if (.pin_branch | ok) then "p:" + .pin_branch else "p:" end) else "h:" + ((.himmel_branch // "") | if ok then . else "" end) end) else "" end' 2>/dev/null) || br=""
+    key=himmel_branch
+    case "$br" in p:*) key=pin_branch ;; esac
+    br=${br#[ph]:}
     case "$br" in
         ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*..*)
-            printf '%s is not a himmel adapter with merge_allowed true (or its himmel_branch is unreadable) in scripts/guardrails/himmel-adapters.json on %s@%s - the chief merges only allowlisted forks.\n' "$target" "$nwo" "$dbranch"
+            printf '%s is not a himmel adapter with merge_allowed true (or its %s is unreadable) in scripts/guardrails/himmel-adapters.json on %s@%s - the chief merges only allowlisted forks.\n' "$target" "$key" "$nwo" "$dbranch"
             return 2 ;;
     esac
     printf '%s\n' "$br"

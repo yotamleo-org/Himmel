@@ -183,6 +183,12 @@ Two edits that must move together, same discipline as `/drift-fix`:
   (for qmd, `_qmd_fork_ref()` in `scripts/lib/qmd-bin.sh`) → the new rebased SHA from step 4;
 - `synced_base` in `scripts/upstreams.json` → the upstream tag just rebased onto.
 
+The pin PR also sets the fork row's `pin_branch` in `scripts/guardrails/himmel-adapters.json` to
+`himmel-main-upstream-<target>`; once the fork's himmel branch contains the pin commit, the next
+fork-resync leg drops `pin_branch` in its pin PR. After a pin PR that sets or changes `pin_branch`
+merges, `protect-forks.sh --apply --only <fork>` under the chief's `HIMMEL_FORK_PROTECT_RULING` is
+owed: the leg's report names it as owed to the chief.
+
 Do this in a worktree (`bash scripts/worktree.sh new --no-prune chore/fork-resync-<name>-<YYYYMMDD>`),
 never in the primary checkout.
 

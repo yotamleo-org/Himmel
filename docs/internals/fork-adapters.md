@@ -13,7 +13,8 @@ cannot widen it. Shape and coverage are checked by
 |---|---|
 | `nwo` | `owner/name` of our fork; one row per fork, no duplicates |
 | `upstream` | the repo the fork tracks, or `null` for a first-party repo |
-| `himmel_branch` | the one branch a chief merge may land on; the fork's default branch where himmel carries no delta |
+| `himmel_branch` | the adapter's GO base (`pin_branch` when set, else `himmel_branch`): the one branch a chief merge may land on; the fork's default branch where himmel carries no delta |
+| `pin_branch` | optional: the fork branch the himmel pin rides (`himmel-main-upstream-<synced_base>`). While a row has it, it replaces `himmel_branch` as the row's one GO base, and a value that is not a usable branch name refuses the GO. The lint ties it to the fork block in `scripts/upstreams.json` |
 | `pin_site` | the himmel file that pins the fork, or `null` |
 | `role` | `runtime-dependency`, `upstream-contribution`, `vendored-source`, `dormant` or `first-party` |
 | `merge_allowed` | `true` only for a fork himmel carries a delta on and merges into itself, or a first-party repo himmel merges into |
@@ -57,8 +58,8 @@ is left out of the third-party credits page.
 ## Branch protection
 
 `bash scripts/upstreams/protect-forks.sh` plans (dry-run by default, GET only) one
-repository ruleset `himmel-fork-protect` per live fork: the default branch and the
-registry's `himmel_branch` take no deletion, no force push and no direct push; a PR
+repository ruleset `himmel-fork-protect` per live fork: the default branch, the
+registry's `himmel_branch` and, when the row has one, its `pin_branch` (the GO base) take no deletion, no force push and no direct push; a PR
 is required (0 approvals, squash only, threads resolved), and the repository admin
 role bypasses with mode `always`. That bypass is the operator account that runs
 `resync-fork.sh --sync` (a `--force-with-lease` push to the himmel branch and

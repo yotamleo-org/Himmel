@@ -49,6 +49,7 @@ cat > "$T/adapters.json" <<'EOF'
 [
   {"nwo": "yotamleo-org/qmd", "upstream": "tobi/qmd", "himmel_branch": "main", "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/graphify", "upstream": "Graphify-Labs/graphify", "himmel_branch": "himmel-main", "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo-org/pinned", "upstream": "Pinned-Labs/pinned", "himmel_branch": "himmel-main", "pin_branch": "himmel-main-upstream-9.9", "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/core", "upstream": "home-assistant/core", "himmel_branch": "dev", "role": "upstream-contribution", "merge_allowed": false},
   {"nwo": "yotamleo-org/himmel-voice", "upstream": null, "himmel_branch": "main", "role": "first-party", "merge_allowed": true}
 ]
@@ -56,12 +57,14 @@ EOF
 F="$T/fix"
 echo '{"archived":false,"default_branch":"main","fork":true,"full_name":"yotamleo-org/qmd","parent":{"full_name":"tobi/qmd"},"pull_request_creation_policy":"all"}' > "$F/repos_yotamleo-org_qmd.json"
 echo '{"archived":false,"default_branch":"v8","fork":true,"full_name":"yotamleo-org/graphify","parent":{"full_name":"Graphify-Labs/graphify"},"pull_request_creation_policy":"all"}' > "$F/repos_yotamleo-org_graphify.json"
+echo '{"archived":false,"default_branch":"v8","fork":true,"full_name":"yotamleo-org/pinned","parent":{"full_name":"Pinned-Labs/pinned"},"pull_request_creation_policy":"all"}' > "$F/repos_yotamleo-org_pinned.json"
 echo '{"archived":true,"default_branch":"dev","fork":true,"full_name":"yotamleo-org/core","parent":{"full_name":"home-assistant/core"},"pull_request_creation_policy":"all"}' > "$F/repos_yotamleo-org_core.json"
 echo '{"archived":false,"default_branch":"main","fork":false,"full_name":"yotamleo-org/himmel-voice","pull_request_creation_policy":"all"}' > "$F/repos_yotamleo-org_himmel-voice.json"
 echo '[]' > "$F/repos_yotamleo-org_qmd_rulesets.json"
 echo '[]' > "$F/repos_yotamleo-org_graphify_rulesets.json"
-printf '%s\n' yotamleo-org/qmd yotamleo-org/graphify yotamleo-org/core > "$T/orgforks.txt"
-echo '[{"full_name":"yotamleo-org/qmd"},{"full_name":"yotamleo-org/graphify"},{"full_name":"yotamleo-org/core"}]' > "$F/orgs_yotamleo-org_repos_type_forks_per_page_100.json"
+echo '[]' > "$F/repos_yotamleo-org_pinned_rulesets.json"
+printf '%s\n' yotamleo-org/qmd yotamleo-org/graphify yotamleo-org/pinned yotamleo-org/core > "$T/orgforks.txt"
+echo '[{"full_name":"yotamleo-org/qmd"},{"full_name":"yotamleo-org/graphify"},{"full_name":"yotamleo-org/pinned"},{"full_name":"yotamleo-org/core"}]' > "$F/orgs_yotamleo-org_repos_type_forks_per_page_100.json"
 
 run() { # run <extra env...> -- args : prints output, sets RC
   : > "$LOG"
@@ -74,6 +77,7 @@ if [ "$RC" -eq 0 ]; then pass "dry-run rc=0"; else fail "dry-run rc=$RC: $OUT"; 
 has "$OUT" "CALL POST repos/yotamleo-org/qmd/rulesets " "qmd: ruleset create call printed"
 has "$OUT" '"include":["refs/heads/main"]' "qmd: default and himmel branch are the same ref, listed once"
 has "$OUT" '"include":["refs/heads/v8","refs/heads/himmel-main"]' "graphify: default v8 and himmel-main both protected"
+has "$OUT" '"include":["refs/heads/v8","refs/heads/himmel-main","refs/heads/himmel-main-upstream-9.9"]' "pinned: default, himmel_branch and pin_branch all protected"
 has "$OUT" '"bypass_mode":"always"' "admin bypass always (the sync actor)"
 has "$OUT" '"required_approving_review_count":0' "pull request required with 0 approvals (ruling)"
 has "$OUT" "CALL PATCH repos/yotamleo-org/qmd " "PR-creation policy call printed"

@@ -3,9 +3,8 @@
 # scripts/handover/test-merge-fork-pr.sh - suite for the chief's fork-merge path:
 # chief-kit/go.sh --repo (writes a GO for an allowlisted fork PR) and
 # merge-fork-pr.sh (the only chokepoint that merges one). gh is a stub.
-#   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state
-#      (head, MERGEABLE, OPEN, base = himmel_branch), judge verdict, worker refused,
-#      and a valid write.
+#   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state,
+#      judge verdict, worker refused, and a valid write.
 #   2. merge-fork-pr.sh: usage, worker/relay refused, non-allowlisted repo refused,
 #      missing / forged / stale / other-repo / non-judged GO refused, head moved
 #      after the GO refused, and an allowlisted repo with a valid GO merges.
@@ -379,6 +378,23 @@ check "merge --jira-transition with no jira CLI build never reaches Jira" "$(jlo
 rc=0; merge --jira-transition "$FORK" 18 >/dev/null 2>&1 || rc=$?
 check "merge --jira-transition with the positionals short -> exit 2" "$rc" 2
 
+PINBASE=himmel-main-upstream-x
+sed 's|"himmel_branch":"himmel/pin-http-auth"|&,"pin_branch":"'"$PINBASE"'"|' "$STUB_ALLOW" > "$tmp/allow-pin.json"
+write_go "$FORK" 18 "$SHA" j1
+: > "$STUB_LOG"
+prview OPEN "$SHA" MERGEABLE "$PINBASE"
+rc=0; STUB_ALLOW="$tmp/allow-pin.json" merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "2c: a PR on the pin branch merges -> exit 0" "$rc" 0
+check "2c: a PR on the pin branch ran exactly one gh pr merge" "$(merged)" 1
+contains "2c: the post-merge read is MERGED on the pin branch" "$(cat "$STUB_PRVIEW")" "\"state\":\"MERGED\",\"headRefOid\":\"$SHA\",\"mergeable\":\"MERGEABLE\",\"baseRefName\":\"$PINBASE\""
+: > "$STUB_LOG"
+prview OPEN "$SHA" MERGEABLE "$BASE"
+rc=0; STUB_ALLOW="$tmp/allow-pin.json" merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
+check "2c: pin_branch set, a PR on himmel_branch -> exit 7" "$rc" 7
+check "2c: pin_branch set, a PR on himmel_branch merged nothing" "$(merged)" 0
+: > "$STUB_LOG"
+prview
+
 # --- 3. a relative entry hands off to the anchor named by the launch env (as go.sh) ---
 # Marker copies keep everything up to the real hand-off sourcing line, then
 # echo a label: a pass proves the shipped line triggers the hand-off.
@@ -406,7 +422,7 @@ rc=0; (cd "$MF_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts/ha
 check "merge: relative entry with the anchor unset exits 2" "$rc" 2
 
 out=$(jq -r '.[] | select(.nwo == "yotamleo-org/qmd") | .himmel_branch' "$HERE/../guardrails/himmel-adapters.json" 2>/dev/null)
-check "registry: yotamleo-org/qmd himmel_branch is the fork main the pin tracks" "$out" "main"
+check "registry: yotamleo-org/qmd himmel_branch is fork main" "$out" "main"
 
 # --- 4. go.sh clears and load-checks go_fork_ready ---------------------------------
 # A go_fork_ready inherited from the caller's env must not stand in for one the

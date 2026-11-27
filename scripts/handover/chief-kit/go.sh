@@ -65,7 +65,8 @@
 # DEFAULT branch so a worktree edit cannot widen it) that merge-fork-pr.sh
 # merges. The mac signs THAT repo, so the GO validates nowhere else. It replaces
 # the himmel-only ready-check.sh below (ledger, trailers, coverage) with: the PR
-# is OPEN at <head>, MERGEABLE and based on the entry's himmel_branch, and
+# is OPEN at <head>, MERGEABLE and based on the entry's GO base (pin_branch when
+# the row has one, else himmel_branch), and
 # --trust-reviewed names a judge whose write-verdict.sh record rules GO on
 # <head> for this PR - required, because that judge IS the review of a fork that
 # has no reviewer or CI gate of its own.
@@ -111,8 +112,8 @@
 #   4  refused: ready-check.sh did not PASS for <pr> at <head> (it exited 1)
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #   6  refused: --repo names no himmel adapter and no adopted repo with merge_allowed true
-#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the himmel_branch
-#      (an adopted repo: its default branch),
+#   7  refused: --repo PR is not OPEN at <head>, MERGEABLE and on the adapter's GO base
+#      (pin_branch when the row has one, else himmel_branch; an adopted repo: its default branch),
 #      or is not CLEAN (checks green) with every review thread resolved
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
@@ -476,9 +477,6 @@ if _go_in_harness "$ROOT" "$ANCHOR"; then
     echo "go: note - writing the GO under the harness repo's inline handovers/ ($ROOT): no external HANDOVER_DIR is configured, so this is Mode A" >&2
 fi
 
-# a fork GO only for an allowlisted adapter or adopted repo, and only for a PR
-# that is OPEN at this head, MERGEABLE and based on the adapter's himmel_branch
-# (an adopted repo's default branch).
 VREPO=""
 if [ "$FORK_SET" -eq 1 ]; then
     if HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then

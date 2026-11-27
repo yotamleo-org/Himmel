@@ -24,7 +24,8 @@
 #   2  usage
 #   3  refused: run from a chief-spawned worker or a chief relay
 #   6  refused: <owner/repo> is not an allowlisted himmel adapter (merge_allowed)
-#   7  refused: the live PR is not OPEN at <head> on the adapter's himmel_branch,
+#   7  refused: the live PR is not OPEN at <head> on the adapter's GO base (pin_branch
+#      when the row has one, else himmel_branch),
 #      is not CLEAN (checks green) with every review thread resolved, or the
 #      merge itself failed
 #   8  refused: no valid trust-reviewed GO for this repo, PR and head
