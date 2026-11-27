@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
+# selector: tree-scan
 # test-adopt-plugins-vm.sh - VM proof for a project adopt that keeps plugin enablement out of
 # the user file (given scopes slice S2b-1, spec A26).
 #
