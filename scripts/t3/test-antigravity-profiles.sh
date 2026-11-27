@@ -614,5 +614,22 @@ for b in 1 2 3 4; do
     expect_eq "39 a malformed profile field (case $b) exits 2" "$rc" 2
 done
 
+jq '.profiles.design.mcpEnv = {playwright:{TMPDIR:"/tmp"},ctx:{ADDED:"1"},ghost:{TMPDIR:"/tmp"}} | .profiles.design.mcpServers.ctx.env = {KEPT:"yes"}' "$T/registry-mcp.json" > "$T/registry-mcpenv.json"
+fresh
+env T3_AP_REGISTRY="$T/registry-mcpenv.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-mcp.json" bash "$GEN" --apply --profile design >/dev/null 2>&1; rc=$?
+M="$(home_of)/config/mcp_config.json"
+expect_eq "40 apply with mcpEnv exits 0" "$rc" 0
+expect_eq "40 mcpEnv sets TMPDIR on the catalog server" "$(jq -c '.mcpServers.playwright.env' "$M")" '{"TMPDIR":"/tmp"}'
+expect_eq "40 mcpEnv leaves the catalog command and args" "$(jq -c '.mcpServers.playwright | [.command, .args]' "$M")" '["sh",["-c","true"]]'
+expect_eq "40 mcpEnv merges with a server's own env" "$(jq -cS '.mcpServers.ctx.env' "$M")" '{"ADDED":"1","KEPT":"yes"}'
+expect_eq "40 mcpEnv for a skipped server adds no entry" "$(jq -c '.mcpServers | keys' "$M")" '["ctx","playwright"]'
+n=0
+for bad_env in 'false' '{playwright:"TMPDIR=/tmp"}' '{playwright:{TMPDIR:1}}' '{playwright:{"BAD NAME":"x"}}'; do
+    n=$((n+1))
+    jq ".profiles.design.mcpEnv = $bad_env" "$T/registry-mcp.json" > "$T/registry-mcpenv-bad.json"
+    env T3_AP_REGISTRY="$T/registry-mcpenv-bad.json" T3_AP_PLUGIN_PROFILES="$T/plugin-profiles-mcp.json" bash "$GEN" --dry-run --profile design >/dev/null 2>&1; rc=$?
+    expect_eq "40 a malformed mcpEnv (case $n) exits 2" "$rc" 2
+done
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

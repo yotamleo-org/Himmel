@@ -47,6 +47,8 @@ expect_eq "design names playwright as optional" "$(jq -c '.profiles.design.optio
 expect_eq "playwright is in the plugin-profiles mcpCatalog" "$(jq -r '.mcpCatalog.playwright.args[1] // ""' "$PLUGIN_PROFILES")" "@playwright/mcp@0.0.83"
 expect_eq "agent-native-dispatch is not wired" "$(jq -r '[.profiles.design.mcpServers // {} | keys[] | select(test("agent-native"))] | length' "$REGISTRY")" "0"
 expect_eq "every npx mcp server pins an exact version" "$(jq -r '[.profiles.design.mcpServers // {} | .[] | select(.command == "npx") | .args[1] | select(test("@[0-9]+[.][0-9]+[.][0-9]+$") | not)] | length' "$REGISTRY")" "0"
+expect_eq "design pins a short TMPDIR for playwright (Chrome's socket path limit)" "$(jq -c '.profiles.design.mcpEnv.playwright // {}' "$REGISTRY")" '{"TMPDIR":"/tmp"}'
+expect_eq "the shared mcpCatalog carries no literal env for playwright" "$(jq -r '.mcpCatalog.playwright | has("env")' "$PLUGIN_PROFILES")" "false"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

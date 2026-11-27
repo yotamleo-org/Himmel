@@ -26,6 +26,11 @@ Optional registry fields per profile:
   added to the same file. A name missing from the catalog, or whose definition needs a checkout path
   (`${...}`), is skipped with a note on stderr, not an error. An own `mcpServers` entry wins over a
   catalog entry of the same name.
+- `mcpEnv`: `{"<server>": {"<VARIABLE>": "<string>"}}`, merged into the `env` of that server's generated
+  entry (a catalog server too, since `mcpCatalog` refuses literal `env` values). A name with no
+  generated entry adds nothing; any other shape exits 2. The `design` profile sets `TMPDIR=/tmp` for
+  `playwright`: T3's long `TMPDIR` pushes Chrome's `SingletonSocket` path past Linux's 108-byte socket
+  limit, and Chrome aborts with `Socket path too long`.
 
 ## What it writes
 
@@ -101,6 +106,14 @@ hook adapter denies shell commands naming `.agents` or `.gemini`. Every entry pa
 (symlinks followed) and refused with `REFUSED` (rc 3, nothing written) if it lands under
 `<T3 home>/userdata/providers/antigravity` or has a path segment starting `/.agents` or
 `/.gemini`. This also catches a plugin whose install path is a symlink into an Antigravity home.
+
+Besides the thread's own artifact folder, one read inside the provider home is allowed: agy's lazy MCP
+tool schemas, `<own home>/antigravity-acp/mcp/<server>/<tool>.json` and `.../<server>/instructions.md`.
+`block-antigravity-read-fence.sh` derives `<own home>` from the artifact folder, which must be
+`<T3 home>/userdata/providers/antigravity/<home>/antigravity-acp/brain/<conversation>`. Only `Read` and
+`read_file` get it: shell commands, `read_resource`, `list_resources` and writes stay denied. A `..` in
+the path, any other file or depth, and a path naming `antigravity-oauth-token` are denied, and so is a
+symlink at or below `mcp/`, wherever it points.
 
 ## What a thread may call
 

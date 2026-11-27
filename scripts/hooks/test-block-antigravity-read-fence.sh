@@ -161,6 +161,84 @@ assert_allow "run_command referencing own artifactDirectoryPath allowed" \
     "$(mk_bash "cat $ARTIFACT_DIR/plan.md")"
 assert_allow "benign read_resource allowed" "$(mk_res read_resource "himmel://docs/readme")"
 
+echo "== 3b. Own lazy MCP schemas: Read only =="
+PROV="$T3CODE_HOME/userdata/providers/antigravity"
+OWN_MCP="$PROV/hash1/antigravity-acp/mcp"
+FOREIGN_MCP="$PROV/hash0/antigravity-acp/mcp"
+mkdir -p "$OWN_MCP/playwright" "$FOREIGN_MCP/playwright" "${OWN_MCP}0/playwright"
+for d in "$OWN_MCP" "$FOREIGN_MCP" "${OWN_MCP}0"; do
+    printf '{}\n' > "$d/playwright/browser_navigate.json"
+done
+printf 'how\n' > "$OWN_MCP/playwright/instructions.md"
+printf 'x\n' > "$OWN_MCP/playwright/notes.txt"
+printf 'x\n' > "$OWN_MCP/playwright/antigravity-oauth-token.json"
+ln -s "$PROV/hash1/config/hooks.json" "$OWN_MCP/playwright/to_hooks.json"
+ln -s "$PROV/hash1/antigravity-oauth-token" "$OWN_MCP/playwright/to_token.json"
+ln -s "$OTHER_ART/secret.md" "$OWN_MCP/playwright/to_brain.json"
+ln -s "$TMPDIR/out.log" "$OWN_MCP/playwright/to_tmp.json"
+ln -s "$GRAPHIFY_HIMMEL_ROOT/README.md" "$OWN_MCP/playwright/to_code.json"
+ln -s "$OWN_MCP/playwright/browser_navigate.json" "$OWN_MCP/playwright/to_sibling.json"
+ln -s "$PROV/hash1/config" "$OWN_MCP/to_config"
+ln -s "$FOREIGN_MCP/playwright" "$OWN_MCP/to_foreign"
+
+assert_allow "allows own mcp/<server>/<tool>.json" "$(mk_read "$OWN_MCP/playwright/browser_navigate.json")"
+assert_allow "allows own mcp/<server>/instructions.md" "$(mk_read "$OWN_MCP/playwright/instructions.md")"
+assert_allow "allows own mcp schema as read_file" \
+    "$(jq -cn --arg p "$OWN_MCP/playwright/browser_navigate.json" --arg c "$GRAPHIFY_HIMMEL_ROOT" '{toolCall:{name:"read_file",args:{Path:$p}},cwd:$c}')"
+
+assert_deny "denies other provider home mcp schema" "provider home" \
+    "$(mk_read "$FOREIGN_MCP/playwright/browser_navigate.json")"
+assert_deny "denies mcp0 prefix collision" "provider home" \
+    "$(mk_read "${OWN_MCP}0/playwright/browser_navigate.json")"
+assert_deny "denies a non-schema file under own mcp/" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/notes.txt")"
+assert_deny "denies a deeper path under own mcp/" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/sub/browser_navigate.json")"
+assert_deny "denies the own mcp/ directory itself" "provider home" "$(mk_read "$OWN_MCP")"
+for link in to_hooks.json to_token.json to_brain.json to_tmp.json to_code.json to_sibling.json; do
+    assert_deny "denies symlink inside mcp/ ($link)" "" "$(mk_read "$OWN_MCP/playwright/$link")"
+done
+assert_deny "denies symlinked server dir to config/" "symlink" "$(mk_read "$OWN_MCP/to_config/hooks.json")"
+assert_deny "denies symlinked server dir to another home" "symlink" \
+    "$(mk_read "$OWN_MCP/to_foreign/browser_navigate.json")"
+assert_deny "denies .. traversal out of mcp/" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/../../../config/hooks.json")"
+assert_deny "denies .. traversal back into mcp/" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/../playwright/browser_navigate.json")"
+assert_deny "denies antigravity-oauth-token named inside mcp/" "oauth-token" \
+    "$(mk_read "$OWN_MCP/playwright/antigravity-oauth-token.json")"
+assert_deny "denies mcp schema with empty ARTIFACT_DIR" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/browser_navigate.json")" HIMMEL_ANTIGRAVITY_ARTIFACT_DIR=""
+assert_deny "denies mcp schema with ARTIFACT_DIR spoofed at provider root" "provider home" \
+    "$(mk_read "$OWN_MCP/playwright/browser_navigate.json")" HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$PROV/hash1"
+mkdir -p "$PROV/hash1/config/antigravity-acp/mcp/playwright"
+assert_deny "denies spoofed ARTIFACT_DIR with extra components before antigravity-acp" "provider home" \
+    "$(mk_read "$PROV/hash1/config/antigravity-acp/mcp/playwright/browser_navigate.json")" \
+    HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$PROV/hash1/config/antigravity-acp/brain/conv-1"
+SPOOF_PROV="$TMP/elsewhere/userdata/providers/antigravity/hash1/antigravity-acp"
+mkdir -p "$SPOOF_PROV/mcp/playwright"
+assert_deny "denies spoofed ARTIFACT_DIR outside every T3 home" "provider home" \
+    "$(mk_read "$SPOOF_PROV/mcp/playwright/browser_navigate.json")" \
+    HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$SPOOF_PROV/brain/conv-1"
+mkdir -p "$PROV/hash2/antigravity-acp/brain/conv-1"
+ln -s "$PROV/hash1/config" "$PROV/hash2/antigravity-acp/mcp"
+assert_deny "denies when mcp/ itself is a symlink" "symlink" \
+    "$(mk_read "$PROV/hash2/antigravity-acp/mcp/hooks.json")" \
+    HIMMEL_ANTIGRAVITY_ARTIFACT_DIR="$PROV/hash2/antigravity-acp/brain/conv-1"
+assert_deny "run_command cat on own mcp/ denied" "provider home" \
+    "$(mk_bash "cat $OWN_MCP/playwright/browser_navigate.json")"
+assert_deny "run_command from own mcp/ cwd denied" "provider home" \
+    "$(mk_bash "cat browser_navigate.json" "$OWN_MCP/playwright")"
+assert_deny "read_resource file:// on own mcp/ denied" "provider home" \
+    "$(mk_res read_resource "file://$OWN_MCP/playwright/browser_navigate.json")"
+assert_deny "list_resources on own mcp/ denied" "provider home" \
+    "$(mk_res list_resources "$OWN_MCP/playwright/instructions.md")"
+
+ln -s "$T3CODE_HOME" "$TMP/t3link"
+assert_allow "allows own mcp schema through a symlinked T3 home" \
+    "$(mk_read "$TMP/t3link/userdata/providers/antigravity/hash1/antigravity-acp/mcp/playwright/instructions.md")" \
+    T3CODE_HOME="$TMP/t3link"
+
 echo "== 4. Fail-closed on malformed input and unreadable PHI list =="
 assert_deny "malformed JSON stdin denied" "malformed" "{bad-json"
 assert_deny "empty Read file_path denied" "empty" "$(mk_read "")"
