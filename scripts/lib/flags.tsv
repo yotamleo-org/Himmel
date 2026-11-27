@@ -7,3 +7,4 @@
 # scripts/hooks/, in a gate script or on a ci-trust-paths.txt path (docs/internals/config-layers.md).
 stacked_series	off	feature	HIMMEL-8349	HIMMEL-8349	2026-12-12	next-dispatchable.sh lists To Do tickets of one version that share files as one SERIES row, and marks a candidate colliding only with a live series worker STACKABLE; off keeps today's output
 auto_go	on	feature	HIMMEL-8349	HIMMEL-8404	2026-12-12	chief-wait.sh hands every new READY bullet of a manifest worker to worker-event.sh once, which runs auto-go.sh live (writes and sends the GO); off keeps ESCALATE marker-READY
+agy_design_profile	off	feature	HIMMEL-11353	HIMMEL-11357	2026-12-10	himmel-update runs antigravity-profiles.sh --apply (every registry profile) before the T3 provider sync and prints the allowlist lines to paste; off prints one skipped line

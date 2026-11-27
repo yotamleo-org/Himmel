@@ -536,7 +536,7 @@ Rules, enforced by `scripts/ci/check-flags.sh` on every CI event:
 - **Registered and read.** A flag the code reads must be in the registry, and a
   registered flag must have a reader.
 
-The registry holds `stacked_series` and `auto_go`; each row's `expires`
+The registry holds `stacked_series`, `auto_go` and `agy_design_profile`; each row's `expires`
 date applies. Soft edges, the chain render, the merge plan and the push check carry no flag
 and run always.
 
