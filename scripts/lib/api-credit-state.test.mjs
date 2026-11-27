@@ -1173,14 +1173,16 @@ test('a crashed reclaim of this lock is superseded after the bound, and its guar
   for (const p of [lock, first, second]) assert.equal(existsSync(p), false, p);
 });
 
-test('a young reclaim guard, or one that holds a file, keeps the lock and is left alone', () => {
-  for (const shape of ['young', 'contents']) {
+test('a young reclaim guard, one that holds a file, or one with a live holder keeps the lock and is left alone', () => {
+  for (const shape of ['young', 'contents', 'live-holder']) {
     const f = fixture();
     const lock = `${f.paths.state}.lock`;
     mkdirSync(lock); age(lock, 120);
     const guard = guardOf(lock, 0);
     mkdirSync(guard);
-    if (shape === 'contents') { writeFileSync(join(guard, 'x'), ''); age(guard, 120); }
+    if (shape === 'contents') writeFileSync(join(guard, 'x'), '');
+    if (shape === 'live-holder') writeFileSync(`${guard}.pid`, `${process.pid}\n`);
+    if (shape !== 'young') age(guard, 120);
     assert.equal(statusOf(f, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable', shape);
     assert.equal(existsSync(guard), true, shape);
     assert.equal(existsSync(lock), true, shape);

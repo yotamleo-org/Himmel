@@ -38,6 +38,9 @@ const LOCK_WAIT_MS = 5000;
 const holderPid = (lock) => {
   try { const pid = Number(readFileSync(`${lock}.pid`, 'utf8').trim()); return Number.isSafeInteger(pid) && pid > 0 ? pid : null; } catch { return null; }
 };
+const recordHolder = (lock) => {
+  try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { }
+};
 const running = (pid) => {
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
 };
@@ -60,14 +63,20 @@ function takeGuard(stem, env) {
   const spent = [];
   for (let n = 0; ; n += 1) {
     const guard = `${stem}.${n}`;
-    try { mkdirSync(guard, { mode: 0o700 }); return { guard, spent }; } catch {
+    try { mkdirSync(guard, { mode: 0o700 }); } catch {
       if (!isCrashedLock(lockFacts(guard), env)) return null;
       spent.push(guard);
+      continue;
     }
+    recordHolder(guard);
+    return { guard, spent };
   }
 }
 function removeGuards(guards) {
-  for (const g of guards) { try { rmdirSync(g); } catch { /* already gone */ } }
+  for (const g of guards) {
+    try { unlinkSync(`${g}.pid`); } catch { }
+    try { rmdirSync(g); } catch { }
+  }
 }
 function reclaim(lock, env) {
   let held = null;
@@ -102,7 +111,7 @@ function takeLock(lock, env) {
       Atomics.wait(sleeper, 0, 0, pause + Math.floor(Math.random() * pause));
       continue;
     }
-    try { writeFileSync(`${lock}.pid`, `${process.pid}\n`, { mode: 0o600 }); } catch { }
+    recordHolder(lock);
     return;
   }
 }
