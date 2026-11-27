@@ -5546,6 +5546,11 @@ check "10769 T-C2: the classify call count is pinned" "3 6" "$c2"
 BLOCK69=""
 M="$WORK/jira-mirror/HIMMEL"
 
+W69="$HERE/../../../docs/handover/chief-sections/waiter.md"
+for n in '> <file> 2>&1; echo "rc=$?"' 'rounded up' 'enforcement.md'; do
+    grep -qF -- "$n" "$W69" && pass "10769 T-D1: waiter.md holds $n" || fail "10769 T-D1: waiter.md lacks $n"
+done
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
