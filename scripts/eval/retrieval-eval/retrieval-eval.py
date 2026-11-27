@@ -5,7 +5,7 @@ Asks the same questions of nine retrieval arms and scores each against a gold
 file set, then counts how sessions really use qmd and graphify.
 
   run     --questions Q --out DIR [--repo R] [--arms A,B] [--k 5] [--timeout 60]
-          [--collection himmel] [--label L]
+          [--collection himmel] [--label L] [--max-qmd-requests N]
   check   --questions Q [--repo R]           validate a question set, print its size
   census  --out FILE [--projects DIR] [--days 7] [--ledger]
           Counts, per role: sessions per route, calls, failures with their cause, "used" (the
@@ -95,6 +95,11 @@ printed), and one eval-runs ledger row (eval "retrieval-eval", see
 scripts/eval/README.md). Rows keep files_top20, from a second query at max(k, 20), as
 evidence only; files and scoring come from the limit-k query. qmd_error keeps failure details; skipped is false for real rows
 (skipped arms have no rows, and their reasons stay in the ledger config).
+No arm returns a file under this directory. qmd_lex, qmd_vec and qmd_rerank in
+scores.tsv count the calls the run sent (both queries per question; a fused row
+carries a part that has no row of its own), also as <arm>.qmd_*_requests,
+qmd_requests_total and spend_cap_hit (0/1) in the ledger. --max-qmd-requests N
+sends at most N qmd requests in the run; later ones are error rows.
 Exit: 0 scored, 1 check found problems or a graph arm's stamp is unavailable,
 64 usage error. A missing graph stamp still writes all run outputs.
 Stdlib only.
@@ -141,7 +146,8 @@ FUSED_OF = {"combined": FUSED, "fused-no-grep": FUSED_LUNA}
 TOKEN_CEILING = 7161
 # The question set holds every question and reason phrase verbatim; vendored
 # plugin bundles and minified files fill a top 5 with one-line noise.
-GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/", ":(exclude,glob)templates/**/.obsidian/plugins/**",
+OWN_DIR = "scripts/eval/retrieval-eval/"
+GREP_SCOPE = [".", ":(exclude)" + OWN_DIR, ":(exclude,glob)templates/**/.obsidian/plugins/**",
               ":(exclude)*.min.js", ":(exclude)*.min.css"]
 STOP = set("""a an and are as at be by can do does for from has have how i in is it its
 of on or that the this to was what when where which who whom why will with without
@@ -428,11 +434,32 @@ def mcp_rows(msg):
     return rows if isinstance(rows, list) else []
 
 
-def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
+def own_path(f):
+    """Is f under this eval's own directory? Any case (qmd lowercases paths), relative or prefixed."""
+    return "/" + OWN_DIR in "/" + f.lower()
+
+
+def own_dir_filter(files, text):
+    """(files, text) without this eval's own directory: its paths, and graph NODE lines sourced there."""
+    return ([f for f in files if not own_path(f)],
+            "".join(ln for ln in text.splitlines(True)
+                    if not any(own_path(s) for s in re.findall(r"\[src=([^\s\]]+)", ln))))
+
+
+def qmd_requests(args):
+    """The lex, vec and rerank calls one qmd query carries."""
+    kinds = [s["type"] for s in args["searches"]]
+    return {"lex": kinds.count("lex"), "vec": kinds.count("vec"), "rerank": int(bool(args.get("rerank")))}
+
+
+def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, admit=None):
+    """admit, when given, takes the request's counts before it is sent; False means do not send it."""
     vec = vocab_expand.shape_vec(q) if hybrid else ""
     args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
             "collections": [collection], "limit": k, "intent": q}
     args["rerank"] = hybrid and rerank
+    if admit and not admit(qmd_requests(args)):
+        return [], "", False, True, "not sent: --max-qmd-requests reached"
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
         out, to, rc = run_cmd(shlex.split(cmd), timeout, stdin=json.dumps(args))
@@ -455,6 +482,8 @@ def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
     files, text = [], []
     for r in rows:
         f = re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))
+        if own_path(f):
+            continue
         if f and f not in files:
             files.append(f)
         text.append("%s %s %s" % (r.get("file", ""), r.get("title", ""), r.get("snippet", "")))
@@ -469,6 +498,7 @@ def arm_graphify(q, repo, timeout, k):
     for f in re.findall(r"\[src=([^\s\]]+)", out):
         if f not in files:
             files.append(f)
+    files, out = own_dir_filter(files, out)
     return files[:k], out, to, not to and rc != 0
 
 
@@ -627,7 +657,7 @@ def skip_rtk(arms):
     return {x: "rtk is not on PATH" for x in arms if x in RTK_ARMS}
 
 
-def run_arm(arm, q, repo, a, k):
+def run_arm(arm, q, repo, a, k, admit=None):
     if arm == "grep":
         return arm_grep(q, repo, a.timeout, k) + ("",)
     if arm == "grep-rtk":
@@ -640,7 +670,7 @@ def run_arm(arm, q, repo, a, k):
         return arm_ident_grep_rtk(q, repo, a.timeout, k) + ("",)
     if arm in ("graphify", "graphify-ast"):
         return arm_graphify(q, repo, a.timeout, k) + ("",)
-    return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
+    return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank", admit)
 
 
 LIVE_QMD_PORT = 8181
@@ -826,6 +856,9 @@ def cmd_run(a):
         raise Usage("--graph-out belongs to --corpus luna")
     if a.collection is None:
         a.collection = "luna" if luna else "himmel"
+    cap = a.max_qmd_requests
+    if cap is not None and cap < 0:
+        raise Usage("--max-qmd-requests must be nonnegative")
     skipped = skip_rtk(arms)
     for x, why in skipped.items():
         print("retrieval-eval: skipping %s: %s" % (x, why), file=sys.stderr)
@@ -845,6 +878,20 @@ def cmd_run(a):
         need = [x for x in known if x in arms or x in FUSED_OF[fusing]]
     evidence_depth = max(a.k, 20)
     rows = []
+    spend = {x: {"lex": 0, "vec": 0, "rerank": 0} for x in need}
+    requests, cap_hit = 0, False
+
+    def admit_for(arm):
+        def admit(counts):
+            nonlocal requests, cap_hit
+            if cap is not None and requests >= cap:
+                cap_hit = True
+                return False
+            requests += 1
+            for kind, n in counts.items():
+                spend[arm][kind] += n
+            return True
+        return admit
     for q in qs:
         got = {}
         for arm in need:
@@ -859,11 +906,11 @@ def cmd_run(a):
                                 deep_failed=any(p["deep_failed"] for p in parts))
             else:
                 t0 = time.time()
-                files, text, to, err, qmd_error = run_arm(arm, q["q"], repo, a, a.k)
+                files, text, to, err, qmd_error = run_arm(arm, q["q"], repo, a, a.k, admit_for(arm))
                 ms = int((time.time() - t0) * 1000)
                 top20, deep_failed = files, False
                 if evidence_depth > a.k and not (to or err):
-                    deep = run_arm(arm, q["q"], repo, a, evidence_depth)
+                    deep = run_arm(arm, q["q"], repo, a, evidence_depth, admit_for(arm))
                     if not (deep[2] or deep[3]):
                         top20 = deep[0][:evidence_depth]
                     else:
@@ -893,7 +940,7 @@ def cmd_run(a):
     rk = "hit@%d" % a.k
     pk = "precision@%d" % a.k
     cols = ["arm", "n", rk, pk, "mrr", "gold_share", "reason_carried", "reason_n", "tokens_mean", "tokens_per_hit",
-            "ms_median", "ms_total", "timeouts", "errors"]
+            "ms_median", "ms_total", "timeouts", "errors", "qmd_lex", "qmd_vec", "qmd_rerank"]
     lines = ["\t".join(cols)]
     slice_cols = ["arm", "slice", "n", rk, "hit_any@%d" % a.k, "ndcg@%d" % a.k, "reason_carried", "reason_n"]
     slice_lines = ["\t".join(slice_cols)]
@@ -914,8 +961,12 @@ def cmd_run(a):
         mst = sum(r["ms"] for r in rs)
         to = sum(r["timeout"] for r in rs)
         er = sum(r["error"] for r in rs)
+        senders = [arm] + [x for x in FUSED_OF.get(arm, []) if x not in arms]
+        sent = {kind: sum(spend[x][kind] for x in senders) for kind in ("lex", "vec", "rerank")}
         lines.append("\t".join([arm, str(len(rs)), "%.2f" % rec, dash(prec), dash(mrr), dash(gs), "%.2f" % rea,
-                                str(len(rr)), "%d" % tk, dash(tph, "%.1f"), "%d" % msm, "%d" % mst, str(to), str(er)]))
+                                str(len(rr)), "%d" % tk, dash(tph, "%.1f"), "%d" % msm, "%d" % mst, str(to), str(er),
+                                str(sent["lex"]), str(sent["vec"]), str(sent["rerank"])]))
+        metrics.update({"%s.qmd_%s_requests" % (arm, kind): n for kind, n in sent.items()})
         metrics.update({arm + "." + rk: rec, arm + "." + pk: prec, arm + ".mrr": mrr, arm + ".gold_share": gs,
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er,
@@ -939,6 +990,10 @@ def cmd_run(a):
         for r in rs:
             cases.setdefault(r["id"], {})[arm + ".hit"] = r["hit"]
             cases[r["id"]]["heldout"] = r["split"] == "heldout"
+    metrics.update(qmd_requests_total=requests, spend_cap_hit=int(cap_hit))
+    if cap_hit:
+        print("retrieval-eval: --max-qmd-requests %d reached: later qmd queries were not sent and count as errors" % cap,
+              file=sys.stderr)
     with open(os.path.join(a.out, "scores.tsv"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     with open(os.path.join(a.out, "scores-by-slice.tsv"), "w") as fh:
@@ -1919,6 +1974,7 @@ def main(argv=None):
     r.add_argument("--pair", default="")
     r.add_argument("--corpus", choices=("himmel", "luna"), default="himmel")
     r.add_argument("--graph-out", default="")
+    r.add_argument("--max-qmd-requests", type=int, default=None)
     ml = sub.add_parser("mine-luna")
     ml.add_argument("--out", required=True)
     ml.add_argument("--vault", required=True)

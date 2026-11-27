@@ -1264,5 +1264,67 @@ eq "census agreement: the frozen hand-labelled fixture holds 150 calls" "150" "$
 eq "census agreement: the census names the cause of at least 95% of the labelled calls, and the failed flag too" "ok ok" "$(awk -F'\t' '$1=="cause"{a=($4>=0.95?"ok":"low")} $1=="failed"{b=($4>=0.95?"ok":"low")} END{print a, b}' "$W/agree-fix.txt")"
 eq "census agreement: the fixture holds no home directory and no secret-looking token" "0" "$( { grep -o -E '/home/[A-Za-z0-9_.-]+|ghp_|github_pat_|AKIA[0-9A-Z]|BEGIN [A-Z ]*PRIVATE' "$FIX" || true; } | { grep -c -v -x '/home/user' || true; })"
 
+OWN=scripts/eval/retrieval-eval/test-retrieval-eval.sh
+cat > "$W/qmd-own" <<'EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+printf '[{"file":"qmd://himmel/scripts/eval/retrieval-eval/test-retrieval-eval.sh","snippet":"queue lock\\nown-dir-reason"},{"file":"qmd://himmel/docs/other.md","snippet":"unrelated"}]\n'
+EOF
+cat > "$W/graph-own" <<'EOF'
+#!/usr/bin/env bash
+printf 'NODE suite [src=scripts/eval/retrieval-eval/test-retrieval-eval.sh loc=L1] WHY own-dir-reason\n'
+for i in 1 2 3 4 5; do printf 'NODE n%s [src=docs/n%s.md loc=L1]\n' "$i" "$i"; done
+EOF
+chmod +x "$W/qmd-own" "$W/graph-own"
+printf '{"id":"o1","kind":"why","q":"queue lock one session per handover doc","gold":["%s"],"reason":["own-dir-reason"]}\n' "$OWN" > "$W/qo.jsonl"
+RETRIEVAL_EVAL_QMD_CMD="$W/qmd-own" RETRIEVAL_EVAL_GRAPH_CMD="$W/graph-own" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-15.jsonl" py "$EV" run --repo "$R" --questions "$W/qo.jsonl" --out "$W/outo" > /dev/null 2>&1
+eq "own-dir run exits 0" "0" "$?"
+own() { py -c 'import json,sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+rs = [r for r in rows if r["arm"] in sys.argv[2].split(",")]
+bad = [r["arm"] for r in rs if r["hit"] or r["reason"] or any("scripts/eval/retrieval-eval/" in f for f in r["files"] + r["files_top20"])]
+print(len(rs), ",".join(bad) or "clean")' "$W/outo/results.jsonl" "$1"; }
+eq "own-dir: no qmd, graphify or combined row lists or scores it" "4 clean" "$(own qmd-lex,qmd-hybrid,graphify,combined)"
+eq "own-dir control: the grep family never lists it" "5 clean" "$(own grep,grep-rtk,path,ident-grep,ident-grep-rtk)"
+eq "own-dir: graphify fills its top 5 from the files after it" "docs/n1.md docs/n2.md docs/n3.md docs/n4.md docs/n5.md" "$(py -c 'import json,sys
+print(" ".join(next(r for r in map(json.loads, open(sys.argv[1])) if r["arm"] == "graphify")["files"]))' "$W/outo/results.jsonl")"
+
+cat > "$W/qmd-count" <<'EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+echo x >> "$(dirname "$0")/qmd-count.log"
+echo '[]'
+EOF
+chmod +x "$W/qmd-count"
+spend() {
+    local name="$1" arms="$2"; shift 2
+    rm -f "$W/qmd-count.log"
+    RETRIEVAL_EVAL_QMD_CMD="$W/qmd-count" HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-$name.jsonl" py "$EV" run --repo "$R" --questions "$Q" --out "$W/$name" --arms "$arms" "$@" > /dev/null 2>&1
+}
+cnt() { awk -F'\t' -v a="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next} $1==a{if (!("qmd_vec" in h)) {print "absent"} else print $h["qmd_lex"], $h["qmd_vec"], $h["qmd_rerank"]}' "$W/$1/scores.tsv"; }
+sent_n() { if [ -f "$W/qmd-count.log" ]; then wc -l < "$W/qmd-count.log" | tr -d ' '; else echo 0; fi; }
+spend sp qmd-hybrid,qmd-lex,grep
+eq "spend run exits 0" "0" "$?"
+eq "scores.tsv counts qmd-hybrid's lex, vec and rerank requests" "4 4 4" "$(cnt sp qmd-hybrid)"
+eq "scores.tsv counts qmd-lex as lex only" "4 0 0" "$(cnt sp qmd-lex)"
+eq "scores.tsv counts none for grep" "0 0 0" "$(cnt sp grep)"
+eq "ledger row carries the per-arm counts, the total and no cap hit" "4 4 4 8 0" "$(lm "$W/ledger-sp.jsonl" qmd-hybrid.qmd_lex_requests) $(lm "$W/ledger-sp.jsonl" qmd-hybrid.qmd_vec_requests) $(lm "$W/ledger-sp.jsonl" qmd-hybrid.qmd_rerank_requests) $(lm "$W/ledger-sp.jsonl" qmd_requests_total) $(lm "$W/ledger-sp.jsonl" spend_cap_hit)"
+eq "ledger row with counts validates" "0" "$(python3 -I "$HERE/../lib/eval_runs.py" validate "$W/ledger-sp.jsonl" > /dev/null 2>&1; echo $?)"
+spend sp-fused combined
+eq "an unlisted fused part is counted on the fused row, so no spend is hidden" "4 4 4" "$(cnt sp-fused combined)"
+spend sp-both qmd-hybrid,combined
+eq "a listed part is counted once, on its own row" "4 4 4 / 0 0 0" "$(cnt sp-both qmd-hybrid) / $(cnt sp-both combined)"
+spend sp-cap qmd-hybrid --max-qmd-requests 1
+eq "capped run exits 0" "0" "$?"
+eq "the cap lets one request reach qmd and counts only it" "1 1 1 1" "$(sent_n) $(cnt sp-cap qmd-hybrid)"
+eq "the capped ledger row flags the cap hit" "1 1" "$(lm "$W/ledger-sp-cap.jsonl" qmd_requests_total) $(lm "$W/ledger-sp-cap.jsonl" spend_cap_hit)"
+eq "a refused query is an error row naming the cap, not a plain miss" "True True" "$(py -c 'import json,sys
+r = [json.loads(l) for l in open(sys.argv[1])][1]
+print(r["error"], "--max-qmd-requests" in r["qmd_error"])' "$W/sp-cap/results.jsonl")"
+spend sp-exact qmd-hybrid --max-qmd-requests 4
+eq "a cap the run only reaches is not a hit" "4 0" "$(sent_n) $(lm "$W/ledger-sp-exact.jsonl" spend_cap_hit)"
+spend sp-neg qmd-hybrid --max-qmd-requests -1
+eq "a negative cap is a usage error" "64" "$?"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"
