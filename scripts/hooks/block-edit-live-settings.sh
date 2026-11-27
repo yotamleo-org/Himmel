@@ -709,7 +709,18 @@ canon() {
     esac
 }
 
-FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS="" AGY_DIRS=""
+FENCE_DONE=0 T3_FILES="" T3_DIRS="" REG_DIRS="" AGY_DIRS="" HRN_DIRS=""
+_hrn_live_dir() {
+    local root="$SCRIPT_DIR/../.." line=""
+    _HRN="$root/scripts/harnesses"
+    [ -f "$root/.git" ] || return 0
+    IFS= read -r line <"$root/.git" || [ -n "$line" ] || return 0
+    line=${line#gitdir: }
+    line=${line%$'\r'}
+    case "$line" in /* | [A-Za-z]:*) ;; *) line="$root/$line" ;; esac
+    case "$line" in */.git/worktrees/*) _HRN="${line%/.git/worktrees/*}/scripts/harnesses" ;; esac
+}
+
 fence_paths() {
     [ "$FENCE_DONE" = 1 ] && return 0
     FENCE_DONE=1
@@ -729,6 +740,8 @@ fence_paths() {
     if [ -n "${HOME:-}" ]; then
         fp_want[${#fp_want[@]}]="$HOME/.gemini/config" fp_kind[${#fp_kind[@]}]=a
     fi
+    _hrn_live_dir
+    fp_want[${#fp_want[@]}]="$_HRN" fp_kind[${#fp_kind[@]}]=h
     n=${#fp_want[@]}
     [ "$n" -gt 0 ] || return 0
     if [ "$CANON_MODE" = realpath-m ]; then
@@ -764,6 +777,7 @@ fence_paths() {
                 d) T3_DIRS="$T3_DIRS$g"$'\n' ;;
                 r) REG_DIRS="$REG_DIRS$g"$'\n' ;;
                 a) AGY_DIRS="$AGY_DIRS$g"$'\n' ;;
+                h) HRN_DIRS="$HRN_DIRS$g"$'\n' ;;
             esac
         fi
         i=$((i + 1))
@@ -822,6 +836,10 @@ check_target() {
     fi
     if _fence_match "$AGY_DIRS" "$real" under && ! _is_agy_artifact_path "$real"; then
         echo "deny agy Antigravity/Gemini live config: $real"
+        return
+    fi
+    if _fence_match "$HRN_DIRS" "$real" under; then
+        echo "deny harness live harness registry: $real"
         return
     fi
 
@@ -1023,6 +1041,31 @@ mentions_claude_registry() {
     [[ $c =~ $var_re ]] && return 0
     fence_paths
     _text_names "$REG_DIRS" "$c" 1
+}
+
+mentions_harness_registry() {
+    local c="$1"
+    c=${c//\\//}
+    c=${c//[\"\']/}
+    case "$c" in *harnesses*) ;; *) return 1 ;; esac
+    fence_paths
+    _text_names "$HRN_DIRS" "$c" 1
+}
+
+harness_deny_message() {
+    cat >&2 <<EOF
+⛔ block-edit-live-settings: refusing $1 on \`$2\` — it can write the live
+harness registry, the primary checkout's scripts/harnesses/.
+
+guard-t3-thread-tools.sh and block-read-secrets.sh read those descriptors on
+every call: what an agent may launch and which login-token files are fenced.
+Edit your worktree's own copy and land it through a PR.
+
+Bypass (single-run, set in the LAUNCHING shell — a per-call prefix cannot
+reach the hook process):
+
+    EDIT_LIVE_SETTINGS_OK=1 claude
+EOF
 }
 
 mentions_agy_live_config() {
@@ -2572,6 +2615,7 @@ _tok_cp_end() {
     _fence_match "$T3_DIRS" "$r" && return 1
     _fence_match "$REG_DIRS" "$r" under && return 1
     _fence_match "$AGY_DIRS" "$r" under && return 1
+    _fence_match "$HRN_DIRS" "$r" under && return 1
     if [ -d "$r" ]; then
         local i=0 s f
         while [ "$i" -lt $((_CPN - 1)) ]; do
@@ -2585,6 +2629,7 @@ _tok_cp_end() {
             _fence_match "$T3_DIRS" "$f" && return 1
             _fence_match "$REG_DIRS" "$f" under && return 1
             _fence_match "$AGY_DIRS" "$f" under && return 1
+            _fence_match "$HRN_DIRS" "$f" under && return 1
             i=$((i + 1))
         done
     fi
@@ -4733,6 +4778,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         case "$result" in
             deny\ registry\ *) symlink_dest=1 registry_dest=1 ;;
             deny\ agy\ *) symlink_dest=1 agy_dest=1 ;;
+            deny\ harness\ *) symlink_dest=1 harness_dest=1 ;;
             deny\ t3\ *) symlink_dest=1 t3_dest=1 ;;
             deny\ *) symlink_dest=1 ;;
         esac
@@ -4826,6 +4872,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     t3_dest=0
     registry_dest=0
     agy_dest=0
+    harness_dest=0
     fence_paths
     # The operand scan runs for a write verb (every word) and,
     # for any other writer's redirect target: `echo x > s`
@@ -5167,10 +5214,14 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     if [ "$agy_dest" = 0 ] && agy_cli_writes; then
         agy_dest=1
     fi
+    if [ "$harness_dest" = 0 ] && mentions_harness_registry "$cmd_lc"; then
+        harness_dest=1
+    fi
 
     if [ "$mentions_settings" = "0" ] && [ "$dir_dest" = "0" ] && [ "$dirdest_climb" = "0" ] \
         && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] && [ "$variant_dest" = "0" ] \
-        && [ "$t3_dest" = "0" ] && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ]; then
+        && [ "$t3_dest" = "0" ] && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ] \
+        && [ "$harness_dest" = "0" ]; then
         exit 0
     fi
 
@@ -5179,7 +5230,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     live=0
     if [ "$is_primary_cwd" = "1" ] || [ "$ansi_c" = "1" ] || [ "$dirdest_climb" = "1" ] \
         || [ "$symlink_dest" = "1" ] || [ "$brace_dir_dest" = "1" ] || [ "$variant_dest" = "1" ] \
-        || [ "$t3_dest" = "1" ] || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ]; then
+        || [ "$t3_dest" = "1" ] || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ] \
+        || [ "$harness_dest" = "1" ]; then
         live=1
     elif changes_directory "$cmd_lc" "$cmd_n"; then
         # The worktree-relative exemption is judged against the PreToolUse
@@ -5219,11 +5271,11 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     if [ "$TOK" = 1 ] && [ "$dir_dest" = "1" ] && [ "$dirdest_climb" = "0" ] \
         && [ "$symlink_dest" = "0" ] && [ "$brace_dir_dest" = "0" ] \
         && [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "0" ] && [ "$t3_dest" = "0" ] \
-        && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ]; then
+        && [ "$registry_dest" = "0" ] && [ "$agy_dest" = "0" ] && [ "$harness_dest" = "0" ]; then
         _tok_readonly_ok && exit 0
     fi
     if [ "$mentions_settings" = "1" ] || [ "$variant_dest" = "1" ] || [ "$t3_dest" = "1" ] \
-        || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ]; then
+        || [ "$registry_dest" = "1" ] || [ "$agy_dest" = "1" ] || [ "$harness_dest" = "1" ]; then
         if [ "$TOK" = 1 ]; then
             _tok_readonly_ok && exit 0
         elif is_readonly_allowlisted "$cmd_lc"; then
@@ -5243,6 +5295,8 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         agy_deny_message "a $tool_name command" "$cmd"
     elif [ "$t3_dest" = "1" ]; then
         t3_deny_message "a $tool_name command" "$cmd"
+    elif [ "$harness_dest" = "1" ]; then
+        harness_deny_message "a $tool_name command" "$cmd"
     elif [ "$mentions_settings" = "0" ] && [ "$variant_dest" = "1" ]; then
         deny_message "a $tool_name command" "$cmd" "a word can spell a live settings.json/settings.local.json (a glob, brace or bracket leaf, a Windows alias such as a trailing dot, ::\$DATA or an 8.3 name, or a recursive cp/rsync of a tree carrying .claude/settings*.json into the directory above a live .claude)"
     elif [ "$mentions_settings" = "1" ]; then
@@ -5284,6 +5338,13 @@ case "$result" in
             exit 0
         fi
         t3_deny_message "$tool_name" "$target"
+        exit 2
+        ;;
+    deny\ harness\ *)
+        if [ "${EDIT_LIVE_SETTINGS_OK:-0}" = "1" ]; then
+            exit 0
+        fi
+        harness_deny_message "$tool_name" "$target"
         exit 2
         ;;
     deny\ *)

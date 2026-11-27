@@ -1861,6 +1861,16 @@ settings.json, a hook-wiring change (the "three places" rule in
 PR — the operator no longer hand-edits `.claude/settings.json` inside each
 worker's worktree for every hook-wiring change.
 
+The **live harness registry** is fenced the same way: a file-tool or Bash write
+under the `scripts/harnesses/` of the primary checkout the running hook belongs
+to is refused (found from the hook's own `.git`, so a worktree session is held
+to it too); a worktree's own copy stays editable.
+
+`block-read-secrets.sh` takes each harness's login-token paths from the
+`token_paths` of those descriptors, and refuses every call while the registry
+does not load (`READ_SECRETS_OK=1` in the launching shell is the operator
+route). T3's `userdata/providers/` token rule stays in the hook.
+
 **`env -S` text.** The Bash arm decodes GNU `env -S` escapes
 (`\c \f \n \r \t \v \# \$ \_ \\ \' \"`, `${NAME}`) and judges the decoded
 words. Anything it does not fully model stays denied: an unknown escape, `\c`,
@@ -2389,7 +2399,9 @@ tool call writes no file, so the extra arm is a no-op for it. Runs
 `scripts/lint/hook-parse-check.sh` — the `[parse]` (`bash -n`) and
 `[quote-break]` checks — against a written file whose path is under
 `scripts/hooks/` and ends in `.sh`; exits 2 with the finding on stderr,
-otherwise 0.
+otherwise 0. A written `scripts/harnesses/*.json` or `registry.jq` (not
+`fixtures/`) is run through the harness registry loader instead, because both
+guards that load it refuse while it does not load.
 
 WHY IT IS A WRITE-TIME HOOK and not another commit gate: a file under
 `scripts/hooks/` is LIVE the instant it is saved — the next tool call executes
@@ -3295,9 +3307,20 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   `bypassPermissions`. A hook bypass is granted per session, by the operator
   choosing that instance in the T3 UI, never to every thread T3 starts. An id
   with no entry (a T3 built-in such as `claudeAgent` or `codex`) carries no
-  variables and is allowed. If the settings file or the registry is missing,
+  variables, so this rule allows it. If the settings file or the registry is missing,
   unreadable or malformed, every instance id is denied, since the guard cannot
   tell. A null value counts as absent; any other non-string value denies.
+- **Harness registry.** `scripts/harnesses/<id>.json` describes one coding
+  harness each, loaded by `scripts/harnesses/registry.jq`. An id outside
+  `delegatedFrom` must resolve to a T3 driver (the settings entry's `driver`, or
+  the descriptor naming the id as a built-in) whose descriptor is complete:
+  `complete` is true and the hook config, event map, deny dialect, adapter,
+  egress provider, lane and quota source are set (`pending` counts). An unknown
+  driver or an incomplete descriptor denies; `grok` and `cursor` ship
+  incomplete. A malformed descriptor, or a missing one for a harness listed in
+  `harness.schema.json`, denies every instance id. A launch that names no
+  instance is not judged. A new harness joins by adding a descriptor and an
+  adapter.
 - **Optional narrowing.** `.t3.instance_narrow` in `~/.himmel/config.json`, an
   array of strings, limits the allowed ids further; it never lets a bypass
   instance through. An absent file or key narrows nothing; a malformed file, a

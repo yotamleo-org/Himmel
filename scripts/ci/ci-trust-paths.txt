@@ -20,6 +20,9 @@
 ^scripts/lib/
 ^scripts/hooks/lib/
 
+# The harness registry: what guard-t3-thread-tools.sh may let an agent launch and the token paths block-read-secrets.sh fences.
+^scripts/harnesses/
+
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
 ^scripts/handover/(console|chief)-kit/go\.sh$

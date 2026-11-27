@@ -1,0 +1,32 @@
+{
+  "id": "antigravity",
+  "complete": true,
+  "t3": { "driver": "antigravity", "instance_ids": ["antigravity"] },
+  "hook_config": ".agents/hooks.json",
+  "tool_map": {
+    "mcp_prefix": "mcp_<server>_<tool>",
+    "tools": {
+      "run_command": { "claude": "Bash", "keys": { "CommandLine": "command" } },
+      "read_file": { "claude": "Read", "keys": { "Path": "file_path" } },
+      "edit_file": { "claude": "Edit", "keys": { "Path": "file_path" } },
+      "write_file": { "claude": "Write", "keys": { "Path": "file_path" } },
+      "invoke_subagent": { "claude": "Agent" }
+    }
+  },
+  "event_map": {
+    "PreToolUse": "PreToolUse",
+    "PostToolUse": "PostToolUse",
+    "SessionStart": "SessionStart",
+    "Stop": "Stop"
+  },
+  "deny_dialect": "decision-json",
+  "adapter": "scripts/hooks/antigravity-hook-adapter.sh",
+  "token_paths": [
+    "~/.gemini/oauth_creds.json",
+    "~/.gemini/gemini-credentials.json",
+    "~/.gemini/mcp-oauth-tokens*.json"
+  ],
+  "egress_provider": "google-antigravity",
+  "lane": "antigravity-t3",
+  "quota_source": "pending"
+}

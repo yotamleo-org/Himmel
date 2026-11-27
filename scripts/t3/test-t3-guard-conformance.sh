@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# T3 guard conformance, run over every harness in scripts/harnesses. grok reaches
+# the guard through himmel-guard's translator. Cursor's MCP tool name is not
+# captured, so its rows feed the guard the Claude shape.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -113,6 +116,50 @@ run_antigravity() {
     fi
 }
 
+run_grok() {
+    local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
+    local name payload out rc
+    name="$(jq -r --arg t "$tool" '.tool_map.mcp_prefix | sub("<server>"; "t3-code") | sub("<tool>"; $t)' "$REPO/scripts/harnesses/grok.json")"
+    payload="$(jq -cn --arg t "$name" --argjson a "$args" '{hook_event_name:"PreToolUse",tool_name:$t,tool_input:$a,cwd:"/tmp"}')"
+    out="$(printf '%s' "$payload" | bash "$REPO/marketplace/plugins/himmel-guard/hooks/translate-tool-call.sh" "$REPO/scripts/hooks/guard-t3-thread-tools.sh" 2>&1)"; rc=$?
+    if [ "$expect" = "deny" ]; then
+        if [ "$rc" -eq 2 ] && grep -qF -- "$want" <<<"$out"; then ok "grok: $label"; else bad "grok: $label (rc=$rc out=$out)"; fi
+    else
+        if [ "$rc" -eq 0 ]; then ok "grok: $label"; else bad "grok: $label (rc=$rc out=$out)"; fi
+    fi
+}
+
+run_cursor() {
+    local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
+    local payload out rc
+    payload="$(jq -cn --arg t "mcp__t3-code__$tool" --argjson a "$args" '{hook_event_name:"preToolUse",tool_name:$t,tool_input:$a,cwd:"/tmp"}')"
+    out="$(printf '%s' "$payload" | bash "$REPO/scripts/hooks/guard-t3-thread-tools.sh" 2>&1)"; rc=$?
+    if [ "$expect" = "deny" ]; then
+        if [ "$rc" -eq 2 ] && grep -qF -- "$want" <<<"$out"; then ok "cursor: $label"; else bad "cursor: $label (rc=$rc out=$out)"; fi
+    else
+        if [ "$rc" -eq 0 ]; then ok "cursor: $label"; else bad "cursor: $label (rc=$rc out=$out)"; fi
+    fi
+}
+
+run_harness() {
+    local id="$1"; shift
+    case "$id" in
+        claude) run_claude guard-t3-thread-tools.sh "$@" ;;
+        codex) run_codex "$@" ;;
+        antigravity) run_antigravity "$@" ;;
+        grok) run_grok "$@" ;;
+        cursor) run_cursor "$@" ;;
+        *) bad "$id: the registry names a harness this suite has no runner for" ;;
+    esac
+}
+
+HARNESS_IDS=""
+for f in "$REPO"/scripts/harnesses/*.json; do
+    case "$f" in */harness.schema.json) continue ;; esac
+    HARNESS_IDS="$HARNESS_IDS $(jq -r '.id' "$f")"
+done
+if [ "$HARNESS_IDS" = " antigravity claude codex cursor grok" ]; then ok "the registry names the five harnesses"; else bad "unexpected registry harnesses:$HARNESS_IDS"; fi
+
 ARGS_BYPASS='{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}'
 ARGS_CHIEF_TITLE='{"action":"rename","title":"ops-chief"}'
 ARGS_UNWATCH_OPEN='{"url":"https://github.com/o/r/pull/123"}'
@@ -138,14 +185,29 @@ run_antigravity unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR 
 run_antigravity t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
 run_antigravity t3_thread_send "$ARGS_SEND" allow "send to an existing thread allowed"
 
-echo "== T3 tool parity: every tool gets the same verdict on claude, codex and antigravity =="
+echo "== T3 launch verdicts: an agent launches only onto a harness with a complete descriptor =="
+for id in $HARNESS_IDS; do
+    d="$REPO/scripts/harnesses/$id.json"
+    args="$(jq -c '{title:"Work",message:"go",modelSelection:{instanceId:.t3.instance_ids[0],model:"m"}}' "$d")"
+    if jq -e '.complete' "$d" >/dev/null; then
+        for from in $HARNESS_IDS; do
+            [ "$from" = cursor ] || [ "$from" = grok ] || run_harness "$from" t3_thread_launch "$args" allow "launch onto $id allowed"
+        done
+    else
+        for from in $HARNESS_IDS; do
+            run_harness "$from" t3_thread_launch "$args" deny "launch onto $id denied" "has an incomplete harness descriptor"
+        done
+    fi
+done
+
+echo "== T3 tool parity: every tool gets the same verdict on every registry harness =="
 for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search t3_thread_list t3_thread_read \
             t3_environment_read t3_project_list t3_project_read pull_request_read pull_request_create \
             pull_request_merge ci_logs ci_rerun read_issue create_issue preview_open schedule_task \
             send_to_user html_preview html_render; do
-    run_claude guard-t3-thread-tools.sh "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
-    run_codex "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
-    run_antigravity "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
+    for id in $HARNESS_IDS; do
+        run_harness "$id" "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
+    done
 done
 
 echo "== T3 preview tools (plugin-profiles previewBrowserTools): no lane guard denies one, so the profile option only adds an allow rule =="

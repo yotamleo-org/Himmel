@@ -4445,6 +4445,44 @@ ln -s "$S9H/.claude" "$SANDBOX/s9256dlink"
 assert_rc "9256e8 cp through a symlinked dir onto ~/.claude/settings.json denies" 2 \
     "$(bash_rc_of "$WT2" "cp $S9SP/a.txt $SANDBOX/s9256dlink/settings.json" HOME="$S9H")"
 
+# The live harness registry is the primary checkout's scripts/harnesses, found
+# from the hook's own checkout, so these rows run a copy of the hook installed in
+# a fixture checkout, once from its primary and once from a linked worktree.
+H11="$SANDBOX/hrn"
+mkrepo "$H11"
+mkdir -p "$H11/scripts/harnesses"
+cp -R "$(dirname "$HOOK")" "$(dirname "$HOOK")/../lib" "$(dirname "$HOOK")/../guardrails" "$H11/scripts/"
+printf '{}\n' > "$H11/scripts/harnesses/codex.json"
+git -C "$H11" add -A >/dev/null 2>&1
+git -C "$H11" -c user.email=t@t -c user.name=t commit -q --no-verify -m tree
+git -C "$H11" worktree add -q "$H11/.claude/worktrees/feat+h" -b feat/h >/dev/null 2>&1
+H11WT="$H11/.claude/worktrees/feat+h"
+H11_SAVED_HOOK="$HOOK"
+for h11_from in "$H11" "$H11WT"; do
+    HOOK="$h11_from/scripts/hooks/block-edit-live-settings.sh"
+    h11_at=primary; [ "$h11_from" = "$H11" ] || h11_at=worktree
+    assert_rc "11089 ($h11_at hook) Edit of a live descriptor denies" 2 \
+        "$(rc_of "$H11/scripts/harnesses/codex.json" Edit file_path HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) Write of a new live descriptor denies" 2 \
+        "$(rc_of "$H11/scripts/harnesses/new.json" Write file_path HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) Edit of the worktree's descriptor allows" 0 \
+        "$(rc_of "$H11WT/scripts/harnesses/codex.json" Edit file_path HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) redirect onto a live descriptor denies" 2 \
+        "$(bash_rc_of "$H11WT" "echo {} > $H11/scripts/harnesses/codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) cp onto the live registry directory denies" 2 \
+        "$(bash_rc_of "$H11WT" "cp /tmp/x.json $H11/scripts/harnesses/" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) relative redirect from the primary denies" 2 \
+        "$(bash_rc_of "$H11" "echo {} > scripts/harnesses/codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) cat of a live descriptor allows" 0 \
+        "$(bash_rc_of "$H11WT" "cat $H11/scripts/harnesses/codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) redirect onto the worktree's own descriptor allows" 0 \
+        "$(bash_rc_of "$H11WT" "echo {} > scripts/harnesses/codex.json" HOME="$FAKEHOME")"
+    assert_rc "11089 ($h11_at hook) EDIT_LIVE_SETTINGS_OK=1 allows" 0 \
+        "$(rc_of "$H11/scripts/harnesses/codex.json" Edit file_path HOME="$FAKEHOME" EDIT_LIVE_SETTINGS_OK=1)"
+done
+HOOK="$H11_SAVED_HOOK"
+git -C "$H11" worktree remove --force "$H11WT" 2>/dev/null || true
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

@@ -16,7 +16,9 @@
 # scripts/lint/hook-parse-check.sh — the moment the file is written.
 #
 # Scope: tool_input.file_path AT OR BELOW scripts/hooks/ ending in .sh (the
-# case glob below matches a nested subdirectory too, not just a direct child).
+# case glob below matches a nested subdirectory too, not just a direct child),
+# and the harness registry (scripts/harnesses/*.json and registry.jq, not its
+# fixtures/), which is run through its loader.
 # Everything else exits 0 immediately; this is not a general-purpose linter
 # and must stay cheap enough to run on every write.
 #
@@ -57,8 +59,12 @@ path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null
 # separators are folded first (134 octal = the backslash): on the Windows lane the same file arrives as
 # scripts\hooks\x.sh.
 norm=$(printf '%s' "$path" | tr '\134' '/')
+harness=0
 case "$norm" in
     */scripts/hooks/*.sh|scripts/hooks/*.sh) ;;
+    */scripts/harnesses/fixtures/*|scripts/harnesses/fixtures/*) exit 0 ;;
+    */scripts/harnesses/*.json|scripts/harnesses/*.json) harness=1 ;;
+    */scripts/harnesses/registry.jq|scripts/harnesses/registry.jq) harness=1 ;;
     *) exit 0 ;;
 esac
 
@@ -69,6 +75,23 @@ esac
 target="$path"
 [ -f "$target" ] || target="$norm"
 [ -f "$target" ] || exit 0
+
+if [ "$harness" = 1 ]; then
+    dir=$(dirname "$target")
+    args=()
+    for f in "$dir"/*.json; do args+=(--rawfile "${f##*/}" "$f"); done
+    if ! findings="$(jq -nc "${args[@]}" --arg out registry -f "$dir/registry.jq" 2>&1 >/dev/null)"; then
+        {
+            printf 'check-hook-file-parse: the harness registry you just wrote is BROKEN.\n\n'
+            printf '%s\n\n' "$findings"
+            printf 'guard-t3-thread-tools.sh and block-read-secrets.sh load %s on\n' "$dir"
+            printf 'every call and refuse while it does not load, so Bash and Read are denied\n'
+            printf 'wherever this copy is live. Fix it with the Edit tool, before the next call.\n'
+        } >&2
+        exit 2
+    fi
+    exit 0
+fi
 
 if ! findings="$(bash "$CHECKER" "$target" 2>&1)"; then
     {
