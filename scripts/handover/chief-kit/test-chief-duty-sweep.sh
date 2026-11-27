@@ -484,6 +484,12 @@ check "refusal: a folded repeat does not wake later" "" "$OUT"
 refusal "$(at $((NOW + 90100)))" off-narrow antigravity
 SWEEP_AT=$((NOW + 90200)) sweep
 check "refusal: a repeat past 24 h wakes again" "$WAKE_AG" "$OUT"
+SWEEP_AT=$((NOW + 90300)) sweep
+check "refusal: the re-wake replaces the old stamp, so the next sweep says nothing" "" "$OUT"
+
+rworld; replay
+OUT=$(REFUSALS_AT=default HIMMEL_LEDGERS_JSON="$WORK/w/no-ledgers.json" sweep_env 2>"$WORK/w/err")
+check "refusal: an unreadable ledger registry is named unread" "DUTY? guard-refusals unread" "$OUT"
 
 rworld; replay; sweep
 refusal "$(at $((NOW + 10)))" bypass-instance antigravity

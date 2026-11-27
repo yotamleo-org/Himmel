@@ -2730,6 +2730,16 @@ if ! grepq "$out" -E 'Orchestrator|SETTINGSVALUE'; then pass "C101 no thread tit
 c101_ticket 3 "In Progress" 'The guard guard-t3-thread-tools refuses with rule off-narrow.'
 out="$(c101_run)"
 if grepq "$out" 'OK   C101-guard-refusals' && ! grepq "$out" 'WARN C101'; then pass "C101 a class an open ticket names does not WARN"; else fail "C101 owned -> $out"; fi
+chmod 000 "$t/mirror/HIMMEL-1.md"
+if [ -r "$t/mirror/HIMMEL-1.md" ]; then
+    echo "  SKIP: C101 unreadable mirror file — this user can read a mode-000 file"
+else
+    out="$(c101_run)"
+    if grepq "$out" 'INFO C101-guard-refusals: the Jira mirror' && ! grepq "$out" 'OK   C101'; then pass "C101 a mirror that cannot be fully read -> INFO, not judged"; else fail "C101 partial mirror -> $out"; fi
+fi
+chmod 644 "$t/mirror/HIMMEL-1.md"
+out="$(HIMMEL_LEDGERS_JSON="$t/no-ledgers.json" c101_run "")"
+if grepq "$out" 'INFO C101-guard-refusals: ledger registry unreadable' && ! grepq "$out" 'OK   C101'; then pass "C101 an unreadable ledger registry -> INFO, not OK"; else fail "C101 no registry -> $out"; fi
 c101_row bypass-instance,off-narrow codex
 out="$(c101_run)"
 if grepq "$out" -F 'rule=bypass-instance,off-narrow instance=codex count=1' && ! grepq "$out" -F 'instance=antigravity'; then pass "C101 a joined rule list needs every rule named; the owned class stays quiet"; else fail "C101 joined rules -> $out"; fi
