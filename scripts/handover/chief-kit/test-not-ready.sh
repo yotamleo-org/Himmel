@@ -34,6 +34,9 @@ if [ "$seam" = NOT_READY_TICK_CMD ]; then
 fi
 [ "$*" = "$(cat "$FIXTURE/$seam.argv")" ] || exit 97
 if [ -f "$FIXTURE/$seam.slow" ]; then
+    if [ "$(cat "$FIXTURE/$seam.slow")" = escape ]; then
+        exec setsid --wait bash -c 'sleep 12; :' "$FIXTURE/marker-child"
+    fi
     [ "$(cat "$FIXTURE/$seam.slow")" != trap ] || trap '' TERM
     bash -c 'sleep 10; :' "$FIXTURE/marker-child" &
     sleep 10
@@ -250,6 +253,12 @@ r_chain() {
     newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432; run_case
     expect HIMMEL-9432 ready; completeness complete
     newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432; echo '[{' > "$C/focus-chains.json"; run_case
+    expect HIMMEL-9432 cannot-judge 'chains:'; completeness partial; blind_is chains
+    newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432
+    OUT="$(env HOME="$C/home" PATH="$C/bin:$PATH" FIXTURE="$C" HIMMEL_TEST_FIXTURE=1 NOT_READY_STATE_DIR="$C/state" \
+        NOT_READY_PRIMARY="$C/primary" NOT_READY_NOW="$NOW" NOT_READY_TICK_CMD="$C/seam/NOT_READY_TICK_CMD" \
+        NOT_READY_JIRA_CLI="$C/seam/NOT_READY_JIRA_CLI" NOT_READY_ROUNDS_CMD="$C/seam/NOT_READY_ROUNDS_CMD" \
+        bash "$SUT" --doc "$DOC" --keys "$C/keys" --version v1.1.3 --mirror "$C/mirror" --specs "$C/specs" --chains "$C/typo.json" 2>"$C/err")"
     expect HIMMEL-9432 cannot-judge 'chains:'; completeness partial; blind_is chains
 }
 
@@ -530,6 +539,12 @@ r_deadline() {
             fail "$mode: a stand-in process outlived the run"
         fi
     done
+    newcase; snap "$(d "$P-9432" 'listed LOCAL')"; keys HIMMEL-9432
+    echo escape > "$C/NOT_READY_JIRA_CLI.slow"
+    t0="$(date +%s%N)"; run_case NOT_READY_DEADLINE=7; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
+    [ "$ms" -le 8000 ] || fail "escape: a child that left the group held the run for ${ms} ms"
+    expect HIMMEL-9432 cannot-judge 'bucket-check:'
+    pkill -f "$C/marker-child" 2>/dev/null || true  # swallow-ok: nothing left to stop is the clean case
 }
 
 r_usage() {

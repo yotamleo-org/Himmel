@@ -259,7 +259,10 @@ def run(argv, own, data=None, env=None):
             out = p.communicate(data, timeout=secs + 2.5)[0]
         except subprocess.TimeoutExpired:
             kill_group(p.pid)
-            p.communicate()
+            try:
+                p.communicate(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                pass  # a descendant that left the group still holds the pipe: stop waiting for it
             return None
     finally:
         kill_group(p.pid)
@@ -464,8 +467,10 @@ def round_state(specs, blind):
     return None
 
 
-def read_chains(path, blind):
-    """({key: why it waits}, {key: why its chain state is unknown}) from focus-chains.json."""
+def read_chains(named, blind):
+    """({key: why it waits}, {key: why its chain state is unknown}) from focus-chains.json. With no --chains,
+    a missing file beside the doc means there are no chains; a named file that is missing is blind."""
+    path = named or os.path.join(os.path.dirname(os.path.abspath(DOC)), 'focus-chains.json')
     waits, unknown = {}, {}
     try:
         with open(path, encoding='utf-8') as f:
@@ -488,7 +493,8 @@ def read_chains(path, blind):
                     waits.setdefault(key, "not the chain's next step (next: %s) in chain %s"
                                      % (', '.join(row['next']) or '-', name))
     except FileNotFoundError:
-        pass
+        if named:
+            blind.add('chains', '%s: no such file' % path)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         blind.add('chains', '%s: %s' % (path, type(e).__name__))
         return {}, {}
@@ -599,7 +605,7 @@ def report(keys, now):
     f['held'], f['unchecked'] = tick_reading(data, blind)
     f['bucket'] = bucket_check(keys, blind)
     f['rounds'] = round_state(os.environ['NR_SPECS'], blind) if any(k in p.design for k in keys) else {}
-    f['waits'], f['chain_unknown'] = read_chains(os.environ['NR_CHAINS'] or os.path.join(os.path.dirname(os.path.abspath(DOC)), 'focus-chains.json'), blind)
+    f['waits'], f['chain_unknown'] = read_chains(os.environ['NR_CHAINS'], blind)
     rows = [(key,) + classify(p, f, blind, key) for key in keys]
     out = [header(pass_age, len(p.unknown_workers), ','.join(blind.names()) or '-')]
     out += ['%s\t%s\t%s' % (key, cls, clean(detail)[:160]) for key, cls, detail in rows]
