@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
