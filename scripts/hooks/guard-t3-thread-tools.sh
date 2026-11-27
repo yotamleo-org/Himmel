@@ -16,9 +16,13 @@
 # Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
 # strings; an absent file or key narrows nothing. .t3.instance_allowlist is not read.
 #
+# Harness registry (scripts/harnesses): an instance outside delegatedFrom must
+# resolve to a T3 driver with a complete descriptor. The driver is the settings
+# entry's .driver, or the descriptor that names the id as a built-in.
+#
 # Security fence, fail-closed: missing jq, a payload that does not parse, an
-# unreadable or malformed T3 settings file or bypass registry, and a malformed or
-# symlinked narrowing config are refused.
+# unreadable or malformed T3 settings file, bypass registry or harness registry,
+# and a malformed or symlinked narrowing config are refused.
 #
 # Refusal row: each refusal appends one JSONL row (ts, host, guard, rule, instance,
 # thread title; never a settings value) to ${HIMMEL_GUARD_REFUSALS_LOG:-
@@ -34,6 +38,7 @@ set -uo pipefail
 CONFIG="${HOME:-/nonexistent}/.himmel/config.json"
 T3_SETTINGS="${T3CODE_HOME:-${HOME:-/nonexistent}/.t3}/userdata/settings.json"
 REGISTRY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../himmelctl/lib/bypass-flags.json"
+HARNESSES="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../harnesses"
 
 REFUSALS="${HIMMEL_GUARD_REFUSALS_LOG:-${HOME:-/nonexistent}/.himmel/state/guard-refusals.jsonl}"
 
@@ -90,17 +95,23 @@ findings=$(jq -r '
         elif type == "array" then .[] | walk_pairs($df)
         else empty end;
     [.tool_input // {} | walk_pairs(false)] as $pairs
-    | ($pairs[] | select(.key | key_is(["instanceid", "providerinstanceid"])) | .value
-        | select(. != null) | "instance\t" + (if type == "string" then tojson else "non-string " + tojson end)),
+    | ($pairs[] | select(.key | key_is(["instanceid", "providerinstanceid"])) | .df as $df | .value
+        | select(. != null) | (if $df then "source\t" else "instance\t" end) + (if type == "string" then tojson else "non-string " + tojson end)),
       ($pairs[] | select((.df | not) and (.key | ascii_downcase == "title")) | .value | strings
         | select(gsub("^\\s+|\\s+$"; "") | ascii_downcase | test("-(chief|console)$")) | "title\t" + tojson)
 ' <<<"$input" 2>/dev/null) \
     || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked." walk-failed
 [ -n "$findings" ] || exit 0
 
-narrow="" narrow_err="" bypass='{}' settings_err=""
+narrow="" narrow_err="" bypass='{}' settings_err="" drivers='{}' harnesses='[]' harness_err=""
 case "$findings" in
-    instance$'\t'* | *$'\n'instance$'\t'*)
+    instance$'\t'* | *$'\n'instance$'\t'* | source$'\t'* | *$'\n'source$'\t'*)
+        harness_args=()
+        for f in "$HARNESSES"/*.json; do harness_args+=(--rawfile "${f##*/}" "$f"); done
+        if ! harnesses=$(jq -nc "${harness_args[@]}" --arg out registry -f "$HARNESSES/registry.jq" 2>&1) \
+            || ! jq -e 'type == "array" and length > 0' <<<"$harnesses" >/dev/null 2>&1; then
+            harness_err="the harness registry cannot be read: ${harnesses:-the loader returned nothing}" harnesses='[]'
+        fi
         if [ -L "${HOME:-/nonexistent}/.himmel" ] || [ -L "$CONFIG" ]; then
             narrow_err="$CONFIG is a symlink"
         elif [ -e "$CONFIG" ]; then
@@ -146,6 +157,12 @@ case "$findings" in
                   ] | unique end))
             | with_entries(select(.value | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
             || { bypass='{}' settings_err="T3's settings file $T3_SETTINGS or the bypass flag registry $REGISTRY could not be read"; }
+        # swallow-ok: jq's error text can quote T3's settings values; a failure refuses every instance id
+        if ! drivers=$(jq -c '(.providerInstances // {}) | with_entries(.value |= (if type == "object" then .driver else null end))' "$T3_SETTINGS" 2>/dev/null) \
+            || [ -z "$drivers" ]; then
+            drivers='{}'
+            [ -n "$settings_err" ] || [ -z "$bypass" ] || settings_err="the drivers in T3's settings file $T3_SETTINGS could not be read"
+        fi
         ;;
 esac
 
@@ -158,8 +175,9 @@ note_id() {
 }
 while IFS= read -r line; do
     case "$line" in
-        instance$'\t'*)
-            val=${line#instance$'\t'}
+        instance$'\t'* | source$'\t'*)
+            role=${line%%$'\t'*}
+            val=${line#*$'\t'}
             case "$val" in
                 'non-string '*) bad_instances="$bad_instances  ${val}: not a string instance id"$'\n'; note_rule non-string-instance; note_id "${val#non-string }"; continue ;;
             esac
@@ -187,6 +205,25 @@ while IFS= read -r line; do
             elif [ -n "$narrow" ] && ! jq -en --argjson allow "$narrow" --argjson v "$val" '$allow | index([$v]) != null' >/dev/null 2>&1; then
                 bad_instances="$bad_instances  ${val}: off .t3.instance_narrow in $CONFIG ($(jq -r 'map(tojson) | join(", ")' <<<"$narrow"))"$'\n'
                 note_rule off-narrow; note_id "$val"
+            elif [ -n "$harness_err" ]; then
+                bad_instances="$bad_instances  ${val}: $harness_err"$'\n'
+                note_rule harness-registry-unreadable; note_id "$val"
+            elif [ "$role" = instance ]; then
+                if ! why=$(jq -rn --argjson reg "$harnesses" --argjson drv "$drivers" --argjson v "$val" '
+                    (if ($drv | has($v)) then $drv[$v]
+                     else [$reg[] | select(any(.t3.instance_ids[]; . == $v)) | .t3.driver] | first end) as $d
+                    | if ($d | type) != "string" then "no T3 driver is known for it"
+                      else ([$reg[] | select(.t3.driver == $d)] | first) as $h
+                        | if $h == null then "its driver \($d) has no harness descriptor"
+                          elif $h.launchable then ""
+                          else "its driver \($d) has an incomplete harness descriptor (\($h.id).json)" end
+                      end' 2>&1); then
+                    why="its harness descriptor lookup failed: ${why%%$'\n'*}"
+                fi
+                if [ -n "$why" ]; then
+                    bad_instances="$bad_instances  ${val}: $why"$'\n'
+                    note_rule no-complete-descriptor; note_id "$val"
+                fi
             fi
             ;;
         title$'\t'*)
@@ -201,7 +238,8 @@ if [ -n "$bad_instances" ]; then
     refuse "$tool on a provider instance an agent may not pick" "Refused instance id(s):
 ${bad_instances}A bypass instance (a T3 instance whose environment or launchArgs carry a himmel bypass flag) is never
 picked by an agent: a hook bypass is granted per session, by the operator choosing that instance in the T3 UI,
-never to every thread T3 starts. Every other instance is allowed, from any provider to any provider, unless
+never to every thread T3 starts. An agent launches only onto a T3 driver that has a complete descriptor in
+himmel's scripts/harnesses. Every other instance is allowed, from any provider to any provider, unless
 the operator narrows the list with .t3.instance_narrow in \$HOME/.himmel/config.json, an operator-owned file.
 Omit the instance id to keep the thread's instance, or name an instance without a bypass flag." \
         "$(printf '%s' "$bad_rules" | sort -u | tr '\n' ',' | sed 's/,$//')" "$bad_ids"

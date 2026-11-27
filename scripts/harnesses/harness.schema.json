@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "himmel harness descriptor",
+  "description": "One descriptor per coding harness, scripts/harnesses/<id>.json. registry.jq enforces this shape. A descriptor named in x-listed-harnesses that is missing, or any descriptor that is malformed, makes guard-t3-thread-tools.sh and block-read-secrets.sh refuse. An agent may launch a T3 driver only when its descriptor is complete: complete is true, hook_config, deny_dialect, adapter, egress_provider, lane and quota_source are all set, and event_map names PreToolUse. quota_source may be \"pending\".",
+  "x-listed-harnesses": ["claude", "codex", "antigravity", "grok", "cursor"],
+  "type": "object",
+  "required": ["id", "complete", "t3", "hook_config", "tool_map", "event_map", "deny_dialect", "adapter", "token_paths", "egress_provider", "lane", "quota_source"],
+  "properties": {
+    "id": { "type": "string", "description": "The file name without .json." },
+    "complete": { "type": "boolean" },
+    "t3": {
+      "type": "object",
+      "required": ["driver", "instance_ids"],
+      "properties": {
+        "driver": { "type": "string", "description": "The driver value of a providerInstances entry in T3's settings." },
+        "instance_ids": { "type": "array", "items": { "type": "string" }, "description": "Built-in instance ids T3 offers with no providerInstances entry." }
+      }
+    },
+    "hook_config": { "type": ["string", "null"] },
+    "tool_map": {
+      "type": "object",
+      "required": ["tools"],
+      "properties": {
+        "mcp_prefix": { "type": ["string", "null"], "description": "How the harness names an MCP tool; null when not captured." },
+        "tools": {
+          "type": "object",
+          "description": "Native tool name to the Claude name, with native input keys renamed under keys.",
+          "additionalProperties": { "type": "object", "required": ["claude"] }
+        }
+      }
+    },
+    "event_map": { "type": ["object", "null"], "description": "Claude hook event to the harness's event name." },
+    "deny_dialect": { "type": ["string", "null"] },
+    "adapter": { "type": ["string", "null"] },
+    "token_paths": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(~/|\\*/)" },
+      "description": "Login-token files as globs: ~/ for a home path, */ for any root. From vendor documentation only, never from a real file."
+    },
+    "egress_provider": { "type": ["string", "null"], "description": "A key of providers in scripts/guardrails/egress-matrix.json." },
+    "lane": { "type": ["string", "null"] },
+    "quota_source": { "type": ["string", "null"] }
+  }
+}

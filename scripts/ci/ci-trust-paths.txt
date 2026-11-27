@@ -22,6 +22,7 @@
 ^scripts/cr/impacted-
 ^scripts/lib/
 ^scripts/hooks/lib/
+^scripts/harnesses/
 
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
