@@ -36,7 +36,7 @@ for l in open(sys.argv[1]):
     if str(r.get("pr")) == sys.argv[2]:
         v = r.get(sys.argv[3]); print("null" if v is None else v); break' "$1" "$2" "$3" 2>/dev/null
 }
-rows() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+rows() { python3 -I -c 'import os, sys; p = sys.argv[1]; print(sum(1 for _ in open(p)) if os.path.isfile(p) else 0)' "$1"; }
 
 B="$WORK/bucket"; mkdir -p "$B"
 manifest "$B/old-chief.fleet.json" "$D/native.md:native" "$D/bus.md:claudex"
