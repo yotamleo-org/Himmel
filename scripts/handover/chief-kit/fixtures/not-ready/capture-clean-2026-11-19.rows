@@ -1,0 +1,13 @@
+## provenance: trimmed real capture of ~/.himmel/state/tick-pool-336207876.rows
+## full file sha256: 1b5537a4cde979e7331982ea72082b7a1254ea61c7a52884f511da8d0320c320
+## trim rule: the '# source', summary, '# dropped from' and '# warn:' lines, and the row and disposition of two RESUME keys that have no overlap line
+## lines that start with two hash marks are this header; the suite strips them
+# source mirror_age_min=1
+# source live_reads=172
+# next-dispatchable: 2278 To Do candidate(s), 1997 collision-free, 53 RESUME (in work, no worker, no open PR)
+RESUME	HIMMEL-9432	Medium	v1.1.3	Quality & proof: the no-checkout review is proved on a real outside PR	files=-	status=In Progress	last=- Owner: the chief or a proof worker, waiting on an outside event (an open PR by a listed author). Nothing is operator-owed.	proof-staging=unknown
+RESUME	HIMMEL-9816	Medium	v1.1.3	Ship loop: a stacked series lands with no chief turn, proven once live	files=scripts/lib/flags.tsv,scripts/lib/test-flags.sh	status=In Progress	last=-
+# warn: HIMMEL-6546 names docs/handover/leg-preface-claudex.md, docs/internals/token-budget.md (not in the repo: a new file, or the collision check is blind)
+# dropped from v1.1.3: 68 of 73 To Do (partial-merge 18, classification 17, proof 17, blocker 9, no-scope 2, owned 2, type 2, label 1)
+# disposition HIMMEL-9432 listed RESUME
+# disposition HIMMEL-9816 listed RESUME
