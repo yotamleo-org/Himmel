@@ -157,7 +157,13 @@ fi
 # the default pair of drafts, which tick.sh lists in prs= but never flags as unowned.
 [ -z "${STUB_PR_SLEEP:-}" ] || sleep "$STUB_PR_SLEEP"
 [ -z "${STUB_PR_FAIL:-}" ] || exit 1
-printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
+# STUB_PR_JSON=<file>: apply the caller's own --jq filter to that JSON, so the real filter runs.
+if [ -n "${STUB_PR_JSON:-}" ]; then
+  while [ $# -gt 0 ] && [ "$1" != --jq ]; do shift; done
+  jq -r "$2" "$STUB_PR_JSON"
+  exit $?
+fi
+printf '%b'"${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
 # orphans= reads `ps -ww -eo pid=,ppid=,etime=,args=` (orphan-loops.sh).
 # Answered from $PS_FIXTURE so the suite never reads the live process table;

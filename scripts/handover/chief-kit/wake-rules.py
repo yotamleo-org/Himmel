@@ -31,14 +31,40 @@ def remedy_of(doc, release_root):
     return (record.get('operator_command') or '') if isinstance(record, dict) else ''
 
 
+def dependabot_wake(value, extract, minutes, file, now):
+    """Wake once per new PR set, after its newest PR has settled; the marker holds the set."""
+    if value in ('', '0'):
+        file.unlink(missing_ok=True)
+        return False
+    match = re.fullmatch(r'[1-9][0-9]*:([0-9]+)m:([0-9]+)m:(#[0-9]+(?:,#[0-9]+)*)', value)
+    if not match:
+        return False
+    oldest, newest, prs = match.groups()
+    if int(newest) < int(extract.split(':')[1]):
+        return False
+    current = prs.split(',')
+    reminder = float(os.getenv('CHIEF_WAIT_DEPENDABOT_REWAKE_MIN', minutes))
+    if file.exists():
+        stamp = file.stat()
+        if set(current) <= set(file.read_text().split()) and (not reminder or now - stamp.st_mtime < reminder * 60):
+            file.write_text('\n'.join(current) + '\n')
+            os.utime(file, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+            return False
+    file.write_text('\n'.join(current) + '\n')
+    print('WAKE dependabot ' + prs + ' oldest=' + oldest + 'm')
+    return True
+
+
 def wake_for(row, fields, inbox, doc, release_root, gap, now):
     field, extract, wake, minutes, marker, clears = row
-    if marker not in ('station', 'repair', 'rmqueue', 'mon'):
+    if marker not in ('station', 'repair', 'rmqueue', 'mon', 'dependabot'):
         return False
     value = fields.get(field, '')
     file = Path(inbox + '.wait.rule-' + marker)
     if value in ('?', 'skip'):
         return False
+    if marker == 'dependabot':
+        return dependabot_wake(value, extract, minutes, file, now)
     active = False
     detail = value
     if marker == 'station':

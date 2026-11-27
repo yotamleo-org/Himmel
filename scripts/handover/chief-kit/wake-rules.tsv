@@ -45,4 +45,5 @@ repair	off:unreviewed,lost,unavailable,unread	enter	0	repair	absent-or-running
 rm-queue	older-than-2x-rmrun-gap	positive	60	rmqueue	zero-or-young
 rm-blocked	whole-retain-unknown	change	0	key	absent
 mon-down	down-since	enter	0	mon	confirmed-ok
+dependabot	pr-set-settled:5	enter	1440	dependabot	absent
 # Other tick fields are observations and never enter the action key.

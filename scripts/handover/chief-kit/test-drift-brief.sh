@@ -131,6 +131,167 @@ python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/
 same 'a repeated brief leaves the existing brief unchanged' "$(cat "$brief" 2>/dev/null)" "$brief_before"
 lint_err="$(bash "$LINT" "$brief" 2>&1)" && pass 'the generated brief passes brief-lint.sh' || fail "brief-lint refused the generated brief: $lint_err"
 
+gold_primary="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
+gold_primary="${gold_primary%/.git}"
+plain="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
+    --out "$W/bucket-b4" --worktree /wt --chief HIMMEL-test-chief --worker D1 --date 2026-11-24 | tail -n 1)"
+plain_diff="$(sed -E -e 's/D-D1-[0-9a-f]{8}/D-D1-TOKEN/g' -e "s#$gold_primary#__PRIMARY__#g" \
+    -e 's# -R [A-Za-z0-9._-]+/[A-Za-z0-9._-]+##g' "$plain" | diff "$HERE/fixtures/drift-brief-plain.golden" - 2>&1)"
+same 'B4: a plain drift brief equals the golden' "$plain_diff" ''
+
+ROW_STATION='| cli-proxy-api | carried tool | 8.1.0 | v8.1.7 | station tool: VM-first upgrade |'
+mk_pr() {
+    local n="$1" t="$2" b="$3"
+    shift 3
+    jq -n --argjson n "$n" --arg t "$t" --arg b "$b" '{number: $n, title: $t, headRefName: "dependabot/x/p\($n)", body: $b, files: [$ARGS.positional[] | {path: .}]}' --args "$@"
+}
+prs_file() { jq -s '.' > "$W/prs.json"; }
+comb_n=0
+comb() {
+    local list="$1"
+    shift
+    comb_n=$((comb_n + 1))
+    comb_dir="$W/comb-$comb_n"
+    comb_rc=0
+    comb_brief="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
+        --out "$comb_dir" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24 \
+        --dependabot-prs "$list" --prs-file "$W/prs.json" "$@" 2> "$W/comb.err" | tail -n 1)" || comb_rc=$?
+    comb_err="$(cat "$W/comb.err")"
+    comb_text="$(cat "$comb_brief" 2>/dev/null)"
+}
+line_of() { printf '%s\n' "$comb_text" | grep -F -- "$1" | head -n 1; }
+block_of() { printf '%s\n' "$comb_text" | awk -v h="$1" 'index($0, h) == 1 { on = 1; next } on && ($0 !~ /^> - /) { exit } on'; }
+writes_of() { line_of '> **Writes:**'; }
+
+mkdir -p "$W/lint-mirror" "$W/lint-stub"
+printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$W/lint-mirror/.cursor.json"
+printf -- '---\nkey: "HIMMEL-1"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-1: t\n' > "$W/lint-mirror/HIMMEL-1.md"
+cat > "$W/lint-stub/index.js" <<'STUBEOF'
+const fs = require('fs');
+const a = process.argv.slice(2);
+if (process.env.LINT_STUB_LOG) fs.appendFileSync(process.env.LINT_STUB_LOG, a.join(' ') + '\n');
+if (a[0] === 'release' && a[1] === 'core-check') {
+  const hit = a[a.indexOf('--paths') + 1].split(',').find((p) => p.startsWith('marketplace/plugins/himmel-bus/'));
+  for (const k of a.slice(a.indexOf('--key') + 1)) console.log(hit ? 'CORE ' + k + ' ' + hit : 'NOT-CORE ' + k);
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('NO-SPEC ' + k);
+  process.exit(1);
+} else if (a[0] === 'release' && a[1] === 'bucket-check') {
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');
+} else process.exit(2);
+STUBEOF
+keyed_lint() { LINT_STUB_LOG="$W/lint.log" BRIEF_LINT_MIRROR="$W/lint-mirror" BRIEF_LINT_JIRA_CLI="$W/lint-stub/index.js" bash "$LINT" "$1" 2>&1; }
+
+TRIAGE=marketplace/plugins/obsidian-triage/tools/requirements.txt
+{
+    mk_pr 11 'chore(deps): [HIMMEL-7588]: Bump pyyaml from 6.0.3 to 6.0.4' '' "$TRIAGE"
+    mk_pr 12 'Bump certifi from 1.0 to 1.1' '' marketplace/plugins/obsidian-triage/tools/requirements-scrapling.txt
+    mk_pr 13 'Bump av from 1.0 to 1.1' '' marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt
+} | prs_file
+mk_holds 2026-11-25T08:00Z
+mk_body "$ROW_TASTE
+$ROW_STATION" ''
+comb '#11,#12' --key HIMMEL-1
+same 'B1: a combined brief is written' "$comb_rc" '0'
+case "$comb_brief" in */HIMMEL-1-D1-dependabot-drift-4470-2026-11-24.md) pass 'B1: the doc stem names the combined drift leg' ;; *) fail "B1: stem '$comb_brief' ($comb_err)" ;; esac
+same 'B1: the Dependabot block lists the given PRs only' "$(block_of '> **Dependabot PRs:**' | grep -oE '^> - #[0-9]+' | tr -d '> -' | paste -sd, -)" '#11,#12'
+contains 'B1: a PR line carries its title and head' "$comb_text" '> - #12 Bump certifi from 1.0 to 1.1 (dependabot/x/p12)'
+contains 'B1: the station row is in its own block' "$(block_of '> **Station tools (VM-first, listed apart):**')" 'cli-proxy-api'
+same 'B1: the station row appears once' "$(printf '%s\n' "$comb_text" | grep -c '^> - cli-proxy-api')" '1'
+same 'B1: the description counts PRs and rows' "$(line_of 'description:')" 'description: "Land the 2 open Dependabot bumps and the 2 actionable fork-drift rows of the open drift issue (2026-11-24) in one bump PR; completes-ticket: no"'
+KP=HIMMEL
+contains 'B1: the title names both' "$(line_of "# $KP-1 ")" "# $KP-1 - the open Dependabot bumps and the actionable 4470 drift rows land together - "
+# shellcheck disable=SC2016  # literal backticks from the brief
+contains 'B1: the commit subject names both' "$comb_text" 'commit `chore(deps): [HIMMEL-1] the open Dependabot bumps and the actionable 4470 drift rows land together`'
+rm -f "$W/lint.log"
+lint_err="$(keyed_lint "$comb_brief")" && pass 'B1: the keyed combined brief passes brief-lint.sh' || fail "B1: brief-lint refused: $lint_err"
+contains 'B1: the lint reached its core gate' "$(cat "$W/lint.log" 2>/dev/null)" 'release core-check'
+
+mk_body '' ''
+comb '#11'
+same 'B2: PRs with no drift row write a brief' "$comb_rc:$([ -f "$comb_brief" ] && echo written)" '0:written'
+comb ''
+same 'B2: no PR and no row exits 1' "$comb_rc" '1'
+contains 'B2: and says no actionable row' "$comb_err" 'no actionable row'
+comb '#99'
+same 'B2: a PR that is not in the file exits 2' "$comb_rc" '2'
+contains 'B2: and names the PR' "$comb_err" 'drift-brief: PR #99 is not open'
+for alone in '--dependabot-prs #11' "--prs-file $W/prs.json"; do
+    alone_rc=0
+    # shellcheck disable=SC2086  # one flag and its value, split on purpose
+    alone_err="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/repo/scripts/upstreams/pin-holds.json" \
+        --out "$W/comb-alone" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24 $alone 2>&1 >/dev/null)" || alone_rc=$?
+    same "B2: ${alone%% *} alone exits 2" "$alone_rc" '2'
+    contains "B2: ${alone%% *} alone prints the usage line" "$alone_err" 'usage:'
+done
+
+CI_REQ=.github/ci-image/requirements.txt
+X_REQ=marketplace/plugins/x/tools/requirements.txt
+mk_pr 21 'Bump a from 1 to 2' '' "$CI_REQ" "$X_REQ" | prs_file
+mk_body "$ROW_TASTE" ''
+comb '#21'
+for want in "$CI_REQ" "$X_REQ" .github/workflows/ci.yml scripts/ci/release-age-allow.txt; do
+    contains "B3: Writes carry $want" "$(writes_of) " " $want "
+done
+contains 'B3: the trust sentence names the trust paths' "$(line_of 'trust-reviewed GO')" "$CI_REQ, .github/workflows/ci.yml, scripts/ci/release-age-allow.txt"
+contains 'B3: hashes are regenerated' "$comb_text" 'gets its hashes regenerated'
+contains 'B3: a young security release gets an allow line' "$comb_text" 'line naming the advisory'
+contains 'B3: a landed PR is closed as superseded' "$comb_text" '--comment "Superseded by #'
+contains 'B3: a deferred PR is closed as deferred' "$comb_text" '--comment "Deferred: <reason>, tracked in <KEY>"'
+contains 'B3: the deferral ticket is High or above' "$comb_text" 'High or above'
+mk_pr 22 'Bump a from 1 to 2' '' "$X_REQ" | prs_file
+comb '#22'
+case " $(writes_of) " in *' .github/workflows/ci.yml '*) fail 'B3: ci.yml is in Writes with no ci-image file' ;; *' '"$X_REQ"' '*) pass 'B3: no ci-image file, no ci.yml in Writes' ;; *) fail "B3: no Writes line ($comb_err)" ;; esac
+mk_pr 23 'Bump a/b from 1 to 2' '' .github/workflows/x.yml | prs_file
+comb '#23'
+contains 'B3: an actions workflow file is in Writes' "$(writes_of) " ' .github/workflows/x.yml '
+# shellcheck disable=SC2016  # literal backticks from the brief
+contains 'B3: the Writes note still forbids other workflow files' "$(line_of '> **Writes note:**')" 'every `.github/workflows/` file except `ci.yml` and the Dependabot PRs'\'' own files'
+
+BUS=marketplace/plugins/himmel-bus/package.json
+{ mk_pr 31 'Bump zod from 4 to 5' '' "$BUS"; mk_pr 32 'Bump a from 1 to 2' '' "$X_REQ"; } | prs_file
+comb '#31,#32' --key HIMMEL-1
+same 'B5: the core-path PR is left out of the Dependabot block' "$(block_of '> **Dependabot PRs:**' | grep -oE '^> - #[0-9]+' | tr -d '> -' | paste -sd, -)" '#32'
+case "$(writes_of)" in *himmel-bus*) fail 'B5: a core path is in Writes' ;; *"$X_REQ"*) pass 'B5: no core path in Writes' ;; *) fail "B5: no Writes line ($comb_err)" ;; esac
+not_contains 'B5: no close line for it' "$comb_text" 'gh pr close 31'
+contains 'B5: stderr names the core path' "$comb_err" "drift-brief: PR #31 touches core path $BUS: route it apart"
+contains 'B5: the NOT-in-scope line names it' "$(line_of '> NOT in scope:')" '#31'
+lint_err="$(keyed_lint "$comb_brief")" && pass 'B5: the brief without it passes brief-lint.sh' || fail "B5: brief-lint refused: $lint_err"
+sed "s#^> \*\*Writes:\*\* #&$BUS #" "$comb_brief" > "$comb_dir/with-core.md"
+keyed_lint "$comb_dir/with-core.md" > /dev/null && fail 'B5: the core path put back into Writes was accepted' || pass 'B5: the core path put back into Writes is refused'
+mk_body '' ''
+comb '#31'
+same 'B5: only a core-path PR and no row exits 1' "$comb_rc" '1'
+
+ROW_FOO='| npm:foo | npm package | 1.0 | 1.3 | bump scripts/jira, site to 1.3 plus synced_base in scripts/upstreams.json |'
+ROW_BAR='| pypi:bar | pypi package | 1.0 | 1.3 | bump site to 1.3 plus synced_base in scripts/upstreams.json |'
+printf '{"holds": [{"eco": "npm", "key": "foo", "current": "1.0", "latest_reviewed": "1.3", "reason": "buffer", "eligible": "2026-11-25T08:00Z"}]}\n' > "$W/repo/scripts/upstreams/pin-holds.json"
+mk_body "$ROW_FOO" ''
+# shellcheck disable=SC2016  # literal backticks from Dependabot's group body
+mk_pr 41 'Bump the npm group with 2 updates' 'Updates `foo` from 1.0 to 1.2' site/package.json site/package-lock.json | prs_file
+comb '#41'
+contains 'B6: a partly carried row narrows to the uncovered directory' "$comb_text" '> - npm:foo (npm package): 1.0 to 1.3 - bump scripts/jira to 1.3 '
+contains 'B6: the NOT-in-scope line names the carried directory' "$(line_of '> NOT in scope:')" '#41 carries site'
+# shellcheck disable=SC2016  # literal backticks from Dependabot's group body
+mk_pr 42 'Bump the npm group with 2 updates' 'Updates `foo` from 1.0 to 1.2' site/package.json scripts/jira/package.json | prs_file
+comb '#42'
+not_contains 'B6: a fully carried row is dropped' "$comb_text" '> - npm:foo '
+contains 'B6: the NOT-in-scope line says who carries it' "$(line_of '> NOT in scope:')" 'npm:foo carried by #42'
+mk_body "$ROW_BAR" ''
+mk_pr 43 'Bump bar from 1.0 to 1.2' '' site/requirements.txt | prs_file
+comb '#43'
+contains 'B6: a pypi row matches a title' "$(line_of '> NOT in scope:')" 'pypi:bar carried by #43'
+mk_holds 2026-11-24T08:00Z
+mk_body '' '  npm:oxlint 1.93.0 (site): HELD     (latest 1.94.0 reviewed and held back: 72 h buffer)'
+mk_pr 44 'Bump oxlint from 1.93.0 to 1.94.0' '' site/package.json | prs_file
+comb '#44'
+contains 'B6: a buffer-cleared hold row a PR carries is dropped' "$(line_of '> NOT in scope:')" 'oxlint carried by #44'
+
+: > "$DRIFT_BODY_FILE"
+mk_pr 51 'Bump a from 1 to 2' '' "$X_REQ" | prs_file
+comb '#51'
+same 'B7: an empty issue body writes a PRs-only brief' "$comb_rc:$(block_of '> **Dependabot PRs:**' | grep -c '^> - #51 ')" '0:1'
+
 mk_body '' "$HELD_LINE"
 mk_holds 2026-11-25T08:00Z
 none_rc=0
