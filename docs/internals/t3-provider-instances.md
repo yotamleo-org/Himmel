@@ -37,6 +37,9 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   `environment` list on the instance itself, beside `config` (checked in T3 0.1.10's
   schema); the scan reads that and the `config` copies. An instance whose `launchArgs`
   carry `--dangerously-skip-permissions` or `bypassPermissions` is refused the same way.
+  Separately, `scripts/hooks/guard-t3-thread-tools.sh` refuses agents any Claude instance
+  whose `launchArgs` are not exactly this script's resolved-profile line (see
+  `docs/internals/enforcement.md`, "Own settings").
 - A malformed settings file is refused (rc 2) and left untouched.
 
 ## Antigravity profile instances
