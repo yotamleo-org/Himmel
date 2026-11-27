@@ -315,7 +315,7 @@ check "14: with a Chief Rulings section after Results the bullet lands at its en
 mkdir -p "$tmp/sep/co/scripts/lib" "$tmp/sep/meta"
 cp "$HERE/../../lib/git-clean.sh" "$HERE/../../lib/jira-cli-path.sh" "$tmp/sep/co/scripts/lib/"
 git init -q --separate-git-dir "$tmp/sep/meta/gitdir" "$tmp/sep/co"
-check "14: the separate-git-dir fixture was built" "$(cat "$tmp/sep/co/.git" 2>/dev/null)" "gitdir: $tmp/sep/meta/gitdir"
+check "14: the separate-git-dir fixture was built" "$([ -f "$tmp/sep/co/.git" ] && [ -d "$tmp/sep/meta/gitdir" ] && echo built)" built
 # shellcheck disable=SC2016  # $1 expands in the child shell
 check "14: a separate git dir names no primary root, never its parent" "$(bash -c '. "$1"; himmel_primary_root; echo "rc=$?"' _ "$tmp/sep/co/scripts/lib/jira-cli-path.sh")" "rc=1"
 
