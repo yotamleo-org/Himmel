@@ -84,7 +84,7 @@ title_key_re() {
     local v raw="" p out="" parts=()
     # shellcheck source=../../lib/load-dotenv.sh
     . "$(dirname "$0")/../../lib/load-dotenv.sh"
-    load_dotenv JIRA_PROJECTS JIRA_PROJECT_KEY 2>/dev/null || true  # swallow-ok: an unreadable layer leaves the keys unset, which falls back to any prefix
+    load_dotenv JIRA_PROJECTS JIRA_PROJECT_KEY 2>/dev/null
     for v in "${JIRA_PROJECTS:-}" "${JIRA_PROJECT_KEY:-}"; do
         case "$v" in \"*\"|\'*\') v="${v:1:${#v}-2}" ;; esac
         raw="$raw,$v"
