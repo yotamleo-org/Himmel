@@ -1157,6 +1157,25 @@ else
 fi
 rm -f "$GOROOT/.locks/go/42.abc123"
 
+fixture_no_go_row() {
+    local root="$TMP/no-go-$1" err="$TMP/no-go-$1.err" rc
+    mkdir -p "$root/scripts/hooks" "$root/scripts/lib"
+    cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.$1.sh" \
+        "$root/scripts/hooks/block-unresolved-cr-merge.sh"
+    cp_crgate_deps "$root/scripts/lib"
+    cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$SCRIPT_DIR/../lib/go-gate.sh" "$SCRIPT_DIR/../lib/handover-path.sh" "$root/scripts/lib/"
+    HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-no-go-$1.log" bash "$root/scripts/hooks/block-unresolved-cr-merge.sh" < "$RESOLVE_ROOT_PAYLOAD" >/dev/null 2>"$err" # old-term-ok: the frozen fixture reads this name
+    rc=$?
+    if [ "$rc" -eq 2 ] && grep -q "has no chief GO" "$err"; then
+        pass=$((pass+1)); echo "ok   red-control-$1-fixture-reaches-go-gate"
+    else
+        fail=$((fail+1)); echo "FAIL red-control-$1-fixture-reaches-go-gate rc=$rc (want 2, 'has no chief GO' on stderr) err=$(< "$err")"
+    fi
+}
+fixture_no_go_row pre-pin
+fixture_no_go_row pre-rc127-fix
+fixture_no_go_row pre-rc4-fix
+
 # ── THIRD RED control — both callers tested
 # `[ "$go_rc" = "2" ]`, enumerating go_gate's one documented refusal code
 # instead of enforcing "nonzero = failure". A go-gate.sh that sources cleanly
