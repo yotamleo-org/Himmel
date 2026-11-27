@@ -433,7 +433,7 @@ export class Poller {
 
   private async onOperator(u: any): Promise<void> {
     const dm = this.cfg.operatorDmChatId ?? null;
-    if (u.callback_query) return this.onTap(u.callback_query, dm);
+    if (u.callback_query) return this.onTap(u.callback_query, u.update_id);
     const msg = u.message ?? u.edited_message;
     if (!u.message || dm === null || msg.chat?.id !== dm || msg.from?.id !== this.cfg.operatorChatId || msg.from?.is_bot !== false) {
       this.log(`dm-drop update=${u.update_id} chat=${msg?.chat?.id} from=${msg?.from?.id}`);
@@ -457,12 +457,16 @@ export class Poller {
     await say(DRAFTING_LINE);
   }
 
-  private async onTap(cq: any, dm: number | null): Promise<void> {
-    const answer = async (text: string) => { try { await this.deps.tg.answerCallbackQuery?.(String(cq.id), text); } catch {} };
+  private async onTap(cq: any, update: number): Promise<void> {
     const data = typeof cq.data === "string" ? cq.data : "";
     const pair = PAIR_TAP_RE.exec(data);
-    if (pair) return answer(await this.pairTap(cq, pair[1] as "ok" | "no", pair[2], pair[3]));
     const m = PEER_TAP_RE.exec(data);
+    const what = pair ? `peer=${pair[2]} offer=${pair[3]} verb=${pair[1]} ` : m ? `peer=${m[2]} draft=${m[3]} verb=${m[1]} ` : "";
+    const answer = async (text: string) => {
+      this.log(`tap update=${update} cb=${cq.id} from=${cq.from?.id} chat=${cq.message?.chat?.id} ${what}answer="${text}"`);
+      try { await this.deps.tg.answerCallbackQuery?.(String(cq.id), text); } catch (e) { this.log(`tap-answer-failed update=${update} cb=${cq.id} error=${(e as Error).message}`); }
+    };
+    if (pair) return answer(await this.pairTap(cq, pair[1] as "ok" | "no", pair[2], pair[3]));
     if (!m) return answer("Unknown button.");
     if (!operatorTap(cq, this.cfg)) return answer("Not authorized.");
     if (lockdownEnabled(this.cfg.bridgeRoot)) return answer(LOCKED_LINE);
@@ -1074,17 +1078,17 @@ export class Poller {
 
   private async applyTap(peer: string, name: string, rec: Extract<SpoolRec, { type: "tap" }>): Promise<void> {
     const dir = this.dir(peer);
-    const no = (rule: string) => writeResult(dir, name, { ok: false, rule });
-    const refuse = (rule: string) => { this.log(`tap-refused peer=${peer} draft=${rec.draft} rule=${rule}`); no(rule); };
-    if (rec.sig === undefined) return refuse("tap-unsigned");
-    if (!tapSigOk(this.deps.configDir, { ...rec, peer }, rec.sig)) return refuse("tap-bad-sig");
+    const no = (rule: string) => { this.log(`tap-refused peer=${peer} draft=${rec.draft} rule=${rule}`); writeResult(dir, name, { ok: false, rule }); };
+    const result = (what: string) => this.log(`tap-result peer=${peer} draft=${rec.draft} result=${what}`);
+    if (rec.sig === undefined) return no("tap-unsigned");
+    if (!tapSigOk(this.deps.configDir, { ...rec, peer }, rec.sig)) return no("tap-bad-sig");
     if (rec.by !== String(this.cfg.operatorChatId)) return no("not-operator");
     const out = this.outbox(peer);
     const d = out.find(r => r.kind === "draft" && r.id === rec.draft);
     if (!d) return no("unknown-draft");
     const state = draftState(out, d.id);
     if (state !== "PENDING") return no(state === "SENDING" ? "already-sending" : `already-${state!.toLowerCase()}`);
-    const done = async (s: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) => { await this.finishDraft(peer, d, s, rule); writeResult(dir, name, s === "REJECTED" ? { ok: true } : { ok: false, rule: rule ?? s.toLowerCase() }); };
+    const done = async (s: "REJECTED" | "EXPIRED" | "REFUSED", rule?: string) => { await this.finishDraft(peer, d, s, rule); result(`${s.toLowerCase()}${rule ? ` rule=${rule}` : ""}`); writeResult(dir, name, s === "REJECTED" ? { ok: true } : { ok: false, rule: rule ?? s.toLowerCase() }); };
     if (rec.verb === "no") return done("REJECTED");
     if (this.now() > d.deadline) return done("EXPIRED");
     if (lockdownEnabled(this.cfg.bridgeRoot)) return done("REFUSED", "lockdown");
@@ -1098,6 +1102,7 @@ export class Poller {
       kind: "intent", peer, chat: this.cfg.peers[peer].chatId, id: d.id, root: d.replyTo, msgKind: d.msgKind, text: d.text, isRoot, draft: d.id, by: rec.by, source: d.source,
     });
     this.pending.set(`${peer}:${intent.n}`, intent as unknown as Pending);
+    result("approved");
     writeResult(dir, name, { ok: true, draft: d.id });
   }
 
