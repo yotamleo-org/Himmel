@@ -725,11 +725,10 @@ cmd_arm() {
 
     # Two-token pin: --qmd-js only when
     # the bun-served install won the resolver.
-    local payload salus_payload base
+    local payload base
     base="$q_bash $q_script --qmd-bin $q_qmd"
     [ -n "$q_qmd_js" ] && base="$base --qmd-js $q_qmd_js"
     payload="$base"
-    salus_payload="$base --index salus"
     local hh mm
     hh="${REINDEX_TIME%:*}"; mm="${REINDEX_TIME#*:}"
     local q_runner entry
@@ -739,7 +738,6 @@ cmd_arm() {
         # always a fire: the one that runs the full reindex + cleanup.
         entry="$mm $((10#$hh % EVERY_HOURS))-23/$EVERY_HOURS * * * $q_runner # $TASK_REINDEX"
         payload="if [ \"\$(date +%H)\" = $hh ]; then $base; else $base --no-cleanup; fi"
-        salus_payload="if [ \"\$(date +%H)\" = $hh ]; then $salus_payload; else $salus_payload --no-cleanup; fi"
     elif [ "$HOURLY" -eq 1 ]; then
         # Hourly forever: fixed minute, every hour — mirrors graphmap-cadence's
         # AST-himmel cron entry, the cron(5) idiom for "hourly"
@@ -749,15 +747,17 @@ cmd_arm() {
         entry="$mm $hh * * * $q_runner # $TASK_REINDEX"
     fi
 
-    # The salus index is a SEPARATE named index (qmd --index salus: salus.yml,
-    # salus.sqlite, local models), so the bare reindex never touches it. Fire the
-    # same runner again with --index salus when salus.yml exists at FIRE time; the
-    # subshell keeps the default index's rc unless only salus failed, and a failed
-    # default refresh never skips salus. The path is a literal for the runner's sh.
-    # shellcheck disable=SC2016  # expanded by the runner's /bin/sh at fire time
-    local salus_cfg='"${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/salus.yml"'
-    # shellcheck disable=SC2016  # $_m/$_s are the runner's own variables
-    payload="( $payload; _m=\$?; if [ -f $salus_cfg ]; then $salus_payload || { _s=\$?; [ \"\$_m\" -ne 0 ] || _m=\$_s; }; fi; exit \"\$_m\" )"
+    local named_fires="" idx idx_payload idx_cfg
+    for idx in salus gmail; do
+        idx_payload="$base --index $idx"
+        if [ "$EVERY_HOURS" -ne 0 ]; then
+            idx_payload="if [ \"\$(date +%H)\" = $hh ]; then $idx_payload; else $idx_payload --no-cleanup; fi"
+        fi
+        # shellcheck disable=SC2016  # expanded by the runner's /bin/sh at fire time
+        idx_cfg='"${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/'"$idx"'.yml"'
+        named_fires="$named_fires if [ -f $idx_cfg ]; then $idx_payload || { _s=\$?; [ \"\$_m\" -ne 0 ] || _m=\$_s; }; fi;"
+    done
+    payload="( $payload; _m=\$?;$named_fires exit \"\$_m\" )"
 
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY qmd-cadence: would write $CRON_RUNNER:"
@@ -800,7 +800,8 @@ cmd_arm() {
   QMD REINDEX CADENCE ARMED
   $TASK_REINDEX  $CADENCE_DESC  -> $RUNNER_DESC
   Scope:  all configured qmd collections, then the salus index
-          (qmd --index salus) when ~/.config/qmd/salus.yml exists
+          (qmd --index salus) when ~/.config/qmd/salus.yml exists, then
+          the gmail index (qmd --index gmail) when gmail.yml exists
   qmd:  $(qmd_invocation_desc)
   Himmel: $HIMMEL_ROOT
   Runner .sh: $BAT_DIR

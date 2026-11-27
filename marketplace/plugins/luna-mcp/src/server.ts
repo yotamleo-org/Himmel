@@ -11,6 +11,7 @@ import { dispatch, fail, type DispatchResult } from "./core/dispatch.js";
 import { OPERATIONS } from "./core/operations.js";
 import { createEgress, PURPOSE, type Egress } from "./egress.js";
 import { createQmdProxy, RateLimiter, type QmdProxy } from "./qmd-proxy.js";
+import { isolatedCollections, loadNamedIndexes } from "./indexes.js";
 import { loadRoots } from "./vault-fs.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -21,6 +22,7 @@ export interface AppDeps {
   audit: Audit;
   egress: Egress;
   qmd: QmdProxy;
+  isolated?: ReadonlyMap<string, QmdProxy>;
   roots: ReadonlyMap<string, string>;
   limiter: RateLimiter;
   newReqId: () => string;
@@ -154,7 +156,7 @@ export function createApp(deps: AppDeps): App {
     return json(status, { ok: false, error: { code, message } });
   };
 
-  const dispatchDeps = { roots: deps.roots, egress: deps.egress, qmd: deps.qmd, limiter: deps.limiter, audit: deps.audit };
+  const dispatchDeps = { roots: deps.roots, egress: deps.egress, qmd: deps.qmd, isolated: deps.isolated ?? new Map<string, QmdProxy>(), limiter: deps.limiter, audit: deps.audit };
 
   const factory = ({ authInfo }: { authInfo?: AuthInfo }): McpServer => {
     const principal: Principal | null = authInfo ? principalFrom(authInfo) : null;
@@ -367,17 +369,26 @@ async function writeWebResponse(out: Response, res: ServerResponse): Promise<voi
 
 export async function startServer(env: NodeJS.ProcessEnv): Promise<{ port: number; host: string; close(): Promise<void> }> {
   const config = loadConfig(env);
-  const roots = await loadRoots(env);
+  const roots = new Map(await loadRoots(env));
+  const indexes = await loadNamedIndexes(env);
+  const owners = isolatedCollections(indexes, roots.keys());
+  const proxies = new Map(indexes.map((i) => [i.name, createQmdProxy({ url: i.url, tokenFile: i.tokenFile, timeoutMs: config.searchTimeoutMs })]));
+  const isolated = new Map<string, QmdProxy>();
+  for (const [collection, index] of owners) {
+    roots.set(collection, index.roots.get(collection) as string);
+    isolated.set(collection, proxies.get(index.name) as QmdProxy);
+  }
   const app = createApp({
     publicUrl: config.publicUrl,
     keys: new KeyStore(config.keysFile, Date.now),
     audit: createAudit({ file: config.auditFile, now: Date.now }),
     egress: createEgress(config.himmelRepo),
     qmd: createQmdProxy({ url: config.qmdUrl, tokenFile: config.qmdTokenFile, timeoutMs: config.searchTimeoutMs }),
+    isolated,
     roots,
     limiter: new RateLimiter(config.searchPerMinute, 60_000, Date.now),
     newReqId: randomUUID,
-    version: "0.1.0",
+    version: "0.2.0",
   });
   const badRequest = (res: ServerResponse, message: string): void => {
     res.writeHead(400, { "content-type": "application/json" });

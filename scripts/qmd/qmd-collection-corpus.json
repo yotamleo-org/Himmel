@@ -14,6 +14,7 @@
     "nvidia-steam-shader-cache": ["operator-repos"],
     "jira-himmel": ["jira-mirror"],
     "roadmap-plan": ["roadmap-plan"],
-    "skills": ["skill-index"]
+    "skills": ["skill-index"],
+    "gmail": ["gmail"]
   }
 }
