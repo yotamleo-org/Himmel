@@ -147,8 +147,6 @@ const issue = (kind: 'spec' | 'plan', round: number, findings: string[], extra: 
   reads: kind === 'spec' ? ['spec', ESTIMATE] : ['spec', 'plan', ESTIMATE], ...extra });
 const SPEC_LINE = 'The fixture contract names every member.';
 const SPEC_CHANGED = 'The fixture contract names each member and its owner.';
-// The real seven-return spec run that reaches the cap: five full returns with a major in the last, a closure return holding a regression
-// (its quoted line changed by the rewrite), one override that opens the next return, and a closure return that ends CLEAN. Its finding ids differ from the later epoch's.
 const cappedRun = (specOf: (line: string) => string, extra: Partial<Return> = {}) => ({
   returns: [
     ...[1, 2, 3].map(round => issue('spec', round, [`- **A0${round}** (minor) an early wording note`], extra)),
@@ -194,7 +192,7 @@ export async function buildKnownSingleFixture(scratchRoot: string, opts: KnownSi
   if (!opts || !KNOWN_VARIANTS.includes(opts.variant)) throw new Error(`fixture known-single variant must be one of ${KNOWN_VARIANTS.join(', ')}`);
   const key = fixtureKey(9811);
   const specOf = (line: string) => specDocument(`${key} (a partial merge owes proof by default)`, `${key} known single`, line, opts.citation);
-  const run = cappedRun(specOf, { quote: 'sha-path-two-space' });                    // two-space quotes in the spec return, legacy quotes in the plan return
+  const run = cappedRun(specOf, { quote: 'sha-path-two-space' });
   const legacy = { quote: 'legacy-path-sha' as const };
   const plans = [1, 2, 3, 4, 5].map(round => issue('plan', round, [`- **P${round}** (minor) a plan note`], legacy));
   const four = opts.variant === 'refusedCap' ? [issue('plan', 6, ['- **P6** (minor) a closure note', '- **P7** (minor) another closure note'], { ...legacy, closure: true })]

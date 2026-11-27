@@ -571,14 +571,6 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
 export const MAX_SEND_BYTES = 50 * 1024 * 1024;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// A spec or plan page goes to the operator to be signed, so it goes only after its latest-round
-// spec critic and plan critic ended in a clean line AND quoted the sha256 of the exact bytes
-// being sent (operator decisions 700 and 701), or, once the ticket's round ledger holds CRITIC_ROUND_CAP
-// rounds of that kind (decisions 763 and 1420), with each open finding on the page. The critic files sit beside the spec as
-// `<spec>.critic-spec-r<n>.md` / `<spec>.critic-plan-r<n>.md`; `critic-seal.sh` adds the
-// `CONTENT-SHA256 <sha> <path relative to the verdict file>` line above the verdict line.
-// A file is a signature page when it lives under `specs/{design,designs,spec,plan,plans}/` or
-// `specs/HIMMEL-<n>/`, or a plan critic file names it; every other file sends as before.
 const NOT_FOR_SIGNATURE = "Not for signature";
 const CLEAN = { spec: "SPEC CLEAN", plan: "PLAN CLEAN" } as const;
 const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as const;

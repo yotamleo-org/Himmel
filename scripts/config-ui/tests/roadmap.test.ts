@@ -1802,7 +1802,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   critic("HIMMEL-1-clean-unsigned.md", 1, "SPEC CLEAN");          // owed
   critic("HIMMEL-2-signed.md", 1, "SPEC CLEAN");                  // signed below
   critic("HIMMEL-5-still-in-review", 1, "SPEC FINDINGS 2");       // the critics are not done: not yet the operator's
-  critic("HIMMEL-7-capped", 5, "SPEC FINDINGS 1");                // past the round cap: owed
+  critic("HIMMEL-7-capped", 5, "SPEC FINDINGS 1");
   critic("HIMMEL-3-shipped.md", 1, "SPEC CLEAN");                 // its ticket is Done
   critic("HIMMEL-5-signed-bare", 1, "SPEC CLEAN");                // signed below by the name with no .md
   seedSpecs(join(bucket, "specs"));

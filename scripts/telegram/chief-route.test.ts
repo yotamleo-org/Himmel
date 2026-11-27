@@ -2405,12 +2405,10 @@ test("a page sent --by-request cannot satisfy the signature check, even with eve
   expect((await sendFile(r, "1", b.page)).code).not.toBe(0);
 });
 
-// ---- a spec gets five critic rounds per kind, then the page goes to the operator with each open finding on it ----
 const D_TEXT = "# Design\n\nthe spec\n";
 const P_TEXT = "# Plan\n\nthe plan\n";
 const D_SEAL = { text: D_TEXT, file: "HIMMEL-1-design.md" };
 const P_SEAL = { text: P_TEXT, file: "HIMMEL-1-design.plan.md" };
-// A bundle whose spec critic used all five rounds with findings still open: r1 and r4 hold finding-one and finding-two.
 const fiveRounds = (r: string) => {
   const b = bundle(r);
   critic(b.spec, "spec", 1, "SPEC FINDINGS 1", D_SEAL);
@@ -2426,7 +2424,6 @@ const grant = (r: string, spec: string, round: number, decision = 900, withVerba
   writeFileSync(join(r, "specs", "decisions", `verbatim-decision-${decision}-operator.txt`), "yes, one more\n");
 };
 
-// A seeded bundle whose fifth spec return left one minor and no blocking finding, so nothing opens a sixth.
 const minorsFive = async (r: string) => {
   const b = bundle(r);
   critic(b.spec, "spec", 4, "SPEC FINDINGS 1", D_SEAL);
@@ -2536,7 +2533,7 @@ test("DoD 2: a sealed .html page past round 5 goes as the sealed bytes with the 
   expect(sent).toContain("finding-one");
   expect(sent.indexOf("<body>")).toBeLessThan(sent.indexOf("Round count"));
   expect(sent.replace(/<section class="open-findings">[\s\S]*<\/section>\n/, "")).toBe(pageText);
-  writeFileSync(page, pageText + "<!-- edited after round 5 -->\n");   // the exact bytes round 5 read, or nothing
+  writeFileSync(page, pageText + "<!-- edited after round 5 -->\n");
   const edited = await sendFile(r, "1", page);
   expect(edited.code).not.toBe(0);
   expect(edited.err).toContain("critic-spec-r5.md");
@@ -2667,7 +2664,7 @@ test("DoD 4: a judge round is not counted and not limited", async () => {
   for (let i = 1; i <= 9; i++) writeFileSync(`${b.spec}.judge-r${i}.md`, `judge round ${i}\nVERDICT: SPEC FINDINGS 1\n`);
   await seedIfNeeded(specsOf(r));
   const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT, "SPEC CLEAN");
-  expect((await seal(r5, b.spec, sha(D_TEXT))).code).toBe(0);   // 9 judge rounds, and the fifth critic round is still free
+  expect((await seal(r5, b.spec, sha(D_TEXT))).code).toBe(0);
   const r6 = `${b.spec}.critic-spec-r6.md`; unsealedReturn(r6, D_TEXT);
   const res = await seal(r6, b.spec, sha(D_TEXT));
   expect(res.err).toContain(T1_SPEC);   // the count names critics alone
