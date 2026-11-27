@@ -191,10 +191,29 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   // The bus events not yet emitted that belong to this session: a send by or to it, and the
   // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
   type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
-  const busFor = async (): Promise<AguiEvent[]> => {
-    if (!o.busRoot || !session) return [];
-    const batch: BusDelta[] = [];
-    try { for await (const e of busEvents(o.busRoot, { since: 0 })) batch.push(e as BusDelta); } catch { return []; } // no store yet: nothing to merge
+  let scanning = false, restUntil = 0, scanned: { name: string; at: number; batch: BusDelta[] } | undefined;
+  let collected: { name: string; at: number } | undefined, fails = 0;
+  const collect = () => {
+    const root = o.busRoot, name = session;
+    if (!root || !name || scanning || Date.now() < restUntil) return;
+    scanning = true;
+    const at = Date.now();
+    void (async () => {
+      let batch: BusDelta[] = [];
+      try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); fails = 0; } catch { batch = []; fails++; }
+      scanned = { name, at: fails && fails < 3 ? 0 : at, batch };
+      restUntil = Math.max(Date.now() * 2 - at, fails ? Date.now() + o.pollMs : 0);
+      wake?.();
+    })();
+  };
+  const busBehind = () => !!o.busRoot && !!session && (collected?.name !== session || collected.at < grewAt + o.idleMs);
+  const busFor = (): AguiEvent[] => {
+    if (!scanned) return [];
+    const { name, at, batch } = scanned;
+    scanned = undefined;
+    scanning = false;
+    if (name !== session) return [];
+    collected = { name, at };
     const idOf = (e: BusDelta) => /^\/bus\/msgs\/([^/]+)/.exec(e.delta[0].path)?.[1] ?? "";
     for (const e of batch) {
       const d = e.delta[0];
@@ -242,14 +261,15 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
           const cut = pending.length ? Math.min(...pending.map((s) => s.last.ts)) : Infinity;
           const ready = held.filter((l) => l.ts <= cut);
           held = held.filter((l) => l.ts > cut);
-          const events = [...map(ready), ...(await busFor())];
-          if (events.length) { c.enqueue(frame(events)); return; }
+          const events = [...map(ready), ...busFor()];
+          if (events.length) { collect(); c.enqueue(frame(events)); return; }
           if (ready.length || behind.length) continue;
-          if (!runOpen && Date.now() - grewAt >= o.idleMs) {
+          if (!runOpen && !busBehind() && Date.now() - grewAt >= o.idleMs) {
             const rest = [main, ...subs].filter((s) => s.tail).map((s) => ({ text: s.tail, ts: s.last.ts, order: order++ }));
             for (const s of [main, ...subs]) s.tail = "";
             return end(c, [...map([...held, ...rest]), ...mapper.flush()]);
           }
+          collect();
           if (Date.now() - beatAt >= HEARTBEAT_MS) { beatAt = Date.now(); c.enqueue(enc.encode(": keepalive\n\n")); return; }
           await new Promise<void>((r) => { wake = r; timer = setTimeout(r, o.pollMs); });
         }
