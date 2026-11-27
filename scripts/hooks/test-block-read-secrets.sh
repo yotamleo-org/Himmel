@@ -1395,7 +1395,9 @@ QLK='bash scripts/handover/queue-lock.sh'
 XDOC='/h/yotamleo/himmel/HIMMEL-1-secrets-guard-xtrace-word-2026-10-15.md'
 assert_rc "5659 append-results doc named with the word"   0 "$(run_case "$(j_bash "$APR $XDOC 'LIVE — started'")")"
 assert_rc "5659 append-results word in the text"          0 "$(run_case "$(j_bash "$APR $XDOC 'FINDING — the xtrace word is denied'")")"
-assert_rc "5659 append-results abs script path"           0 "$(run_case "$(j_bash "bash /r/scripts/handover/console-kit/append-results.sh $XDOC 'LIVE'")")"
+assert_rc "5659 append-results abs script path"           0 "$(run_case "$(j_bash "bash /r/scripts/handover/chief-kit/append-results.sh $XDOC 'LIVE'")")"
+assert_rc "R7 control: an unlisted append-results path is not exempt" 2 "$(run_case "$(j_bash "bash /r/scripts/handover/other/append-results.sh $XDOC 'LIVE'")")"
+assert_rc "R7 the retired kit spelling is not exempt either"        2 "$(run_case "$(j_bash "bash /r/scripts/handover/console-kit/append-results.sh $XDOC 'LIVE'")")" # old-term-ok: the retired name is the input under test
 assert_rc "5659 append-results through chief-kit"         0 "$(run_case "$(j_bash "bash scripts/handover/chief-kit/append-results.sh $XDOC 'LIVE — started'")")"
 assert_rc "5659 append-results abs path through chief-kit" 0 "$(run_case "$(j_bash "bash /r/scripts/handover/chief-kit/append-results.sh $XDOC 'LIVE'")")"
 assert_rc "5659 queue-lock release doc named with word"   0 "$(run_case "$(j_bash "$QLK release $XDOC tok-1")")"

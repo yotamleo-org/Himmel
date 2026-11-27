@@ -548,6 +548,37 @@ for old in console-judge console-judge-ro; do
   check "the registry has no '$old' row" "0" "$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o' | wc -l | tr -d ' ')"
 done
 
+I1_NAMES='env-alias|env_alias|legacy-names|legacy_names_on|deprecated-forwarder|cr-merge-gate|cr-signal|bank-preflight\.sh|headed-arm-leg|close-wrapped-leg|clear-cr-marker|leg-pr-open|onsole-kit|onsole-wait|onsole\|chief\)-kit' # old-term-ok: the retired name is the input under test
+H1_FILES='scripts/hooks/chief-precompact-snapshot.sh
+scripts/hooks/guard-chief-foreground.sh
+scripts/hooks/guard-judge-writes.sh
+scripts/hooks/guard-rm-writes.sh
+scripts/hooks/guard-chief-dispatch.sh
+scripts/hooks/block-chokepoint-env-prefix.sh
+scripts/hooks/block-read-secrets.sh
+scripts/hooks/guard-worker-context-handoff.sh
+marketplace/plugins/himmel-ops/hooks/guard-judge-writes.sh
+marketplace/plugins/himmel-ops/hooks/guard-rm-writes.sh'
+h1_read=0
+set --
+while IFS= read -r f; do
+  [ -f "$ROOT/$f" ] && h1_read=$((h1_read + 1))
+  set -- "$@" "$f"
+done <<EOF
+$H1_FILES
+EOF
+check "H1 reads all ten files (not vacuous)" 10 "$h1_read"
+H1_HITS="$(git -C "$ROOT" grep -n -E "$I1_NAMES" -- "$@")"
+h1_rc=$?
+check "H1 the swept hooks name no retired path ($H1_HITS)" "1:" "$h1_rc:$H1_HITS"
+# shellcheck disable=SC2016
+H1_CONTROL='case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac' # old-term-ok: the retired name is the input under test
+check "H1 control: the pattern matches a retired-path arm" yes \
+  "$(printf '%s\n' "$H1_CONTROL" | grep -qE "$I1_NAMES" && echo yes || echo no)"
+for gone in scripts/handover/console-kit scripts/handover/chief-kit/console-wait.sh scripts/lanes/leg-pr-open.sh; do # old-term-ok: the retired name is the input under test
+  check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
+done
+
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '
   { line[NR] = $1; old[NR] = $2; kind[NR] = $4; n = NR }
