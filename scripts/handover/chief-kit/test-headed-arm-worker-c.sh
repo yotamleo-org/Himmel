@@ -1465,6 +1465,8 @@ else
   contains "53q inaccessible judge scratch leaves the session folder derived" "$out53" "$derived53"
   dry53 "$blocked53/.cache/himmel/verdicts/q/worktrees/gone/scratch"
   refused53 q 'inaccessible nested scratch path'
+  dry53 "$blocked53/worktrees/.cache/himmel/verdicts//scratch"
+  refused53 q 'inaccessible shaped scratch path with an empty qid'
   ln -s "$blocked53" "$shaped53/blocked" || exit 1
   cwd53="$PWD"
   cd "$shaped53" || exit 1
