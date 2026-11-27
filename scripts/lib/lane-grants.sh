@@ -324,6 +324,7 @@ lane_grant_shape() {
         and ((.tool_input | has("cwd") | not) or .tool_input.cwd == .cwd)
         and (.tool_input.command | type == "string")
         and ([.tool_input.command, (.tool_input.cwd // .cwd // "")] | all(type == "string" and (explode | index(0) == null)))
+        and ((.tool_input.cwd // .cwd // "") | contains("\n") | not)
     ' >/dev/null 2>&1 || return 1
     lane=$(printf '%s' "$payload" | jq -r '.himmel_lane') || return 1
     command=$(printf '%s' "$payload" | jq -r '.tool_input.command' && printf .) || return 1
@@ -369,7 +370,7 @@ lane_grants_report() {
     dir=$(_himmel_policy_dir) || { echo 'problem: the account home cannot be resolved; no grant applies'; return 0; }
     home_dir="${HOME:-}/.himmel"
     if [ "$dir" != "$home_dir" ] && ! [ "$dir" -ef "$home_dir" ]; then
-        if grep -q '"lane_grants"' "$home_dir/config.json" 2>/dev/null; then
+        if [ -f "$home_dir/config.json" ] && grep -q '"lane_grants"' "$home_dir/config.json" 2>/dev/null; then
             echo 'problem: the two config paths are not the same file; no grant applies'
         else
             echo 'info: lane grants not checked (HOME is not the account home)'
@@ -379,6 +380,10 @@ lane_grants_report() {
     file="$dir/config.json"
     if [ ! -e "$file" ] && [ ! -L "$file" ]; then
         echo 'info: no lane grants (antigravity and codex run the full terminal fence)'
+        return 0
+    fi
+    if [ ! -f "$file" ]; then
+        echo 'problem: config.json is not a regular file; no lane holds anything'
         return 0
     fi
     if ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$file" >/dev/null 2>&1; then

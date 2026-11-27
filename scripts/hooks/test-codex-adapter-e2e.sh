@@ -161,12 +161,15 @@ run_fix() {
         jq -c "${3:-.}" |
         ( cd "$FIXWT" && PATH="$TMP/bin:$PATH" CLAUDE_PROJECT_DIR="$FIX" bash "$FIX/.codex/codex-hook-adapter.sh" "$1" 2>/dev/null )
 }
-allowed() { case "$2" in *'"permissionDecision":"deny"'*) bad "$1 ($2)";; *) ok "$1";; esac; }
+allowed() {
+    if [ "$3" != 0 ]; then bad "$1 (adapter exit $3)"; return; fi
+    case "$2" in *'"permissionDecision":"deny"'*) bad "$1 ($2)";; *) ok "$1";; esac
+}
 denied_by() { case "$2" in *'"permissionDecision":"deny"'*"$3"*) ok "$1";; *) bad "$1 ($2)";; esac; }
 
 grant codex git-push-branch
-out="$(run_fix block-terminal-write-fence.sh 'git push -u origin feat/x')"
-allowed "T11a granted branch push -> allow" "$out"
+out="$(run_fix block-terminal-write-fence.sh 'git push -u origin feat/x')"; rc=$?
+allowed "T11a granted branch push -> allow" "$out" "$rc"
 grant antigravity git-push-branch
 out="$(run_fix block-terminal-write-fence.sh 'git push -u origin feat/x' '. + {himmel_lane:"antigravity"}')"
 denied_by "T11b a payload's own himmel_lane is overwritten" "$out" 'git push is refused'
@@ -177,8 +180,8 @@ git -C "$FIXWT" rev-parse HEAD > "$FIX/.git/cr-pending/feat/x"
 out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"
 denied_by "T11c full chain: a review marker refuses a granted pr create" "$out" 'Automated review pending for feat/x'
 rm -rf "$FIX/.git/cr-pending"
-out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"
-allowed "T11d full chain: no marker -> granted pr create allowed" "$out"
+out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"; rc=$?
+allowed "T11d full chain: no marker -> granted pr create allowed" "$out" "$rc"
 rm -f "$GRANT_CFG"
 out="$(run_fix "$FIX_CHAIN" 'gh pr create -H feat/x -t a -b b --base main')"
 denied_by "T11 no config: the full chain refuses pr create" "$out" 'external-write'

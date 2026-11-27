@@ -4417,9 +4417,9 @@ operator whether Codex gets the fetch grant.
 | `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Every host is allowed; there is no host allow or deny list yet |
 
 The command must be one simple command of literal words: no expansion,
-operator, redirect, glob or continuation. Push and PR need every fetch and push
-URL of `origin` (after `insteadOf` and `pushurl`) to name the pinned repo, no
-`remote.origin.push` and no mirror mode.
+operator, redirect, glob or continuation. Push and PR need `origin` to have
+exactly one fetch URL and one push URL (after `insteadOf` and `pushurl`), each
+naming the pinned repo, no `remote.origin.push` and no mirror mode.
 
 **Scope.** A grant acts only on work inside the checkout the adapter resolves:
 the checkout holding `.codex` for Codex (the himmel checkout, or a

@@ -230,6 +230,7 @@ refuse_payload 'tool_input.workdir (T10)' \
     "$(payload 'git push origin feat/x' | jq -c --arg d "$WT" '.tool_input.workdir=$d')"
 refuse_payload 'a NUL in the command string' \
     "$(payload 'curl -q -g https://e/a' | jq -c '.tool_input.command += "\u0000"')"
+refuse_payload 'a cwd ending in a newline' "$(payload 'curl -q -g https://e/a' "$WT"$'\n')"
 refuse_payload 'tool_name PowerShell' "$(payload 'git push origin feat/x' | jq -c '.tool_name="PowerShell"')"
 refuse_payload 'no himmel_lane' "$(payload 'git push origin feat/x' | jq -c 'del(.himmel_lane)')"
 git -C "$WT" checkout -q --detach
@@ -285,6 +286,19 @@ case "$got" in *'info: lane grants not checked (HOME is not the account home)'*)
 all_on; got=$(report_redirected "$T/log")
 case "$got" in *'problem: the two config paths are not the same file; no grant applies'*) ok ;; *) bad "redirected HOME with the key ($got)" ;; esac
 if grep -qF "$SENT" "$T/log"; then bad "redirected HOME: the sentinel path was named"; else ok; fi
+
+echo "== report: a config that is not a regular file is never opened =="
+if command -v timeout >/dev/null 2>&1; then
+    rm -f "$CFG"; mkfifo "$CFG"
+    got=$(timeout 10 bash -c '. "$1/load-dotenv.sh"; . "$1/nwo.sh"; . "$1/../guardrails/lib.sh"; . "$1/lane-grants.sh"
+        lane_grants_report "$2"' _ "$LIBDIR" "$PRIMARY"); rc=$?
+    case "$rc:$got" in 0:*'problem: config.json is not a regular file'*) ok ;; *) bad "report on a FIFO (rc $rc '$got')" ;; esac
+    got=$(HOME="$T/fifo-home" timeout 10 bash -c 'mkdir -p "$HOME/.himmel" && mkfifo "$HOME/.himmel/config.json" &&
+        . "$1/load-dotenv.sh" && . "$1/nwo.sh" && . "$1/../guardrails/lib.sh" && . "$1/lane-grants.sh" &&
+        HIMMEL_POLICY_FOLLOWS_HOME="" && _himmel_policy_dir() { printf /nonexistent/.himmel; } && lane_grants_report' _ "$LIBDIR"); rc=$?
+    case "$rc:$got" in 0:*'info: lane grants not checked'*) ok ;; *) bad "redirected report on a FIFO (rc $rc '$got')" ;; esac
+    rm -f "$CFG"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
