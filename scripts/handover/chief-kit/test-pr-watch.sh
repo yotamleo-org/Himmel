@@ -56,14 +56,16 @@ wexec() {
 wenv() { wexec "$1" "$2" timeout -k 2 "$3" > "$4" 2>"$4.err"; }
 pr_reads() { grep -cE '/pulls/[0-9]+$' "$S/gh.log" 2>/dev/null; }
 wenv_quiet() {
-    local pid i=0 n0
+    local pid i=0 j n0
     n0="$(pr_reads)"; quiet_state=""
     wexec "$1" "$2" exec > "$3" 2>"$3.err" &
     pid=$!; quiet_pid=$pid
     while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do
         if [ $(( $(pr_reads) - n0 )) -ge 2 ]; then
             kill -STOP "$pid" 2>/dev/null
-            quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
+            j=0; while [ "$(awk '{print $3}' "/proc/$pid/stat" 2>/dev/null)" != T ] && [ "$j" -lt 100 ]; do sleep 0.01; j=$((j + 1)); done
+            quiet_state=""
+            [ "$j" -ge 100 ] || quiet_state="$(sed -n "s/.* pid=$pid .* state=\([a-z]*\).*/\1/p" "$1.wait" 2>/dev/null)"
             [ "$quiet_state" != waiting ] || break
             kill -CONT "$pid" 2>/dev/null
         fi
@@ -75,12 +77,12 @@ wenv_quiet() {
     i=0; while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 600 ]; do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; rc=137; return; fi
     wait "$pid" 2>/dev/null; rc=124
-    [ "$quiet_polls" -ge 2 ] || rc=125
+    { [ "$quiet_polls" -ge 2 ] && [ "$quiet_state" = waiting ]; } || rc=125
 }
 mkdir -p "$S/slow"
 {
     printf '%s\n' '#!/usr/bin/env bash'
-    printf '%s\n' 'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) printf "%s\n" "$PPID" > "$S/slow.held"; sleep "$(cat "$S/slow.hold")" ;; esac'  # read-sink-ok: the test's mv shim reads only the heartbeat temp file the waiter under test hands mv
+    printf '%s\n' 'case "$(cat "${2:-/dev/null}" 2>/dev/null)" in *" exit=signal-"*) sleep "$(cat "$S/slow.hold")" && printf "%s\n" "$PPID" > "$S/slow.held" ;; esac'  # read-sink-ok: the test's mv shim reads only the heartbeat temp file the waiter under test hands mv
     printf '%s\n' 'PATH="${PATH#"$S/slow:"}"; exec mv "$@"'
 } > "$S/slow/mv"
 chmod +x "$S/slow/mv"; printf '3\n' > "$S/slow.hold"
