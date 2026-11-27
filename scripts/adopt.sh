@@ -175,6 +175,13 @@ PORTABLE_FILES=(
   scripts/hooks/lib/shell-tokenize.sh
   scripts/lib/guard-empty-expansion.sh
   scripts/lib/bash-ast.sh
+  scripts/harnesses/registry.jq
+  scripts/harnesses/harness.schema.json
+  scripts/harnesses/claude.json
+  scripts/harnesses/codex.json
+  scripts/harnesses/antigravity.json
+  scripts/harnesses/grok.json
+  scripts/harnesses/cursor.json
   scripts/hooks/check-commit-msg.sh
   scripts/lib/project-mode.sh
   scripts/lib/load-dotenv.sh
