@@ -1125,7 +1125,7 @@ function generatedWorld({ catalog = true, port = 'copy', extraEnv = {}, allowRef
   const w = {
     rs, home, sid, attempt, doc, head, oid, linkOid, catalogDoc, catalogPath, run, launchEnv, qenv, CRED_SENTINEL, src,
     startupPath: attempt ? join(attempt, 'startup.json') : null,
-    mcpPath: join(rs, `${ENV_NAME}.leg-mcp.json`),
+    mcpPath: attempt ? join(attempt, 'leg-mcp.json') : null,
     token: attempt && existsSync(join(attempt, 'lease-token')) ? readFileSync(join(attempt, 'lease-token'), 'utf8').trim() : null,
     status: () => ql('status', doc).stdout.trim().split('\n').pop(),
     owner: () => { const m = /"session":"([^"]+)"/.exec(ql('status', doc).stdout); return m ? m[1] : null; },

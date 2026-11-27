@@ -84,7 +84,7 @@ rs_run_wrapper() {
     CLAUDE_CODE_SESSION_ID="launcher-scope-$rs_n" HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude" \
     HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$RS/proceed-preflight.sh" \
     KONSOLE_CMD="$RS_D/konsole" PGREP_CMD="$RS_D/pgrep" WORKER_SESSION_REPO="$RS/repo" HEADED_ARM_LOCK_DIR="$RS_D/locks" HEADED_ARM_PROC="$RS_D/proc" \
-    WORKER_SESSION_READINESS_FIXTURE="$RS" RS_QL="$RS_QL" "$@" bash "$SCRIPT" ${RS_FLAGS[@]+"${RS_FLAGS[@]}"} --profile "$RS_PROFILE" "$RS_NAME" "$rs_arg" "$RS_D/signal-never" "$PAST" "$RS_D/log" claude-sonnet-5-5 > "$RS_D/out" 2>&1
+    WORKER_SESSION_READINESS_FIXTURE="$RS" RS_QL="$RS_QL" "$@" bash "$SCRIPT" ${RS_FLAGS[@]+"${RS_FLAGS[@]}"} --profile "$RS_PROFILE" "$RS_NAME" "$rs_arg" "$RS_D/signal-never" "$PAST" "${RS_LOG_DIR:-$RS_D}/log" claude-sonnet-5-5 > "$RS_D/out" 2>&1
 }
 rs_launch() {
   rs_n=$((rs_n + 1))
@@ -92,8 +92,9 @@ rs_launch() {
   RS_DOC_DIR="$RS/hdir/u/r"
   [ "${RS_MANAGED:-0}" != 1 ] || { RS_DOC_DIR="$RS/hdir/m$rs_n"; mkdir -p "$RS_DOC_DIR"; }
   [ "${RS_DOC_OUTSIDE:-0}" != 1 ] || { RS_DOC_DIR="$tmp/rs-outside/docs"; mkdir -p "$RS_DOC_DIR"; }
-  RS_D="$RS/c$rs_n"; RS_DOC="$RS_DOC_DIR/readiness-v1.$rs_n.0.md"; RS_NAME="PROJ-9999-rs$rs_n"
+  RS_D="$RS/c$rs_n"; RS_DOC="$RS_DOC_DIR/readiness-v1.$rs_n.0.md"; RS_NAME="${RS_NAME_FIXED:-PROJ-9999-rs$rs_n}"
   mk_launch_stubs "$RS_D" "$RS_NAME"; mkdir -p "$RS_D/xdg"; chmod 700 "$RS_D/xdg"
+  [ "${RS_PRE_CONFIRM:-0}" != 1 ] || : > "$RS_D/confirmable"
   case "$RS_DOC_KIND" in
     symlink) fx_brief "# target $rs_n" > "$RS/hdir/u/r/target-$rs_n.md"; ln -s "$RS/hdir/u/r/target-$rs_n.md" "$RS_DOC" ;;
     nofm) printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$RS_DOC" ;;
@@ -105,6 +106,17 @@ rs_launch() {
   # RS_DOC_REL=1 launches from the doc's own directory with the bare file name, so a relative DOC is the real shape under test
   rs_arg="$RS_DOC"; rs_cwd="$PWD"
   [ "${RS_DOC_REL:-0}" != 1 ] || { rs_cwd="$(dirname "$RS_DOC")"; rs_arg="$(basename "$RS_DOC")"; }
+  if [ -n "${RS_BG_UNTIL:-}" ]; then
+    rs_run_wrapper "$@" &
+    RS_BG_PID=$! RS_BG_D="$RS_D"
+    local i=0
+    while [ ! -e "$RS_BG_UNTIL" ] && [ "$i" -lt 400 ]; do
+      sleep 0.05
+      i=$((i + 1))
+    done
+    [ -e "$RS_BG_UNTIL" ]
+    return
+  fi
   if [ -n "${RS_SIGNAL_AFTER:-}" ]; then
     # RS_SIGNAL_AFTER=<marker>: a background launch that gets one signal (RS_SIGNAL, default TERM) as soon as a stub creates the marker
     rs_run_wrapper "$@" &
@@ -120,6 +132,14 @@ rs_launch() {
   else
     ( rs_run_wrapper "$@" ) || RS_RC=$?
   fi
+  rs_launch_result
+}
+rs_bg_finish() {
+  RS_D="$RS_BG_D" RS_RC=0
+  wait "$RS_BG_PID" || RS_RC=$?
+  rs_launch_result
+}
+rs_launch_result() {
   [ -z "${RS_DEBUG:-}" ] || { echo "--- rs$rs_n rc=$RS_RC"; cat "$RS_D/out"; }
   [ "$RS_RC" -ne 0 ] || wait_record "$RS_D" || true
   RS_SID="$(grep -oE 'WORKER_SESSION_ID=[0-9a-f-]{36}' "$RS_D/record" 2>/dev/null | head -n 1 | cut -d= -f2)"
@@ -140,7 +160,7 @@ rs_refused() {
 # the success path
 rs_launch
 rs_tok="$(cat "$RS_A/lease-token" 2>/dev/null || true)"
-rs_set="$RS_D/$RS_NAME.leg-settings.json"; rs_mcp="$RS_D/$RS_NAME.leg-mcp.json"
+rs_set="$RS_A/leg-settings.json"; rs_mcp="$RS_A/leg-mcp.json"
 check "17s launch: exit 0 and the launch reached konsole" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
 contains "17s launch: the launcher env carries the readiness role marker" "$(cat "$RS_D/record")" "WORKER_SESSION_PROFILE_READINESS=1"
 check "17s launch: the minted session id is a uuid" "$(printf '%s' "$RS_SID" | grep -cE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')" "1"
@@ -151,8 +171,8 @@ check "17s launch: the generated settings are exactly the four allowed keys, no 
 check "17s launch: the strict MCP config is exactly the one readiness adapter bound to the private startup config" \
   "$(jq -c . "$rs_mcp" 2>/dev/null || true)" \
   "$(jq -cn --arg a "$(cd "$HERE" && pwd -P)/readiness-tools.mjs" --arg s "$RS_A/startup.json" '{mcpServers:{readiness:{command:"node",args:[$a,"--startup-config",$s]}}}')"
-check "17s launch: the private attempt directory is mode 0700 and holds only startup.json and the lease transport (0600)" \
-  "$(stat -c '%a' "$RS_A" 2>/dev/null):$(find "$RS_A" -mindepth 1 -printf '%f\n' 2>/dev/null | sort | tr '\n' ' '):$(stat -c '%a' "$RS_A/startup.json" "$RS_A/lease-token" 2>/dev/null | tr '\n' ' ')" "700:lease-token startup.json :600 600 "  # gnu-ok: this suite is Linux-only (konsole), where GNU stat is the platform tool
+check "17s launch: the private attempt directory is mode 0700 and holds four files at mode 0600" \
+  "$(stat -c '%a' "$RS_A" 2>/dev/null):$(find "$RS_A" -mindepth 1 -printf '%f\n' 2>/dev/null | sort | tr '\n' ' '):$(stat -c '%a' "$RS_A"/leg-mcp.json "$RS_A"/leg-settings.json "$RS_A"/lease-token "$RS_A"/startup.json 2>/dev/null | tr '\n' ' ')" "700:lease-token leg-mcp.json leg-settings.json startup.json :600 600 600 600 "  # gnu-ok: this suite is Linux-only (konsole), where GNU stat is the platform tool
 check "17s launch: the startup config carries the minted id as its immutable session scope, the canonical doc and no token" \
   "$(jq -c '[.schema, .session_scope, .version, .doc, .lane, .model, .port, .queue_lock, .runtime_dir, .handover_dir, (.attempt_id | length > 0), (keys | join(","))]' "$RS_A/startup.json" 2>/dev/null || true)" \
   "$(jq -cn --arg sid "$RS_SID" --arg ver "v1.$rs_n.0" --arg doc "$RS_DOC" --arg ql "$RS_QL" --arg xdg "$RS_D/xdg" --arg hd "$RS/hdir" '["readiness-startup-v1",$sid,$ver,$doc,"native","claude-sonnet-5-5",{kind:"copy"},$ql,$xdg,$hd,true,"attempt_id,doc,handover_dir,lane,model,port,queue_lock,runtime_dir,schema,session_scope,version"]')"
@@ -180,6 +200,55 @@ rs_render3="$(env -i PATH="$PATH" HOME="$RS/home" WORKER_SESSION_CLAUDE_BIN="$RS
 contains "17s preface: the rendered final argv still binds the minted id and the strict MCP config" "$rs_render3" "[--session-id][$RS_SID]"
 not_contains "17s preface: the rendered final argv carries no --append-system-prompt-file" "$rs_render3" "[--append-system-prompt-file]"
 
+mkdir -p "$RS/shared"
+cat > "$RS/hold-preflight.sh" <<'HOLD_PREFLIGHT'
+#!/usr/bin/env bash
+dir="$(dirname "$0")"
+: > "$dir/held"
+for ((i = 0; i < 600; i++)); do
+  if [ -e "$dir/hold.go" ]; then
+    echo PROCEED
+    exit 0
+  fi
+  sleep 0.1
+done
+: > "$dir/hold.timed-out"
+echo SKIPPED-FLEET
+HOLD_PREFLIGHT
+chmod 755 "$RS/hold-preflight.sh"
+rs_shared_name=PROJ-9999-rs-shared
+rs_case_render() {
+  env -i PATH="$PATH" HOME="$RS/home" WORKER_SESSION_CLAUDE_BIN="$RS/bin/claude" WORKER_SESSION_PROFILE_READINESS=1 WORKER_SESSION_RENDER_ARGV=1 \
+    WORKER_SESSION_PROFILE_SETTINGS="$1" WORKER_SESSION_PROFILE_MCP_CONFIG="$2" WORKER_SESSION_ID="$RS_SID" \
+    bash "$SHIM" --model claude-sonnet-5-5 --autocompact 200000 -n "$rs_shared_name" "load $3 and continue" 2>/dev/null | rs_decode
+}
+rs_hold_rc=0
+RS_NAME_FIXED="$rs_shared_name" RS_LOG_DIR="$RS/shared" RS_BG_UNTIL="$RS/held" rs_launch HEADED_ARM_WORKER_PREFLIGHT="$RS/hold-preflight.sh" || rs_hold_rc=$?
+check "17s-10351 T1 control: A reached its held preflight" "$rs_hold_rc" "0"
+rs_a_doc="$RS_DOC"
+RS_NAME_FIXED="$rs_shared_name" RS_LOG_DIR="$RS/shared" rs_launch
+check "17s-10351 T1 control: B finished and reached konsole" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
+rs_b_config="$RS_A/leg"
+[ -f "$rs_b_config-mcp.json" ] || rs_b_config="$RS/shared/$rs_shared_name.leg"
+contains "17s-10351 T1 control: B renders with its own id" "$(rs_case_render "$rs_b_config-settings.json" "$rs_b_config-mcp.json" "$RS_DOC")" "[--session-id][$RS_SID]"
+: > "$RS/hold.go"
+rs_bg_finish
+check "17s-10351 T1 control: A did not time out" "$([ -e "$RS/hold.timed-out" ] && echo yes || echo no)" "no"
+rs_a_render="$(rs_case_render "$RS_A/leg-settings.json" "$RS_A/leg-mcp.json" "$rs_a_doc")"
+rs_a_scope="$(jq -r .session_scope "$RS_A/startup.json" 2>/dev/null)"
+rs_a_bound=no
+if [ -n "$RS_SID" ] && [ "$RS_SID" = "$rs_a_scope" ] && [[ "$rs_a_render" == *"[--session-id][$RS_SID]"* ]]; then
+  rs_a_bound=yes
+fi
+check "17s-10351 T1: A launches and renders with its own immutable id" \
+  "$RS_RC:$(grep -cF 'the launcher refused the generated argv' "$RS_D/out" || true):$rs_a_bound" "0:0:yes"
+
+rs_launch
+rs_t2_layout="$(stat -c '%a' "$RS_A" 2>/dev/null):$(find "$RS_A" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' '):$(stat -c '%a' "$RS_A"/leg-mcp.json "$RS_A"/leg-settings.json "$RS_A"/lease-token "$RS_A"/startup.json 2>/dev/null | tr '\n' ' ')"  # gnu-ok: this suite is Linux-only
+check "17s-10351 T2: readiness files are private and absent from the log directory" \
+  "$rs_t2_layout:$(find "$RS_D" -maxdepth 1 -name "$RS_NAME.leg-*.json" -type f | wc -l | tr -d ' ')" \
+  "700:lease-token leg-mcp.json leg-settings.json startup.json :600 600 600 600 :0"
+
 # a relative DOC is leased, configured AND loaded as the same canonical document
 RS_DOC_REL=1; rs_launch; RS_DOC_REL=0
 check "17s relative doc: the launch succeeds" "$RS_RC" "0"
@@ -199,10 +268,12 @@ RS_PROFILE="worker-impl"; rs_launch
 check "17s a generic profile launch is unchanged: launched, no readiness marker, no attempt directory" "$RS_RC:$(grep -c 'WORKER_SESSION_PROFILE_READINESS' "$RS_D/record" 2>/dev/null || true):$(rs_attempts)" "0:0:0"
 check "17s a generic profile launch keeps its worker preface and the brief contract (only the readiness role drops them)" \
   "$([ -s "$RS_D/$RS_NAME.worker-preface.md" ] && echo preface):$(grep -c '^WORKER_SESSION_PROFILE_PREFACE=' "$RS_D/env-record" 2>/dev/null || true):$([ -e "$RS_D/$RS_NAME.worker-contract.md" ] && echo contract)" "preface:1:contract"
+check "17s-10351 T2 control: generic profile keeps settings in the log directory and has no attempt" \
+  "$([ -s "$RS_D/$RS_NAME.leg-settings.json" ] && echo yes):$(rs_attempts)" "yes:0"
 RS_PROFILE=readiness
 RS_FLAGS=(--dry-run); rs_launch; RS_FLAGS=()
 check "17s dry-run: exits 0 and writes nothing (no attempt directory, no lease, no settings or MCP file, no recorded id, no launch)" \
-  "$RS_RC:$(rs_attempts):$(rs_status):$([ -e "$RS_D/$RS_NAME.leg-settings.json" ] || [ -e "$RS_D/$RS_NAME.leg-mcp.json" ] && echo written || echo none):$(grep -c '^session_ids:' "$RS_DOC"):$([ -e "$RS_D/record" ] && echo launched || echo none)" "0:0:free:none:0:none"
+  "$RS_RC:$(rs_attempts):$(rs_status):$(find "$RS_D" -name 'leg-*.json' -o -name '*.leg-*.json' | wc -l | tr -d ' '):$(grep -c '^session_ids:' "$RS_DOC"):$([ -e "$RS_D/record" ] && echo launched || echo none)" "0:0:free:0:0:none"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude;   rs_refused "a relative binary (refused before the acquire)"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/no-such"; rs_refused "a missing binary (the real render refuses before the acquire)"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude-codex"; chmod 755 "$RS/bin/claude-codex"

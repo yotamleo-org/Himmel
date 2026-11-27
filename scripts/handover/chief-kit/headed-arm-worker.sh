@@ -165,7 +165,7 @@
 #      re-injecting it only after a compaction (contract x (compactions+1)).
 #      Instead it is written to its own per-worker <name>.worker-contract.md, and a
 #      SessionStart hook with `"matcher": "compact"` is added to the
-#      generated <name>.leg-settings.json to `cat` it back in whenever a
+#      generated settings beside the launch log to read it back in whenever a
 #      compaction fires - the `load <brief> and continue` first turn is the
 #      only thing still compactable, and this hook re-supplies the contract
 #      the moment it would otherwise be lost.
@@ -174,7 +174,8 @@
 #      worker never acts on. inject-initiative.sh deliberately still speaks.
 #   4. When the profile declares an mcpServers allowlist,
 #      plugin-profiles.mjs's definitions are written as a second JSON next to
-#      the settings file, and the shim additionally prepends `--mcp-config
+#      the settings file. Readiness writes both inside its private attempt directory.
+#      The shim additionally prepends `--mcp-config
 #      <that file> --strict-mcp-config` — stripping every MCP server NOT
 #      named there, including the user-level ones (graphify, obsidian-vault,
 #      context7 in ~/.claude.json) that were the bulk of the un-measured
@@ -2499,7 +2500,20 @@ if [ -n "$PROFILE" ]; then
         echo "headed-arm-worker: --profile $PROFILE: cannot resolve log directory for $LOG" >&2
         exit 2
     }
-    PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
+    if [ "$READINESS" -eq 1 ]; then
+        READINESS_SID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"  # swallow-ok: no uuid source leaves an empty id, refused by the shape check below
+        READINESS_SID="$(printf '%s' "$READINESS_SID" | tr 'A-F' 'a-f')"
+        if ! [[ "$READINESS_SID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "headed-arm-worker: refusing the readiness role: no session id could be minted" >&2
+            exit 2
+        fi
+        READINESS_ROOT="${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-readiness}"
+        READINESS_ROOT="${READINESS_ROOT:-/tmp/himmel-readiness-$(id -u)}"
+        READINESS_ATTEMPT="$READINESS_ROOT/$READINESS_SID"
+        PROFILE_SETTINGS="$READINESS_ATTEMPT/leg-settings.json"
+    else
+        PROFILE_SETTINGS="$_worker_log_dir/$NAME.leg-settings.json"
+    fi
     PROFILE_CONTRACT="$_worker_log_dir/$NAME.worker-contract.md"
     for _worker_need in "$PROFILES_MJS" "$WORKER_SESSION_SHIM" "$WORKER_SESSION_PREFACE"; do
         if [ ! -f "$_worker_need" ]; then
@@ -2923,23 +2937,16 @@ EOF_CS_FILES
             echo "headed-arm-worker: --profile $PROFILE: mcp-config resolution failed: $MCP_CONFIG_JSON" >&2
             exit 2
         fi
-        PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
+        if [ "$READINESS" -eq 1 ]; then
+            PROFILE_MCP_CONFIG="$READINESS_ATTEMPT/leg-mcp.json"
+        else
+            PROFILE_MCP_CONFIG="$_worker_log_dir/$NAME.leg-mcp.json"
+        fi
         worker_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG "$PROFILE_MCP_CONFIG"
     fi
-    # The readiness role mints its ACTUAL session id here, before any private config or lease: the id is immutable
-    # from now on, written into the private startup config and handed to the launcher as --session-id. The strict
-    # MCP config is generated for this launch (the registry holds no server): exactly one readiness adapter, started
-    # against that private startup config. Nothing is written yet; the real-launch block below writes it.
+    # The strict MCP config for readiness names one adapter bound to this attempt's startup config.
+    # The startup config binds the session id minted above and handed to the launcher as --session-id.
     if [ "$READINESS" -eq 1 ]; then
-        READINESS_SID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"  # swallow-ok: no uuid source leaves an empty id, refused by the shape check below
-        READINESS_SID="$(printf '%s' "$READINESS_SID" | tr 'A-F' 'a-f')"
-        if ! [[ "$READINESS_SID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
-            echo "headed-arm-worker: refusing the readiness role: no session id could be minted" >&2
-            exit 2
-        fi
-        READINESS_ROOT="${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-readiness}"
-        READINESS_ROOT="${READINESS_ROOT:-/tmp/himmel-readiness-$(id -u)}"
-        READINESS_ATTEMPT="$READINESS_ROOT/$READINESS_SID"
         READINESS_ADAPTER="$(cd -P "$HERE" && pwd -P)/readiness-tools.mjs"
         if [ "$MCP_NAMES_JSON" = "null" ]; then
             echo "headed-arm-worker: refusing the readiness role: its profile resolved no MCP allowlist" >&2
@@ -3134,11 +3141,13 @@ fi
 
 # Real launch: now write the resolved settings the shim will pass to claude.
 if [ -n "$PROFILE" ]; then
-    if ! printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS"; then
-        echo "headed-arm-worker: --profile $PROFILE: cannot write settings to $PROFILE_SETTINGS" >&2
-        exit 2
+    if [ "$READINESS" -eq 0 ]; then
+        if ! printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS"; then
+            echo "headed-arm-worker: --profile $PROFILE: cannot write settings to $PROFILE_SETTINGS" >&2
+            exit 2
+        fi
+        chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     fi
-    chmod 600 "$PROFILE_SETTINGS" 2>/dev/null || true
     if [ "$LANE_CHANNEL" = "file" ]; then
         if ! awk -v identity="$WORKER_LAUNCH_IDENTITY" 'NR == 1 { print; print ""; print identity; next } { print }' \
             "$WORKER_SESSION_PREFACE" "$CLAUDEX_PREFACE" > "$WORKER_SESSION_PROFILE_PREFACE"; then
@@ -3227,7 +3236,7 @@ if [ -n "$PROFILE" ]; then
             echo "$(date +%F_%T) headed-arm-worker: WARN repo-map not injected (graph=$_rm_graph, $_rm_why); launching without it" >> "$LOG"
         fi
     fi
-    if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
+    if [ "$READINESS" -eq 0 ] && [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
         if ! printf '%s\n' "$MCP_CONFIG_JSON" > "$WORKER_SESSION_PROFILE_MCP_CONFIG"; then
             echo "headed-arm-worker: --profile $PROFILE: cannot write mcp config to $WORKER_SESSION_PROFILE_MCP_CONFIG" >&2
             exit 2
@@ -3586,8 +3595,8 @@ if [ "${#WORKER_SESSION_SCOPE[@]}" -gt 0 ]; then
     HA_RUN=("${WORKER_SESSION_SCOPE[@]}" "${HA_RUN[@]}")
 fi
 # --- The readiness role: private startup config, pre-acquire gate, on-behalf lease (C0s cycle 2). ---
-# Order is the contract. The session id was minted and the settings/MCP files written above. Here: (1) the private
-# attempt directory and its startup config (which binds that id); (2) the REAL launcher render of the final argv;
+# Order is the contract. The session id was minted above. Here: (1) the private attempt directory, its startup
+# config (which binds that id), settings and MCP config; (2) the REAL launcher render of the final argv;
 # (3) the C0p effectiveness reader (effective only: ineffective and unknown refuse); (3b) the jira port's credential
 # initialization, the only step that resolves a secret; (4) ONLY THEN the on-behalf acquire
 # (nothing registered for this launcher: no token file, .doc sidecar or liveness marker) and the token's private
@@ -3704,6 +3713,10 @@ if [ "$READINESS" -eq 1 ]; then
         || _readiness_refuse "cannot build the private startup config"
     ( umask 077 && set -C && printf '%s\n' "$_ready_startup" > "$READINESS_ATTEMPT/startup.json" ) 2>/dev/null \
         || _readiness_refuse "cannot write the private startup config"
+    ( umask 077 && set -C && printf '%s\n' "$PROFILE_JSON" > "$PROFILE_SETTINGS" ) 2>/dev/null \
+        || _readiness_refuse "cannot write the private settings"
+    ( umask 077 && set -C && printf '%s\n' "$MCP_CONFIG_JSON" > "$PROFILE_MCP_CONFIG" ) 2>/dev/null \
+        || _readiness_refuse "cannot write the private MCP config"
     unset -v _ready_startup
     # (2) the REAL launcher render of the final argv, with the same environment the launch will carry
     WORKER_SESSION_RENDER_ARGV=1 bash "$WORKER_SESSION_SHIM" --model "$MODEL" --autocompact "$RESOLVED_AUTOCOMPACT" -n "$NAME" "load $DOC and continue" >/dev/null \
