@@ -6159,10 +6159,6 @@ check_c102_lane_grants() {
     local out line lanes="" fix
     fix="edit lane_grants in ~/.himmel/config.json by hand; see docs/internals/enforcement.md#lane-capability-grants"
     out="$(
-        # shellcheck source=lib/load-dotenv.sh
-        # shellcheck source=lib/nwo.sh
-        # shellcheck source=guardrails/lib.sh
-        # shellcheck source=lib/lane-grants.sh
         for lib in lib/load-dotenv.sh lib/nwo.sh guardrails/lib.sh lib/lane-grants.sh; do
             # shellcheck disable=SC1090
             . "$SELF_DIR/$lib" || exit 1
