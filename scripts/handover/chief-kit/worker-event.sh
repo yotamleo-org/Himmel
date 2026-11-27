@@ -31,9 +31,9 @@
 #                        line after a GO-WRITTEN). Any other auto-go answer is
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached with its output discarded and bounded by GNU timeout where one exists (LE_DRYRUN_BOUND seconds, default 60; macOS has none, so there it is detached but unbounded; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
 #                        A WRAPPED whose worker doc says `Completes ticket: no` first writes the ticket's next step
-#                        to the chief doc's owed ledger (owe.sh: a step row due today, `sign the design` after a
-#                        READY-TO-SIGN not yet signed, else `launch the next slice`, plus one chief notification
-#                        row the waiter wakes on); a row that cannot be written is ESCALATE next-step-owe-failed.
+#                        to the chief doc's owed ledger (owe.sh: a step row due today, `sign the design if it is
+#                        not signed yet` after any READY-TO-SIGN, else `launch the next slice`, plus one chief
+#                        notification row the waiter wakes on); a row that cannot be written is ESCALATE next-step-owe-failed.
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
@@ -302,7 +302,7 @@ if [ -n "$halted" ]; then
 fi
 
 owe_next_step() {
-    local stem key flag results stream ready hash_re ask sha actor=chief step due id out bucket chief
+    local stem key flag results stream ready sha actor=chief step due id out bucket chief
     stem="${worker##*/}"; stem="${stem%.md}"
     [[ $stem =~ ^([A-Z][A-Z0-9]*-[0-9]+)- ]] || return 0
     key="${BASH_REMATCH[1]}"
@@ -310,17 +310,14 @@ owe_next_step() {
     [ "$flag" = no ] || return 0
     results="$(awk '/^## Results/ { r = 1; next } r && /^- /' "$worker")"
     stream="$results"$'\n'"$body"
-    ready="$(grep -nF 'READY-TO-SIGN' <<< "$stream")" || ready=""
+    ready="$(grep -F 'READY-TO-SIGN' <<< "$stream")" || ready=""
     step="launch the next slice, or close $key by hand when nothing remains"
-    hash_re='spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}'
-    ask="$({ grep -iE "$hash_re" <<< "$ready"; grep -vE '^[0-9]+:(- )?([0-9]{1,2}:[0-9]{2} )?WRAPPED' <<< "$ready"; } | sort -n | tail -n 1)"
-    [ -n "$ask" ] || ask="$(tail -n 1 <<< "$ready")"
-    if [ -n "$ready" ] && ! grep -qiE '(design|spec)( was)? signed by' <<< "$(tail -n "+${ask%%:*}" <<< "$stream")"; then
-        sha="$(grep -oiE "$hash_re" <<< "$ask" | tail -n 1 | grep -oE '[0-9a-f]+$' | cut -c1-12)" || sha=""
-        step="sign the design${sha:+ (spec $sha)}, then dispatch the build"
-        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ask"; then
+    if [ -n "$ready" ]; then
+        sha="$(grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' <<< "$ready" | tail -n 1 | grep -oiE '[0-9a-f]+$' | cut -c1-12)" || sha=""
+        step="sign the design${sha:+ (last spec hash named: $sha)} if it is not signed yet, then dispatch the build"
+        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$ready"; then
             actor=operator
-            step="ask the operator to sign the design${sha:+ (spec $sha)}, then dispatch the build"
+            step="ask the operator to $step"
         fi
     fi
     bucket="$(dirname "$DOC")"; chief="${DOC##*/}"; chief="${chief%.md}"

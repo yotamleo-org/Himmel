@@ -991,7 +991,7 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 2 sha256 260e1fdf724eae7
 run21 "WRAPPED N6021"
 check "21a design wrap: still handled" "$rc/${out%% *}" "0/HANDLED"
 check "21a design wrap: one owed step row for the ticket, a chief sign" "$(owed21 "$step21 | .key + \"/\" + .actor + \"/\" + .chief")" "HIMMEL-21/chief/chief-ZZ"
-contains "21a the row names the sign step and the spec" "$(owed21 "$step21 | .text")" "sign the design (spec 260e1fdf724e)"
+contains "21a the row names the sign step and the spec" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 260e1fdf724e) if it is not signed yet"
 check "21a the row carries a due date" "$(owed21 "$step21 | .due | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}\$\")")" true
 check "21a one chief notification row points at it (the wake)" "$(owed21 'map(select(.kind == "ruling")) | length')/$(owed21 'map(select(.kind == "ruling")) | .[0] | .action + "/" + .event + "/" + .source_id')" "1/notify/step-due/o1"
 run21 "WRAPPED N6021"
@@ -1005,48 +1005,24 @@ lacks "21c and asks for no signature" "$(owed21 "$step21 | .text")" "sign the de
 doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789, the operator signs this one' '- 10:10 WRAPPED — design leg'
 run21 "WRAPPED N6021"
 check "21d an operator-signed design: the row is the operator's" "$(owed21 "$step21 | .actor")" operator
-contains "21d and names the operator ask" "$(owed21 "$step21 | .text")" "ask the operator to sign"
+contains "21d and names the operator ask" "$(owed21 "$step21 | .text")" "ask the operator to sign the design (last spec hash named: abcdef012345)"
 
+conditional='if it is not signed yet, then dispatch the build'
 doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design signed by chief DY; build legs in order'
 run21 "WRAPPED N6021"
-contains "21e an already signed design: the next step is the build slice" "$(owed21 "$step21 | .text")" "launch the next slice"
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:05 LIVE — HIMMEL-21 design signed by chief DY' '- 10:10 WRAPPED — lock released'
-run21 "WRAPPED N6021"
-contains "21e2 a signature recorded before a plain WRAPPED bullet still counts" "$(owed21 "$step21 | .text")" "launch the next slice"
+contains "21e a wrap that records a signature still owes the build, and asks to sign only if unsigned" "$(owed21 "$step21 | .text")" "$conditional"
 
 doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:02 LIVE — design signed by chief DY' '- 10:05 LIVE — READY-TO-SIGN sent: spec rev 2 sha256 2222222222222222' '- 10:10 WRAPPED — lock released'
 run21 "WRAPPED N6021"
-contains "21e4 a signature on an earlier revision does not sign the later one" "$(owed21 "$step21 | .text")" "sign the design (spec 222222222222)"
+contains "21e2 an earlier revision's signature never drops the sign step, and the last hash named wins" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 222222222222) $conditional"
 
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:02 LIVE — design signed by chief DY'
-run21 "WRAPPED N6021 READY-TO-SIGN sent again: spec rev 2 sha256 3333333333333333"
-contains "21e5 a new sign request in the event message outlives the earlier signature" "$(owed21 "$step21 | .text")" "sign the design"
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 1111111111111111, the operator signs this one' '- 10:05 LIVE — READY-TO-SIGN sent: the chief signs this revision' '- 10:10 WRAPPED — lock released'
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: the design is up' '- 10:10 WRAPPED — lock released'
 run21 "WRAPPED N6021"
-check "21e6 the latest request names the signer, not an older one" "$(owed21 "$step21 | .actor")" chief
-lacks "21e7 and an older request's spec hash is not carried onto it" "$(owed21 "$step21 | .text")" "111111111111"
+contains "21e3 a request with no hash names none" "$(owed21 "$step21 | .text")" "sign the design $conditional"
 
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 4444444444444444, the operator signs this one' '- 10:10 WRAPPED — READY-TO-SIGN sent, ticket left open'
-run21 "WRAPPED N6021"
-check "21e8 a WRAPPED bullet that only repeats the request keeps its signer and hash" "$(owed21 "$step21 | .actor + \"/\" + (.text | test(\"444444444444\") | tostring)")" operator/true
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:10 WRAPPED — READY-TO-SIGN spec rev 2 sha256 5555555555555555, the operator signs this one'
-run21 "WRAPPED N6021"
-check "21e9 a new request on a WRAPPED line names its own signer and hash" "$(owed21 "$step21 | .actor + \"/\" + (.text | test(\"555555555555\") | tostring)")" operator/true
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 6666666666666666' '- 10:02 LIVE — design signed by chief DY' '- 10:10 WRAPPED — READY-TO-SIGN was answered, lock released'
-run21 "WRAPPED N6021"
-contains "21e10 a WRAPPED recap of a signed request does not reopen the signing" "$(owed21 "$step21 | .text")" "launch the next slice"
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 7777777777777777' '- 10:05 LIVE — note: the operator signature is not needed here' '- 10:10 WRAPPED — lock released'
-run21 "WRAPPED N6021"
-check "21e11 a later note does not change who the request asks to sign" "$(owed21 "$step21 | .actor")" chief
-
-doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design not yet signed by chief DY'
-run21 "WRAPPED N6021"
-contains "21e3 not yet signed is not signed" "$(owed21 "$step21 | .text")" "sign the design"
+doc21 no '- 10:00 LIVE — x' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021 READY-TO-SIGN sent: spec sha256 3333333333333333"
+contains "21e4 a request only in the event message is a sign step" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 333333333333)"
 
 doc21 yes '- 10:00 LIVE — x' '- 10:10 WRAPPED — done'
 run21 "WRAPPED N6021"

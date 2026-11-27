@@ -37,8 +37,9 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   in `owed=` while it is open. The waiter wakes you once (`WAKE tick changed=owed`) when that stale
   count rises; closing the row ends it, and the age or an open row that is not stale never wakes.
 - **A wrap that leaves its ticket open owes the next step.** When `worker-event.sh` handles a `WRAPPED` whose
-  worker doc says `Completes ticket: no`, it writes a keyed `step` row due today (`sign the design` after a
-  `READY-TO-SIGN` not yet signed, the operator's `actor` when the bullet says the operator signs; else
+  worker doc says `Completes ticket: no`, it writes a keyed `step` row due today (after any
+  `READY-TO-SIGN`: `sign the design if it is not signed yet, then dispatch the build`, with the operator's
+  `actor` when a request says the operator signs; the row does not read whether it was signed. Else
   `launch the next slice`) and one chief notification row, so the waiter prints `WAKE owed-actions`. Do the
   step, then close the row. A started ticket with no worker, no open PR, no open row and no `queue:` entry is
   named in the tick's `unowned=<n>:<KEY>,...` field, which wakes the waiter.
