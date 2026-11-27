@@ -6,8 +6,8 @@
 #
 # Cases:
 #   1. usage: no source / both sources                        -> rc 2
-#   2. a merged diff touching marketplace/                    -> --only marketplace, nothing else
-#   3. jira / config-ui / qmd pin / graphify pin / unrelated paths -> the mapped steps only; --versions always
+#   2. a merged diff touching marketplace/                    -> --only marketplace and --only bypass_daemon, nothing else
+#   3. jira / config-ui / qmd pin / graphify pin / unrelated paths -> the mapped steps and --only bypass_daemon only; --versions always
 #   4. a behind row                                           -> STATION=BEHIND:<components> + state file
 #   5. non-comment local template hunk                        -> luna_template NOT applied, hunk named
 #   6. comment-only local template hunk                       -> luna_template applied
@@ -117,7 +117,7 @@ contains "3 config ui step" "$calls" "update --only config_ui"
 check "3 config ui step runs once" "$(printf '%s\n' "$calls" | grep -c -- '--only config_ui')" 1
 lacks "3 config ui alone runs no jira step" "$calls" "--only jira_cli"
 run "$W/ver-current" docs/x.md
-lacks "3 docs only runs no step" "$calls" "--only"
+check "3 docs only runs no mapped step" "$(printf '%s\n' "$calls" | grep -- '--only' | grep -vc bypass_daemon)" 0
 contains "3 docs only still checks versions" "$calls" "update --versions"
 
 run "$W/ver-behind" docs/x.md
@@ -220,6 +220,7 @@ cat > "$W/update-failstep" <<'EOF2'
 #!/usr/bin/env bash
 echo "update $*" >> "$SS_CALLS"
 if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 0; fi
+[ "$1 $2" != "--only bypass_daemon" ] || exit 0
 exit 1
 EOF2
 chmod +x "$W/update-failstep"
@@ -318,6 +319,111 @@ rm -f "$W/bridge-restart.ts"; : > "$SS_SC_CALLS"
 SS_T_ENABLED=1 run_bridge scripts/lanes/a.json
 lacks "22 unit not enabled: no restart" "$sc" " restart "
 contains "22 skip names the reason" "$out" "SKIP bridge_restart unit-not-enabled"
+
+mkbypass() {
+    cat > "$W/$1" <<EOF2
+#!/usr/bin/env bash
+echo "update \$*" >> "\$SS_CALLS"
+if [ "\$1 \$2" = "--only bypass_daemon" ]; then printf '%s\n' '==> bypass launch daemon' '$2'; exit $3; fi
+if [ "\$1" = "--versions" ]; then cat "\$SS_T_VERSIONS"; exit 0; fi
+exit 0
+EOF2
+    chmod +x "$W/$1"
+}
+mkbypass update-failbypass "    failed: systemctl --user try-restart did not run" 1
+mkbypass update-inactive "    inactive: the unit is enabled but not running; start it from your shell: himmelctl bypass restart" 0
+mkbypass update-notenabled "    not-enabled: bypass daemon is off, turn it on from your shell: himmelctl bypass on" 0
+mkbypass update-restarted "    restarted" 0
+run_ghfail() {
+    : > "$SS_CALLS"; rm -f "$SS_STATE"; export SS_T_VERSIONS="$W/ver-current"
+    out="$(SS_GH="$W/gh-broken" bash "$SCRIPT" --pr 5 2>&1)"; rc=$?; calls="$(cat "$SS_CALLS" 2>/dev/null)"
+}
+first_sync() { printf '%s\n' "$out" | sed -n 1p | grep -cE '^SYNC start=[0-9TZ:-]+ pr=none$'; }
+
+run "$W/ver-current" scripts/station-ops/bypass-launchd.sh
+contains "R1 a launcher path runs the step" "$calls" "update --only bypass_daemon"
+contains "R1 launcher path: step line" "$out" "STEP bypass_daemon rc=0"
+check "R1 launcher path: first line is the dated SYNC line" "$(first_sync)" 1
+run "$W/ver-current" docs/x.md
+contains "R1 docs only still runs the step" "$calls" "update --only bypass_daemon"
+contains "R1 docs only: step line" "$out" "STEP bypass_daemon rc=0"
+contains "R1 docs only: station ok" "$out" "STATION=OK"
+check "R1 docs only: first line is the dated SYNC line" "$(first_sync)" 1
+SS_UPDATE="$W/update-restarted" run "$W/ver-current" docs/x.md
+check "R1 restarted: the step's line follows the STEP line" "$(printf '%s\n' "$out" | grep -A1 '^STEP bypass_daemon' | tail -n 1)" "    restarted"
+run "$W/ver-current" marketplace/plugins/foo/skill.md scripts/jira/src/a.ts
+check "R1-order bypass_daemon is the first step" "$(printf '%s\n' "$calls" | grep -- '--only' | head -n 1)" "update --only bypass_daemon"
+
+run_ghfail
+contains "R1b a failing gh still runs the step" "$calls" "update --only bypass_daemon"
+contains "R1b and names the gh failure" "$out" "STATION=failed:gh-pr-view"
+check "R1b current: the state reads unverified only" "$(cat "$SS_STATE")" "BEHIND:unverified"
+SS_UPDATE="$W/update-inactive" run_ghfail
+check "R1b inactive: the marker joins the state" "$(cat "$SS_STATE")" "BEHIND:unverified,bypass_daemon-inactive"
+SS_UPDATE="$W/update-failbypass" run_ghfail
+check "R1b failed: the marker joins the state" "$(cat "$SS_STATE")" "BEHIND:unverified,bypass_daemon-failed"
+
+SS_UPDATE="$W/update-failbypass" run "$W/ver-current" docs/x.md
+contains "R2a a failing step reports its rc" "$out" "STEP bypass_daemon rc=1"
+contains "R2a and is not OK" "$out" "STATION=BEHIND:bypass_daemon-failed"
+check "R2a state agrees" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-failed"
+SS_UPDATE="$W/update-inactive" run "$W/ver-current" docs/x.md
+contains "R2b an inactive unit prints its line" "$out" "    inactive: the unit is enabled but not running"
+contains "R2b and is not OK" "$out" "STATION=BEHIND:bypass_daemon-inactive"
+check "R2b state agrees" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-inactive"
+SS_UPDATE="$W/update-notenabled" run "$W/ver-current" docs/x.md
+contains "R2c an off unit prints its line" "$out" "    not-enabled: bypass daemon is off"
+contains "R2c and is not flagged" "$out" "STATION=OK"
+
+FX="$W/fx"; mkdir -p "$FX/scripts/station-ops" "$W/fxhome"
+git init -q "$FX"
+cp "$HERE/../../himmel-update.sh" "$FX/scripts/himmel-update.sh"
+# shellcheck disable=SC2016
+libs="$(sed -n 's|^\. "\$ROOT/\(.*\)"$|\1|p' "$HERE/../../himmel-update.sh")"
+check "R2e the copy list is not empty" "$([ -n "$libs" ] && echo yes)" yes
+while IFS= read -r lib; do mkdir -p "$FX/$(dirname "$lib")"; cp "$HERE/../../../$lib" "$FX/$lib"; done <<EOF2
+$libs
+EOF2
+printf '#!/usr/bin/env bash\necho "inactive: the unit is enabled but not running; start it from your shell: himmelctl bypass restart"\n' > "$FX/scripts/station-ops/bypass-service.sh"
+cat > "$W/update-chain" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+if [ "$1 $2" = "--only bypass_daemon" ]; then exec bash "$SS_T_FXROOT/scripts/himmel-update.sh" --only bypass_daemon; fi
+if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 0; fi
+exit 0
+EOF2
+chmod +x "$W/update-chain"
+direct="$(HOME="$W/fxhome" bash "$FX/scripts/himmel-update.sh" --only bypass_daemon 2>&1)"
+contains "R2e validity: the copied step prints its header" "$direct" "==> bypass launch daemon"
+contains "R2e validity: and an inactive line" "$direct" "    inactive: the unit is enabled but not running"
+SS_T_FXROOT="$FX" HOME="$W/fxhome" SS_UPDATE="$W/update-chain" run "$W/ver-current" docs/x.md
+contains "R2e the real re-render reaches the sync" "$out" "STATION=BEHIND:bypass_daemon-inactive"
+printf '#!/usr/bin/env bash\necho current\n' > "$FX/scripts/station-ops/bypass-service.sh"
+direct="$(HOME="$W/fxhome" bash "$FX/scripts/himmel-update.sh" --only bypass_daemon 2>&1)"
+lacks "R2e validity: a current unit prints no header" "$direct" "==> bypass launch daemon"
+SS_T_FXROOT="$FX" HOME="$W/fxhome" SS_UPDATE="$W/update-chain" run "$W/ver-current" docs/x.md
+contains "R2e a current unit is OK" "$out" "STATION=OK"
+
+mkdir -p "$W/sysbin"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\necho "systemctl $*" >> "$SYS_CALLS"\nexit 0\n' > "$W/sysbin/systemctl"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\necho "launchctl $*" >> "$SYS_CALLS"\nexit 0\n' > "$W/sysbin/launchctl"
+chmod +x "$W/sysbin/systemctl" "$W/sysbin/launchctl"
+cat > "$W/update-direct" <<'EOF2'
+#!/usr/bin/env bash
+echo "update $*" >> "$SS_CALLS"
+if [ "$1 $2" = "--only bypass_daemon" ]; then systemctl --user try-restart himmel-bypass-launchd.service; fi
+if [ "$1" = "--versions" ]; then cat "$SS_T_VERSIONS"; exit 0; fi
+exit 0
+EOF2
+chmod +x "$W/update-direct"
+export SYS_CALLS="$W/sys.calls"; : > "$SYS_CALLS"
+PATH="$W/sysbin:$PATH" SS_SYSTEMCTL="$W/sysbin/systemctl" run "$W/ver-current" scripts/station-ops/bypass-launchd.sh
+contains "R3 the stubbed run completed" "$out" "STATION=OK"
+lacks "R3 the sync names neither unit" "$(cat "$W/sys.calls")" "bypass-launchd"
+PATH="$W/sysbin:$PATH" bash "$W/update-direct" --only bypass_daemon
+contains "R3 control: a direct restart is caught by the stubs" "$(cat "$W/sys.calls")" "himmel-bypass-launchd"
 
 # 25-28: the config_ui retry marker (a rebuild that failed, or never ran for want of bun)
 CUI_MARK="$HOME/.himmel/state/config-ui-rebuild-pending"
@@ -503,5 +609,20 @@ heal "BEHIND:jira_cli" "$W/ver-heal-behind"
 contains "42 a stamp that cannot be written skips the heal" "$out" "SKIP heal no-stamp"
 lacks "42 and runs no step" "$calls" "--only"
 rmdir "$HEAL_STAMP"
+
+cat > "$W/ver-heal-plugins" <<'EOF2'
+==> himmel ecosystem versions
+    component      state    installed   available   note
+    plugins        behind   1/2         2 declared  version drift: a
+    1 behind, 0 undetermined.
+EOF2
+rm -f "$HEAL_STAMP" "$W/bucket/owed.jsonl"
+heal "BEHIND:plugins,bypass_daemon-inactive" "$W/ver-heal-plugins"
+contains "R2d the heal runs the plugins step" "$calls" "update --only marketplace"
+lacks "R2d the heal never runs the bypass step" "$calls" "bypass_daemon"
+contains "R2d the marker is carried forward" "$out" "STATION=BEHIND:bypass_daemon-inactive"
+check "R2d the state keeps the marker" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-inactive"
+lacks "R2d and files no false owed row" "$out" "OWED station-heal"
+check "R2d no owed row exists" "$(owed_rows)" 0
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
