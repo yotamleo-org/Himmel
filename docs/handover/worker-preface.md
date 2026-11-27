@@ -144,7 +144,7 @@ commands: VM only): `worker-sections/shell-and-tests.md`.
   or `followup <KEY-n>` / `rejected <why>`; denied → `BLOCKED resolve <pr> <ids>`. [prose]
 - **Merge only on the chief's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. `READY`, then hold, no nudge or wrap.
-  After `RESUMED`, re-post it. [prose]
+  If still held after `RESUMED`, re-post. [prose]
 - **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
   (`scripts/guardrails/himmel-adapters.json`) not confirmed PRIVATE,
   `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh`. Write `READY`, hold for
