@@ -6279,7 +6279,7 @@ check_c101_guard_refusals() {
         return 0
     fi
     mirror="$(. "$SELF_DIR/lib/jira-project.sh" 2>/dev/null && jira_mirror_dir 2>/dev/null)" || mirror=""
-    if [ -z "$mirror" ] || [ -z "$(find -H "$mirror" -maxdepth 1 -name '*.md' -print -quit 2>/dev/null)" ]; then
+    if [ -z "$mirror" ] || ! compgen -G "$mirror/*.md" >/dev/null; then
         emit INFO C101-guard-refusals "no Jira mirror to look owners up in -- refusal classes not judged" \
             "build the mirror (docs/internals/jira-plugin.md), then re-run"
         return 0
