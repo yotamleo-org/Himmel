@@ -1064,6 +1064,10 @@ n9625d="PROJ-9625-N3-dup"; mkdir -p "$HIMMEL_FLEET_SLOTS/$n9625d"; printf '%s\n'
 b="$(lr_n)"; rc=0; t51 "$RESV51" "$n9625d" "$doc9625_ok" >/dev/null 2>&1 || rc=$?
 lr_expect fleet-duplicate fleet-duplicate 10 "$rc" "$b"
 rm -rf "${HIMMEL_FLEET_SLOTS:?}/$n9625d"
+b="$(lr_n)"; why51 PROJ-9625-N7-stamp 'fleet-runtime: fleet-paused: reservation admission lock is not held by preflight' 'bank-preflight: failed to write reservation metadata (expires/pid) for worker=w — refusing admission' >/dev/null
+check "9625-cause fleet-admission: a stamp refusal is not recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-admission"
+b="$(lr_n)"; why51 PROJ-9625-N8-paused 'fleet-runtime: fleet-paused: fleet-paused or reservation generation changed' >/dev/null
+check "9625-cause fleet-paused: a real pause is recorded as one" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-paused"
 b="$(lr_n)"; rc=0; t51 "$SKIPPED_BANK_PREFLIGHT" PROJ-9625-N4-bank "$doc9625_ok" >/dev/null 2>&1 || rc=$?
 lr_expect bank-exhausted bank-exhausted 11 "$rc" "$b"
 rm -rf "${HIMMEL_FLEET_SLOTS:?}/PROJ-9625-N4-bank"

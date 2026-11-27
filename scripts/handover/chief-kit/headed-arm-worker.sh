@@ -3272,7 +3272,7 @@ if [ -f "$BANK_PREFLIGHT" ]; then
             # older refused one that left it); the preflight line above says who holds it and when it lapses.
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - a fleet reservation for this worker already exists (the fleet has room; the preflight line above names the holder and when it lapses)" >> "$LOG"
         elif [ -n "$_pf_why" ]; then
-            case "$_pf_why" in
+            case "${_pf_why//fleet-runtime: fleet-paused: /}" in
                 *fleet-paused*) _launch_refusal_note fleet-paused "$_pf_why" ;;
                 *) _launch_refusal_note fleet-admission "$_pf_why" ;;
             esac
