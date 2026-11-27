@@ -131,6 +131,9 @@ EOF
 chmod +x "$tmp/sdbin/python3"
 SD_REAL_PYTHON=$(command -v python3)
 export SD_REAL_PYTHON
+launched_gone="$tmp/bucket11376/HIMMEL-9001-N3-launched.md"
+PATH="$tmp/sdbin:$PATH" SD_DOC="$launched_gone" SD_WORD='"launched"' gonerec "$launched_gone" "$tmp/lock-free.sh"
+check "11376 a missing doc with a launched attempt and a free lock stays owned" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'unknown/D5/In Progress'
 printf '#!/usr/bin/env bash\nexit 3\n' > "$tmp/lock-err.sh"
 chmod +x "$tmp/lock-err.sh"
 sib() {
