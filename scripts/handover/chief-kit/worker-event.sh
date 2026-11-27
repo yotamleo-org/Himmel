@@ -30,6 +30,10 @@
 #                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
 #                        line after a GO-WRITTEN). Any other auto-go answer is
 #                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: auto-go.sh --dry-run runs once, detached with its output discarded and bounded by GNU timeout where one exists (LE_DRYRUN_BOUND seconds, default 60; macOS has none, so there it is detached but unbounded; its answer is ignored, so it leaves one auto-go.jsonl row; with stacked_series on it runs under the series ledger writer's label, as the live path does), and ESCALATE marker-READY follows at once, as before.
+#                        A WRAPPED whose worker doc says `Completes ticket: no` first writes the ticket's next step
+#                        to the chief doc's owed ledger (owe.sh: a step row due today, `sign the design if it is
+#                        not signed yet` after any READY-TO-SIGN, else `launch the next slice`, plus one chief
+#                        notification row the waiter wakes on); a row that cannot be written is ESCALATE next-step-owe-failed.
 #                        A WRAPPED whose PR wrap-merged finds still OPEN (rc 3 at its pr-state step) is closed the
 #                        same way: HANDLED close-wrapped, or ESCALATE close-wrapped-failed when that close refuses.
 #                        A MERGED line for an OPEN PR still escalates wrap-merged-failed.
@@ -295,6 +299,44 @@ if [ -n "$halted" ]; then
         if worker_terminal_tail "$(results_tail "$worker")" "$lock_state"; then escalate "halted-closable $label doc=$worker"; fi
     fi
     escalate "marker-HALTED"
+fi
+
+owe_next_step() {
+    local stem key flag results stream ready sha signer actor=chief step due id out bucket chief
+    stem="${worker##*/}"; stem="${stem%.md}"
+    [[ $stem =~ ^([A-Z][A-Z0-9]*-[0-9]+)- ]] || return 0
+    key="${BASH_REMATCH[1]}"
+    flag="$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' < "$worker" | head -n 1)"
+    [ "$flag" = no ] || return 0
+    results="$(awk '/^## Results/ { r = 1; next } r && /^- /' "$worker")"
+    stream="$results"$'\n'"$body"
+    ready="$(grep -F 'READY-TO-SIGN' <<< "$stream")" || ready=""
+    step="launch the next slice, or close $key by hand when nothing remains"
+    if [ -n "$ready" ]; then
+        sha="$(grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' <<< "$ready" | tail -n 1 | grep -oiE '[0-9a-f]+$' | cut -c1-12)" || sha=""
+        step="sign the design${sha:+ (last spec hash named: $sha)} if it is not signed yet, then dispatch the build"
+        signer="$(sed -E "s/[Nn]o (operator|chief)('s)? (signature|sign-off)//g" <<< "$ready" | grep -iE "(operator|chief)('s)? (signs|signature|sign-off)|signed by the (operator|chief)|(operator|chief) (must|to) sign" | tail -n 1)" || signer=""
+        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$signer"; then
+            actor=operator
+            step="ask the operator to $step"
+        fi
+    fi
+    bucket="$(dirname "$DOC")"; chief="${DOC##*/}"; chief="${chief%.md}"
+    due="$(date -u +%Y-%m-%d)"
+    id="$(printf '%s' "worker-event-next-step $stem" | python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')" || return 1
+    out="$(bash "$HERE/owe.sh" add --bucket "$bucket" --chief "$chief" --kind step --key "$key" --identity "$id" \
+        --text "$key next step: $step ($label wrapped with completes-ticket: no)" \
+        --metadata "$(jq -nc --arg a "$actor" --arg d "$due" --arg s "$worker" --arg l "$label" '{actor: $a, due: $d, source_doc: $s, source_label: $l}')" 2>&1)" \
+        || { printf '%s' "$out"; return 1; }
+    local row="$out"
+    id="$(printf '%s' "worker-event-next-step-wake $stem" | python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')" || return 1
+    out="$(bash "$HERE/owe.sh" add --bucket "$bucket" --chief "$chief" --kind ruling --identity "$id" \
+        --text "$key next step owed as $row: $step" \
+        --metadata "$(jq -nc --arg r "$row" '{actor: "chief", action: "notify", event: "step-due", source_id: $r, capability: "notification delivery", wake: "acknowledge delivery with owe close"}')" 2>&1)" \
+        || { printf '%s' "$out"; return 1; }
+}
+if [ "$marker" = WRAPPED ] && [ -r "$worker" ]; then
+    owe_out="$(owe_next_step)" || escalate "next-step-owe-failed $(printf '%s' "$owe_out" | tr '\n' ' ')"
 fi
 
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
