@@ -51,7 +51,8 @@ rows() {
 gate() { OUT="$(cd "$R" && bash scripts/lint/check-new-comments.sh "$@" 2>&1)"; RC=$?; }
 has() { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
 stage() {
-    if git -C "$R" add -A && git -C "$R" diff --quiet && [ -z "$(git -C "$R" ls-files --others --exclude-standard)" ]; then
+    local left
+    if git -C "$R" add -A && git -C "$R" diff --quiet && left="$(git -C "$R" ls-files --others --exclude-standard)" && [ -z "$left" ]; then
         gate --staged
     else
         OUT="git add did not stage the fixture in $R"; RC=125

@@ -47,7 +47,7 @@ file name for a tree-wide name scan to count:
   count; a file it does touch is counted by the classifier the gate runs.
 - A merge in progress (`--staged` with `MERGE_HEAD`) is judged against both parents: a
   path's row limit is the higher of the two parents' rows, and a file may keep as many
-  comments as either parent's version holds. A comment neither parent has is refused.
+  comments as either parent's version holds. A count above both parents' is refused.
 - Rewording a comment in place, or editing a code line that carries one, leaves the
   count unchanged and passes. The refusal names the file by its path, its count and its
   row, then the added comment lines as `path:line: text`. A raised row whose key matches
