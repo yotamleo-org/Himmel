@@ -10,9 +10,10 @@
 #     --no-fetch: branch from the origin/<default> ref already fetched (a caller
 #     creating many worktrees fetches once; concurrent fetches race on its lock)
 #   ./scripts/_new-worktree.sh <branch-name> --resume [--check] [--no-install] [--verbose]
-#     the branch already exists (a RESUME row whose worktree is gone): fetch it and
-#     attach a worktree at a tip this script can account for. Never branches from
-#     the default branch. --check writes nothing and prints
+#     the branch already exists (a RESUME row): fetch it and attach a worktree at a
+#     tip this script can account for. A worktree already registered for the
+#     branch at the standard path is handed back untouched (no fast-forward).
+#     Never branches from the default branch. --check writes nothing and prints
 #     local|origin|both|none|unknown. Reached through `worktree.sh resume`.
 #   ./scripts/_new-worktree.sh --check-name <branch-name>
 #     validate the branch name only (the type list below and git's ref rules),
@@ -219,11 +220,11 @@ wt_ceiling_check() {
     fi
 }
 # Early cheap refusal; re-checked under the creation lock before `worktree add`.
-wt_ceiling_check
+if [ "$RESUME" -eq 0 ] || [ ! -e "$WORKTREE_PATH" ]; then wt_ceiling_check; fi
 
 if [ "$RESUME" -eq 1 ]; then
-    [ -e "$WORKTREE_PATH" ] && resume_refuse path-exists "worktree path exists: $WORKTREE_PATH"
     STALE=0
+    HANDBACK=0
     _reg_cur=""
     _reg_path=""
     while IFS= read -r _reg_line; do
@@ -232,7 +233,16 @@ if [ "$RESUME" -eq 1 ]; then
             "branch refs/heads/$BRANCH") _reg_path="$_reg_cur" ;;
         esac
     done < <(git -C "$PRIMARY_WORKTREE" worktree list --porcelain)
-    if [ -n "$_reg_path" ]; then
+    if [ -e "$WORKTREE_PATH" ]; then
+        if [ ! -L "$WORKTREE_PATH" ] && [ -n "$_reg_path" ] && [ "$_reg_path" -ef "$WORKTREE_PATH" ] &&
+            [ "$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel 2>/dev/null)" -ef "$WORKTREE_PATH" ] &&
+            [ "$(git -C "$WORKTREE_PATH" symbolic-ref -q HEAD)" = "refs/heads/$BRANCH" ] &&
+            [ "$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-common-dir)" && pwd)" -ef "$COMMON_DIR_ABS" ]; then
+            HANDBACK=1
+        else
+            resume_refuse path-exists "worktree path exists: $WORKTREE_PATH"
+        fi
+    elif [ -n "$_reg_path" ]; then
         if [ -e "$_reg_path" ]; then
             resume_refuse checked-out "branch '$BRANCH' is already checked out at $_reg_path"
         fi
@@ -275,6 +285,12 @@ if [ "$RESUME" -eq 1 ]; then
         RESUME_NOTE="local ahead of origin by $(git -C "$PRIMARY_WORKTREE" rev-list --count "$O..$L")"
     else
         resume_refuse diverged "local $L and origin $O have diverged; nothing created - reconcile by hand (git -C $PRIMARY_WORKTREE log --oneline --graph $L $O)"
+    fi
+    if [ "$HANDBACK" -eq 1 ]; then
+        _wt_head=$(git -C "$WORKTREE_PATH" rev-parse --verify -q HEAD) || resume_refuse path-exists "worktree path exists but its HEAD cannot be read: $WORKTREE_PATH"
+        if [ -n "$RESUME_NOTE" ]; then echo "NOTE new-worktree: $RESUME_NOTE"; fi
+        echo "RESUMED $WORKTREE_PATH $BRANCH $_wt_head $RESUME_STATE"
+        exit 0
     fi
     if command -v flock >/dev/null 2>&1; then
         exec 9>"$COMMON_DIR_ABS/himmel-worktree-create.lock"
