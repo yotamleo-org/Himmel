@@ -1424,9 +1424,7 @@ mk_gw() {
     mk_wt "$1" || return 1
     mkdir -p "$1/.claude" "$1/scripts/hooks" "$1/scripts/lib" "$1/scripts/handover/chief-kit"
     : > "$1/scripts/handover/chief-kit/headed-arm-worker.sh"
-    # shellcheck disable=SC2016  # literal fixture source lines
     printf '. "$(dirname "$0")/../lib/g-lib.sh"\n' > "$1/scripts/hooks/guard-g.sh"
-    # shellcheck disable=SC2016
     printf '. "$(dirname "$0")/../lib/s-lib.sh"\n' > "$1/scripts/hooks/start-s.sh"
     local l; for l in g-lib s-lib other; do printf '# %s\n' "$l" > "$1/scripts/lib/$l.sh"; done
     gw_settings "$1" "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"
@@ -1577,7 +1575,6 @@ g22() {
     mk_g "$1" 'scripts/lib/g-lib.sh' "$d"; lint_g '' "$tmp/$1.md"
 }
 g22 g22a "$(gw_cmd 'scripts/hooks/guard-g.sh')"; g_err3 "G22a a relative member is refused" 'cannot read hook command'
-# shellcheck disable=SC2016  # literal command text
 g22 g22b "$(python3 -I -c 'import json; print(json.dumps("L=\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\"; node \"$L\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh\""))')"
 g_err3 "G22b a launcher path held in a variable (empty segment) is refused" 'cannot read hook command'
 g22 g22c "$(gw_cmd '--lifecycle "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22c a lone --lifecycle is refused" 'cannot read hook command'
