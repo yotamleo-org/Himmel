@@ -21,33 +21,9 @@ fails=0
 ok()  { echo "ok - $1"; }
 bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 
-# The 24 required contexts on `main` (ruleset protect-main + classic branch
-# protection carry the same list, read 2026-09-29 via
-# `gh api repos/yotamleo/Himmel/branches/main/protection/required_status_checks`).
-REQUIRED_CONTEXTS='bun-suites (ubuntu-latest)
-codeowner-review-gate
-commit-lint
-doc-invariants
-guardrail-matrices
-lanes-and-trust-suites
-leak-classes
-lint
-node-suites (bitbucket)
-node-suites (ci-orchestrator)
-node-suites (himmel-run)
-node-suites (jira)
-secret-scan
-security-scan
-shell-unit-shard (ubuntu-latest, 1)
-shell-unit-shard (ubuntu-latest, 2)
-shell-unit-shard (ubuntu-latest, 3)
-shell-unit-shard (ubuntu-latest, 4)
-shell-unit-shard (ubuntu-latest, 5)
-shell-unit-shard (ubuntu-latest, 6)
-shell-unit-shard (ubuntu-latest, 7)
-shell-unit-shard (ubuntu-latest, 8)
-shell-unit (ubuntu-latest)
-pr-title-lint'
+REQUIRED_FIXTURE="${REQUIRED_FIXTURE_RULES:-$ROOT/scripts/ci/check-run-timelines/testdata/rules-main.json}"
+REQUIRED_CONTEXTS=$(jq -r '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | .context' "$REQUIRED_FIXTURE") || REQUIRED_CONTEXTS=""
+[ -n "$REQUIRED_CONTEXTS" ] || { echo "FAIL - cannot read the required contexts from $REQUIRED_FIXTURE" >&2; exit 1; }
 
 # strip_comments <file> -- drop full-line and trailing ` # ...` comments so a
 # comment can never satisfy (or trip) an assertion.

@@ -1380,6 +1380,58 @@ check "21: --only 7 with the TICKET-SEEN line: exit 0" "$rc" "0"
 contains "21: --only 7 with the TICKET-SEEN line ends COVERAGE-LINT PASS" "$out" "COVERAGE-LINT PASS"
 unset RUN_MODE
 
+adopter_checks='{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build","integration_id":15368},{"context":"deploy-gate","integration_id":999}]}}'
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_REQ_RULES="[$adopter_checks]" run)" || rc=$?
+check "11356-names-missing-required: exit 1" "$rc" "1"
+contains "11356-names-missing-required: item 1 fails" "$out" "[FAIL] 1."
+contains "11356-names-missing-required: names the check that never reported" "$out" "blocked by: required check deploy-gate never reported at the head"
+notcontains "11356-names-missing-required: a green required check is not named" "$out" "blocked by: required check build"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_RD=REVIEW_REQUIRED STUB_REQ_RULES="[$adopter_checks,{\"type\":\"pull_request\",\"parameters\":{\"required_approving_review_count\":2,\"require_code_owner_review\":true,\"require_last_push_approval\":false,\"required_review_thread_resolution\":false}}]" \
+    STUB_ROLLUP='[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"deploy-gate","status":"COMPLETED","conclusion":"SUCCESS"}]' run)" || rc=$?
+check "11356-names-owed-review: exit 1" "$rc" "1"
+contains "11356-names-owed-review: names the owed review and its rule" "$out" "blocked by: review owed (reviewDecision=REVIEW_REQUIRED; main requires 2 approving reviews, a code-owner review)"
+notcontains "11356-names-owed-review: green required checks are not named" "$out" "blocked by: required check"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_REQ_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build"},{"context":"security/snyk (yotamleo)"}]}}]' \
+    STUB_ROLLUP='[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},{"context":"security/snyk (yotamleo)","state":"ERROR"}]' run)" || rc=$?
+check "11356-names-nongating-required: exit 1" "$rc" "1"
+contains "11356-names-nongating-required: names the required non-gating context" "$out" "blocked by: required check security/snyk (yotamleo)=ERROR — listed non-gating, but main requires it"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_BASE_HEAD=0000000000000000000000000000000000000001 STUB_REQ_RULES="[$adopter_checks]" run)" || rc=$?
+check "11356-head-moved: exit 1" "$rc" "1"
+contains "11356-head-moved: a moved head names no blocker" "$out" "blocked by: unknown (the PR head moved during the read)"
+notcontains "11356-head-moved: no check is attributed" "$out" "blocked by: required check"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_BASE_HEAD='' STUB_REQ_RULES="[$adopter_checks]" run)" || rc=$?
+check "11356-head-unreadable: exit 1" "$rc" "1"
+contains "11356-head-unreadable: an empty head reads as unreadable, not moved" "$out" "blocked by: unknown (the PR head is unreadable)"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_OR_RULES_FAIL=1 STUB_OR_RD=REVIEW_REQUIRED STUB_UNRESOLVED=2 run)" || rc=$?
+check "11356-set-unreadable: exit 1" "$rc" "1"
+contains "11356-set-unreadable: says the required set is unreadable" "$out" "blocked by: unknown (the required checks of main are unreadable"
+contains "11356-set-unreadable: still names the owed review" "$out" "blocked by: review owed (reviewDecision=REVIEW_REQUIRED"
+contains "11356-set-unreadable: still names the threads, as a possible blocker" "$out" "may block: 2 unresolved review thread(s)"
+
+reset_stubs
+STUB_MSS=BLOCKED
+rc=0; out="$(STUB_UNRESOLVED=1 STUB_REQ_RULES='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"build"}]}}]' run)" || rc=$?
+check "11356-threads-only: exit 1" "$rc" "1"
+contains "11356-threads-only: the thread is a possible blocker" "$out" "may block: 1 unresolved review thread(s)"
+contains "11356-threads-only: the unexplained BLOCKED still gets the fallback" "$out" "blocked by: no unmet required check or review found"
+
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

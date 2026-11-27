@@ -490,8 +490,9 @@ PUBLIC_ORIGIN_SOURCE=""
 _protection_classic() {
     local nwo="$1" branch="$2" prot admins rest n_contexts n_checks
     PROT_CLASSIC_DETAIL="unreadable"
+    # shellcheck disable=SC2016  # jq program: $c is a jq variable, not shell
     prot=$("$GH" api "repos/$nwo/branches/$branch/protection" \
-            --jq '"\(.enforce_admins.enabled // false)|\((.required_status_checks.contexts // []) | if type == "array" then length else 0 end)|\((.required_status_checks.checks // []) | if type == "array" then length else 0 end)"' 2>/dev/null || true)  # gh-main-ok: permission-dependent answer  # jq-alt-ok: every `//` default here is the FAIL-CLOSED answer, so swallowing false is harmless — absent, null and false all yield the value that REFUSES (enforce_admins must equal the string "true"; an empty contexts/checks list means zero required checks). has() would be weaker, not stronger: it would read a present-but-false enforce_admins as satisfied.
+            --jq '((.required_status_checks.contexts // []) | if type == "array" then map(select(type == "string")) | unique else [] end) as $c | "\(.enforce_admins.enabled // false)|\($c | length)|\((.required_status_checks.checks // []) | if type == "array" then [.[] | .context? | select(type == "string")] | unique - $c | length else 0 end)"' 2>/dev/null || true)  # gh-main-ok: permission-dependent answer  # jq-alt-ok: every `//` default here is the FAIL-CLOSED answer, so swallowing false is harmless — absent, null and false all yield the value that REFUSES (enforce_admins must equal the string "true"; an empty contexts/checks list means zero required checks). has() would be weaker, not stronger: it would read a present-but-false enforce_admins as satisfied.
     [ -n "$prot" ] || return 1
     admins=${prot%%|*}
     rest=${prot#*|}
@@ -1020,9 +1021,6 @@ if [ "$ci_rc" -eq 7 ]; then
     exit 14
 fi
 if [ "$ci_rc" -eq 5 ]; then
-    # check-ci exit 5 = GitHub will refuse this merge (a required
-    # check never reported, or the required set is unreadable). Not a red CI, and
-    # not something a re-run of this script fixes — fail fast, one alert.
     echo "merge-on-green: GitHub-blocked — check-ci reported a required check missing or the required set unreadable (exit 5) — not merging." >&2
     block_alert "a required check never reported or the required set is unreadable (check-ci exit 5)"
     audit "REFUSED reason=github-blocked phase=check-ci rule=required-check gate=check-ci:5 repo=$nwo pr=#$pr_num sha=$sha"
