@@ -85,6 +85,7 @@ write_t3_settings() {
   "otherDir":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $CT/other/$OH/x.json"}},
   "dotDir":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $CT/Xlp/$OH/x.json"}},
   "codexArgs":{"driver":"codex","enabled":true,"config":{"launchArgs":"--foo {\"x\":1}"}},
+  "trailingNewline":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI\\n"}},
   "claudeAgent_maintainer-hooks-other":{"driver":"claudeAgent","enabled":true,"config":{}},
   "grokThread":{"driver":"grok","enabled":true},
   "cursorThread":{"driver":"cursor","enabled":true},
@@ -202,10 +203,13 @@ run "a null instance value counts as absent: allowed" 0 - \
     '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","modelSelection":{"instanceId":null,"model":"m"}}}'
 
 lacks() {
-    local name="$1" absent="$2" payload="$3" out
+    local name="$1" absent="$2" payload="$3" out rc
     shift 3
     N=$((N+1))
-    out=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>&1 >/dev/null)
+    out=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>&1 >/dev/null); rc=$?
+    if [ "$rc" != 2 ] || ! grep -qF -- 'BLOCKED: guard-t3-thread-tools refused' <<<"$out"; then
+        echo "FAIL $name: want a refusal, got rc=$rc out=$out"; FAIL=$((FAIL+1)); return
+    fi
     if grep -qF -- "$absent" <<<"$out"; then echo "FAIL $name: stderr holds '$absent': $out"; FAIL=$((FAIL+1)); return; fi
     echo "ok   $name"
 }
@@ -269,7 +273,22 @@ run "S13: a relative settings directory: refused" 2 "\"claudeAgent_worker-impl\"
     "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR=lp
 run "S13: a settings directory with a space: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
     "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$CT/l p"
-run "S14: a call that names no Claude instance verifies no settings file" 0 - "$(from_to codex antigravity)" PATH="$TMP/nosha"
+mkdir -p "$TMP/shastub"
+cp -P "$TMP/nosha/"* "$TMP/shastub/"
+SHA_REAL=$(command -v sha256sum)
+[ -n "$SHA_REAL" ] || SHA_REAL="$(command -v shasum) -a 256"
+printf '#!/usr/bin/env bash\n: > %q\nexec %s "$@"\n' "$TMP/sha-called" "$SHA_REAL" > "$TMP/shastub/sha256sum"
+chmod +x "$TMP/shastub/sha256sum"
+run "S14: a call that names no Claude instance: allowed" 0 - "$(from_to codex antigravity)" PATH="$TMP/shastub"
+N=$((N+1))
+if [ ! -e "$TMP/sha-called" ]; then echo "ok   S14: it ran no hash tool"; else echo "FAIL S14: a call naming no Claude instance ran the hash tool"; FAIL=$((FAIL+1)); fi
+run "S14 control: a call naming a Claude instance through the stub: allowed" 0 - "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/shastub"
+N=$((N+1))
+if [ -e "$TMP/sha-called" ]; then echo "ok   S14 control: the stub saw the hash"; else echo "FAIL S14 control: the hash stub was never called"; FAIL=$((FAIL+1)); fi
+run "S16: a settings path ending in a newline is not a resolved profile file" 2 \
+    "\"trailingNewline\": $OWN (--settings a value that is not a path: not a resolved profile file under $LP)" "$(from_to codex trailingNewline)"
+run "S16: a settings directory ending in a newline is not canonical" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$LP"$'\n'
 run "S15: HOME unset and no settings directory: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
     "$(from_to codex claudeAgent_worker-impl)" -u HOME -u HIMMEL_PROFILE_SETTINGS_DIR
 
