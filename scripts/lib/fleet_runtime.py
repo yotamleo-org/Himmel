@@ -1124,8 +1124,8 @@ def run(args):
             try:
                 holder = (slots_root() / '.admit/pid').read_text().strip()
             except FileNotFoundError:
-                holder = None
-            if holder not in (None, str(os.getppid())):
+                holder = ''
+            if holder != str(os.getppid()):
                 raise Refused('reservation admission lock is not held by preflight')
             publish(slot / 'managed.json', {'attempt_id': args.attempt_id, 'owner': owner})
             record['reservation'] = {'path': str(slot), 'owner': owner}

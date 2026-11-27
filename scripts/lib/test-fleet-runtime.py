@@ -157,10 +157,18 @@ class Runtime(unittest.TestCase):
         self.assertTrue((self.bucket / 'stamp-raced').exists(), p.stderr)
         return p
 
-    def test_a_lock_released_before_the_stamp_reads_it_is_not_fleet_paused(self):
-        p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"')
-        self.assertIn(p.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), p.stderr)
-        self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').exists(), p.stderr)
+    def refused_as_a_lost_lock(self, change):
+        p = self.stamp_after(change)
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('reservation admission lock is not held by preflight', p.stderr)
+        self.assertNotIn('No such file', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_missing_lock_pid_refuses_the_stamp_by_name(self):
+        self.refused_as_a_lost_lock('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+
+    def test_a_lock_lost_then_released_by_its_reclaimer_refuses_the_stamp(self):
+        self.refused_as_a_lost_lock('rm -rf "$HIMMEL_FLEET_SLOTS/.admit"')
 
     def test_a_lock_held_by_another_pid_still_refuses_the_stamp(self):
         p = self.stamp_after('echo 1 > "$HIMMEL_FLEET_SLOTS/.admit/pid"')
@@ -168,7 +176,7 @@ class Runtime(unittest.TestCase):
         self.assertIn('reservation admission lock is not held by preflight', p.stderr)
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
 
-    def test_a_pause_before_the_stamp_still_refuses_with_the_lock_released(self):
+    def test_a_pause_before_the_stamp_still_refuses_with_the_lock_missing(self):
         p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"; bash %s control set %s --mode paused --expect-gen 2 >/dev/null'
                              % (shlex.quote(str(WRITER)), shlex.quote(str(self.m))))
         self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
