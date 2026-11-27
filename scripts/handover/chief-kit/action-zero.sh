@@ -90,9 +90,9 @@ bounded() {
 }
 
 save_row() {
-    local have='{"schema":1,"workers":[]}'
-    [ ! -f "$1" ] || have="$(cat "$1")" || return 1
-    if ! { printf '%s\n' "$have" | jq --arg d "$3" --slurpfile p "$2" '.workers = [.workers[] | select(.doc != $d)] + [($p[0].workers // $p[0].legs)[] | objects | select(.doc == $d)]' > "$1.tmp" && mv -f "$1.tmp" "$1"; }; then
+    local have="$1"
+    [ -f "$have" ] || have=/dev/null
+    if ! { jq -n --arg d "$3" --slurpfile h "$have" --slurpfile p "$2" '{schema: 1, workers: ([($h[0].workers // [])[] | select(.doc != $d)] + [($p[0].workers // $p[0].legs)[] | objects | select(.doc == $d)])}' > "$1.tmp" && mv -f "$1.tmp" "$1"; }; then
         rm -f "$1.tmp"; return 1
     fi
 }
