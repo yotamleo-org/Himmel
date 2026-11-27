@@ -491,9 +491,11 @@ def marker(line):
     m = EXPLICIT_RE.match(line) or MID_MARKER_RE.search(line)
     return (m.group(1)[0].lower(), line[m.end():]) if m else None
 
-def state_write(value):
-    # a specs/ path with no ambiguous file name beside it: an ambiguous one may be a repo file, so the ticket stays held
-    return bool(SPECS_RE.search(value)) and not any(len(suffix_index().get(t, [])) > 1 for t in PATH_TOKEN_RE.findall(value) if not t.startswith('specs/'))
+NAMED_FILE_RE = re.compile(r'\.(?:sh|bash|py|ts|tsx|js|mjs|cjs|json|jsonl|tsv|yml|yaml|toml|md|html|css|txt|ps1)$')
+
+def bare_name(value):
+    # a file named outside specs/: on a line with no repo path it may be a repo file, so no state-repo-only verdict
+    return any(not t.startswith('specs/') and NAMED_FILE_RE.search(t) for t in PATH_TOKEN_RE.findall(value))
 
 def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
@@ -508,15 +510,18 @@ def scope_of(body):
             readiness.append((heading.partition(' — ')[2], lines))
     if readiness:
         stamp, lines = readiness[-1]
-        files, nowrite = [], False
+        files, nowrite, state, named = [], False, False, False
         for line in lines:
             kind, value = marker(line) or ('', '')
             if kind == 'w':
                 files.extend(path for path in files_in(value) if path not in files)
-                nowrite = nowrite or bool(NO_WRITE_RE.search(value)) or state_write(value)
+                nowrite = nowrite or bool(NO_WRITE_RE.search(value))
+                state = state or bool(SPECS_RE.search(value))
+                named = named or bare_name(value)
+        nowrite = nowrite or (state and not named)
         if files or nowrite:
             return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
-    explicit, kinds, nowrite_line, state_line, writes_hit = [], set(), False, False, False
+    explicit, kinds, nowrite_line, state_line, named_line, writes_hit = [], set(), False, False, False, False
     for line in desc.splitlines():
         kind, value = marker(line) or ('', '')
         hits = files_in(value) if kind else []
@@ -525,8 +530,10 @@ def scope_of(body):
             kinds.add(kind)
             writes_hit = writes_hit or kind == 'w'
         elif kind == 'w':
-            state_line = state_line or state_write(value)
+            state_line = state_line or bool(SPECS_RE.search(value))
+            named_line = named_line or bare_name(value)
             nowrite_line = nowrite_line or bool(NO_WRITE_RE.search(value))
+    state_line = state_line and not named_line
     if (state_line or nowrite_line) and not writes_hit:
         return {'files': [], 'src': 'Writes: line (state repo)' if state_line else 'Writes: line', 'reads': [], 'no_scope': False, 'nowrite': True}
     if explicit:
