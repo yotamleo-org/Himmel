@@ -1460,7 +1460,7 @@ printf '\377\376 not utf-8\n' > "$bk/specs/designs/HIMMEL-441-binary.md.critic-s
 printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r5.md"
 printf '%s\n' '# critic' 'SPEC FINDINGS 9' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r4.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r4.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r5.md"
