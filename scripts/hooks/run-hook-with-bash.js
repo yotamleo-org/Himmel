@@ -4,15 +4,6 @@
 // none exists. Node is intentionally
 // required before the hook starts: if Node is missing, the launcher blocks the
 // action rather than risking a guard script failing open under another shell.
-//
-// Report pass: when the context guard fails its session pin on a drift, a
-// PreToolUse call in a chief-launched worker skips it (never runs it) for four
-// report calls only: ToolSearch loading SendMessage, ListAgents, SendMessage to
-// the launch or current chief, and a literal `BLOCKED — …` append-results.sh
-// call on the worker's own doc (in handoff mode past its threshold the guard
-// itself can refuse that append). Every other call keeps the deny. The doc and
-// chief are read as guard-worker-context-handoff.sh reads them. The append form
-// assumes `bash` is the bash binary and no other PreToolUse hook rewrites it.
 'use strict';
 
 const crypto = require('node:crypto');
