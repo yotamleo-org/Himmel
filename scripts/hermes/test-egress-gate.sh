@@ -100,6 +100,8 @@ check "salus x deepseek refused" 4 "$rc"
 # Operator ruling 2026-10-08: codex inference is allowed on luna and salus.
 gate "$TMP/salusproj/p.md" openai-codex
 check "salus x openai-codex allowed (ruling)" 0 "$rc"
+gate "$TMP/salusproj/p.md" grok
+check "salus x grok (a hermes alias for xai) refused" 4 "$rc"
 gate "$TMP/luna/journal/n.md" openai-codex
 check "luna-personal x openai-codex allowed (ruling)" 0 "$rc"
 gate "$TMP/salusproj/p.md" ollama
