@@ -12,6 +12,7 @@ import { type Ctx, f, operatorFence, lockedAcross, readMirror, readMirrorFilesUn
 import { effectiveSigner, outranks, parentOf, signerOf, voidingTicket, type SignerState } from './signer.js';
 import { pathIndependentBypass } from './core.js';
 import { decisionWords } from './operator-acts.js';
+import { checkoutRoot, minervaScript, scriptOutput, traceLint } from './sign-lint.js';
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -20,12 +21,6 @@ function pinRead(path: string, role: string, verb: string): { bytes: Buffer; sha
   if ('missing' in got) throw new Error(`${verb}: ${role} not found: ${path}`);
   if ('unreadable' in got) throw new Error(`${verb}: ${role} ${path} is unreadable`);
   return got;
-}
-
-function checkoutRoot(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const common = execFileSync('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-  return dirname(common);
 }
 
 function sourceIdentity(raw: string): { root: string; head: string; identity: string } {
@@ -69,24 +64,16 @@ function sourceIdentity(raw: string): { root: string; head: string; identity: st
   }
 }
 
-const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
-
-function runMinerva(name: string, args: string[], cwd: string, verb = 'release operator spec'): void {
+export function lintSpec(spec: string, plan: string, verb = 'release operator spec', sourceRoot?: string): void {
+  const refused = (name: string, why: string) => new Error(`${verb}: ${name} refused the spec:\n${why}`);
   try {
-    execFileSync('bash', [minervaScript(name), ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('bash', [minervaScript('minerva-spec-gate.sh'), spec], { cwd: dirname(spec), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) {
-    const err = e as { stderr?: string; stdout?: string; message: string };
-    throw new Error(`${verb}: ${name} refused the spec:\n${(err.stderr || err.stdout || err.message).trim()}`);
+    throw refused('minerva-spec-gate.sh', scriptOutput(e));
   }
-}
-
-function lintSpec(spec: string, plan: string, verb?: string, sourceRoot = checkoutRoot()): void {
-  runMinerva('minerva-spec-gate.sh', [spec], dirname(spec), verb);
-  let own: string[] = [];
-  try {
-    own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
-  } catch { }
-  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], sourceRoot, verb);
+  const lint = traceLint(spec, plan, sourceRoot);
+  if ('unavailable' in lint) throw refused('minerva-trace-lint.sh', lint.unavailable);
+  if (!lint.ok) throw refused('minerva-trace-lint.sh', lint.lines.join('\n'));
 }
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
@@ -403,37 +390,7 @@ export function signSpec(ctx: Ctx, o: {
   if (signer === 'operator' && !o.alert) throw new Error('release operator spec: --signer operator needs the operator alert; no record written');
   if (signer === 'operator' && o.words === undefined) throw new Error('release operator spec: --signer operator needs --words, the operator\'s exact words');
   if (signer === 'chief' && o.verbatim === undefined) throw new Error('release operator spec: a chief signature needs --decision and --verbatim-file');
-  if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
-  const spec = resolve(o.spec);
-  if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
-  const plan = o.plan ? resolve(o.plan) : spec;
-  if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
-  const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
-    'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
-  checkVerdictSeries(spec, files);
-  const bytes = readFileSync(spec);
-  const specSha = createHash('sha256').update(bytes).digest('hex');
-  const planSha = o.plan ? fileSha(plan) : null;
-  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals, files), {
-    keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
-  }, true);
-  const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
-  const checkSource = () => {
-    if (!source) return;
-    const current = sourceIdentity(o.sourceRoot as string);
-    if (current.identity !== source.identity || current.head !== source.head) {
-      throw new Error('release operator spec: source-root identity or HEAD changed while it was checked; sign again');
-    }
-  };
-  lintSpec(spec, plan, undefined, source?.root);
-  checkSource();
-  const checkInputs = () => {
-    if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
-      || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
-      throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
-    }
-  };
-  checkInputs();
+  const { bytes, spec, specSha, plan, planSha, verdicts, residuals, capped, source, checkInputs, checkSource } = signBytes(o, 'spec');
   return lockedAcross(ctx, (l) => {
     const records = readOperatorRecords('spec', ctx.env);
     if (o.supersedes) {
@@ -555,6 +512,74 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   const verb = 'release operator spec-review';
   operatorFence(ctx);
   const keys = [...new Set(o.keys)];
+  const { spec, specSha, plan, planSha, verdicts, residuals, capped, reviewed } = signBytes({ keys, spec: o.spec, plan: o.plan, verdicts: o.verdicts }, 'spec-review');
+  return lockedAcross(ctx, (l) => {
+    if (o.supersedes) {
+      const rows = readOperatorRecords('spec-review', ctx.env);
+      const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
+      if (!rows.some((r) => r.id === o.supersedes && !superseded.has(r.id))) {
+        throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
+      }
+    }
+    return appendSpec(ctx, l.k, {
+      kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specSha,
+      plan_path: plan, plan_sha256: planSha, ...(reviewed!.clean ? {} : { reviewed_sha256: reviewed!.sha256 }), verdicts,
+      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}),
+    });
+  });
+}
+
+type SignRoute = 'spec' | 'spec-review';
+
+interface SignedBytes {
+  bytes: Buffer; spec: string; specSha: string; plan: string; planSha: string | null;
+  verdicts: { path: string; sha256: string }[]; residuals: number; files: VerdictFile[]; capped?: AnyCappedProof;
+  source?: { root: string; head: string; identity: string }; reviewed?: { clean: boolean; sha256: string };
+  checkInputs: () => void; checkSource: () => void;
+}
+
+function signBytes(o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; sourceRoot?: string }, route: SignRoute): SignedBytes {
+  return route === 'spec' ? specBytes(o) : reviewBytes(o);
+}
+
+function specBytes(o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; sourceRoot?: string }): SignedBytes {
+  if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
+  const spec = resolve(o.spec);
+  if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
+  const plan = o.plan ? resolve(o.plan) : spec;
+  if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
+  const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
+    'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
+  checkVerdictSeries(spec, files);
+  const bytes = readFileSync(spec);
+  const specSha = createHash('sha256').update(bytes).digest('hex');
+  const planSha = o.plan ? fileSha(plan) : null;
+  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals, files), {
+    keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
+  }, true);
+  const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
+  const checkSource = () => {
+    if (!source) return;
+    const current = sourceIdentity(o.sourceRoot as string);
+    if (current.identity !== source.identity || current.head !== source.head) {
+      throw new Error('release operator spec: source-root identity or HEAD changed while it was checked; sign again');
+    }
+  };
+  lintSpec(spec, plan, undefined, source?.root);
+  checkSource();
+  const checkInputs = () => {
+    if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
+      || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
+      throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
+    }
+  };
+  checkInputs();
+  return { bytes, spec, specSha, plan, planSha, verdicts, residuals, files, capped, source, checkInputs, checkSource };
+}
+
+function reviewBytes(o: { keys: string[]; spec: string; plan?: string; verdicts: string[] }): SignedBytes {
+  const verb = 'release operator spec-review';
+  const keys = [...new Set(o.keys)];
   if (!keys.length) throw new Error(`${verb}: --keys names the keys the spec covers`);
   if (!o.plan) throw new Error(`${verb}: --plan names the plan; a spec-review record always pins one`);
   const spec = resolve(o.spec);
@@ -598,23 +623,22 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
     const got = pinnedSha(p);
     return 'sha256' in got && got.sha256 === sha256;
   };
-  if (!same(spec, specPin.sha256) || !same(plan, planPin.sha256) || verdicts.some((v) => !same(v.path, v.sha256))) {
-    throw new Error(`${verb}: the spec, plan or a verdict file changed while it was checked; record again`);
-  }
-  return lockedAcross(ctx, (l) => {
-    if (o.supersedes) {
-      const rows = readOperatorRecords('spec-review', ctx.env);
-      const superseded = new Set(rows.flatMap((r) => r.supersedes ?? []));
-      if (!rows.some((r) => r.id === o.supersedes && !superseded.has(r.id))) {
-        throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
-      }
+  const checkInputs = () => {
+    if (!same(spec, specPin.sha256) || !same(plan, planPin.sha256) || verdicts.some((v) => !same(v.path, v.sha256))) {
+      throw new Error(`${verb}: the spec, plan or a verdict file changed while it was checked; record again`);
     }
-    return appendSpec(ctx, l.k, {
-      kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specPin.sha256,
-      plan_path: plan, plan_sha256: planPin.sha256, ...(clean ? {} : { reviewed_sha256: reviewedSha }), verdicts,
-      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}),
-    });
-  });
+  };
+  checkInputs();
+  return {
+    bytes: specPin.bytes, spec, specSha: specPin.sha256, plan, planSha: planPin.sha256, verdicts, residuals, files, capped,
+    reviewed: { clean, sha256: reviewedSha }, checkInputs, checkSource: () => undefined,
+  };
+}
+
+export function signCheck(o: { keys: string[]; spec: string; plan?: string; verdicts: string[]; route?: SignRoute; sourceRoot?: string }):
+  { specSha: string; planSha: string | null } {
+  const { specSha, planSha } = signBytes(o, o.route ?? 'spec');
+  return { specSha, planSha };
 }
 
 export type SpecAnswer = { ok: true } | { missing: string };

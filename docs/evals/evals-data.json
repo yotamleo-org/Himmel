@@ -1,6 +1,34 @@
 {
   "v": 4,
   "generator": "scripts/cr/evals-page-gen.py",
+  "cost": {
+    "runs": [
+      {
+        "as_of": "2026-11-06",
+        "window": {"from": "2026-10-29", "to": "2026-11-05"},
+        "merged_prs": 565,
+        "per_pr_usd": 18.09,
+        "shares_pct": {"worker": 46.7, "chief": 28.8, "judge": 13.2},
+        "reconciliation": {"ratio_pct": 98.2, "sessions": 2561}
+      },
+      {
+        "as_of": "2026-11-26",
+        "window": {"from": "2026-11-18", "to": "2026-11-25"},
+        "merged_prs": 445,
+        "window_total_usd": 15735.87,
+        "per_pr_usd": 35.36,
+        "shares_pct": {"worker": 30.2, "chief": 17.8, "judge": 6.2},
+        "without_t3": {
+          "per_pr_usd": 22.44,
+          "shares_pct": {"worker": 47.5, "chief": 28.0, "judge": 9.8},
+          "t3_spend_share_pct": 36.5,
+          "t3_branch_prs_at_least": 20
+        },
+        "reconciliation": {"ratio_pct": 98.77, "sessions": 2768, "computed_usd": 15844.99, "cost_state_usd": 16042.33},
+        "usage_store": {"missing_day": "2026-11-22", "short_usd": 2028, "window_pct": 86.8, "other_days_pct": 99.7}
+      }
+    ]
+  },
   "review": {
     "as_of": "2026-11-11",
     "until": "2026-11-11T05:00:00Z",

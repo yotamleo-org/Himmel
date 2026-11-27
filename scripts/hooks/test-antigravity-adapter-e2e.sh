@@ -398,5 +398,118 @@ assert_deny "salus cwd: ~/.gemini/config read still denied" ".gemini" \
 assert_deny "salus cwd: git push still denied" "external-write" \
     "$(make_pre run_command '{"CommandLine":"git push origin main"}' "$SALUS_VAULT")"
 
+echo "== 9. Design MCP servers: eager mcp_* and lazy call_mcp_tool =="
+OTHER_ARTIFACT_DIR="$ARTIFACT_DIR"
+if command -v sha256sum >/dev/null 2>&1; then
+    DESIGN_HEX="$(printf '%s' antigravity_design | sha256sum)"
+else
+    DESIGN_HEX="$(printf '%s' antigravity_design | shasum -a 256)"
+fi
+ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1"
+mkdir -p "$ARTIFACT_DIR"
+make_lazy() {
+    local srv="$1" tool="$2" args_json="${3:-}"
+    [ -n "$args_json" ] || args_json='{}'
+    make_pre call_mcp_tool "$(jq -cn --arg s "$srv" --arg t "$tool" --argjson a "$args_json" '{ServerName:$s,ToolName:$t,Arguments:$a}')"
+}
+for srv_tool in context7:query-docs context7:resolve-library-id shadcn:search_items_in_registries playwright:browser_snapshot; do
+    srv="${srv_tool%%:*}"; tool="${srv_tool#*:}"
+    assert_pass "eager mcp_${srv}_${tool} allowed" "$(make_pre "mcp_${srv}_${tool}" '{}')"
+    assert_pass "lazy call_mcp_tool ${srv}/${tool} allowed" "$(make_lazy "$srv" "$tool" '{"q":"x"}')"
+done
+assert_pass "lazy call_mcp_tool without Arguments allowed" \
+    "$(make_pre call_mcp_tool '{"ServerName":"shadcn","ToolName":"get_audit_checklist"}')"
+assert_pass "lazy call_mcp_tool graphify keeps the mcp_* allowlist" "$(make_lazy graphify graph_stats)"
+assert_pass "lazy call_mcp_tool with a string toolSummary allowed" \
+    "$(make_pre call_mcp_tool '{"ServerName":"context7","ToolName":"query-docs","Arguments":{"q":"x"},"toolSummary":"Look up docs"}')"
+SUMMARY_LOG="$TMP/mcp-policy-summary.jsonl"
+run_adapter "$(make_pre call_mcp_tool '{"ServerName":"context7","ToolName":"query-docs","toolSummary":"evil"}')" MCP_POLICY_AUDIT_LOG="$SUMMARY_LOG" >/dev/null
+if jq -e 'select(.server == "context7" and .tool == "query-docs")' "$SUMMARY_LOG" >/dev/null 2>&1; then
+    ok "toolSummary is never read as a server or tool"
+else
+    bad "toolSummary changed the translated call (log=<$(cat "$SUMMARY_LOG" 2>/dev/null)>)"
+fi
+assert_deny "lazy call_mcp_tool t3-code runs the thread-tool guard" "carries a himmel bypass flag" \
+    "$(make_lazy t3-code t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}')"
+assert_deny "lazy call_mcp_tool t3-code unwatch on OPEN PR denied" "OPEN" \
+    "$(make_lazy t3-code unwatch_pull_request '{"url":"https://github.com/o/r/pull/99"}')"
+assert_deny "lazy call_mcp_tool runs block-backend-tier on the translated name" "block-backend-tier" \
+    "$(make_lazy t3-code getJiraIssue)" BACKENDS_REGISTRY="$FAKE_BACKENDS"
+assert_deny "lazy call_mcp_tool is peer-taint gated" "peer-taint-gate" \
+    "$(make_lazy context7 query-docs)" HOME="$TAINT_HOME"
+
+POLICY_LOG="$TMP/mcp-policy-audit.jsonl"
+run_adapter "$(make_lazy context7 query-docs '{"libraryId":"x"}')" MCP_POLICY_AUDIT_LOG="$POLICY_LOG" >/dev/null
+if jq -e 'select(.server == "context7" and .tool == "query-docs" and .verdict == "allow")' "$POLICY_LOG" >/dev/null 2>&1; then
+    ok "lazy call_mcp_tool reaches mcp-policy.sh as mcp__context7__query-docs"
+else
+    bad "lazy call_mcp_tool did not reach mcp-policy.sh (log=<$(cat "$POLICY_LOG" 2>/dev/null)>)"
+fi
+ENFORCE_REG="$TMP/mcp-policy-enforce.json"
+printf '{"mode":"enforce","servers":{}}\n' > "$ENFORCE_REG"
+assert_deny "an enforce-mode mcp-policy deny stops a lazy design call" "mcp-policy" \
+    "$(make_lazy shadcn get_audit_checklist)" MCP_POLICY_REGISTRY="$ENFORCE_REG"
+
+assert_pass "lazy playwright write tool in the registry allowed" "$(make_lazy playwright browser_navigate '{"url":"https://example.com"}')"
+for case_variant in '{"ServerName":"context7","ToolName":"query-docs","servername":"evil"}' \
+                    '{"ServerName":"playwright","ToolName":"browser_snapshot","toolname":"browser_run_code_unsafe"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","arguments":{}}' \
+                    '{"ServerName":"context7\u0000","ToolName":"query-docs"}' \
+                    '{"ServerName":"context7","ToolName":"browser_run_code_unsafe","ſerverName":"playwright"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","Key":"playwright"}' \
+                    '{"ServerName":"t3-code","ToolName":"t3_thread_launch","Arguments":{"title":"x"},"Argumentſ":{"title":"y"}}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","Extra":"z"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","toolAction":"x"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","ToolSummary":"x"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","toolsummary":"x"}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","toolSummary":{"ServerName":"evil"}}' \
+                    '{"ServerName":"context7","ToolName":"query-docs","toolSummary":null}'; do
+    assert_deny "call_mcp_tool args $case_variant denied" "malformed call_mcp_tool" "$(make_pre call_mcp_tool "$case_variant")"
+done
+for pw_tool in browser_run_code_unsafe browser_evaluate browser_run_code browser_future_tool; do
+    assert_deny "lazy playwright $pw_tool denied" "$pw_tool" "$(make_lazy playwright "$pw_tool")"
+    assert_deny "eager playwright $pw_tool denied" "$pw_tool" "$(make_pre "mcp_playwright_$pw_tool" '{}')"
+done
+
+for bad_srv in evil context7x Context7 plugin_playwright_playwright 'playwright__x' 'shadcn context7' 't3-code|graphify'; do
+    assert_deny "lazy call_mcp_tool server '$bad_srv' denied" "MCP server" "$(make_lazy "$bad_srv" run)"
+done
+assert_deny "lazy server name with a trailing newline denied" "call_mcp_tool" "$(make_lazy $'context7\n' query-docs)"
+assert_deny "lazy tool name with a trailing newline denied" "call_mcp_tool" "$(make_lazy playwright $'browser_evaluate\n')"
+assert_deny "lazy tool name with a space denied" "call_mcp_tool" "$(make_lazy playwright 'browser_snapshot x')"
+assert_deny "lazy tool name carrying a second server segment denied" "call_mcp_tool" "$(make_lazy context7 'x__y')"
+for bad_args in '{}' \
+                '{"ToolName":"query-docs","Arguments":{}}' \
+                '{"ServerName":"context7","Arguments":{}}' \
+                '{"ServerName":"","ToolName":"query-docs"}' \
+                '{"ServerName":"context7","ToolName":""}' \
+                '{"ServerName":["context7"],"ToolName":"query-docs"}' \
+                '{"ServerName":"context7","ToolName":7}' \
+                '{"ServerName":"context7","ToolName":"query-docs","Arguments":"x"}' \
+                '{"ServerName":"context7","ToolName":"query-docs","Arguments":[1]}' \
+                '"context7"'; do
+    assert_deny "malformed call_mcp_tool args $bad_args denied" "call_mcp_tool" "$(make_pre call_mcp_tool "$bad_args")"
+done
+assert_deny "eager unlisted MCP server still denied" "not allowlisted" "$(make_pre mcp_evil_query-docs '{}')"
+
+DESIGN_ARTIFACT_DIR="$ARTIFACT_DIR"
+HOME_T3_ART="$HOME/.t3/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1"
+ARTIFACT_DIR="$HOME_T3_ART"
+assert_pass "design profile under the default \$HOME/.t3 allowed" "$(make_lazy context7 query-docs)"
+for other_art in "$OTHER_ARTIFACT_DIR" "" \
+    "$TMP/elsewhere/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1" \
+    "$OTHER_ARTIFACT_DIR/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1" \
+    "$TMP/home/antigravity-acp/brain/conv-1" "$DESIGN_ARTIFACT_DIR/../../../../hash1/antigravity-acp/brain/conv-1"; do
+    ARTIFACT_DIR="$other_art"
+    for srv_tool in context7:query-docs shadcn:get_audit_checklist playwright:browser_snapshot; do
+        srv="${srv_tool%%:*}"; tool="${srv_tool#*:}"
+        assert_deny "outside the design profile, lazy $srv denied (artifact=<$other_art>)" "design profile" "$(make_lazy "$srv" "$tool")"
+        assert_deny "outside the design profile, eager $srv denied (artifact=<$other_art>)" "design profile" "$(make_pre "mcp_${srv}_${tool}" '{}')"
+    done
+done
+ARTIFACT_DIR="$OTHER_ARTIFACT_DIR"
+assert_pass "outside the design profile, lazy graphify still allowed" "$(make_lazy graphify graph_stats)"
+assert_pass "outside the design profile, eager t3-code still allowed" "$(make_pre mcp_t3-code_t3_environment_read '{}')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

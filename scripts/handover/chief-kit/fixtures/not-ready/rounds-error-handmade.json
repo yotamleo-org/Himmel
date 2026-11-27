@@ -1,0 +1,12 @@
+{
+ "_provenance": {
+  "what": "hand-made: the {key, error} form chief-route.ts round-status prints for an untrusted ledger"
+ },
+ "cap": 3,
+ "keys": {
+  "HIMMEL-8020": {
+   "error": "ledger row 2 does not verify",
+   "key": "HIMMEL-8020"
+  }
+ }
+}

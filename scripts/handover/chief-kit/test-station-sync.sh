@@ -525,6 +525,7 @@ cat > "$W/update-heal" <<'EOF2'
 echo "update $*" >> "$SS_CALLS"
 case "$1" in
     --only)
+        [ "$2" != bypass_daemon ] || [ -z "${SS_T_BYPASS:-}" ] || printf '%s\n' '==> bypass launch daemon' "$SS_T_BYPASS"
         [ "$2" != "${SS_T_FAIL:-}" ] || { printf '%s\n' "error: build exploded" >&2; exit 1; }
         c="$2"; [ "$2" != marketplace ] || c=plugins
         sed "s/^\\(    $c  *\\)behind/\\1current/" "$SS_T_VERSIONS" > "$SS_T_VERSIONS.n" && mv "$SS_T_VERSIONS.n" "$SS_T_VERSIONS"
@@ -616,13 +617,39 @@ cat > "$W/ver-heal-plugins" <<'EOF2'
     plugins        behind   1/2         2 declared  version drift: a
     1 behind, 0 undetermined.
 EOF2
+inactive_line="    inactive: the unit is enabled but not running; start it from your shell: himmelctl bypass restart"
 rm -f "$HEAL_STAMP" "$W/bucket/owed.jsonl"
-heal "BEHIND:plugins,bypass_daemon-inactive" "$W/ver-heal-plugins"
-contains "R2d the heal runs the plugins step" "$calls" "update --only marketplace"
-lacks "R2d the heal never runs the bypass step" "$calls" "bypass_daemon"
-contains "R2d the marker is carried forward" "$out" "STATION=BEHIND:bypass_daemon-inactive"
+heal "BEHIND:bypass_daemon-inactive" "$W/ver-current"
+contains "R2d a marker-only state runs the step" "$calls" "update --only bypass_daemon"
+contains "R2d and a current unit clears the marker" "$out" "STATION=OK"
+check "R2d the state reads ok" "$(cat "$SS_STATE")" "ok"
+
+rm -f "$HEAL_STAMP"
+SS_T_BYPASS="$inactive_line" heal "BEHIND:bypass_daemon-inactive" "$W/ver-current"
+contains "R2d a still-stopped unit is asked again" "$calls" "update --only bypass_daemon"
+contains "R2d and keeps the marker" "$out" "STATION=BEHIND:bypass_daemon-inactive"
 check "R2d the state keeps the marker" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-inactive"
 lacks "R2d and files no false owed row" "$out" "OWED station-heal"
 check "R2d no owed row exists" "$(owed_rows)" 0
+
+rm -f "$HEAL_STAMP"
+heal "BEHIND:plugins,bypass_daemon-failed" "$W/ver-heal-plugins"
+contains "R2d a failed marker beside plugins runs the bypass step" "$calls" "update --only bypass_daemon"
+contains "R2d and the marketplace step" "$calls" "update --only marketplace"
+check "R2d a current unit clears the failed marker" "$(cat "$SS_STATE")" "ok"
+
+rm -f "$HEAL_STAMP"
+SS_T_BYPASS="$inactive_line" heal "BEHIND:bypass_daemon-failed" "$W/ver-current"
+check "R2d the marker is rewritten from the fresh output" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-inactive"
+
+rm -f "$HEAL_STAMP" "$W/bucket/owed.jsonl"
+SS_T_FAIL=bypass_daemon heal "BEHIND:bypass_daemon-inactive" "$W/ver-current"
+check "R2d a failing step rewrites the marker to failed" "$(cat "$SS_STATE")" "BEHIND:bypass_daemon-failed"
+check "R2d and files one owed row" "$(owed_rows)" 1
+
+rm -f "$HEAL_STAMP"
+heal "BEHIND:jira_cli" "$W/ver-heal-behind"
+contains "R2d control: the heal ran" "$calls" "update --only jira_cli"
+lacks "R2d control: no marker, no bypass step" "$calls" "bypass_daemon"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

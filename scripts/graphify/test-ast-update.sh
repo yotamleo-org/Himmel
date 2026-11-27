@@ -64,7 +64,7 @@ out2=$( PATH="$BIN2:$PATH" bash "$SCRIPT" "$CORPUS2" 2>&1 ); rc2=$?
 
 [ "$rc2" -eq 0 ] && pass "T2 exits 0 on a free lock" || fail "T2 should exit 0 (got $rc2): $out2"
 grep -qF -- "update $CORPUS2 --force" "$WS/call.log" 2>/dev/null \
-  && pass "T2 graphify was invoked as: update <corpus-root> --force (kept)" \
+  && pass "T2 a corpus with no forced-run stamp is invoked as: update <corpus-root> --force" \
   || fail "T2 graphify was not invoked with the expected args: $(cat "$WS/call.log" 2>/dev/null)"
 [ -d "$OUT2/.promote.lock" ] && fail "T2 the lock directory was left behind after success" \
   || pass "T2 the lock directory is gone after a successful run"
@@ -616,6 +616,89 @@ sleep 3
 hbk2=$(cat "$OUT22B/.promote.lock/heartbeat" 2>/dev/null || echo "")
 [ -n "$hbk1" ] && [ "$hbk1" = "$hbk2" ] && pass "T22 a killed worker's heartbeat stops advancing" \
   || fail "T22 heartbeat kept advancing after the worker was killed ($hbk1 -> $hbk2)"
+
+echo "T23: graphify runs niced (>= 15) with at most 8 extraction workers"
+BIN23="$WS/bin23"; mkdir -p "$BIN23"
+cat > "$BIN23/graphify" <<STUB
+#!/usr/bin/env bash
+echo "nice=\$(ps -o nice= -p \$\$ | tr -d ' ') workers=\${GRAPHIFY_MAX_WORKERS-unset} io=\$(command -v ionice >/dev/null 2>&1 && ionice -p \$\$ || echo none)" > "$WS/prio.log"
+exit 0
+STUB
+chmod +x "$BIN23/graphify"
+run23() {
+  local c="$WS/c23$1"; shift
+  mkdir -p "$c"; : > "$WS/prio.log"
+  out23=$( env "$@" PATH="$BIN23:$PATH" bash "$SCRIPT" "$c" 2>&1 ); rc23=$?
+  ni23=$(sed -n 's/^nice=\([0-9-]*\) .*/\1/p' "$WS/prio.log")
+  wk23=$(sed -n 's/.* workers=\([^ ]*\) .*/\1/p' "$WS/prio.log")
+}
+run23 a -u GRAPHIFY_MAX_WORKERS
+[ "$rc23" -eq 0 ] && [ -n "$ni23" ] && [ "$ni23" -ge 15 ] && pass "T23 graphify runs at nice $ni23" \
+  || fail "T23 graphify should run at nice 15 or higher (rc=$rc23 nice=$ni23): $out23"
+[ "$wk23" = 8 ] && pass "T23 default worker cap is 8" || fail "T23 workers should be 8, got '$wk23'"
+if command -v ionice >/dev/null 2>&1; then
+  grep -q 'io=idle' "$WS/prio.log" && pass "T23 graphify runs in the idle I/O class" \
+    || fail "T23 expected idle I/O class: $(cat "$WS/prio.log")"
+fi
+run23 b GRAPHIFY_MAX_WORKERS=32
+[ "$wk23" = 8 ] && pass "T23 a larger preset is capped at 8" || fail "T23 preset 32 should cap to 8, got '$wk23'"
+run23 c GRAPHIFY_MAX_WORKERS=2
+[ "$wk23" = 2 ] && pass "T23 a smaller preset is kept" || fail "T23 preset 2 should stay 2, got '$wk23'"
+BSD23="$WS/bsd23"; mkdir -p "$BSD23"
+cat > "$BSD23/nice" <<STUB
+#!/usr/bin/env bash
+[ "\$#" -gt 0 ] || { echo "usage: nice [-n increment] utility [argument ...]" >&2; exit 125; }
+exec "$(command -v nice)" "\$@"
+STUB
+chmod +x "$BSD23/nice"
+mkdir -p "$WS/c23d"
+out23=$( PATH="$BSD23:$BIN23:$PATH" bash "$SCRIPT" "$WS/c23d" 2>&1 ); rc23=$?
+[ "$rc23" -eq 0 ] && pass "T23 a BSD nice (no bare form) does not stop the rebuild" \
+  || fail "T23 BSD nice (rc=$rc23): $out23"
+
+echo "T24: incremental by default; one forced run per 24 h per corpus"
+CORPUS24="$WS/c24"; OUT24="$CORPUS24/graphify-out"; mkdir -p "$CORPUS24"
+STAMP24="$OUT24/.ast-forced-at"
+BIN24="$WS/bin24"; make_stub "$BIN24"
+run24() { : > "$WS/call.log"; out24=$( PATH="$BIN24:$PATH" bash "$SCRIPT" "$CORPUS24" 2>&1 ); rc24=$?; }
+forced24() { grep -qF -- "update $CORPUS24 --force" "$WS/call.log"; }
+plain24() { grep -q -- "update $CORPUS24\$" "$WS/call.log"; }
+
+run24
+[ "$rc24" -eq 0 ] && forced24 && [ -s "$STAMP24" ] && pass "T24a no stamp -> forced, stamp written" \
+  || fail "T24a (rc=$rc24) call=$(cat "$WS/call.log") stamp=$(cat "$STAMP24" 2>/dev/null)"
+fresh24=$(( $(date -u +%s) - 3600 )); mkdir -p "$OUT24"; printf '%s\n' "$fresh24" > "$STAMP24"
+run24
+[ "$rc24" -eq 0 ] && plain24 && [ "$(cat "$STAMP24")" = "$fresh24" ] \
+  && pass "T24b a fresh stamp -> update without --force (graphify extracts only changed files), stamp kept" \
+  || fail "T24b (rc=$rc24) call=$(cat "$WS/call.log") stamp=$(cat "$STAMP24" 2>/dev/null)"
+stale24=$(( $(date -u +%s) - 90000 )); printf '%s\n' "$stale24" > "$STAMP24"
+run24
+[ "$rc24" -eq 0 ] && forced24 && [ "$(cat "$STAMP24")" -gt "$((stale24 + 86400))" ] 2>/dev/null \
+  && pass "T24c a stale stamp -> forced once, stamp refreshed" \
+  || fail "T24c (rc=$rc24) call=$(cat "$WS/call.log") stamp=$(cat "$STAMP24" 2>/dev/null)"
+run24
+plain24 && pass "T24c the next run is incremental again" || fail "T24c second run: $(cat "$WS/call.log")"
+printf 'garbage\n' > "$STAMP24"
+run24
+forced24 && pass "T24d an unreadable stamp -> forced" || fail "T24d call=$(cat "$WS/call.log")"
+
+cat > "$BIN24/graphify" <<STUB
+#!/usr/bin/env bash
+echo "\$\$ \$*" >> "$WS/call.log"
+echo "[graphify] WARNING: new graph has 1 nodes but existing graph.json has 2. Refusing to overwrite" >&2
+exit 1
+STUB
+printf '%s\n' "$(date -u +%s)" > "$STAMP24"
+run24
+[ "$rc24" -eq 5 ] && plain24 && grep -q "Refusing to overwrite" <<<"$out24" \
+  && pass "T24e a refused shrink on the plain path exits 5 (the cadence alerts) and shows the refusal" \
+  || fail "T24e (rc=$rc24) call=$(cat "$WS/call.log"): $out24"
+printf '%s\n' "$stale24" > "$STAMP24"
+run24
+[ "$rc24" -eq 5 ] && forced24 && [ "$(cat "$STAMP24")" = "$stale24" ] \
+  && pass "T24f a failed forced run keeps the old stamp, so the next run forces again" \
+  || fail "T24f (rc=$rc24) stamp=$(cat "$STAMP24" 2>/dev/null)"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

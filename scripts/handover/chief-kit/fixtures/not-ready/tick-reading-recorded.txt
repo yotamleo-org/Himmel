@@ -1,0 +1,236 @@
+## recorded real owner output, read-only, 2026-11-27
+## command: tick.sh --pool-dispositions --doc <stub chief doc> < the full clean capture, TICK_STATE_DIR a scratch directory
+## input sha256: 1b5537a4cde979e7331982ea72082b7a1254ea61c7a52884f511da8d0320c320 (the full tick-pool-336207876.rows)
+## The capture's own chief doc is unknown, so the doc is a stub with no pool-disposition lines.
+## Plan finding P29 is answered by the chief's ruling (DZ 2026-11-27).
+# pool-dispatchable HIMMEL-10012
+# pool-dispatchable HIMMEL-10069
+# pool-dispatchable HIMMEL-10205
+# pool-dispatchable HIMMEL-10215
+# pool-dispatchable HIMMEL-10216
+# pool-dispatchable HIMMEL-10222
+# pool-dispatchable HIMMEL-10240
+# pool-dispatchable HIMMEL-10246
+# pool-dispatchable HIMMEL-10256
+# pool-dispatchable HIMMEL-10258
+# pool-dispatchable HIMMEL-10260
+# pool-dispatchable HIMMEL-10264
+# pool-dispatchable HIMMEL-10265
+# pool-dispatchable HIMMEL-6546
+# pool-dispatchable HIMMEL-7490
+# pool-dispatchable HIMMEL-7637
+# pool-dispatchable HIMMEL-8020
+# pool-dispatchable HIMMEL-8139
+# pool-dispatchable HIMMEL-8247
+# pool-dispatchable HIMMEL-8691
+# pool-dispatchable HIMMEL-8967
+# pool-dispatchable HIMMEL-9246
+# pool-dispatchable HIMMEL-9423
+# pool-dispatchable HIMMEL-9432
+# pool-dispatchable HIMMEL-9467
+# pool-dispatchable HIMMEL-9503
+# pool-dispatchable HIMMEL-9560
+# pool-dispatchable HIMMEL-9564
+# pool-dispatchable HIMMEL-9603
+# pool-dispatchable HIMMEL-9680
+# pool-dispatchable HIMMEL-9716
+# pool-dispatchable HIMMEL-9723
+# pool-dispatchable HIMMEL-9816
+# pool-dispatchable HIMMEL-9823
+# pool-dispatchable HIMMEL-9824
+# pool-dispatchable HIMMEL-9837
+# pool-dispatchable HIMMEL-9840
+# pool-dispatchable HIMMEL-9844
+# pool-dispatchable HIMMEL-9848
+# pool-dispatchable HIMMEL-9849
+# pool-dispatchable HIMMEL-9856
+# pool-dispatchable HIMMEL-9885
+# pool-dispatchable HIMMEL-9914
+# pool-dispatchable HIMMEL-9915
+# pool-dispatchable HIMMEL-9945
+# pool-dispatchable HIMMEL-9970
+# pool-dispatchable HIMMEL-9975
+# pool-dispatchable HIMMEL-9980
+# readiness v1.1.3 blocked=0 chief-sign=0 rows-stale=0
+# pool-counts 120/8/17/103
+# pool-unresolved classification HIMMEL-10033 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10210 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10227 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10278 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10321 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10322 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10325 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-10329 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-8674 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-8935 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9029 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9082 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9190 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9201 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9335 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9818 classification none (cloud-route gave no verdict)
+# pool-unresolved classification HIMMEL-9932 classification none (cloud-route gave no verdict)
+# pool-unresolved label HIMMEL-9252 label held
+# pool-unresolved listed HIMMEL-10012 listed RESUME
+# pool-unresolved listed HIMMEL-10069 listed RESUME
+# pool-unresolved listed HIMMEL-10215 listed RESUME
+# pool-unresolved listed HIMMEL-10216 listed RESUME
+# pool-unresolved listed HIMMEL-10222 listed RESUME
+# pool-unresolved listed HIMMEL-10240 listed RESUME
+# pool-unresolved listed HIMMEL-10246 listed RESUME
+# pool-unresolved listed HIMMEL-10256 listed RESUME
+# pool-unresolved listed HIMMEL-10258 listed RESUME
+# pool-unresolved listed HIMMEL-10260 listed RESUME
+# pool-unresolved listed HIMMEL-10264 listed RESUME
+# pool-unresolved listed HIMMEL-10282 listed MERGED-NOT-CLOSED
+# pool-unresolved listed HIMMEL-7490 listed RESUME
+# pool-unresolved listed HIMMEL-8020 listed RESUME
+# pool-unresolved listed HIMMEL-8139 listed RESUME
+# pool-unresolved listed HIMMEL-8247 listed RESUME
+# pool-unresolved listed HIMMEL-8691 listed RESUME
+# pool-unresolved listed HIMMEL-8967 listed RESUME
+# pool-unresolved listed HIMMEL-9246 listed RESUME
+# pool-unresolved listed HIMMEL-9423 listed RESUME
+# pool-unresolved listed HIMMEL-9432 listed RESUME
+# pool-unresolved listed HIMMEL-9467 listed RESUME
+# pool-unresolved listed HIMMEL-9503 listed RESUME
+# pool-unresolved listed HIMMEL-9560 listed RESUME
+# pool-unresolved listed HIMMEL-9564 listed RESUME
+# pool-unresolved listed HIMMEL-9603 listed RESUME
+# pool-unresolved listed HIMMEL-9680 listed RESUME
+# pool-unresolved listed HIMMEL-9716 listed RESUME
+# pool-unresolved listed HIMMEL-9816 listed RESUME
+# pool-unresolved listed HIMMEL-9823 listed RESUME
+# pool-unresolved listed HIMMEL-9824 listed RESUME
+# pool-unresolved listed HIMMEL-9837 listed RESUME
+# pool-unresolved listed HIMMEL-9840 listed RESUME
+# pool-unresolved listed HIMMEL-9844 listed RESUME
+# pool-unresolved listed HIMMEL-9848 listed RESUME
+# pool-unresolved listed HIMMEL-9849 listed RESUME
+# pool-unresolved listed HIMMEL-9856 listed RESUME
+# pool-unresolved listed HIMMEL-9885 listed RESUME
+# pool-unresolved listed HIMMEL-9914 listed RESUME
+# pool-unresolved listed HIMMEL-9915 listed RESUME
+# pool-unresolved listed HIMMEL-9945 listed RESUME
+# pool-unresolved listed HIMMEL-9975 listed RESUME
+# pool-unresolved listed HIMMEL-9980 listed RESUME
+# pool-unresolved no-scope HIMMEL-10259 no-scope (nothing says what it writes: a chief question)
+# pool-unresolved no-scope HIMMEL-9953 no-scope (nothing says what it writes: a chief question)
+# pool-unresolved partial-merge HIMMEL-10043 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-10088 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-10194 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-10253 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-6829 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-7006 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-8823 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9080 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9166 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9342 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9422 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9525 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9556 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9725 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9916 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9917 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9935 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved partial-merge HIMMEL-9973 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-unresolved proof HIMMEL-10228 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10229 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10231 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10239 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10241 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10255 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10257 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10261 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10311 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10315 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10318 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10319 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-10332 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-8474 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-8915 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-unresolved proof HIMMEL-9174 proof missing: Proof
+# pool-unresolved proof HIMMEL-9668 proof missing: Proof
+# pool-unresolved type HIMMEL-9330 type Epic
+# pool-unresolved type HIMMEL-9426 type Epic
+# pool-unresolved unowned HIMMEL-10208 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-unresolved unowned HIMMEL-9001 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-unresolved unowned HIMMEL-9229 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-left-out HIMMEL-10011 blocker HIMMEL-10216 (In Progress, live)
+# pool-left-out HIMMEL-10033 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10043 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-10088 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-10091 blocker HIMMEL-10033 (To Do, live)
+# pool-left-out HIMMEL-10194 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-10208 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-left-out HIMMEL-10210 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10217 blocker HIMMEL-10215 (In Progress, live), HIMMEL-10264 (In Progress, live)
+# pool-left-out HIMMEL-10218 blocker HIMMEL-10215 (In Progress, live), HIMMEL-10216 (In Progress, live), HIMMEL-10264 (In Progress, live)
+# pool-left-out HIMMEL-10219 blocker HIMMEL-10218 (To Do, live), HIMMEL-10216 (In Progress, live)
+# pool-left-out HIMMEL-10220 blocker HIMMEL-10194 (To Do, live)
+# pool-left-out HIMMEL-10227 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10228 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10229 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10231 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10239 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10241 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10253 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-10255 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10257 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10259 no-scope (nothing says what it writes: a chief question)
+# pool-left-out HIMMEL-10261 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10278 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10282 listed MERGED-NOT-CLOSED
+# pool-left-out HIMMEL-10309 in-flight owned by open PR 5570
+# pool-left-out HIMMEL-10310 in-flight owned by the --owners list
+# pool-left-out HIMMEL-10311 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10312 in-flight owned by open PR 5564
+# pool-left-out HIMMEL-10315 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10317 owned by open PR 5565
+# pool-left-out HIMMEL-10318 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10319 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-10321 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10322 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10323 in-flight owned by open PR 5571
+# pool-left-out HIMMEL-10324 owned by open PR 5565
+# pool-left-out HIMMEL-10325 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10329 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-10331 in-flight owned by open PR 5572
+# pool-left-out HIMMEL-10332 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-6829 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-7006 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-7691 in-flight owned by the --owners list
+# pool-left-out HIMMEL-8474 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-8674 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-8731 blocker HIMMEL-10278 (To Do, live)
+# pool-left-out HIMMEL-8823 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-8915 proof missing: DoD, Proof (the ticket-standard checker could not read the body: rc 2)
+# pool-left-out HIMMEL-8935 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9001 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-left-out HIMMEL-9029 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9080 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9082 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9166 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9174 proof missing: Proof
+# pool-left-out HIMMEL-9190 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9201 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9229 unowned In Progress (no worker, no open PR; not listed: held, blocked, parked or unread)
+# pool-left-out HIMMEL-9252 label held
+# pool-left-out HIMMEL-9330 type Epic
+# pool-left-out HIMMEL-9335 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9342 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9422 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9426 type Epic
+# pool-left-out HIMMEL-9525 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9556 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9668 proof missing: Proof
+# pool-left-out HIMMEL-9725 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9763 blocker HIMMEL-8474 (To Do, live)
+# pool-left-out HIMMEL-9800 blocker HIMMEL-9844 (To Do, live)
+# pool-left-out HIMMEL-9818 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9916 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9917 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9932 classification none (cloud-route gave no verdict)
+# pool-left-out HIMMEL-9935 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)
+# pool-left-out HIMMEL-9953 no-scope (nothing says what it writes: a chief question)
+# pool-left-out HIMMEL-9973 partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)

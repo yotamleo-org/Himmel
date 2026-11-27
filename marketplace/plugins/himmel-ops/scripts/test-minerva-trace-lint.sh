@@ -160,6 +160,30 @@ expect_pass "surface word inside a code fence does not trigger" "$td/fenced-body
 expect_refuse "spec given as its own plan" "the plan is the spec" "$td/green.md" "$td/green.md"
 expect_pass "spec with Invariants: none may stand in for its plan" "$td/plain.md" "$td/plain.md"
 
+sed "s#\`$repo_path\`#\`$repo_path:12\`#" "$td/green.md" >"$td/line.md"
+expect_refuse "path:line cell names the suffix" ":12" "$td/line.md" "$td/plan.md"
+expect_refuse "path:line cell names the passing form" "name its function bare" "$td/line.md" "$td/plan.md"
+sed "s#\`$repo_path\`#\`$repo_path:12-14\`#" "$td/green.md" >"$td/range.md"
+expect_refuse "path:range cell names the passing form" "name its function bare" "$td/range.md" "$td/plan.md"
+sed "s#\`$repo_path\`#\`minerva-spec-gate.sh\`#" "$td/green.md" >"$td/bare.md"
+expect_refuse "bare file name cites the repo-relative path" "cite its repo-relative path" "$td/bare.md" "$td/plan.md"
+sed "s#\`$repo_path\`#\`$repo_path\` \`parseAsync\`#" "$td/green.md" >"$td/func.md"
+expect_pass "path plus a bare function name passes" "$td/func.md" "$td/plan.md"
+sed "s#\`$repo_path\`#\`$repo_path\` \`program.parseAsync\`#" "$td/green.md" >"$td/dotted.md"
+expect_refuse "dotted function name is refused as a path" "program.parseAsync, which does not exist" "$td/dotted.md" "$td/plan.md"
+
+spec_only(){
+  local out rc
+  out="$(bash "$lint" --spec-only "$4" ${5:+"$5"} 2>&1)"; rc=$?
+  [ "$rc" -eq "$2" ] && ok "$1: exit $2" || bad "$1: expected exit $2, got $rc: $out"
+  case "$out" in *"$3"*) ok "$1: names $3";; *) bad "$1: output lacks [$3]: $out";; esac
+}
+spec_only "--spec-only refuses a bare-name cell" 1 "cite its repo-relative path" "$td/bare.md"
+spec_only "--spec-only refuses a non-I<n> invariant line" 1 "not an I<n> line" "$td/unnumbered.md"
+spec_only "--spec-only passes an I1 with no plan test line" 0 "minerva-trace-lint: ok" "$td/green.md"
+spec_only "--spec-only honours the second root" 0 "minerva-trace-lint: ok" "$td/own-path.md" "$td/own"
+spec_only "--spec-only with a missing spec is a usage error" 2 "usage" "$td/absent.md"
+
 # usage errors exit 2
 bash "$lint" "$td/absent.md" "$td/plan.md" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "missing spec: exit 2" || bad "missing spec: expected exit 2, got $rc"

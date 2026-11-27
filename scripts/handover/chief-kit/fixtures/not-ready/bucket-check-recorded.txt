@@ -1,0 +1,8 @@
+## recorded real owner output, read-only, 2026-11-27
+## command: jira release bucket-check --mirror <the station's HIMMEL mirror> HIMMEL-8020 HIMMEL-9432 HIMMEL-9816 HIMMEL-9915 HIMMEL-10215
+## input sha256: ee2d17709a5d6b8c0e8c4a0d83e54f6dc06ab5dc4c02ec07944bfe76938bed43 (the mirror's versions file)
+IN HIMMEL-8020 current=v1.1.3 via=mirror
+IN HIMMEL-9432 current=v1.1.3 via=mirror
+IN HIMMEL-9816 current=v1.1.3 via=mirror
+OUTSIDE HIMMEL-9915 none current=v1.1.3 open=358
+DONE HIMMEL-10215

@@ -738,6 +738,49 @@ test("GET /api/agui/<run> merges the run's bus events through the server", async
   expect(paths.filter((x) => x.includes("H2"))).toEqual([]);
 });
 
+test("a run's journal events stream while the bus collection is still running", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const { withChainLock } = await import("../../telegram/bus.ts");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  await append(root, "worker-a", { t: Date.now() - 5000, b: "x", c: 0, i: "W1", f: "chief-x", r: "worker-a" });
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "worker-a", sessionId: RUN }) + "\n" + readFileSync(join(FIX, "happy-path.jsonl"), "utf8"));
+  let unlock!: () => void, locked!: () => void;
+  const held = new Promise<void>((r) => { locked = r; });
+  const holder = withChainLock(join(root, "lock", "worker-a"), () => new Promise<void>((r) => { unlock = r; locked(); }));
+  await held;
+  try {
+    const r = new Response(journalStream(p, { ...direct, idleMs: 200, busRoot: root }));
+    const first = await readUntil(r, (events) => events.some((e) => e.type === "RUN_FINISHED"), 3000);
+    expect(first.events.map((e) => e.type)).toContain("RUN_FINISHED");
+  } finally { unlock(); await holder; }
+  let unlock2!: () => void;
+  const held2 = new Promise<void>((ok) => { void withChainLock(join(root, "lock", "worker-a"), () => new Promise<void>((r) => { unlock2 = r; ok(); })); });
+  await held2;
+  const stream = new Response(journalStream(p, { ...direct, idleMs: 200, busRoot: root })).text();
+  await sleep(600);
+  unlock2();
+  await sleep(50);
+  await append(root, "worker-a", { t: Date.now(), b: "x", c: 0, i: "W2", f: "chief-x", r: "worker-a" });
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/W1");
+  expect(paths).toContain("/bus/msgs/W2");
+});
+
+test("a failed bus scan does not let the stream idle-close without the bus events", async () => {
+  const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");
+  const h = home();
+  const root = await busRoot({ stateHome: join(h, "state") });
+  await append(root, "worker-a", { t: Date.now() - 5000, b: "x", c: 0, i: "W1", f: "chief-x", r: "worker-a" });
+  const p = journal(h, "-proj", RUN, JSON.stringify({ type: "agent-name", agentName: "worker-a", sessionId: RUN }) + "\n");
+  renameSync(join(root, "log"), join(root, "log.away"));
+  const stream = new Response(journalStream(p, { ...direct, pollMs: 400, idleMs: 0, busRoot: root })).text();
+  await sleep(150);
+  renameSync(join(root, "log.away"), join(root, "log"));
+  const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
+  expect(paths).toContain("/bus/msgs/W1");
+});
+
 // bus traffic is activity: a stream fed only by bus messages stays open past idleMs while they keep arriving
 test("a stream with only bus traffic does not idle-close", async () => {
   const { busRoot, append } = await import("../../../marketplace/plugins/himmel-bus/lib/store.mjs");

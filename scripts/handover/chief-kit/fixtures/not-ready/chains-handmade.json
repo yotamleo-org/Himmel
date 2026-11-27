@@ -1,0 +1,40 @@
+[
+ {
+  "id": "demo-chain",
+  "name": "hand-made chain with a registry",
+  "steps": [
+   {
+    "key": "HIMMEL-8020",
+    "wave": 0
+   },
+   {
+    "key": "HIMMEL-9432",
+    "wave": 1
+   },
+   {
+    "key": "HIMMEL-9816",
+    "wave": 2
+   }
+  ],
+  "done": [],
+  "unknown": [
+   "HIMMEL-9816"
+  ],
+  "next": [
+   "HIMMEL-8020"
+  ]
+ },
+ {
+  "id": "hand-kept",
+  "name": "hand-made hand-kept chain without next, done and unknown",
+  "steps": [
+   {
+    "key": "HIMMEL-9915",
+    "wave": 0
+   }
+  ]
+ },
+ {
+  "drain": "v1.1.3 drain: dispatchable 8"
+ }
+]

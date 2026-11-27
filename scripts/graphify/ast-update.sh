@@ -53,11 +53,11 @@
 # stamp, run, release on ANY exit (owner-tokened, so a takeover by the
 # semantic side while we're gone is never clobbered by our own release).
 #
-# --force is DELIBERATE and stays (do not "fix" this): `graphify
-# update` silently refuses to overwrite graph.json when the rebuild has fewer
-# nodes unless --force is given -- that silent refusal caused a month of
-# unnoticed graph staleness. Dropping --force here would reintroduce it on an
-# unattended hourly cadence, where nobody is watching even less.
+# INCREMENTAL BY DEFAULT, one --force run per 24 h per corpus: --force turns off
+# graphify's incremental mode (watch.py: incremental only when not force), so a
+# forced run walks the whole corpus, and graphify never AST-caches JS/TS
+# (extract.py _JS_CACHE_BYPASS_SUFFIXES), which is ~1,300 re-extractions on
+# himmel. Without it only the files that differ from the manifest are extracted.
 #
 # Usage: ast-update.sh <corpus-root>
 #
@@ -349,8 +349,7 @@ if ! _stamp_err=$( { date -u +%s > "$PROMOTE_LOCK/acquired"; } 2>&1 1>/dev/null 
 fi
 PROMOTE_LOCK_HELD=1
 
-# Heartbeat. This run holds the lock ~18 min (graphify update
-# --force), past refresh-graph-map.sh's 600s stale floor, so without a sign of
+# Heartbeat. A forced full run can hold the lock ~18 min, past refresh-graph-map.sh's 600s stale floor, so without a sign of
 # life a refresh would judge the lock stale and take it over mid-run. A
 # background loop rewrites <lock>/heartbeat every N seconds; refresh-graph-map.sh
 # judges staleness from the newer of `acquired` and `heartbeat`. The loop ends
@@ -394,8 +393,25 @@ if [ -f "$OUT_DIR/graph.json" ] && ! cp "$OUT_DIR/graph.json" "$_pre_ast" 2>/dev
   echo "ast-update: FAILED -- could not snapshot $OUT_DIR/graph.json before the rebuild (unreadable or disk full), so the semantic nodes it would drop could not be restored; nothing run. Exiting 5" >&2
   exit 5
 fi
+_workers="${GRAPHIFY_MAX_WORKERS:-8}"
+case "$_workers" in *[!0-9]*) _workers=8 ;; esac
+[ "$((10#$_workers))" -ge 1 ] && [ "$((10#$_workers))" -le 8 ] || _workers=8
+export GRAPHIFY_MAX_WORKERS="$_workers"
+_nice_now=$(ps -o nice= -p $$ 2>/dev/null | tr -d ' ') || _nice_now=""
+[[ "$_nice_now" =~ ^-?[0-9]+$ ]] || _nice_now=0
+_nice_by=$((15 - _nice_now))
+[ "$_nice_by" -gt 0 ] || _nice_by=0
+_lowprio=(nice -n "$_nice_by")
+if command -v ionice >/dev/null 2>&1; then _lowprio=(ionice -t -c 3 "${_lowprio[@]}"); fi
+
+_forced_stamp="$OUT_DIR/.ast-forced-at"
+_now=$(date -u +%s)
+_last_forced=$(cat "$_forced_stamp" 2>/dev/null) || _last_forced=""
+case "$_last_forced" in ''|*[!0-9]*) _last_forced=0 ;; esac
+_force_args=()
+[ "$((_now - 10#$_last_forced))" -lt 86400 ] || _force_args=(--force)
 set +e
-graphify update "$CORPUS_ROOT" --force
+"${_lowprio[@]}" graphify update "$CORPUS_ROOT" ${_force_args[@]+"${_force_args[@]}"}
 _graphify_rc=$?
 set -e
 if [ -f "$_pre_ast" ]; then
@@ -430,6 +446,9 @@ if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ]; then
     || echo "ast-update: WARN harden-graph.py failed; the rebuilt graph stands, the next refresh re-hardens it" >&2
 fi
 if [ "$_graphify_rc" -eq 0 ]; then
+  if [ "${#_force_args[@]}" -gt 0 ] && [ -d "$OUT_DIR" ]; then
+    printf '%s\n' "$_now" > "$_forced_stamp" || echo "ast-update: WARN could not write $_forced_stamp; the next run forces again" >&2
+  fi
   exit 0
 fi
 echo "ast-update: FAILED -- graphify update exited $_graphify_rc -- reporting as exit 5, not $_graphify_rc, so a real graphify failure can never masquerade as this script's reserved exit 3 (fs failure) or exit 4 (benign lock-skip)" >&2
