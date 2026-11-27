@@ -139,7 +139,8 @@
 # `gh pr diff`, a timeout, the API's 3000-file cap; a live worker whose doc names no Writes line; an unreadable series ledger)
 # prints `# overlap unknown for PR <n>` / `live worker <N>` / `series ledger <n>` under the header and gates no row.
 # What still gates: an open-PR LIST that fails (the list is printed with an `open PRs unknown` header and no RESUME or
-# IN CI row, rather than silently trusting an empty set) and a live-worker manifest that cannot be read (`live workers unknown`).
+# IN CI row, rather than silently trusting an empty set; the stale pass below is the one exception) and a live-worker
+# manifest that cannot be read (`live workers unknown`, in the stale pass too).
 # An open PR owns every ticket key its title or branch names, inside this repository or outside it, whatever its idle days. A
 # cross-repository PR's owner text carries its idle days (`open PR <n> (idle <d>d)`, or `(idle unknown)`); the age is printed, never acted on.
 #
@@ -187,11 +188,28 @@
 # GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, GraphQL and core, on the token the reads ride:
 # ghq_scan_token; the classifier's searches ride main, so with it on main's GraphQL is gated too) that finds a
 # bucket under the floor or a probe timed out, or a gh read during the run that names a rate limit or times out (the
-# classifier's stderr or a classifier timeout too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
-# no rows, no RESUME-HELD, no POOL-EMPTY, since the unread rows are unknown, not empty. After the first refused or
-# stalled read every later gh read fails at once and classification is skipped. NEXT_DISPATCH_DEADLINE (seconds,
-# default 400, under the waiter's 420; 0 = none) bounds the whole run, preflight included, and a cut prints `# gh-stall`.
-# NEXT_DISPATCH_GH_TIMEOUT (seconds) replaces every gh read's own bound (60 or 120) and the classifier's 300.
+# classifier's stderr or a classifier timeout too), makes line 1 of stdout `# quota-pause QUOTA-PAUSE …` or
+# `# gh-stall GH-STALL …`, exit 0, and throws the GitHub pass's own output away, since its unread rows are unknown, not
+# empty. After the first refused or stalled read every later gh read fails at once and classification is skipped.
+# NEXT_DISPATCH_DEADLINE (seconds, default 400, under the waiter's 420; 0 = none) bounds the whole run, preflight
+# included, and a cut prints `# gh-stall`. NEXT_DISPATCH_GH_TIMEOUT (seconds) replaces every gh read's own bound (60 or
+# 120) and the classifier's 300.
+#
+# The stale pass: after any pause (not under --resume-only, which stays one line; --why-ticket never pauses) the same
+# program runs once more reading no GitHub, no classifier and no live blocker. Line 2 is then
+# `# stale-gh rows=<n> skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=snapshot:<age>s|none`,
+# followed by the To Do and DESIGN rows the mirror can judge, each ending in a `stale-gh` field. It prints no RESUME,
+# IN CI, OWED, chief-note, series or count line and no POOL-EMPTY. A To Do ticket with a pre-merge status row nothing
+# confirmed is withheld. NEXT_DISPATCH_STALE_BUDGET (seconds, default 40, 0 = no stale pass) is its time: the budget
+# is min(that, max(1, deadline / 2)), the GitHub pass is cut at deadline minus budget (the cut line names that bound),
+# and the stale pass is skipped with less than min(5, budget) seconds left. With no deadline it has no bound. A stale
+# pass that fails or runs out of time leaves line 1 alone. A stale row is a hint, not a launch order.
+#
+# Open-PR snapshot: a listing run that read the open-PR title list writes it to
+# ~/.himmel/state/next-dispatchable/open-prs.json (NEXT_DISPATCH_PR_SNAPSHOT names the file, `off` disables it; off
+# too when NEXT_DISPATCH_GH_CMD is set and it is not). Only the stale pass reads it, for open-PR ownership and file
+# overlap, while it is younger than NEXT_DISPATCH_PR_SNAPSHOT_MAX_AGE (default 1800); else it prints
+# `# overlap unknown for open PRs`.
 #
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`, the quota probes' too; with no HIMMEL_QUOTA_DIR
 # its readings go to a temp quota dir removed at exit, never the station's quota.tsv),
@@ -279,7 +297,7 @@ export ND_OWE="$HERE/owe.sh" ND_READINESS="$HERE/readiness.sh"
 . "$REPO/scripts/lib/gh-quota.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
-nd_qtmp=""; nd_out=""; nd_flags=""; nd_pred_tmp=""; nd_pid=""
+nd_qtmp=""; nd_out=""; nd_flags=""; nd_pred_tmp=""; nd_pid=""; nd_pre=""
 nd_temp_failure() {
     if [ -n "$why_ticket" ]; then
         printf 'UNKNOWN %s: temporary storage unavailable\n' "$why_ticket"
@@ -292,10 +310,6 @@ if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
     nd_qtmp=$(tmpdir) || nd_temp_failure
     export HIMMEL_QUOTA_DIR="$nd_qtmp"
 fi
-nd_pause() {
-    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
-    exit 0
-}
 nd_tok=main
 if [ -z "$why_ticket" ]; then
 export GH_READ_NO_MAIN_FALLBACK=1
@@ -309,14 +323,14 @@ fi
 nd_tok=main
 [ -z "${ND_GH_READ:-}" ] || nd_tok=$(ghq_scan_token next-dispatchable)
 for nd_bucket in graphql core; do
-    nd_line=$(ghq_scan_gate_routed "$nd_tok" "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+    nd_line=$(ghq_scan_gate_routed "$nd_tok" "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || { nd_pre="$nd_line"; break; }; }
 done
-if [ "$nd_tok" = read ] && ! { ghq_row_ok read graphql && ghq_row_ok read core; }; then
+if [ -z "$nd_pre" ] && [ "$nd_tok" = read ] && ! { ghq_row_ok read graphql && ghq_row_ok read core; }; then
     nd_tok=main
     unset ND_GH_READ
 fi
-if [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
-    nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+if [ -z "$nd_pre" ] && [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
+    nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pre="$nd_line"; }
 fi
 else
     unset ND_GH_READ
@@ -336,14 +350,25 @@ trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT H
 _TIMEOUT_BIN=""
 [ "$nd_deadline" -eq 0 ] || . "$REPO/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: no timeout binary runs the scan with its per-read bounds only
 export ND_FLAGS="$nd_flags"
-nd_left=$((nd_deadline - SECONDS))
-[ "$nd_left" -gt 0 ] || nd_left=1
-${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
-import datetime, functools, glob, hashlib, json, math, os, re, subprocess, sys, tempfile, time
+nd_budget=0
+if [ -z "$why_ticket" ] && [ "$resume_only" = 0 ]; then
+    nd_budget="${NEXT_DISPATCH_STALE_BUDGET:-40}"
+    case "$nd_budget" in ''|*[!0-9]*) nd_budget=40 ;; esac
+    nd_budget=$((10#$nd_budget))
+    if [ "$nd_deadline" -gt 0 ]; then
+        nd_half=$((nd_deadline / 2)); [ "$nd_half" -gt 0 ] || nd_half=1
+        [ "$nd_budget" -le "$nd_half" ] || nd_budget="$nd_half"
+    fi
+fi
+nd_cut=$((nd_deadline - nd_budget)); [ "$nd_cut" -ge 1 ] || nd_cut=1
+nd_scan() {
+exec "$@" python3 -I - <<'PY'
+import datetime, fcntl, functools, glob, hashlib, json, math, os, re, subprocess, sys, tempfile, time
 sys.stdout.reconfigure(errors='backslashreplace')
 sys.stderr.reconfigure(errors='backslashreplace')
 
 why_key = os.environ.get('ND_WHY_TICKET', '')
+gh_stale = os.environ.get('ND_STALE') == '1'  # the stale pass: the mirror and local files only
 
 def unknown(reason):
     print('UNKNOWN %s: %s' % (why_key, ' '.join(str(reason).split())))
@@ -391,6 +416,8 @@ def note_flag(kind, bucket, detail, tok=None):
         pass  # swallow-ok: with no flag file the run prints its rows with the rate-limit WARN header, as before
 
 def ghrun(argv, **kw):
+    if gh_stale:
+        raise subprocess.SubprocessError('the stale pass reads no GitHub')
     if rate_limited or timed_out:
         raise subprocess.SubprocessError('an earlier GitHub read was refused or stalled')
     if kw.get('timeout'):
@@ -1000,6 +1027,7 @@ cloud_taken = set()
 hold_row = {}
 merge_fields = {}
 unconfirmed = set()
+stale_withheld = set()  # the stale pass: keys with a pre-merge row the helper could not confirm
 
 
 def effective_rows(path):
@@ -1019,6 +1047,7 @@ def effective_rows(path):
                 if str(row.get('key', '')).upper() == why_key:
                     target.write(line)
         path = sliced
+    if why_key or gh_stale:
         env = dict(os.environ, MERGE_ROWS_GH='false')
     try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
         r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120, env=env)
@@ -1026,8 +1055,17 @@ def effective_rows(path):
         raise OSError('merge-rows-effective timed out')
     if r.returncode != 0:
         raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
-    if why_key:
+    if why_key or gh_stale:
         unconfirmed.update(re.findall(r'warn: PR (\d+) unreadable on GitHub', r.stderr))
+    if gh_stale:
+        with open(path, encoding='utf-8', errors='replace') as raw:
+            for line in raw:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict) and row.get('event') == 'merge' and row.get('stage') == 'pre-merge' and str(row.get('pr', '')) in unconfirmed:
+                    stale_withheld.add(str(row.get('key', '')).upper())
     return r.stdout.splitlines()
 
 
@@ -1111,7 +1149,7 @@ def done_key(k):
     return bool(i) and (i['cat'].strip().lower() == 'done' or DONE_RE.fullmatch(i['status'].strip()))
 # a live read carries only the status name, so its Done-category names are listed here
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
-live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
+live_on = not gh_stale and (bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')))
 if why_key and os.environ.get('ND_CLASSIFY') != '1':
     live_on = False
 live_cache = {}
@@ -1598,6 +1636,8 @@ CLOUD_STATES = {'merged', 'closed', 'branch', 'pending', 'no-branch', 'done-pend
 CLOUD_KEY_RE = re.compile(r'^[A-Z][A-Z0-9]*-[0-9]+$')
 
 def cloud_prs(key, secs):
+    if gh_stale:
+        return None  # unread: the session keeps its key
     try:
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'all', '--search', key, '--limit', '100', '--json',
                               'number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments'],
@@ -2075,6 +2115,78 @@ pr_unknown = False
 pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
+
+# The last open-PR list a full pass read, for the stale pass: the one open-PR fact that guards against a duplicate launch.
+snap_env = os.environ.get('NEXT_DISPATCH_PR_SNAPSHOT', '')
+snap_path = '' if snap_env == 'off' or (not snap_env and os.environ.get('NEXT_DISPATCH_GH_CMD')) else (
+    snap_env or os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'next-dispatchable', 'open-prs.json'))
+try:
+    snap_max_age = max(0, int(os.environ.get('NEXT_DISPATCH_PR_SNAPSHOT_MAX_AGE', '1800')))
+except ValueError:
+    snap_max_age = 1800
+snap_note = 'none'
+
+def snapshot_load():
+    try:
+        with open(snap_path, encoding='utf-8') as f:
+            d = json.load(f)
+        at = float(d['at'])
+        if d['schema'] != 1 or d['repo'] != gh_repo:
+            return None
+        for p in d['prs']:
+            if not (isinstance(p['number'], int) and isinstance(p['title'], str) and isinstance(p['head'], str)
+                    and isinstance(p['cross'], bool) and isinstance(p['updatedAt'], str)
+                    and (p['files'] is None or (isinstance(p['files'], list) and all(isinstance(x, str) for x in p['files'])))):
+                return None
+        return at, d['prs']
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None  # swallow-ok: a missing or corrupt snapshot reads as none, which the stale pass says
+
+def snapshot_write(at, prs):
+    # replaced only by a newer `at`, or over one stamped ahead of this writer's clock; the compare and rename share one lock
+    if not snap_path:
+        return
+    tmp = ''
+    try:
+        folder = os.path.dirname(os.path.abspath(snap_path))
+        os.makedirs(folder, exist_ok=True)
+        with open(snap_path + '.lock', 'a') as lock:
+            give_up = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= give_up:
+                        return  # the next run writes
+                    time.sleep(0.05)
+            old = snapshot_load()
+            clock = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())  # read now, not at the run's start: a writer that got in first is not "ahead"
+            if old is not None and at <= old[0] <= clock:
+                return
+            fd, tmp = tempfile.mkstemp(prefix='open-prs.', suffix='.tmp', dir=folder)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump({'schema': 1, 'at': at, 'repo': gh_repo, 'prs': prs}, f)
+            os.replace(tmp, snap_path)
+            tmp = ''
+    except OSError:
+        pass  # swallow-ok: an unwritable snapshot leaves the stale pass at prs=none or the older file
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
+
+def pr_owns(num, text, cross, updated):
+    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
+    idle = None
+    if cross:
+        try:
+            idle = int((now_s - datetime.datetime.fromisoformat(updated.replace('Z', '+00:00')).timestamp()) // 86400)
+        except ValueError:
+            idle = None
+    idle_txt = '' if not cross else (' (idle %dd)' % idle if idle is not None else ' (idle unknown)')
+    for k in re.findall(r'[A-Za-z]+-\d+', text):
+        pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s%s' % (num, idle_txt))
+
 try:
     nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
                           capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
@@ -2096,24 +2208,40 @@ try:
                     continue
                 held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
                 pr_file_map[num] = [f for f in d if f]
-    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
-                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
+    titles = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
+                   capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines()
+    titles_at = time.time()
+    listed_prs = []
+    for line in titles:
         cols = line.split('\t')
         if len(cols) >= 3:
             pr_meta[cols[0]] = (cols[1], cols[2])
-        idle = None
-        if len(cols) >= 5 and cols[3] == 'true':
-            try:
-                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
-            except ValueError:
-                idle = None
         cross = len(cols) >= 5 and cols[3] == 'true'
-        idle_txt = '' if not cross else (' (idle %dd)' % idle if idle is not None else ' (idle unknown)')
-        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
-            pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s%s' % (cols[0], idle_txt))
+        updated = cols[4] if len(cols) >= 5 else ''
+        pr_owns(cols[0], '\t'.join(cols[1:3]) if len(cols) >= 3 else line, cross, updated)
+        if len(cols) >= 3 and cols[0].isdigit():
+            listed_prs.append({'number': int(cols[0]), 'title': cols[1], 'head': cols[2], 'cross': cross, 'updatedAt': updated, 'files': pr_file_map.get(cols[0])})
+    if not resume_only:
+        snapshot_write(titles_at, listed_prs)  # right after the title read: a run flagged or cut later has still written it
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
+
+if gh_stale:
+    held_snap = snapshot_load() if snap_path else None
+    age = now_s - held_snap[0] if held_snap else None
+    if held_snap and 0 <= age < snap_max_age:
+        snap_note = 'snapshot:%ds' % age
+        for p in held_snap[1]:
+            num = str(p['number'])
+            pr_meta[num] = (p['title'], p['head'])
+            if p['files'] is None:
+                note_unknown('PR %s' % num)
+            else:
+                held += [(f, 'open PR %s' % num, False) for f in p['files'] if f]
+                pr_file_map[num] = [f for f in p['files'] if f]
+            pr_owns(num, p['title'] + '\t' + p['head'], p['cross'], p['updatedAt'])
+    else:
+        note_unknown('open PRs (no PR snapshot younger than %ds)' % snap_max_age)
 
 for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
@@ -2222,6 +2350,9 @@ if stacked and workers_from:
             workers_unknown = True  # a ledger that cannot be read could be hiding held files
             note_unknown('series ledger %s' % n)
             print('next-dispatchable: series ledger %s is unreadable: the files it holds are unknown' % n, file=sys.stderr)
+
+if gh_stale:
+    stacked = False  # the ledgers' holds are read above; the stale pass offers no series and no STACKABLE row
 
 # An IN CI ticket nobody holds is merged-not-closed when a merged PR cites it, else a RESUME row.
 # One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
@@ -2359,7 +2490,7 @@ def pool_class(i, parts):
     return None
 
 resume = []
-for i in issues.values():
+for i in () if gh_stale else issues.values():  # in-work rows need GitHub: unknown in the stale pass, never empty
     if i.get('owed_wait'):
         step = i['owed_wait']
         owed_rows.append((i['key'], 'owed:' + step['id'], step['actor'], step['due']))
@@ -2422,8 +2553,11 @@ for i in cands:
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
+    if gh_stale and i['key'] in stale_withheld:
+        drop(i, 'unconfirmed merge (pre-merge row, GitHub unread)')
+        continue
     if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
-        if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
+        if pr_unknown and not gh_stale:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         elif named_unknown:
             drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
@@ -2434,7 +2568,7 @@ for i in cands:
         scope_questions.append(i['key'])
         drop(i, 'no-scope (nothing says what it writes: a chief question)')
         continue
-    if named_unknown and not pr_unknown:
+    if named_unknown and (gh_stale or not pr_unknown):
         drop(i, OWNER_UNKNOWN_DROP_NONE if sourceless else OWNER_UNKNOWN_DROP)
         continue
     if stacked and held_hits(i):
@@ -2442,7 +2576,7 @@ for i in cands:
         if stack:
             stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], printable(stack[2])), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
-    if pr_unknown:
+    if pr_unknown and not gh_stale:
         drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         continue
     free.append(i)
@@ -2471,7 +2605,8 @@ def classify(batch):
         pass
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+if not gh_stale:
+    print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 
 def proof_row(i):
     steps = i.get('owed_next')
@@ -2490,6 +2625,8 @@ for k, prs in needs_note:
     print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched%s' % (k, ', '.join('#' + p for p in prs),
           'body could not be read (gh failed)' if unread else 'has no Remaining: line and no deferred line under ## Ticket coverage',
           '' if unread else '; to clear it add one to PR %s\'s body (gh pr edit <n> --body-file), or close %s by hand if nothing remains' % (', '.join('#' + p for p in prs), k)))
+if gh_stale:
+    del scope_questions[:], series_orphans[:]  # chief notes and orphans wait for a full pass
 scope_questions.sort(key=lambda k: ranked(issues[k]))
 scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
 for k in scope_shown:
@@ -2674,7 +2811,8 @@ def drop_summary():
     counts = {}
     for _, r in rows:
         counts[r.split(' ')[0]] = counts.get(r.split(' ')[0], 0) + 1
-    print('# dropped from %s: %d of %d To Do (%s)' % (first_ver, len(rows), len(todo), ', '.join('%s %d' % kv for kv in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))) or 'none'))
+    if not gh_stale:  # a count a reader would trust as complete
+        print('# dropped from %s: %d of %d To Do (%s)' % (first_ver, len(rows), len(todo), ', '.join('%s %d' % kv for kv in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))) or 'none'))
     if os.environ.get('ND_WHY') == '1':
         for k, r in rows:
             print('# drop %s %s' % (k, r))
@@ -2710,6 +2848,14 @@ def half_up(x):
     return (x + 1) // 2
 
 held_back = []
+
+def stale_field():
+    return ['stale-gh'] if gh_stale else []
+
+def stale_tail():
+    # printed last, once the row count is known; the shell moves it to line 2, and a pass that never reaches it is discarded
+    if gh_stale:
+        print('# stale-gh rows=%d skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=%s' % (len(emitted), snap_note))
 
 def held_back_hit(i):
     return any(blocks(f, h, False) for f in i['files'] for r in held_back for h in r['files'])
@@ -2827,7 +2973,7 @@ def emit_free(rows):
             if i['key'] in design:  # the design dispatch: no lane, and it holds no files against the rest of the list
                 emitted.append(i)
                 lane_of[i['key']] = 'DESIGN'
-                say('\t'.join(['DESIGN', i['key'], design[i['key']], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
+                say('\t'.join(['DESIGN', i['key'], design[i['key']], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + stale_field()))
                 n += 1
                 if n >= top:
                     break
@@ -2839,7 +2985,7 @@ def emit_free(rows):
             if picked_hit(i) and stacked and not held_back_hit(i) and join_series(i, lane, c):
                 continue
             say_overlaps(i)
-            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + ([proof_field(i)] if i.get('nowrite') else [])))
+            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + ([proof_field(i)] if i.get('nowrite') else []) + stale_field()))
             n += 1
             if n >= top:
                 break
@@ -2879,12 +3025,12 @@ if pool_only:
                 held_back[:] = []
     proofs = emit_proof(n)
     flush_rows()
-    if not resume_only:
+    if not resume_only and not gh_stale:
         emit_stackable()
         intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
         print_intake(intake)
-    if n == 0 and not proofs and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
+    if n == 0 and not proofs and not resume_only and not gh_stale:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
         for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not named_unknown][:top]:
@@ -2892,6 +3038,7 @@ if pool_only:
     warn_missing()
     if not resume_only:
         drop_summary()
+    stale_tail()
     sys.exit(0)
 if resume_only:
     emit_resume(resume)
@@ -2905,13 +3052,45 @@ emit_resume(skipped)
 held_back[:] = []
 emit_proof(n)
 flush_rows()
-print('# resume=%d' % sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
-emit_stackable()
+if not gh_stale:
+    print('# resume=%d' % sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
+    emit_stackable()
 warn_missing()
 drop_summary()
 if os.environ.get('ND_DISPO') == '1':
     print_intake(intake_keys())
+stale_tail()
 PY
+}
+nd_stale() {
+    local secs="" left skip pre=()
+    [ "$nd_budget" -gt 0 ] || return 1
+    if [ "$nd_deadline" -gt 0 ]; then
+        left=$((nd_deadline - SECONDS))
+        skip="$nd_budget"; [ "$skip" -le 5 ] || skip=5
+        [ "$left" -ge "$skip" ] || return 1
+        secs="$nd_budget"; [ "$secs" -le "$left" ] || secs="$left"
+    fi
+    [ -z "$secs" ] || [ -z "$_TIMEOUT_BIN" ] || pre=("$_TIMEOUT_BIN" -k 2 "$secs")
+    ND_STALE=1 ND_CLASSIFY=0 ND_DISPO=0 ND_SCOPE_BATCH="" nd_scan ${pre[@]+"${pre[@]}"} > "$nd_out" &
+    nd_pid=$!
+    wait "$nd_pid" || { nd_pid=""; return 1; }
+    nd_pid=""
+    case "$(tail -n 1 "$nd_out")" in '# stale-gh rows='*) return 0 ;; esac
+    return 1
+}
+nd_pause() {
+    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+    if nd_stale; then
+        tail -n 1 "$nd_out"
+        sed '$d' "$nd_out"
+    fi
+    exit 0
+}
+[ -z "$nd_pre" ] || nd_pause "$nd_pre"
+nd_left=$((nd_deadline - nd_budget - SECONDS))
+[ "$nd_left" -gt 0 ] || nd_left=1
+nd_scan ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} > "$nd_out" &
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?
 nd_pid=""
@@ -2940,7 +3119,7 @@ case "$nd_why" in
     stall) nd_pause "$(ghq_line "${nd_ftok:-main}" "$nd_bucket" next-dispatchable stall "$nd_at")" ;;
 esac
 if [ -n "$_TIMEOUT_BIN" ] && { [ "$nd_rc" -eq 124 ] || [ "$nd_rc" -eq 137 ]; }; then
-    nd_pause "$(ghq_line "$nd_tok" graphql next-dispatchable stall "$nd_deadline")"
+    nd_pause "$(ghq_line "$nd_tok" graphql next-dispatchable stall "$nd_cut")"
 fi
 cat "$nd_out"  # read-sink-ok: our own mktemp buffer
 exit "$nd_rc"
