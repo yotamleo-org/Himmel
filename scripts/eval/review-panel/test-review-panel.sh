@@ -1608,6 +1608,18 @@ has "MA3 misses: a graded wrong reason is a genuine miss, located" "$(misses3 --
 review "$M3/case-62.md" codex "imp:scripts/case-62.sh:19:prefer a longer name here"
 mslabels "$MS/l3c.jsonl" "$M3" correct case-62
 has "MA3 misses: a proxy false miss at blocking severity says so" "$(misses3 --adjudications "$MS/l3c.jsonl")" "case-62 pcase-62-1 [quoting] codex: location-only(proxy-false-miss, blocking)"
+cat "$MS/l3b.jsonl" "$MS/l3c.jsonl" > "$MS/clash.jsonl"
+review "$M3/case-62.md" codex "sug:scripts/case-62.sh:19:prefer a longer name here"
+mslabels "$MS/clash.jsonl" "$M3" correct case-62
+setsplit "$MS/k3.json" "$MS/k3s.json" pcase-62=sealed
+out=$(python3 "$SCORE" misses --fixtures "$MS/fx3" --key "$MS/k3s.json" --validation "$MS/val3.json" --outputs "$M3" --adjudications "$MS/clash.jsonl" 2>&1); rc=$?
+eq "MA3 misses: conflicting labels are refused, naming no sealed case id" \
+  "$rc:$(printf '%s' "$out" | grep -c 'conflicting adjudication labels'):$(printf '%s' "$out" | grep -c case-62)" "2:1:0"
+rm -f "$M3/run-manifest.json"
+has "MA3 misses: no label binds to a bundle that recorded no case inputs" "$(misses3 --adjudications "$MS/l3c.jsonl")" \
+  "grades: 4 scored case(s) have unrecorded or changed inputs, so no label binds there"
+M1d="$MS/b1d"; cp -r "$M1" "$M1d"; echo "ms-canary-value" > "$M1d/case-61.err"
+has "MA1 misses: a leaked case is unscored" "$(misses "$MS/k1.json" --outputs "$M1d")" "open   codex bins: key-hit 0, location-only 1, no-location 1, unscored 1"
 
 python3 -B -c 'import sys
 sys.path.insert(0, sys.argv[1]); import eval_runs
