@@ -268,7 +268,7 @@ check "the first acquire carried one late row and not the other" "1 0" "$(jq -r 
 bash "$HERE/fleet-manifest.sh" remove "${MSUCC%.md}.fleet.json" "$ROOT/DEMO-36-N36-worker.md" >/dev/null 2>&1
 mout="$(bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
 check "the second acquire reaches CARRY again" "1" "$(printf '%s\n' "$mout" | grep -c '^== CARRY')"
-check "the second acquire retries the row that failed" "1" "$(printf '%s\n' "$mout" | grep -c '^NOT carried N37 ')"
+check "the second acquire retries the row that failed" "1" "$(printf '%s\n' "$mout" | grep -c '^NOT carried N37 .*: add it with fleet-manifest.sh add')"
 check "after a partly failed carry, a carried row removed since is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-36-N36-worker.md" '[.workers[] | select(.doc == $d)] | length' "${MSUCC%.md}.fleet.json" 2>/dev/null)"
 check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
 check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"

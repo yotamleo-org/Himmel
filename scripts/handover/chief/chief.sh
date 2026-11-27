@@ -2570,7 +2570,8 @@ EOF
         fi
         [ "${#gone[@]}" -eq 0 ] || bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
             || {
-                if drop_listed_rows "$moved" "$pred" && drop_listed_rows "$pend" "$pred" && jq -e '.workers == []' "$pend" >/dev/null; then rm -f "$pend"; fi
+                drop_listed_rows "$moved" "$pred" || err "warning: could not clear $moved of the rows $pred still lists"
+                if drop_listed_rows "$pend" "$pred" && jq -e '.workers == []' "$pend" >/dev/null; then rm -f "$pend"; fi
                 err "could not remove the carried rows from $pred; nothing was moved"
                 return 1
             }
@@ -2787,7 +2788,7 @@ superseded_direction_paras() {
         END { flush() }'
 }
 
-# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc> [<manifest>]]: replace each
+# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `workers:` seeds only the open workers
@@ -3101,10 +3102,6 @@ cmd_next() {
     # An honest, explicit placeholder rather than an empty string: the
     # successor's own ACTION ZERO acquires and records it, exactly as the
     # chief-template's own instructions already tell it to.
-    # Carry the predecessor's fleet manifest to the successor's
-    # stem so its waiter can start with --workers-from and keep watching the same
-    # workers. It is built at a staged path and published by move_manifest_rows,
-    # which takes the carried rows out of the predecessor's first. No manifest = no-op.
     local predecessor_manifest successor_manifest staged_manifest manifest_note carried_docs=""
     predecessor_manifest="$predecessor_dir/${predecessor_stem}.fleet.json"
     successor_manifest="${doc%.md}.fleet.json"
@@ -3115,12 +3112,14 @@ cmd_next() {
         carried_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         trap 'rm -f "$doc" "$staged_manifest"' EXIT
         cp "$predecessor_manifest" "$staged_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $staged_manifest"; exit 1; }
-        carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest" 2>/dev/null)" || carried_docs=""  # swallow-ok: a manifest with no readable row moves none
+        carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest")" || { err "cannot read the rows of $predecessor_manifest"; exit 1; }
         local keep kept_from
         for keep in "$successor_manifest" "${predecessor_manifest%.json}.moved.json.pending"; do
             [ -f "$keep" ] || continue
-            kept_from="$(jq -r '.carried_from // empty' "$keep" 2>/dev/null)" || kept_from=""  # swallow-ok: an unreadable leftover names no predecessor and is replaced, as before
-            [ "$keep" != "$successor_manifest" ] || [ "$kept_from" = "$predecessor_manifest" ] || continue
+            if [ "$keep" = "$successor_manifest" ]; then
+                kept_from="$(jq -r '.carried_from // empty' "$keep")" || { err "cannot read the leftover $keep; move it aside and run next again"; exit 1; }
+                [ "$kept_from" = "$predecessor_manifest" ] || continue
+            fi
             if carried="$(jq --slurpfile e "$keep" '(.workers // .legs // []) as $w | .workers = $w + [($e[0].workers // $e[0].legs // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)] | del(.legs)' "$staged_manifest")"; then
                 printf '%s\n' "$carried" > "$staged_manifest"
             else

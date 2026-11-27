@@ -101,7 +101,7 @@ drop_row() {
 }
 take_late_row() {
     local moved="${1%.json}.moved.json" listed
-    listed="$(jq --arg d "$2" '[(.workers // .legs)[] | objects | select(.doc == $d)] | length' "$1" 2>/dev/null)" || return 1  # swallow-ok: an unreadable manifest refuses the take
+    listed="$(jq --arg d "$2" '[(.workers // .legs)[] | objects | select(.doc == $d)] | length' "$1")" || return 1
     if [ "$listed" = 0 ]; then
         jq -e --arg d "$2" 'any(.workers[]; .doc == $d)' "$moved.pending" >/dev/null 2>&1
         return
