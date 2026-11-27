@@ -438,7 +438,6 @@ def mcp_rows(msg):
 
 
 def own_path(f):
-    """Is f under this eval's own directory? Any case (qmd lowercases paths), relative or prefixed."""
     return "/" + OWN_DIR in "/" + f.lower()
 
 
@@ -479,19 +478,17 @@ def qmd_rows_or_failed_result(args, timeout, may_send):
 
 
 def reask_until_k_rows_outside_own_dir(args, k, path, timeout, may_send):
-    spare, t0 = 0, time.time()
-    while True:  # t13b-ok: bounded loop, spare only grows and the arm timeout ends it
+    spare, left, end = 0, timeout, time.time() + timeout
+    while left > 0:
         args["limit"] = k + spare
-        left = timeout - (time.time() - t0) if spare else timeout
-        if left <= 0:
-            return None, ([], "", True, False, "timed out")
         rows, failed = qmd_rows_or_failed_result(args, left, may_send)
         if failed:
             return None, failed
         own = sum(own_path(path(r)) for r in rows)
         if own <= spare or len(rows) < args["limit"]:
             return [r for r in rows if not own_path(path(r))][:k], None
-        spare = own
+        spare, left = own, end - time.time()
+    return None, ([], "", True, False, "timed out")
 
 
 def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, may_send=None):
