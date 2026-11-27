@@ -2,7 +2,7 @@
   "version": 1,
   "doc": "docs/internals/enforcement.md#mcp-policy-tracking",
   "semantics": {
-    "mode": "observe = the hook ALWAYS allows and only records what it WOULD do. enforce = the would-verdict is applied (deny exits 2). The top-level mode covers unknown servers and malformed calls; a server's own `mode` overrides it for that server. Nothing ships in enforce (operator ruling 2026-10-06).",
+    "mode": "observe = the hook ALWAYS allows and only records what it WOULD do. enforce = the would-verdict is applied (deny exits 2). The top-level mode covers unknown servers and malformed calls; a server's own `mode` overrides it for that server. Both ship as observe; enforce_classes lists the tool classes whose would-verdict is applied on a registered server whatever the mode.",
     "server_key": "the <server> in mcp__<server>__<tool>: everything after `mcp__` up to the next `__`. Plugin servers are plugin_<plugin>_<server>, claude.ai connectors are claude_ai_<Name>.",
     "server_verdict": "allow | deny. A deny server would-deny every call.",
     "tool_class": "read (no state change) | write (creates or changes state) | destructive (deletes, trashes, sends, shares, runs arbitrary code, or is a generic write-anything entry point). A destructive tool would-deny unless it is named in the server's allow_destructive.",
@@ -11,6 +11,7 @@
     "audit": "one JSONL line per call to $HOME/.himmel/state/mcp-audit.jsonl (ts, session, server, tool, class, egress, mode, verdict, reason). Never any tool argument. Rotated to .1 past max_bytes."
   },
   "mode": "observe",
+  "enforce_classes": ["destructive"],
   "audit": { "max_bytes": 1048576 },
   "servers": {
     "qmd": {
@@ -141,8 +142,32 @@
       },
       "allow_destructive": []
     },
+    "playwright": {
+      "verdict": "allow", "egress": "off-box", "provider": null, "note": "playwright under the server name Antigravity reports",
+      "tools": {
+        "browser_snapshot": "read", "browser_take_screenshot": "read", "browser_console_messages": "read",
+        "browser_network_requests": "read", "browser_network_request": "read", "browser_tabs": "read",
+        "browser_find": "read", "browser_wait_for": "read",
+        "browser_navigate": "write", "browser_navigate_back": "write", "browser_click": "write",
+        "browser_type": "write", "browser_press_key": "write", "browser_hover": "write",
+        "browser_drag": "write", "browser_drop": "write", "browser_select_option": "write",
+        "browser_fill_form": "write", "browser_handle_dialog": "write", "browser_resize": "write",
+        "browser_emulate_media": "write", "browser_close": "write", "browser_file_upload": "write",
+        "browser_evaluate": "destructive", "browser_run_code_unsafe": "destructive"
+      },
+      "allow_destructive": []
+    },
     "plugin_shadcn-mcp_shadcn": {
       "verdict": "allow", "egress": "off-box", "provider": null, "note": "shadcn-mcp@himmel registry lookups",
+      "tools": {
+        "get_project_registries": "read", "list_items_in_registries": "read",
+        "search_items_in_registries": "read", "view_items_in_registries": "read",
+        "get_item_examples_from_registries": "read", "get_add_command_for_items": "read",
+        "get_audit_checklist": "read"
+      }
+    },
+    "shadcn": {
+      "verdict": "allow", "egress": "off-box", "provider": null, "note": "shadcn under the server name Antigravity reports",
       "tools": {
         "get_project_registries": "read", "list_items_in_registries": "read",
         "search_items_in_registries": "read", "view_items_in_registries": "read",
@@ -165,7 +190,7 @@
         "download_attachment": "read",
         "reply": "destructive", "react": "write", "edit_message": "write"
       },
-      "allow_destructive": []
+      "allow_destructive": ["reply"]
     },
     "tokensave": {
       "verdict": "allow", "egress": "local", "note": "tokensave code index",
