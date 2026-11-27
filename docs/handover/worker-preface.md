@@ -37,7 +37,7 @@ message either. `FINDING`, `BLOCKED`, `MAIN-RED`, `ORPHAN`, `CONSULT` go by
   chief change's quote-back is its `SUCCESSION` bullet. [prose]
 - **A stated default applies if no ruling arrives.** With your brief's
   `default-if-no-ruling (<N> min): <action>`, a `FINDING` unruled after `<N>`
-  minutes runs it; the next `LIVE` bullet says so. It may only **narrow**
+  min runs it; the next `LIVE` bullet says so. The default may only **narrow**
   (reduce scope, defer, halt). A default never stands in for `GO`, a merge, or a token-quoting message. [prose]
 - **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]

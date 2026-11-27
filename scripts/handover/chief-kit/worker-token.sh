@@ -130,7 +130,7 @@ kid="$(key_id)" || kid=""
 
 nrows=0; cur=""; pend=""; pto=""; maxg=0; dprefix=""; mkid=""; first=""; rotations=""; minted=""; bad=0
 parsed=""
-if [ -e "$rec" ]; then
+if ! absent "$rec"; then
     if [ -f "$rec" ] && [ -r "$rec" ]; then
         # shellcheck disable=SC2016  # a jq program, not shell
         parsed="$(jq -Rrn --arg s "$stem" '
@@ -210,7 +210,7 @@ if [ "$sub" = mint ]; then
         printf '%s\n' "$out"
         exit 0
     fi
-    if [ "$nrows" -eq 1 ] && [ "$first" = "mint 1 dispatch $prefix $kid" ] && [ ! -e "$doc" ]; then
+    if [ "$nrows" -eq 1 ] && [ "$first" = "mint 1 dispatch $prefix $kid" ] && absent "$doc"; then
         print_token 1 "$prefix"
         exit 0
     fi
@@ -218,12 +218,18 @@ if [ "$sub" = mint ]; then
 fi
 
 { [ -f "$doc" ] && [ -r "$doc" ]; } || absent "$doc" || die 6 "the worker doc is unreadable or not a file: $doc"
+handshake_names() {
+    local hrc=0
+    succession_names "$doc" "$1" || hrc=$?
+    [ "$hrc" -le 1 ] || die 6 "cannot read the handshake bullets: $doc"
+    return "$hrc"
+}
 if [ "$state" = ok ] && [ -f "$doc" ]; then
     pick=""
     while read -r g rto rkid; do
         [ -n "$g" ] || continue
         { [ "$g" -gt "$cur" ] && [ "$rkid" = "$kid" ]; } || continue
-        if succession_names "$doc" "$rto"; then pick="$g"; fi
+        if handshake_names "$rto"; then pick="$g"; fi
     done <<EOF
 $rotations
 EOF
@@ -259,7 +265,7 @@ EOF
     rotate)
         [ "$state" != bad ] || die 6 "the record is unreadable: $rec"
         [ "$state" = ok ] || die 4 "no usable record for $stem ($state)"
-        ! { [ -f "$doc" ] && succession_names "$doc" "$to"; } \
+        ! { [ -f "$doc" ] && handshake_names "$to"; } \
             || die 4 "a handshake bullet already names $to: the worker took that chief without a fresh token"
         if [ -n "$pend" ] && [ "$pto" = "$to" ]; then
             print_token "$pend" "$dprefix"

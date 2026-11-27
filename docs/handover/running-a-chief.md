@@ -1209,7 +1209,8 @@ message; for a GO that is `WAKE silent-go` with its `SILENT-WORKER-MERGE`,
 `worker-token.sh tokens <doc>`, send one direct message per listed generation, each
 quoting one token and carrying no revision, asking for a `LIVE — PROBE <g> ok` bullet
 (`PROBE <g>` in the message), then run `worker-token.sh set <doc> <g>` for the
-generation answered.
+generation answered. If that worker has a `FINDING` open, each message also asks
+for a fresh `FINDING` bullet after the probe bullet, so the probe does not hide it.
 
 A successor that arrives after you have left can prove itself only with the
 two-token chain form (the current token from `worker-token.sh current <doc>`, the fresh

@@ -21,5 +21,9 @@ succession_incoming() {
 }
 
 succession_names() {
-    [ -n "${2:-}" ] && _succession_handshakes "$1" | _succession_parse | grep -Fx -- "$2" >/dev/null
+    local lines found
+    [ -n "${2:-}" ] || return 1
+    lines="$(_succession_handshakes "$1")" || return 2
+    found="$(printf '%s\n' "$lines" | _succession_parse)" || return 2
+    printf '%s\n' "$found" | grep -Fx -- "$2" >/dev/null
 }

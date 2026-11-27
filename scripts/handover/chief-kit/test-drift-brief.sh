@@ -115,7 +115,7 @@ brief_out="$(python3 -I "$GEN" brief --body-file "$DRIFT_BODY_FILE" --holds "$W/
     --out "$W/bucket" --worktree "$W/wt" --chief HIMMEL-test-chief --worker D1 --date 2026-11-24)"
 brief="$(printf '%s\n' "$brief_out" | tail -n 1)"
 [ -f "$brief" ] && pass 'the generator writes a brief into the bucket and prints its path' || fail "no brief at '$brief'"
-drift_tok="$(grep -o 'D-D1-[0-9a-f]*' "$brief" 2>/dev/null | head -n 1)"
+drift_tok="$(tr '`' '\n' < "$brief" | grep '^D-D1-' | head -n 1)"
 [ -n "$drift_tok" ] && [ "$(bash "$HERE/worker-token.sh" current "$brief" 2>/dev/null)" = "$drift_tok" ] \
     && pass "DB1: the drift brief's token is the record's current token" || fail "DB1: brief token '$drift_tok' is not the record's current token"
 grep -qxE 'D-D1-[0-9a-f]{8}' <<< "$drift_tok" && pass 'DB1c: the token keeps the D-<worker>-<8 hex> shape' || fail "DB1c: token '$drift_tok'"

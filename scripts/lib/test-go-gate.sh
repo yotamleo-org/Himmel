@@ -928,18 +928,20 @@ for site in "$GO_SCRIPT" "$AUTO_GO_SRC"; do
 done
 
 gk() {
-    HOME="$1" bash -c 'unset -f go_key_ensure 2>/dev/null || true; . "$1"; go_key_ensure' _ "$GO_GATE_SRC"  # read-sink-ok: this suite's own source path and fixture HOME
+    HOME="$1" GO_GATE_SRC="$GO_GATE_SRC" bash -c 'unset -f go_key_ensure 2>/dev/null || true; . "$GO_GATE_SRC"; go_key_ensure'
 }
-GK1H="$ROOT/gk1"; mkdir -p "$GK1H"; GK1K="$GK1H/.config/himmel/go-hmac.key"
+GK1H="$ROOT/gk1"; mkdir -p "$GK1H"
+GK1K="$GK1H/.config/himmel/go-hmac.key"
 rc=0; gk "$GK1H" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] || fail "GK1: go_key_ensure failed on an empty HOME (rc=$rc)"
 mode=$(stat -c %a "$GK1K" 2>/dev/null || stat -f %Lp "$GK1K" 2>/dev/null)
 [ "$mode" = 600 ] || fail "GK1: key mode is '$mode', want 600"
 grep -qxE '[0-9a-f]{64}' "$GK1K" 2>/dev/null || fail "GK1: key is not 64 lowercase hex chars"
-before=$(_k=$(cat "$GK1K" 2>/dev/null); printf '%s' "$_k")  # read-sink-ok: a fixture key under this suite's own temp root
+before=$(_k=$(cat "$GK1K" 2>/dev/null); printf '%s' "$_k")
 rc=0; gk "$GK1H" >/dev/null 2>&1 || rc=$?
-[ "$rc" -eq 0 ] && [ "$(cat "$GK1K" 2>/dev/null)" = "$before" ] || fail "GK1c: a second call changed the key or failed (rc=$rc)"  # read-sink-ok: the same fixture key
-GK2H="$ROOT/gk2"; mkdir -p "$GK2H"; GK2K="$GK2H/.config/himmel/go-hmac.key"
+[ "$rc" -eq 0 ] && [ "$(cat "$GK1K" 2>/dev/null)" = "$before" ] || fail "GK1c: a second call changed the key or failed (rc=$rc)"
+GK2H="$ROOT/gk2"; mkdir -p "$GK2H"
+GK2K="$GK2H/.config/himmel/go-hmac.key"
 gk "$GK2H" >/dev/null 2>&1 & p1=$!
 gk "$GK2H" >/dev/null 2>&1 & p2=$!
 r1=0; wait "$p1" || r1=$?
@@ -947,7 +949,7 @@ r2=0; wait "$p2" || r2=$?
 [ "$r1" -eq 0 ] && [ "$r2" -eq 0 ] || fail "GK2: concurrent calls returned $r1 and $r2, want 0 0"
 n=$(find "$GK2H/.config/himmel" -type f 2>/dev/null | wc -l | tr -d ' ')
 [ "$n" = 1 ] || fail "GK2: want exactly one key file after concurrent calls, found $n"
-gk2key=$(cat "$GK2K" 2>/dev/null)  # read-sink-ok: a fixture key under this suite's own temp root
+gk2key=$(cat "$GK2K" 2>/dev/null)
 rc=0; HOME="$GK2H" HANDOVER_DIR="$GROOT" bash "$GO_SCRIPT" 94 "$SHA" >/dev/null 2>&1 || rc=$?
 want=$(printf 'himmel-go-v2|o/r|94|%s' "$SHA" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$gk2key" 2>/dev/null | awk '{print $NF}')
 [ "$rc" -eq 0 ] && [ -n "$gk2key" ] && [ "$(sed -n 's/^mac=//p' "$GROOT/.locks/go/94.$SHA" 2>/dev/null)" = "$want" ] \

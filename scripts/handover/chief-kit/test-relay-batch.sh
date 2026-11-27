@@ -452,6 +452,23 @@ printf '# chief\n\n## Live state\n\nworkers: none\nqueue: none\n\n## Results\n' 
 o="$(rbrun "$RBC" --fresh N1)"
 check "--fresh: an off-Live-state worker with no record is refused and bus-relayed as before" "1 1" "$(cnt "$o" '^FRESH-REFUSED N1 (') $(cnt "$o" '^BUS-RELAY N1 ok$')"
 
+RACE="$WORK/race/scripts"; mkdir -p "$RACE/handover/chief-kit"
+ln -s "$HERE/../../lib" "$HERE/../../lanes" "$RACE/"
+for f in "$HERE"/../*; do [ "${f##*/}" = chief-kit ] || ln -s "$f" "$RACE/handover/"; done
+for f in "$HERE"/*; do [ "${f##*/}" = worker-token.sh ] || ln -s "$f" "$RACE/handover/chief-kit/"; done
+ln -sf "$RB" "$RACE/handover/chief-kit/relay-batch.sh"
+cat > "$RACE/handover/chief-kit/worker-token.sh" <<'EOS'
+#!/usr/bin/env bash
+[ "$1" != rotate ] || printf -- '%s\n' "$RACE_BULLET" >> "$2"
+exec bash "$RACE_WT" "$@"
+EOS
+export RACE_WT="$WT"
+rbfix native tok-span; recmint >/dev/null
+tmid="$(bash "$WT" rotate "$RLEG" --to DEMO-mid-chief 2>/dev/null)"
+o="$(RACE_BULLET="- 10:06 SUCCESSION accepted: DEMO-mid-chief replaces $RBC" HIMMEL_BUS_NAME="" bash "$RACE/handover/chief-kit/relay-batch.sh" "$RDOC" --successor "$SUCC" --fresh N1 2>&1)"
+tnew="$(bash "$WT" rotate "$RLEG" --to "$SUCC" 2>/dev/null)"
+check "RB6: a handshake landing before the rotate is re-read: the quoted current is the confirmed one" "$tmid $tnew" "$(quoted "$o")"
+
 rbfix native tok-span; t1="$(recmint)"
 o="$(rbrun "$RBC")"
 check "RB3c: with nothing pending a bus identity sends the bus record as before" "1" "$(cnt "$o" '^BUS-RELAY N1 ok$')"

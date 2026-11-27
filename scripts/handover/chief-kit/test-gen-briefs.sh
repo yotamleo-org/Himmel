@@ -369,10 +369,11 @@ gbrgo() {
 }
 GBRS="HIMMEL-9001-N901-plain-fix-2026-10-08.md"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/gbr.json"
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["branch"]="fix/fail-me"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/gbr.json" "$WORK/gbr-fail.json"
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["branch"]="fix/fail-me"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/gbr.json" "$WORK/gbr-fail.json" || fail "GBR1c: the failing-worktree fixture was not written"
 GB1D="$WORK/handovers/u/gbr1"
 t="$(gbrgo "$WORK/gbr-fail.json" "$GB1D" "$WORK/handovers")"; rc=$?
 [ "$rc" != 0 ] && pass "GBR1c: a run whose worktree step fails dies" || fail "GBR1c: expected a failure: $t"
+has "GBR1c: and it dies at the worktree step" "$t" "worktree"
 has "GBR1c: and records no token" "$(rec_of "$WORK/handovers" gen "$GB1D/$GBRS")" "state=none"
 t="$(gbrgo "$WORK/gbr.json" "$GB1D" "$WORK/handovers")"; rc=$?
 g1="$(brief_tok "$GB1D/$GBRS")"

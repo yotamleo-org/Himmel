@@ -336,7 +336,7 @@ EOR
     ftok=""
     if [ "$wanted" -eq 1 ] || [ "$pending" -eq 0 ]; then
         offer_fresh "$label" "$ldoc"
-        if [ -z "$ftok" ] && ! record_token "$ldoc" "$nonce"; then unreadable "$label"; continue; fi
+        if ! record_token "$ldoc" "$nonce"; then unreadable "$label"; continue; fi
     fi
     if [ "$lane" = native ] && [ -n "${HIMMEL_BUS_NAME:-}" ] && [ -z "$ftok" ]; then
         bus_queue="${bus_queue}relay $label $lsession ${qtok:--} $ldoc"$'\n'

@@ -269,6 +269,22 @@ TREE="$WORK/tree"; mkdir -p "$TREE/scripts"
 printf 'echo x >> worker-tokens.jsonl\n' > "$TREE/scripts/second-writer.sh"
 eq "WT4c: the same check names a second writer" "$(writers "$TREE" --no-index)" "scripts/second-writer.sh"
 
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null; rm -f "$REC"; ln -s "$B/gone.jsonl" "$REC"
+wt current "$D" >/dev/null; eq "WT14: a record that is a dangling symlink is unreadable, not absent (rc 6)" "$?" 6
+eq "WT14c: and gen reports state=bad" "$(wt gen "$D")" "current=- pending=-:- state=bad"
+rm -f "$REC"
+
+SHIM="$WORK/shim"; mkdir -p "$SHIM"
+printf '#!/usr/bin/env bash\ncase "$*" in *SUCCESSION*) exit 2 ;; esac\nexec %q "$@"\n' "$(command -v awk)" > "$SHIM/awk"
+chmod +x "$SHIM/awk"
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null; wt rotate "$D" --to "$S" >/dev/null; bullet "$D" "$S"
+o="$(PATH="$SHIM:$PATH" wt current "$D")"; rc=$?
+eq "WT15: a failed handshake read is rc 6, never read as no handshake" "$rc" 6
+eq "WT15: and no token is printed" "$o" ""
+bucket; mkdoc "$D"; wt mint "$D" Y-N1 >/dev/null
+PATH="$SHIM:$PATH" wt rotate "$D" --to "$S" >/dev/null; eq "WT15c: rotate with a failed handshake read is rc 6" "$?" 6
+eq "WT15c: and writes nothing" "$(rows)" 1
+
 wt >/dev/null; eq "no arguments is a usage error (rc 2)" "$?" 2
 wt frob "$D" >/dev/null; eq "an unknown subcommand is a usage error (rc 2)" "$?" 2
 wt rotate "$D" >/dev/null; eq "rotate without --to is a usage error (rc 2)" "$?" 2
