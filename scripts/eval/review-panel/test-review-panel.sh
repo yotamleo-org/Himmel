@@ -1559,6 +1559,14 @@ misses "$MS/k1m.json" --outputs "$M1" --json "$MS/m1m.json" >/dev/null; rc=$?
 mdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1m.json" 2>/dev/null)
 mwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 16]))')
 eq "MA1b misses: each defect is cleared by its own window plus the case's widest" "$rc:$mdrawn" "0:$mwant"
+python3 -c 'import json,sys
+k = json.load(open(sys.argv[1]))
+k["cases"]["case-61"]["defects"].append({"id": "pcase-61-3", "class": "logic", "file": "scripts/case-61.sh", "line": 40, "window": 6})
+json.dump(k, open(sys.argv[2], "w"))' "$MS/k1b.json" "$MS/k1s.json"
+misses "$MS/k1s.json" --outputs "$M1" --json "$MS/m1s.json" >/dev/null; rc=$?
+sdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1s.json" 2>/dev/null)
+swant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 10 and abs(n - 40) >= 13]))')
+eq "MA1b misses: a wider defect of the same file clears its own lines too" "$rc:$sdrawn" "0:$swant"
 wdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1w.json" 2>/dev/null)
 wwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 15]))')
 eq "MA1b misses: under a wide window the null window never overlaps the defect's window" "$wdrawn" "$wwant"

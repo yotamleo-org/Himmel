@@ -227,7 +227,8 @@ defect gets one bin per critic and bundle:
   10 lines from every defect line, and under a wide window further than that
   defect's window plus the case's widest (a line of another file qualifies), drawn with
   `random.Random(11085)` and recorded for open cases. The share of cases with a
-  finding of that critic within the window of the drawn line is the
+  finding of that critic within the window of the drawn line (the widest window
+  among that case's defects, so a key override can exceed `--window`) is the
   location-only rate that finding density alone would give. It counts cases and
   the location-only share counts defects, which differ on a case with two or
   more. A diff with no such
