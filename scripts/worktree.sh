@@ -25,9 +25,10 @@
 # create only. A bare `worktree.sh <branch>` (no subcommand) is the older
 # create-only form and also skips the prune.
 #
-# resume <branch>: the branch already exists (a RESUME row whose worktree is gone).
-# It fetches it and recreates the worktree at a tip it can account for, never prunes
-# other worktrees, and never makes a branch from the default branch. `resume --check
+# resume <branch>: the branch already exists (a RESUME row).
+# It fetches it and recreates the worktree at a tip it can account for (a worktree
+# already registered for it at the standard path is handed back untouched), never
+# prunes other worktrees, and never makes a branch from the default branch. `resume --check
 # <branch>` writes nothing and prints local|origin|both|none|unknown.
 # Both go through scripts/_new-worktree.sh --resume.
 #
