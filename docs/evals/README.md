@@ -12,6 +12,7 @@
 | How far can the lane-quality judge be trusted? (arms `claude-haiku-5-5`, `claude-sonnet-5-5`) | **kappa 0.35**: graders agreed on 11 of 17 runs, model-graded (no human label) by OpenAI and Google, tie-breaker DeepSeek sided with grader 1 in 1 and grader 2 in 5 of 6 disagreements; the stored judge flipped its verdict on 2 of 17 runs judged twice | no interval | as of 2026-10-27, n = 17 runs |
 | How far can the lane-quality judge be trusted? (arms `gpt-6.1-sol`) | **kappa 0.00**: graders agreed on 5 of 7 runs, model-graded (no human label) by Anthropic and Google, tie-breaker DeepSeek sided with grader 1 in 0 and grader 2 in 2 of 2 disagreements; the stored judge flipped its verdict on 3 of 7 runs judged twice | no interval | as of 2026-10-27, n = 7 runs |
 | What does the prompt cache save? | **99.1%** of input tokens were cache reads, not uncached input or cache writes | no interval | as of 2026-11-11, n = 4,950,661,574 tokens over 176 sessions (the sessions of this project modified from 2026-11-08 to 2026-11-10) |
+| What does one merged pull request cost? | **$35.36** all in ($22.44 without the T3 Code lane), against $18.09 on 6 November 2026, at list price | no interval | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
 
 The precision headline is the required reviewer's own, not the all-reviewers pooled figure under History: the pool mixes in models the panel no longer runs. Likely range is the 95 percent interval; every term is defined under How to read these numbers.
 
@@ -67,6 +68,27 @@ Every reviewer, current and past. Only agreed and disproved count toward precisi
 | Test-first adherence: a test failed before the implementation and passed after | **30.9%** | 29.1 to 32.8 | as of 2026-11-11, n = 2,439 sessions scored under trajectory version 2 |
 
 A merged PR is proof-first only when it has both halves; each half is shown on its own. Method: [proof-first share](../../scripts/eval/README.md) and [test-first record](../../scripts/eval/README.md).
+
+## What a merged pull request costs
+
+| Measure | 6 November 2026 | 18 November 2026 to 25 November 2026 re-measure | Sample |
+|---|---|---|---|
+| Cost per merged PR, all in | $18.09 | $35.36 | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Cost per merged PR without the T3 Code lane | $18.09 (no such lane) | $22.44 | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Worker share | 46.7% | 30.2% (47.5% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Chief share | 28.8% | 17.8% (28.0% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Judge share | 13.2% | 6.2% (9.8% without T3 Code) | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+| Reconciliation with cost-state | 98.2% over 2,561 sessions | 98.77% over 2,768 sessions | as of 2026-11-06, n = 565 merged PRs; as of 2026-11-26, n = 445 merged PRs |
+
+All money is list price. The first window is 2026-10-29 to 2026-11-05, the re-measure 2026-11-18 to 2026-11-25 (CET days), the same length.
+
+T3 Code sessions and their subagents, a lane that did not exist in the first window, are 36.5% of the re-measured spend, as of 2026-11-26, n = 445 merged PRs. The figure without them still divides by every merged PR, including at least 20 merged from T3 Code branches, so it is a little low.
+
+The re-measure reconciles with cost-state inside the first audit's bound: $15,844.99 computed against $16,042.33, as of 2026-11-26, n = 2,768 sessions.
+
+The usage store misses 2026-11-22: it is short $2,028 for that day, so over the whole window it holds 86.8% of the transcript total (99.7% on the other days), as of 2026-11-26, n = 445 merged PRs. The transcript total is the one used.
+
+The full audit reports, dated 6 November 2026 and 26 November 2026, are in the private state repo under `specs/audits/`.
 
 ## How to read these numbers
 
