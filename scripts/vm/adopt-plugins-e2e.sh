@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
+# billed-opt-in: --billed|HIMMEL_BILLED_OK
 # adopt-plugins-e2e.sh - VM proof for a project adopt that keeps plugin enablement out of
 # the user file (given scopes slice S2b-1, spec A26).
 #
@@ -12,7 +13,8 @@
 # enablement. The VM is restored and powered off afterwards, and the lock released, on every
 # exit path.
 #
-# Usage: bash scripts/vm/adopt-plugins-e2e.sh <vm>
+# Usage: bash scripts/vm/adopt-plugins-e2e.sh [--billed] <vm>
+#   --billed  required (or HIMMEL_BILLED_OK=1): the guest probe is a real claude -p call
 #   <vm>  a himmel-ar-N / himmel-ci-N clone (never the golden image)
 #
 # Env (test seams): HIMMEL_ADOPT_PLUGINS_VMSDK, HIMMEL_ADOPT_PLUGINS_GUEST_EXEC,
@@ -24,6 +26,12 @@
 # 3 lock or VM lifecycle failed; 4 the guest cannot run a live session (claude missing or not
 # signed in).
 set -uo pipefail
+
+if [ "${1:-}" = --billed ]; then shift; HIMMEL_BILLED_OK=1; fi
+if [ "${HIMMEL_BILLED_OK:-}" != 1 ]; then
+  echo "adopt-plugins-e2e: refusing: this makes a real billed model call; pass --billed or set HIMMEL_BILLED_OK=1" >&2
+  exit 2
+fi
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd -- "$HERE/../.." && pwd)"
@@ -70,6 +78,7 @@ if [ "${HIMMEL_ADOPT_PLUGINS_GUEST:-}" = 1 ]; then
 
   if ! command -v claude >/dev/null 2>&1; then echo "BLOCKED: claude is not on the guest PATH" >&2; exit 4; fi
   probe_out="$HOME/adopt-plugins-probe.jsonl"
+  # launch-profile-ok: the probe asserts which plugins the adopted project itself loads, so no worker profile
   ( cd "$sbx" && claude -p --output-format stream-json --verbose --permission-mode default "Reply with the single word ok." ) > "$probe_out" 2> "$HOME/adopt-plugins-probe.err" || true
   if ! jq -e 'select(.type == "system" and .subtype == "init")' "$probe_out" >/dev/null 2>&1; then
     echo "BLOCKED: the live session produced no init message: $(head -c 400 "$HOME/adopt-plugins-probe.err")" >&2
@@ -86,7 +95,7 @@ fi
 VM="${1:-}"
 case "$VM" in
   himmel-ar-[0-9]|himmel-ar-[0-9][0-9]|himmel-ci-[0-9]|himmel-ci-[0-9][0-9]) ;;
-  *) echo "usage: adopt-plugins-e2e.sh <vm>  (vm: himmel-ar-N or himmel-ci-N, never the golden image)" >&2; exit 2 ;;
+  *) echo "usage: adopt-plugins-e2e.sh [--billed] <vm>  (vm: himmel-ar-N or himmel-ci-N, never the golden image)" >&2; exit 2 ;;
 esac
 
 SNAPSHOT="${HIMMEL_ADOPT_PLUGINS_SNAPSHOT:-suite-ready-v4}"
@@ -148,7 +157,7 @@ gx -- "rm -rf $REMOTE_DIR && mkdir -p $REMOTE_DIR && tar -xzf /tmp/himmel-adopt-
 vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
 OUT="$(mktemp "$STAGE_TMP/adopt-plugins-out.XXXXXX")" || exit 3
-gx --timeout 1800 -- "HIMMEL_ADOPT_PLUGINS_GUEST=1 bash $REMOTE_DIR/scripts/vm/adopt-plugins-e2e.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
+gx --timeout 1800 -- "HIMMEL_ADOPT_PLUGINS_GUEST=1 HIMMEL_BILLED_OK=1 bash $REMOTE_DIR/scripts/vm/adopt-plugins-e2e.sh $REMOTE_DIR" 2>&1 | tee "$OUT"
 rc="${PIPESTATUS[0]}"
 if [ "$rc" -eq 0 ]; then echo "==> adopt-plugins stage PASSED"; else echo "==> adopt-plugins stage FAILED (rc=$rc)" >&2; fi
 exit "$rc"
