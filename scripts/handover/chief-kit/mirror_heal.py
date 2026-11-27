@@ -20,13 +20,14 @@ LOCK_POLL = 0.5
 STATUS_POLL = 2.0
 
 KEY_RE = r'[A-Z][A-Z0-9]*-[0-9]+'
+TITLE_RE = r'\b' + KEY_RE + r'\b'
 
 
-def brief_keys(doc):
+def brief_keys(doc, title_re=TITLE_RE):
     with open(doc, encoding='utf-8', errors='replace') as fh:
         lines = fh.read().splitlines()
     title = next((l for l in lines if l.startswith('# ')), '')
-    keys = list(dict.fromkeys(re.findall(r'\b' + KEY_RE + r'\b', title)))
+    keys = list(dict.fromkeys(re.findall(title_re or TITLE_RE, title)))
     named = re.search(KEY_RE, os.path.basename(doc))
     if named and named.group(0) not in keys:
         keys.append(named.group(0))
@@ -165,12 +166,12 @@ def heal_root(cli, root, prefix, deadline):
         fh.close()
 
 
-def main(doc, cli):
+def main(doc, cli, title_re=TITLE_RE):
     if not os.path.isfile(cli):
         return
     deadline = time.monotonic() + budget(os.environ)
     groups = {}
-    for key in brief_keys(doc):
+    for key in brief_keys(doc, title_re):
         groups.setdefault(mirror_root(key), []).append(key)
     for root, keys in groups.items():
         if deadline - time.monotonic() <= 0:
@@ -188,7 +189,7 @@ def main(doc, cli):
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
-        main(sys.argv[1], sys.argv[2])
+        main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else TITLE_RE)
     except Exception as e:
         say('heal skipped (%s)' % e)
     sys.exit(0)

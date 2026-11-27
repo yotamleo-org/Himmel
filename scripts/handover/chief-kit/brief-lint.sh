@@ -39,6 +39,7 @@ while [ "${1:-}" = "--core-only" ] || [ "${1:-}" = "--judge" ] || [ "${1:-}" = "
     case "$1" in --core-only) core_only=1 ;; --judge) judge=1 ;; *) skip_bucket=1 ;; esac
     shift
 done
+key_re=""
 if [ "$#" -ne 1 ]; then
     echo "usage: brief-lint.sh [--core-only] [--judge] [--skip-bucket] <brief>" >&2
     exit 2
@@ -79,15 +80,34 @@ resolve_cli() {
     printf '%s' "$cli"
 }
 
+title_key_re() {
+    local v raw="" p out="" parts=()
+    # shellcheck source=../../lib/load-dotenv.sh
+    . "$(dirname "$0")/../../lib/load-dotenv.sh"
+    load_dotenv JIRA_PROJECTS JIRA_PROJECT_KEY 2>/dev/null || true  # swallow-ok: an unreadable layer leaves the keys unset, which falls back to any prefix
+    for v in "${JIRA_PROJECTS:-}" "${JIRA_PROJECT_KEY:-}"; do
+        case "$v" in \"*\"|\'*\') v="${v:1:${#v}-2}" ;; esac
+        raw="$raw,$v"
+    done
+    IFS=, read -r -a parts <<< "$raw"
+    for p in "${parts[@]}"; do
+        p="$(printf '%s' "$p" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+        [[ "$p" =~ ^[A-Z][A-Z0-9]*$ ]] && out="${out:+$out|}$p"
+    done
+    if [ -n "$out" ]; then printf '\\b(?:%s)-[0-9]+\\b' "$out"; else printf '%s' '\b[A-Z][A-Z0-9]*-[0-9]+\b'; fi
+}
+
 mirror_heal() {
     [ "$judge" -eq 0 ] || return 0
     [ "$skip_bucket" -eq 0 ] || return 0
-    python3 -I "$(dirname "$0")/mirror_heal.py" "$doc" "$(resolve_cli)" >&2 || true  # swallow-ok: the heal is advisory, the rules that follow still refuse an unhealed mirror
+    [ -n "$key_re" ] || key_re="$(title_key_re)"
+    python3 -I "$(dirname "$0")/mirror_heal.py" "$doc" "$(resolve_cli)" "$key_re" >&2 || true  # swallow-ok: the heal is advisory, the rules that follow still refuse an unhealed mirror
 }
 
 core_rule() {
     local cli core_err core_rc=0 core_state_root=""
     [ "$judge" -eq 0 ] || return 0
+    [ -n "$key_re" ] || key_re="$(title_key_re)"
     # The handover root turns an absolute Writes path under it into a non-core stand-in; without a resolvable root no absolute path counts.
     # shellcheck source=../../lib/load-dotenv.sh
     . "$(dirname "$0")/../../lib/load-dotenv.sh"
@@ -97,7 +117,7 @@ core_rule() {
         core_state_root="$(handover_root 2>/dev/null)" || core_state_root=""  # swallow-ok: no root means no absolute Writes path counts, which can only refuse more
     fi
     cli="$(resolve_cli)"
-    core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
+    core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" "$(cd "$(dirname "$0")" && pwd)" "$key_re" <<'PY'
 import json, os, re, subprocess, sys
 from datetime import datetime
 
@@ -107,7 +127,7 @@ from mirror_heal import mirror_root
 doc, cli = sys.argv[1], sys.argv[2]
 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
 title = next((l for l in lines if l.startswith('# ')), '')
-keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
+keys = list(dict.fromkeys(re.findall(sys.argv[5], title)))
 if not keys:
     sys.exit(0)
 doc_state_root = os.path.realpath(sys.argv[3]) if sys.argv[3] else ''
@@ -303,16 +323,17 @@ bucket_rule() {
     local cli ran=0 bucket_err bucket_rc=0
     [ "$judge" -eq 0 ] || return 0
     [ "$skip_bucket" -eq 0 ] || return 0
+    [ -n "$key_re" ] || key_re="$(title_key_re)"
     cli="$(resolve_cli)"
     worker_doc_has_run "$doc" && ran=1
-    bucket_err="$(python3 -I - "$doc" "$cli" "$ran" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
+    bucket_err="$(python3 -I - "$doc" "$cli" "$ran" "$(cd "$(dirname "$0")" && pwd)" "$key_re" <<'PY'
 import os, re, subprocess, sys
 
 sys.path.insert(0, sys.argv[4])
 from mirror_heal import brief_keys, mirror_root
 
 doc, cli, ran = sys.argv[1], sys.argv[2], sys.argv[3] == '1'
-keys = brief_keys(doc)
+keys = brief_keys(doc, sys.argv[5])
 if not keys:
     sys.exit(0)
 
