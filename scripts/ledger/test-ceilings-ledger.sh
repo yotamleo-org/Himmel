@@ -156,6 +156,21 @@ for _ in $(seq 1 100); do [ -f "$work/orphan.done" ] && break; sleep 0.1; done
 out=$(cat "$work/orphan.out" 2>/dev/null)
 has "a chain with neither name is withheld" "$out" "no claude process in the process chain"
 
+out=$(under codex -u CLAUDECODE CODEX_THREAD_ID=t1 -- "${range[@]}")
+has "a Codex build lane (CODEX_THREAD_ID, codex ancestor) gets the header" "$out" "CEILINGS: 4 open rows for 2 of 2 touched files"
+has "a Codex build lane gets id, file, anchor and ticket" "$out" "$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')"
+lacks "a Codex build lane gets no ceiling text" "$out" "$SECRET"
+lacks "a Codex build lane gets no trigger text" "$out" "a glob test fails"
+out=$(under codex -u CLAUDECODE CODEX_THREAD_ID=t1 -- -- a.sh)
+has "a Codex build lane reads the rows for one touched file" "$out" "$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')"
+lacks "a Codex build lane gets no row of an untouched file" "$out" "C-0002"
+out=$(under other -u CLAUDECODE CODEX_THREAD_ID=t1 -- "${range[@]}")
+has "CODEX_THREAD_ID with no codex ancestor is withheld" "$out" "CEILINGS: withheld (non-Claude session: CLAUDECODE is not 1)"
+lacks "CODEX_THREAD_ID with no codex ancestor shows no row" "$out" "C-0001"
+out=$(under codex -u CLAUDECODE CODEX_THREAD_ID=t1 ANTHROPIC_BASE_URL=http://127.0.0.1:8317 -- "${range[@]}")
+has "a codex chain behind the codex proxy is withheld" "$out" "CEILINGS: withheld (non-Claude session:"
+lacks "a codex chain behind the codex proxy shows no row" "$out" "C-0001"
+
 out=$(under other ANTHROPIC_BASE_URL=http://127.0.0.1:8317 ANTHROPIC_MODEL=gpt-6.1-sol -- --ids "${range[@]}")
 has "--ids under a claudex env prints the header" "$out" "CEILINGS: 4 open rows for 2 of 2 touched files"
 has "--ids prints id, file, anchor and ticket tab-separated" "$out" "$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')"
