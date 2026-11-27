@@ -10,6 +10,9 @@
 # cannot shrink the list it is judged by. An unreadable, empty or invalid list
 # refuses. Blank lines and # comments are ignored; anchor every pattern.
 
+^scripts/guardrails/(phi-egress-lib\.sh|phi-list-paths\.cjs|phi_list_paths\.py|phi-dir-cases\.tsv|testlib-phi-dirs\.sh|test-phi-list-paths\.sh)$
+^marketplace/plugins/himmel-ops/hooks/phi-egress-lib\.sh$
+
 # CI definitions and every script CI runs outside a suite (H2).
 ^\.github/
 ^scripts/ci/

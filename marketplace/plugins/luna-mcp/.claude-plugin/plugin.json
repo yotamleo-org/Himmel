@@ -1,5 +1,5 @@
 {
   "name": "luna-mcp",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Read-only HTTPS MCP facade over the local QMD index, with per-key scoping, a path jail, egress admission and an audit log."
 }

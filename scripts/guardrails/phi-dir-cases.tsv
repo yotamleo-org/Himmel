@@ -1,0 +1,24 @@
+id	state	override	rc_roots	paths_roots	rc_deny	paths_deny	reader
+C1	N/phi-roots lists R	unset	0	.config/himmel/phi/phi-roots	3	-	covered
+C2	N/egress-denylist lists R	unset	3	-	0	.config/himmel/phi/egress-denylist	covered-not-R14
+C3	D/phi-roots lists R	unset	0	.config/claude-glm/phi-roots	3	-	covered
+C4	O/phi-roots lists R	home:glm-override	0	glm-override/phi-roots	3	-	covered
+C5	D/phi-roots lists R; O an empty dir	home:glm-override	0	.config/claude-glm/phi-roots	3	-	covered
+C6	N/phi-roots and D/phi-roots both hold the same other root	unset	0	.config/himmel/phi/phi-roots,.config/claude-glm/phi-roots	3	-	as-base
+C7	no list dir at all	unset	3	-	3	-	as-base
+C8	N at mode 000	unset	2	-	2	-	unreadable
+C9	.config/himmel (parent of N) at mode 000	unset	2	-	2	-	unreadable
+C10	N/phi-roots a dangling symlink	unset	0	.config/himmel/phi/phi-roots	3	-	unreadable
+C11	N/phi-roots a directory	unset	0	.config/himmel/phi/phi-roots	3	-	unreadable
+C12	N/phi-roots a regular file at mode 000	unset	0	.config/himmel/phi/phi-roots	3	-	unreadable
+C13	D at mode 000	unset	2	-	2	-	unreadable
+C14	.config (parent of D and of .config/himmel) at mode 000	unset	2	-	2	-	unreadable
+C15	a plain executable file where N belongs	unset	2	-	2	-	unreadable
+C16	a dangling symlink where D belongs	unset	2	-	2	-	unreadable
+C17	O at mode 000	home:glm-override	2	-	2	-	unreadable
+C18	N and D exist, neither holds a list	unset	3	-	3	-	as-base
+C19	N/phi-roots lists R; O an empty dir	home:glm-override	0	.config/himmel/phi/phi-roots	3	-	covered
+C20	O/phi-roots holds another root; D/phi-roots lists R	home:glm-override	0	glm-override/phi-roots,.config/claude-glm/phi-roots	3	-	covered
+C21	the override is a relative path that does not exist under an open working directory	rel:relative-cfg-absent/x	3	-	3	-	as-base
+C22	the override is a relative path under a working directory at mode 000	rel:cfg	2	-	2	-	unreadable
+C23	the codex lane dir .config/claude-codex at mode 000 (the shared resolver does not read it)	unset	3	-	3	-	unreadable-for-R4-R8-R15-else-as-base
