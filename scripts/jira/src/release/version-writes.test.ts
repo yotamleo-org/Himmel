@@ -101,6 +101,7 @@ const READ_ONLY = [
   'scripts/jira/src/commands/roadmap.ts',
   'scripts/jira/src/release/engine-core.ts',
   'scripts/jira/src/release/engine.ts',
+  'scripts/jira/src/release/go-answer.ts',
   'scripts/jira/src/release/leaks.ts',
   'scripts/jira/src/release/operator-acts.ts',
   'scripts/jira/src/release/reducer.ts',
