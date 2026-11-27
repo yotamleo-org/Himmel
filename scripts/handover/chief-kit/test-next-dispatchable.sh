@@ -493,16 +493,16 @@ CDOC="$WORK/chief-doc.md"
 printf '# chief\n\n## Live state\n\nlegs: none\npriority: K1 | 112 SCORECARD | 111 113(CLOUD) | 9999\nqueue: none\n\n## Later\n\npriority: 140\n' > "$CDOC"
 run7() { NEXT_DISPATCH_MIRROR="$M7" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
 o7="$(run7 --top 20 --doc "$CDOC" | grep -v '^#' | grep -v '^RESUME' | cut -f2 | paste -sd, -)"
-[ "$o7" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140,HIMMEL-141,HIMMEL-132,HIMMEL-170,HIMMEL-171" ] && pass "one ticket per tier on shuffled input comes out in tier order" || fail "tier order is '$o7'"
+[ "$o7" = "HIMMEL-131,HIMMEL-120,HIMMEL-130,HIMMEL-140,HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-141,HIMMEL-132,HIMMEL-170,HIMMEL-171" ] && pass "one ticket per tier on shuffled input comes out in band order, tier order inside a band" || fail "tier order is '$o7'"
 lacks "a (CLOUD) entry on the priority line is excluded from local output" "$o7" "HIMMEL-113"
 o7b="$(run7 --doc "$CDOC" --priority-pool-only --owners "$KP-999" | grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$o7b" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "--priority-pool-only lists tiers 1-4 only: the rest of the earliest version follows tier 3, a later version stays out" || fail "pool-only is '$o7b'"
+[ "$o7b" = "HIMMEL-131,HIMMEL-120,HIMMEL-130,HIMMEL-140,HIMMEL-112,HIMMEL-111,HIMMEL-110" ] && pass "--priority-pool-only lists tiers 1-4 only, the earliest version before versionless pool rows; a later version stays out" || fail "pool-only is '$o7b'"
 lacks "--priority-pool-only prints no RESUME row" "$(run7 --doc "$CDOC" --priority-pool-only)" "RESUME"$'\t'
 printf '# chief\n\n## Live state\n\n**priority:** K1 | 112 SCORECARD | 111 113 (CLOUD) | [PR 170] since 10.171\nqueue: none\n' > "$WORK/chief-doc-bold.md"
 o7d="$(run7 --doc "$WORK/chief-doc-bold.md" --priority-pool-only --owners "$KP-999" | grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$o7d" = "HIMMEL-112,HIMMEL-111,HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "a bold **priority:** line with '113 (CLOUD)' and bracketed or dotted numbers ranks as written" || fail "bold-line pool is '$o7d'"
+[ "$o7d" = "HIMMEL-131,HIMMEL-120,HIMMEL-130,HIMMEL-140,HIMMEL-112,HIMMEL-111,HIMMEL-110" ] && pass "a bold **priority:** line with '113 (CLOUD)' and bracketed or dotted numbers ranks as written" || fail "bold-line pool is '$o7d'"
 o7c="$(run7 --priority-pool-only --owners "$KP-999" |grep -v '^#' | cut -f2 | paste -sd, -)"
-[ "$o7c" = "HIMMEL-110,HIMMEL-120,HIMMEL-131,HIMMEL-130,HIMMEL-140" ] && pass "without --doc the pool is the labels, tiers 2-3 and the rest of the earliest version" || fail "no-doc pool is '$o7c'"
+[ "$o7c" = "HIMMEL-131,HIMMEL-120,HIMMEL-130,HIMMEL-140,HIMMEL-110" ] && pass "without --doc the pool is the labels, tiers 2-3 and the rest of the earliest version" || fail "no-doc pool is '$o7c'"
 # the tier-1 must label follows the current version: with v2.0.0 current, must-v2.0.0 is tier 1; must-v1.1.3 and a later version's label are not
 M31="$WORK/jira-mirror31/HIMMEL"; mkdir -p "$M31"
 M_SAVE="$M"; M="$M31"
@@ -5544,6 +5544,82 @@ c2="$(cl69 "$MC2" 4)"
 check "10769 T-C2: 4 BLOCKED fresh rows: 2 RESUME and the 2 unblocked fresh rows" "RESUME:HIMMEL-7071,RESUME:HIMMEL-7072,LOCAL:HIMMEL-7085,LOCAL:HIMMEL-7086" "$(k69 < "$WORK/cl69.out")"
 check "10769 T-C2: the classify call count is pinned" "3 6" "$c2"
 BLOCK69=""
+M="$WORK/jira-mirror/HIMMEL"
+
+nm91() {
+    M="$WORK/s91391-$1/HIMMEL"; mkdir -p "$M"
+    printf 'v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' > "$WORK/s91391-$1/HIMMEL.versions.tsv"
+}
+mk91() {
+    mk "HIMMEL-$1" "$2" "$3" "$4" "[\"$5\"]" '[]' "t$1" "Edit scripts/lib/f91-$1.sh only."
+}
+k91() { awk -F'\t' 'NF>1 {print $1 ":" $2}' | paste -sd, -; }
+proof91() {
+    local key
+    for key in "$@"; do mk91 "$key" "In Progress" Medium '[]' v1.1.3; p_part "HIMMEL-$key" "$key" owed proof; done
+}
+run91p() { p_run --workers-from "$WORK/fleet5.json" "$@"; }
+
+nm91 r1; mk91 9101 "To Do" High '[]' v1.1.3; mk91 9102 "To Do" Medium '[]' v1.1.4
+D91="$WORK/chief-r1-91.md"; pri69 "$D91" "9102"
+check "11391 R1: a High v1.1.3 row outranks a Medium v1.1.4 priority-line row at --top 1" "LOCAL?:$KP-9101" "$(r69 "$M" --no-classify --top 1 --doc "$D91" | k91)"
+
+p_reset; nm91 r2; proof91 9201 9202 9203
+for key in 9204 9205 9206; do mk91 "$key" "To Do" High '[]' v1.1.3; done
+run91p --top 3
+check "11391 R2: proof rows take no build slot" "LOCAL?:$KP-9204,LOCAL?:$KP-9205,LOCAL?:$KP-9206,RESUME:$KP-9201,RESUME:$KP-9202" "$(printf '%s\n' "$P_OUT" | k91)"
+has "11391 R2: the proof line names the budget and the cut" "$P_OUT" "# proof=2/2,cut=1"
+
+run91p --top 3 --priority-pool-only
+check "11391 R3: the pool gives proof rows no build slot" "LOCAL?:$KP-9204,LOCAL?:$KP-9205,LOCAL?:$KP-9206,RESUME:$KP-9201,RESUME:$KP-9202" "$(printf '%s\n' "$P_OUT" | k91)"
+has "11391 R3: the proof line" "$P_OUT" "# proof=2/2,cut=1"
+has "11391 R3: # pool= counts build rows" "$P_OUT" "# pool=3/3"
+
+run91p --top 3 --resume-only
+check "11391 R7: --resume-only keeps one uncapped list in rank order" "RESUME:$KP-9201,RESUME:$KP-9202,RESUME:$KP-9203" "$(printf '%s\n' "$P_OUT" | k91)"
+lacks "11391 R7: and prints no proof line" "$P_OUT" "# proof="
+
+run91p --top 3 --why --dispositions
+has "11391 R9: --why names the cut proof row" "$P_OUT" "# proof-cut $KP-9203 past the proof budget 2"
+has "11391 R9: --dispositions calls it proof-cut" "$P_OUT" "# disposition $KP-9203 proof-cut past the proof budget 2"
+
+nm91 r4; mk91 9401 "To Do" Medium '["operator-directed"]' v1.1.3; mk91 9402 "To Do" High '[]' v1.1.3
+check "11391 R4: the pool lists a tier-4 High before a tier-2 Medium" "LOCAL?:$KP-9402" "$(r69 "$M" --no-classify --top 1 --priority-pool-only | k91)"
+
+nm91 r5; mk91 9501 "In Progress" Medium '["operator-directed"]' v1.1.3; mk91 9502 "To Do" Medium '["operator-directed"]' v1.1.3; mk91 9503 "To Do" High '[]' v1.1.3
+check "11391 R5: tier 2's build RESUME row keeps its lead, the High fresh row goes before the Medium one" "RESUME:$KP-9501,LOCAL?:$KP-9503,LOCAL?:$KP-9502" "$(r69 "$M" --no-classify --top 3 --priority-pool-only | k91)"
+
+p_reset; nm91 r6; proof91 9601
+run91p --top 1 --priority-pool-only
+check "11391 R6: a lone proof row lists" "RESUME:$KP-9601" "$(printf '%s\n' "$P_OUT" | k91)"
+has "11391 R6: under the proof budget" "$P_OUT" "# proof=1/2"
+has "11391 R6: and no build slot is used" "$P_OUT" "# pool=0/1,LOW"
+lacks "11391 R6: a pool that printed a proof row is not empty" "$P_OUT" "POOL-EMPTY"
+
+p_reset; nm91 r8; mk91 9801 "In Progress" Medium '[]' v1.1.3; p_part $KP-9801 9801 owed proof
+pv="$(p_validation $KP-9801)"; p_step $KP-9801 "$pv" worker 'Fix scripts/lib/next.sh'; p_owed close --id "$pv" --key KEEP >/dev/null
+run91p --top 2 --doc "$P/bucket/chief.md"
+has "11391 R8: a proof replaced by a worker step is a build RESUME row" "$(printf '%s\n' "$P_OUT" | grep "^RESUME	$KP-9801")" "files=scripts/lib/next.sh"
+lacks "11391 R8: and no proof line counts it" "$P_OUT" "# proof="
+
+p_reset; nm91 r10; proof91 9001 9002 9003 9004
+run91p --top 4
+check "11391 R10: every proof row lists" "RESUME:$KP-9001,RESUME:$KP-9002,RESUME:$KP-9003,RESUME:$KP-9004" "$(printf '%s\n' "$P_OUT" | k91)"
+has "11391 R10: the empty build slots go to the proofs" "$P_OUT" "# proof=4/6"
+
+row91() { printf '%s\tHIMMEL-%s\tMedium\t%s\tt%s\tfiles=scripts/lib/f69-%s.sh' "$1" "$2" "$3" "$2" "$2"; [ "$1" != RESUME ] || printf '\tstatus=In Progress\tlast=-'; printf '\n'; }
+warn91() { local key; for key in "$@"; do printf '# warn: HIMMEL-%s names scripts/lib/f69-%s.sh (not in the repo: a new file, or the collision check is blind)\n' "$key" "$key"; done; }
+head91="$(printf '%s\n' '# WARN CORE-CHECK-BATCH-FALLBACK exit' '# next-dispatchable: 3 To Do candidate(s), 3 collision-free, 3 RESUME (in work, no worker, no open PR)')"
+gold91_plain="$(printf '%s\n' "$head91"; row91 RESUME 6901 -; row91 RESUME 6902 -; row91 'LOCAL?' 6904 -; printf '# resume=2\n'; warn91 6901 6902 6904)"
+gold91_pool="$(printf '%s\n' "$head91"; row91 RESUME 6931 v1.0.1; row91 RESUME 6932 v1.0.1; row91 'LOCAL?' 6934 v1.0.1; row91 'LOCAL?' 6935 v1.0.1; printf '# pool=4/4\n'; warn91 6931 6932 6934 6935; printf '# dropped from v1.0.1: 1 of 3 To Do (below 1)\n')"
+check "11391 R11: one band and no proof row: the plain output is the base output" "$gold91_plain" "$(r69 "$MP69" --no-classify --top 3 | grep -v '^# source ')"
+check "11391 R12: one band and no proof row: the pool output is the base output" "$gold91_pool" "$(r69 "$MQ1" --no-classify --top 4 --doc "$DQ1" --priority-pool-only | grep -v '^# source ')"
+
+M="$P/mirror"; p_reset; p_mk $KP-11009; p_part $KP-11009 7003 owed proof; p_list
+has "11391 R13: a partial-merge proof row is a RESUME row" "$P_OUT" "RESUME	$KP-11009"
+has "11391 R13: counted by the proof line" "$P_OUT" "# proof=1/150"
+has "11391 R13: dispositioned as listed" "$P_OUT" "# disposition $KP-11009 listed RESUME"
+lacks "11391 R13: and not dropped" "$P_OUT" "# drop $KP-11009 "
 M="$WORK/jira-mirror/HIMMEL"
 
 W69="$HERE/../../../docs/handover/chief-sections/waiter.md"
