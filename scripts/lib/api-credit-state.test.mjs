@@ -1148,6 +1148,41 @@ test('a lock that holds a file, or whose recorded holder is alive, is left alone
   assert.equal(existsSync(dead), false);
 });
 
+test('a stale empty ledger lock behind a stale empty reclaim lock is reclaimed, and the next status reads PROCEED', () => {
+  const f = fixture();
+  const lock = `${f.paths.state}.lock`;
+  const guard = `${lock}.reclaim`;
+  mkdirSync(lock); mkdirSync(guard); age(lock, 120); age(guard, 120);
+  const r = statusOf(f, LOCK_TIMEOUT);
+  assert.equal(r.verdict, 'PROCEED', JSON.stringify(r));
+  assert.equal(existsSync(lock), false);
+  assert.equal(existsSync(guard), false);
+});
+
+test('a young reclaim lock, or one that holds a file or has a live recorded holder, is left alone', () => {
+  for (const shape of ['young', 'contents', 'live-holder']) {
+    const f = fixture();
+    const lock = `${f.paths.state}.lock`;
+    const guard = `${lock}.reclaim`;
+    mkdirSync(lock); mkdirSync(guard); age(lock, 120);
+    if (shape === 'contents') writeFileSync(join(guard, 'x'), '');
+    if (shape === 'live-holder') writeFileSync(`${guard}.pid`, `${process.pid}\n`);
+    if (shape !== 'young') age(guard, 120);
+    assert.equal(statusOf(f, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable', shape);
+    assert.equal(existsSync(guard), true, shape);
+    assert.equal(existsSync(lock), true, shape);
+  }
+});
+
+test('a ledger lock whose recorded holder is alive is never reclaimed, even past a stale reclaim lock', () => {
+  const f = fixture();
+  const lock = `${f.paths.state}.lock`;
+  const guard = `${lock}.reclaim`;
+  mkdirSync(lock); writeFileSync(`${lock}.pid`, `${process.pid}\n`); mkdirSync(guard); age(lock, 120); age(guard, 120);
+  assert.equal(statusOf(f, LOCK_TIMEOUT).reason, 'ledger-locked-or-unwritable');
+  assert.equal(existsSync(lock), true);
+});
+
 test('a new grant row counts the spend its reading already billed once, and spend from before the grant not at all', () => {
   const f = fixture();
   const starts = Math.floor(Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) / 1000);

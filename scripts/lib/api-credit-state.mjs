@@ -55,9 +55,16 @@ function removeLock(lock, f) {
   console.error(`api credit-state: reclaimed a stale empty ledger lock ${lock} (age ${f.age}s, holder ${f.pid ?? 'unrecorded'} not running)`);
   return true;
 }
+function clearCrashedGuard(guard, env) {
+  const f = lockFacts(guard);
+  if (isCrashedLock(f, env)) removeLock(guard, f);
+}
 function reclaim(lock, env) {
   const guard = `${lock}.reclaim`;
-  try { mkdirSync(guard, { mode: 0o700 }); } catch { return false; }
+  try { mkdirSync(guard, { mode: 0o700 }); } catch {
+    try { clearCrashedGuard(guard, env); } catch { }
+    return false;
+  }
   try {
     const f = lockFacts(lock);
     return isCrashedLock(f, env) && removeLock(lock, f);

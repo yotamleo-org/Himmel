@@ -72,9 +72,12 @@ and no `Edit`, `Write` or `Bash` grant. A named account never rotates. When no u
 account is left, the failure path below runs as usual.
 
 A crashed ledger transaction can leave the lock directory behind. A waiter reclaims it only
-when it is empty, older than the call timeout plus the kill grace, and its recorded holder
-(`<lock>.pid`, beside the lock) is not running; a lock with contents, a young lock or a
-running holder is never touched and refuses by name after the lock wait.
+when it is empty, older than the call timeout plus the kill grace, and no recorded holder
+(`<lock>.pid`, beside the lock) is running, whether the pid is dead or was never recorded (a
+kill between the lock's `mkdir` and the pid write, or between the pid removal and the lock's
+`rmdir`, records none). A lock with contents, a young lock or a running holder is never
+touched and refuses by name after the lock wait. A waiter killed while reclaiming can leave
+`<lock>.reclaim` behind; the same rule clears it, and a later pass reclaims the lock.
 
 For every other failure the launcher:
 
