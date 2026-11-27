@@ -14,7 +14,7 @@ export class TelegramError extends Error {
 const CALL_TIMEOUT_MS = 15_000;
 const POLL_MARGIN_MS = 10_000;
 // An omitted list keeps the previous one: https://core.telegram.org/bots/api#getupdates
-const ALLOWED_UPDATES = ["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"];
+const ALLOWED_UPDATES = ["message", "edited_message", "channel_post", "edited_channel_post", "callback_query", "my_chat_member"];
 
 export class PeerTelegram {
   constructor(private token: string, private f: F = fetch) {}

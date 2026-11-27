@@ -80,7 +80,13 @@ test("getUpdates, getChat and getChatMember send the documented bodies and retur
 test("every getUpdates names the update types the poller reads, so a stored filter cannot drop a button tap", async () => {
   const { f, calls } = stub(() => ({ json: { ok: true, result: [] } }));
   await new PeerTelegram(TOKEN, f).getUpdates(1, 0);
-  expect(calls[0].body.allowed_updates).toEqual(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"]);
+  expect(calls[0].body.allowed_updates).toEqual(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query", "my_chat_member"]);
+});
+
+test("every getUpdates keeps my_chat_member, which remote-setup's group discovery reads on the same token", async () => {
+  const { f, calls } = stub(() => ({ json: { ok: true, result: [] } }));
+  await new PeerTelegram(TOKEN, f).getUpdates(1, 0);
+  expect(calls[0].body.allowed_updates).toContain("my_chat_member");
 });
 
 test("the Bot API sendMessage method is named only in telegram.ts", () => {
