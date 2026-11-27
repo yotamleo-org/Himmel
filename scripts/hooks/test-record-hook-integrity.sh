@@ -1029,6 +1029,56 @@ else
   bad "row25: pins=$(jq -c '.pins' "$REC25" 2>/dev/null || echo '<no record>')"
 fi
 
+PR1="$(new_fixture rowR1 main)"
+mkdir -p "$PR1/scripts/hooks/lib" "$PR1/marketplace/plugins/himmel-ops/hooks/lib"
+cp "$HOOKS_DIR/lib/harness-tool-translate.js" "$HOOKS_DIR/lib/harness-tool-map.json" "$PR1/scripts/hooks/lib/"
+cp "$HOOKS_DIR/lib/harness-tool-translate.js" "$HOOKS_DIR/lib/harness-tool-map.json" "$PR1/marketplace/plugins/himmel-ops/hooks/lib/"
+cp "$HOOKS_DIR/run-hook-with-bash.js" "$PR1/scripts/hooks/"
+printf '{}\n' > "$PR1/scripts/hooks/lib/other.json"
+git -C "$PR1" -c user.email=t@t -c user.name=t add -A
+git -C "$PR1" -c user.email=t@t -c user.name=t commit -q -m runner-libs
+OUTR1="$T/rowR1/out"
+run_recorder "$PR1" "$OUTR1" "sess-r1"
+RECR1="$OUTR1/sess-r1.json"
+r1_pin() { jq -r --arg k "$1" '.pins[$k] // empty' "$RECR1" 2>/dev/null; }
+if [ -f "$RECR1" ] \
+  && [ "$(r1_pin scripts/hooks/lib/harness-tool-translate.js)" = "$(git -C "$PR1" rev-parse HEAD:scripts/hooks/lib/harness-tool-translate.js)" ] \
+  && [ "$(r1_pin scripts/hooks/lib/harness-tool-map.json)" = "$(git -C "$PR1" rev-parse HEAD:scripts/hooks/lib/harness-tool-map.json)" ] \
+  && [ -z "$(r1_pin marketplace/plugins/himmel-ops/hooks/lib/harness-tool-translate.js)" ] \
+  && [ -z "$(r1_pin marketplace/plugins/himmel-ops/hooks/lib/harness-tool-map.json)" ] \
+  && [ -z "$(r1_pin scripts/hooks/run-hook-with-bash.js)" ] \
+  && [ -z "$(r1_pin scripts/hooks/lib/other.json)" ]; then
+  ok "rowR1: the two scripts/hooks/lib runner files are pinned to their HEAD blobs; the other four are not"
+else
+  bad "rowR1: pins=$(jq -c '.pins' "$RECR1" 2>/dev/null || echo '<no record>')"
+fi
+
+all_pinned() {
+  local rec="$1" entry
+  shift
+  [ "$#" -gt 0 ] || return 1
+  for entry in "$@"; do
+    [ -n "$(jq -r --arg k "scripts/hooks/$entry" '.pins[$k] // empty' "$rec" 2>/dev/null)" ] || return 1
+  done
+  return 0
+}
+runner_libs=()
+while IFS= read -r lib; do
+  [ -n "$lib" ] && runner_libs+=("$lib")
+done <<EOF_RUNNER_LIBS
+$(node -e 'process.stdout.write(require(process.argv[1]).RUNNER_LIBS.join("\n"))' "$HOOKS_DIR/hook-integrity.js" 2>/dev/null)
+EOF_RUNNER_LIBS
+if [ "${#runner_libs[@]}" -gt 0 ] && all_pinned "$RECR1" "${runner_libs[@]}"; then
+  ok "rowR2: every RUNNER_LIBS entry is in the record"
+else
+  bad "rowR2: RUNNER_LIBS='${runner_libs[*]-}' is not all pinned: $(jq -c '.pins' "$RECR1" 2>/dev/null)"
+fi
+if all_pinned "$RECR1" ${runner_libs[@]+"${runner_libs[@]}"} lib/x.json; then
+  bad "rowR2 control: a list with an unpinned lib/x.json must fail the comparison"
+else
+  ok "rowR2 control: a list with an unpinned lib/x.json fails the comparison"
+fi
+
 # ---------------------------------------------------------------------------
 # Row 26: the recorder runs under bash 3.2. An apostrophe in a comment inside a
 # multi-line $( ) reads there as an open quote; `bash -n` can miss it when a

@@ -1988,6 +1988,45 @@ test('watchdog drift: D3 — every *_DENY prefix is classified in DENY_PREFIX_CL
   }
 });
 
+function runnerLibRefs(loaderSources, translatorSource) {
+  const refs = new Set();
+  for (const text of loaderSources) {
+    for (const m of text.matchAll(/require\(\s*'\.\/(lib\/[^']+)'\s*\)/g)) refs.add(m[1]);
+  }
+  for (const m of translatorSource.matchAll(/path\.join\(\s*__dirname,\s*'([^']+)'\s*\)/g)) refs.add(`lib/${m[1]}`);
+  return [...refs].sort();
+}
+
+test('runner libs: D1 — RUNNER_LIBS is exactly the lib files the runner, wrapper and translator name', () => {
+  const read = (rel) => readFileSync(join(HERE, rel), 'utf8');
+  const loaders = [read('run-hook-with-bash.js'), read('guardrail-skip-in-himmel.js')];
+  const translator = read('lib/harness-tool-translate.js');
+  assert.ok(Array.isArray(hookIntegrity.RUNNER_LIBS), 'RUNNER_LIBS exported');
+  assert.deepEqual(runnerLibRefs(loaders, translator), [...hookIntegrity.RUNNER_LIBS].sort());
+  const extra = runnerLibRefs([...loaders, "require('./lib/extra.js')"], translator);
+  assert.ok(extra.includes('lib/extra.js') && !hookIntegrity.RUNNER_LIBS.includes('lib/extra.js'),
+    'the scan reports a require RUNNER_LIBS does not list');
+});
+
+test('runner libs: D2 — pathLocality reads local, foreign and an escaping symlink', () => {
+  const fs = require('node:fs');
+  const project = makeTmpDir('path-locality-project-');
+  const outside = makeTmpDir('path-locality-outside-');
+  try {
+    fs.mkdirSync(join(project, 'scripts', 'hooks'), { recursive: true });
+    writeFileSync(join(project, 'scripts', 'hooks', 'a.js'), '');
+    writeFileSync(join(outside, 'a.js'), '');
+    fs.symlinkSync(outside, join(project, 'scripts', 'hooks', 'lib'));
+    assert.equal(typeof hookIntegrity.pathLocality, 'function', 'pathLocality exported');
+    assert.equal(hookIntegrity.pathLocality(join(project, 'scripts', 'hooks', 'a.js'), project), 'local');
+    assert.equal(hookIntegrity.pathLocality(join(outside, 'a.js'), project), 'foreign');
+    assert.equal(hookIntegrity.pathLocality(join(project, 'scripts', 'hooks', 'lib', 'a.js'), project), 'escapes');
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('watchdog drift: E(1) — a drifted look-alike filename keeps the deny', () => {
   const fx = watchdogFixture();
   try {

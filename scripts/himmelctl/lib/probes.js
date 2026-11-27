@@ -2421,6 +2421,7 @@ function probeGuardrailBlockStatus(item, ctx) {
       && typeof parsed.anchorMatchesAudit === 'boolean';
     const v2PerHookComplete = parsed.hooks.every((h) => h && (
       h.wrapperIntegrity !== undefined
+      && Array.isArray(h.wrapperLibIntegrity) && h.wrapperLibIntegrity.length > 0
       && h.scriptIntegrity !== undefined
       && h.wrapperMatchesAuditAnchor !== undefined
       && h.scriptMatchesAuditAnchor !== undefined));
@@ -2437,7 +2438,8 @@ function probeGuardrailBlockStatus(item, ctx) {
     // (the same "self-contradictory, not trusted" stance as the v1 recompute
     // above: a CONSUMER recomputes; it does not rubber-stamp the producer).
     const healthyIntegrity = (i) => i && typeof i === 'object' && i.verdict === 'healthy';
-    const recomputedContentIntegrity = parsed.hooks.every((h) => healthyIntegrity(h.wrapperIntegrity) && healthyIntegrity(h.scriptIntegrity));
+    const recomputedContentIntegrity = parsed.hooks.every((h) => healthyIntegrity(h.wrapperIntegrity) && healthyIntegrity(h.scriptIntegrity)
+      && h.wrapperLibIntegrity.every(healthyIntegrity));
     const recomputedAuditAnchor = parsed.anchorMatchesAudit === true
       && parsed.hooks.every((h) => h.wrapperMatchesAuditAnchor === true && h.scriptMatchesAuditAnchor === true);
     const recomputedAttestation = recomputedComplete && recomputedContentIntegrity && recomputedAuditAnchor;
@@ -2458,6 +2460,9 @@ function probeGuardrailBlockStatus(item, ctx) {
     for (const h of parsed.hooks) {
       const name = (h && h.basename) ? h.basename : '?';
       if (!healthyIntegrity(h && h.wrapperIntegrity)) v2Problems.push(`${name}: content integrity not verified — wrapper (${(h && h.wrapperIntegrity && h.wrapperIntegrity.reason) || 'unknown'})`);
+      for (const lib of h.wrapperLibIntegrity) {
+        if (!healthyIntegrity(lib)) v2Problems.push(`${name}: content integrity not verified — wrapper lib ${(lib && lib.relativePath) || '?'} (${(lib && lib.reason) || 'unknown'})`);
+      }
       if (!healthyIntegrity(h && h.scriptIntegrity)) v2Problems.push(`${name}: content integrity not verified — script (${(h && h.scriptIntegrity && h.scriptIntegrity.reason) || 'unknown'})`);
       if (h && h.wrapperMatchesAuditAnchor === false) v2Problems.push(`${name}: does not match audit anchor — wrapper (expected ${h.auditWrapperPath})`);
       if (h && h.scriptMatchesAuditAnchor === false) v2Problems.push(`${name}: does not match audit anchor — script (expected ${h.auditScriptPath})`);
