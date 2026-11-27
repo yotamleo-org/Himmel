@@ -20,6 +20,7 @@ const {
   gitBlobSha1,
   hookIntegrityDir,
   isPinDrift,
+  isProjectMember,
   isWatchdogMember,
   loadIntegrityRecord,
   takeUnvouchedNotice,
@@ -66,6 +67,133 @@ function watchdogNotice(integrity) {
   return `himmel hook-integrity: auto-arm-on-cap.sh was NOT run (${integrity.relPath}: ${integrity.reason || DRIFT_FALLBACK}). `
     + 'It is a fail-open watchdog, so the tool call goes ahead. If its pin drifted, the usage-cap auto-arm stays off '
     + 'for the rest of this session: start a new session to restore it.';
+}
+
+const CONTEXT_GUARD_REL = 'scripts/hooks/guard-worker-context-handoff.sh';
+const REPORT_PROJECT_DIR = /^\/[A-Za-z0-9._+/-]+$/;
+const REPORT_APPEND = /^[ \t\n]*bash[ \t]+([A-Za-z0-9._+/-]+)[ \t]+(?:([A-Za-z0-9._+/-]+)|'([^'\n]*)')[ \t]+(?:'BLOCKED — [^'\n]*'|"BLOCKED — [^"$`\\\n]*")[ \t\n]*$/;
+const REPORT_TRANSCRIPT_BYTES = 1024 * 1024;
+const REPORT_TRANSCRIPT_LINES = 400;
+const REPORT_SUCCESSION = /^- (?:[0-9][0-9]:[0-9][0-9] )?(?:LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[ \t\r]*$/;
+
+function isReadableFile(file) {
+  try {
+    if (!fs.statSync(file).isFile()) return false;
+    fs.accessSync(file, fs.constants.R_OK);
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+function firstUserText(transcript) {
+  if (typeof transcript !== 'string' || !isReadableFile(transcript)) return '';
+  const buffer = Buffer.alloc(REPORT_TRANSCRIPT_BYTES);
+  const fd = fs.openSync(transcript, 'r');
+  let length = 0;
+  try {
+    let read = 1;
+    while (read > 0 && length < buffer.length) {
+      read = fs.readSync(fd, buffer, length, buffer.length - length, null);
+      length += read;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  for (const line of buffer.toString('utf8', 0, length).split('\n').slice(0, REPORT_TRANSCRIPT_LINES)) {
+    if (!line.trim()) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch (_e) {
+      return '';
+    }
+    if (!entry || entry.type !== 'user' || entry.isMeta) continue;
+    const content = entry.message ? entry.message.content : null;
+    if (typeof content === 'string') return content;
+    return Array.isArray(content) ? content.map((part) => (part && part.text) || '').join(' ') : '';
+  }
+  return '';
+}
+
+function reportContext(hookInput) {
+  const ctx = { doc: null, chief: process.env.HIMMEL_CONSOLE_NAME };
+  try {
+    const text = firstUserText(hookInput.transcript_path);
+    let doc = (/\/[^\s"'`]+\.md/.exec(text) || [])[0];
+    if (!doc || !isReadableFile(doc)) doc = (/^load (\/.*\.md) and continue/.exec(text) || [])[1];
+    if (!doc || !isReadableFile(doc)) return ctx;
+    ctx.doc = doc;
+    const accepted = new Set([ctx.chief]);
+    let results = false;
+    for (const line of fs.readFileSync(doc, 'utf8').split('\n')) {
+      if (/^## Results(\s|$)/.test(line)) {
+        results = true;
+        continue;
+      }
+      const found = results ? REPORT_SUCCESSION.exec(line) : null;
+      if (found && accepted.has(found[2].replace(/`/g, ''))) {
+        ctx.chief = found[1].replace(/`/g, '');
+        accepted.add(ctx.chief);
+      }
+    }
+  } catch (_e) {
+    return ctx;
+  }
+  return ctx;
+}
+
+function reportAppendScript() {
+  const dir = normalize(process.env.CLAUDE_PROJECT_DIR);
+  return REPORT_PROJECT_DIR.test(dir) ? `${dir}/scripts/handover/chief-kit/append-results.sh` : null;
+}
+
+function reportCallKind(hookInput, ctx) {
+  const tool = hookInput.tool_name;
+  if (tool === 'ListAgents') return tool;
+  const input = hookInput.tool_input || {};
+  if (tool === 'ToolSearch' && typeof input.query === 'string') {
+    const query = input.query.trim();
+    const names = query.startsWith('select:') ? query.slice('select:'.length).split(',') : [];
+    return names.some((name) => name.trim() === 'SendMessage') ? tool : null;
+  }
+  if (tool === 'SendMessage') {
+    return input.to === process.env.HIMMEL_CONSOLE_NAME || input.to === ctx.chief ? tool : null;
+  }
+  if (tool === 'Bash' && typeof input.command === 'string') {
+    const found = REPORT_APPEND.exec(input.command);
+    const script = reportAppendScript();
+    return found && script && found[1] === script && ctx.doc && (found[2] || found[3]) === ctx.doc
+      ? 'append-results' : null;
+  }
+  return null;
+}
+
+function reportPass(member, integrity, hookInput) {
+  try {
+    if (!hookInput || hookInput.hook_event_name !== 'PreToolUse') return null;
+    if (!isProjectMember(member, CONTEXT_GUARD_REL) || !isPinDrift(integrity.reason)) return null;
+    if (process.env.HIMMEL_CONSOLE_LEG !== '1' || !process.env.HIMMEL_CONSOLE_NAME) return null;
+    const ctx = reportContext(hookInput);
+    return { kind: reportCallKind(hookInput, ctx), ctx };
+  } catch (_e) {
+    return null;
+  }
+}
+
+function reportNotice(kind, integrity) {
+  return `himmel hook-integrity: guard-worker-context-handoff.sh was NOT run on this ${kind} report call `
+    + `(${integrity.relPath}: ${integrity.reason || DRIFT_FALLBACK}); every other call stays refused.`;
+}
+
+function reportDenyLine(ctx) {
+  const script = reportAppendScript();
+  let append = `bash ${script} '${ctx.doc}' 'BLOCKED — <why, with no single quote>'`;
+  if (!script) append = 'no append report: CLAUDE_PROJECT_DIR holds a character outside A-Za-z0-9._+/-';
+  else if (!ctx.doc || ctx.doc.includes("'")) append = 'no append report: no usable handover doc was found for this session';
+  return 'run-hook-with-bash: this session can still report while it is refused: ToolSearch select:SendMessage; '
+    + `ListAgents; SendMessage to ${ctx.chief}; ${append}. Every other call stays refused: ask your chief to `
+    + 'relaunch you through the bypass queue (docs/internals/bypass-launch-route.md).';
 }
 
 // Returns true when the integrity failure was reported as a skipped hook on a
@@ -1576,8 +1704,21 @@ function main() {
       process.exitCode = 0;
       return;
     }
+    const report = reportPass(hookScript, integrity, hookInput);
+    if (report && report.kind) {
+      process.stderr.write(`${reportNotice(report.kind, integrity)}\n`);
+      process.exitCode = 0;
+      return;
+    }
     denyIntegrityMismatch(hookScript, integrity.relPath, integrity.reason);
     process.exitCode = skipOnNonGatingEvent(hookInput, hookScript, integrity) ? 0 : 2;
+    if (report) {
+      try {
+        process.stderr.write(`${reportDenyLine(report.ctx)}\n`);
+      } catch (_e) {
+        return;
+      }
+    }
     return;
   }
 
