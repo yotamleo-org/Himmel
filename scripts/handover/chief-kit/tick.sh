@@ -396,6 +396,12 @@ held one it omits); a Live-state leg the arm omits is reported as unarmed
 here, not as DRIFT. workerset=unknown when
 livestate=unknown, skip when there is no --doc.
 
+workerdoc=MISSING:A,B names each --workers-from manifest row whose worker doc
+does not exist (labels as in workers=). Such a row reads NOTFOUND in workers=
+and ? in tails=, so nothing that worker writes is seen: fix the row. The field
+is absent when every manifest doc exists. It is a field of its own because
+workerset=STALE means "re-arm the tick", which cannot repair a row.
+
 procs=<n>,...,unwatched=<A+B> also names a live claude session, in the process
 census, whose leg label (N<digits><letters>) the arm does not name -- a leg the
 tick is not watching. It reads the whole census, so with several consoles on
@@ -2234,6 +2240,7 @@ leg_effort_mismatch() {
 }
 
 legs_summary=""
+workerdoc_missing=""
 descs_summary=""
 tails_summary=""
 holdout_summary=""
@@ -2369,6 +2376,11 @@ for leg in $WORKERS_SPLIT; do
         fi
     else
         printf 'tick: no such leg doc: %s\n' "$leg_doc" >&2
+        for from_doc in $from_docs; do
+            [ "$(resolve_doc "$from_doc")" = "$leg_doc" ] || continue
+            workerdoc_missing="$(csv_add "$workerdoc_missing" "$label")"
+            break
+        done
     fi
     # FREE with no marker bullet ever (tails ?) is a worker that never
     # went LIVE; that, or a transcript that ended in continued-in, shows in workers=
@@ -5383,6 +5395,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans: %s\n' "$orphans"
     printf 'nonces: %s\n' "$nonces_summary"
     printf 'worker-session set: %s\n' "$legset_summary"
+    [ -z "$workerdoc_missing" ] || printf 'worker-session docs: MISSING:%s\n' "$workerdoc_missing"
     printf 'board: %s\n' "$board_summary"
     printf 'tracker: %s\n' "$tracker_summary"
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
@@ -5507,6 +5520,7 @@ else
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
     compact_field workerset "$legset_summary"
+    compact_field workerdoc "${workerdoc_missing:+MISSING:$workerdoc_missing}"
     compact_field board "$board_summary"
     compact_field tracker "$tracker_summary"
     compact_field vault "$vault_summary"
