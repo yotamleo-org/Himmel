@@ -281,6 +281,7 @@ class Remainders(unittest.TestCase):
         self.assertFalse(coverage_done('- HIMMEL-5 ask: done\n\n## Ticket coverage\n- other: done\n', 'HIMMEL-5'))
         self.assertFalse(coverage_done(head + '- x: done\n## Notes\n- HIMMEL-5 ask: done\n', 'HIMMEL-5'))
         self.assertFalse(coverage_done(head + '- HIMMEL-123 ask: done\n', 'HIMMEL-12'))
+        self.assertFalse(coverage_done(head + '- himmel-5 ask: done\n', 'HIMMEL-5'))
 
 
 if __name__ == '__main__':

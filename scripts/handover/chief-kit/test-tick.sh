@@ -1874,6 +1874,7 @@ rm -f "$hh_kit/next-dispatchable.sh"
 printf '#!/usr/bin/env bash\ncat "$HH_ND_ROWS"\n' > "$hh_kit/next-dispatchable.sh"
 cp -r "$W/repo" "$hh/repo"
 hh_doc="$W/handover/hh-chief.md"
+unset TICK_HELD_OLD_DAYS
 printf '%s\n' '# HH — CHIEF' '' '## Results' > "$hh_doc"
 hh_same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$3' got '$2')"; fi; }
 hh_issue() {
@@ -1885,6 +1886,9 @@ hh_tick() {
     shift 2
     env NEXT_DISPATCH_MIRROR="$hh/mirror/HIMMEL" TICK_STATE_DIR="$state" HH_ND_ROWS="$rows" REPO="$hh/repo" TICK_POOL_WAIT=60 TOKEN='' \
         bash "$hh_kit/tick.sh" "$@" --doc "$hh_doc" 2>/dev/null
+    for hh_lock in "$state"/tick-pool-*.lock; do
+        [ ! -e "$hh_lock" ] || flock -w 60 "$hh_lock" true  # gnu-ok: Linux-only kit  # prim-ok: waits out the detached snapshot run before a row reads its probes
+    done
 }
 hh_one() {
     hh_scope "$2" > "$hh/$1.rows"
@@ -1968,7 +1972,7 @@ hh_same '(10944 C4) the rebuild ran git log and the second tick ran none' "$([ "
 mkdir -p "$hh/shim-order" "$hh/shim-dead"
 printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c6/tick-pool-*.rows" > /dev/null; then echo published; else echo held-back; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/order" "$(command -v git)" > "$hh/shim-order/git"
 # shellcheck disable=SC2016  # the stub expands its own variable
-printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) kill -TERM "$PPID"; exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v git)" > "$hh/shim-dead/git"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) echo x >> "%s"; kill -TERM "$PPID"; exit 1 ;; esac\nexec "%s" "$@"\n' "$hh/killed" "$(command -v git)" > "$hh/shim-dead/git"
 chmod +x "$hh/shim-order/git" "$hh/shim-dead/git"
 PATH="$hh/shim-order:$PATH" hh_tick c6 "$hh/c.rows" > /dev/null
 hh_same '(10944 C6) the snapshot rows are published before the git scan starts' "$(LC_ALL=C sort -u "$hh/order" 2>/dev/null)" 'published'
@@ -1980,6 +1984,12 @@ hh_same '(10944 C8) no older cache is readable beside new rows while the scan ru
 out="$(PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows")"
 not_contains '(10944 C7) a scan that dies leaves no older candidate beside the new rows' "$out" 'close-cand'
 contains '(10944 C7) control: the rows were still published' "$out" ' pool=3/'
+hh_same '(10944 C7) control: the killed scan really ran' "$([ -s "$hh/killed" ] && echo ran)" 'ran'
+GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/repo" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m "$(printf 'feat: y\n\n## Ticket coverage\n- APP2-10 the thing: done\n')"
+git -C "$hh/repo" update-ref refs/remotes/origin/main HEAD
+printf '# disposition %s-106 blocker APP2-10 (To Do)\n' "$KP" > "$hh/c9.rows"
+out="$(hh_tick c9 "$hh/c9.rows")"
+contains '(10944 C9) a blocker of a project key holding a digit is listed' "$out" ' close-cand=APP2-10'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

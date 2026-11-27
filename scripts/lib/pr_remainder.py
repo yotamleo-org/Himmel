@@ -169,7 +169,7 @@ def _blocks(body):
 def coverage_done(body, key):
     """True when at least one ## Ticket coverage item names `key`, every such item ends `: done`, and no `Remaining:`,
     deferred or owed text in the body names it."""
-    named = re.compile(r'(?<![\w-])' + re.escape(key) + r'(?![\w-])', re.I)
+    named = re.compile(r'(?<![\w-])' + re.escape(key) + r'(?![\w-])')
     done = False
     for in_coverage, item, text in _blocks(body):
         if not named.search(text):

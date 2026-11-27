@@ -611,8 +611,8 @@ TICK_HELD_OLD_DAYS (default 30) or more days ago; each has one `# held-hi <KEY> 
 line, sorted by priority then oldest first. A key whose mirror file is unreadable is kept as prio=?. `?` = the snapshot is
 stale, quota-paused or gh-stalled, never an all-clear; absent when the set is empty. The waiter wakes `held-priority`.
 close-cand=<KEY>,... names To Do blockers of the snapshot's drop reasons whose every ## Ticket coverage item in a commit of
-origin/main (last 60 days) is done, one `# close-candidate <KEY> blocks <K,...> done-in <sha7>` line each. Only the run
-that rebuilds the snapshot reads git; every tick prints its cache.
+origin/main (last 60 days) is done, one `# close-candidate <KEY> blocks <K,...> done-in <sha7>` line each. At most the
+first 20 such blockers are checked. Only the run that rebuilds the snapshot reads git; every tick prints its cache.
 With --doc it also reads the per-version readiness record (readiness.sh read, release/<v>/readiness.jsonl, <v> from the snapshot's
 `# dropped from <v>:` line) and prints `# readiness <v> blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n>`, `# readiness-stale <KEY> <why>`
 per stale row and `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>[ why=in-progress]` per live c or d row (sorted by key; <age> is
@@ -4023,10 +4023,10 @@ sys.path.insert(0, lib)
 from pr_remainder import coverage_done
 blocks = {}
 for line in open(rows, errors='replace'):
-    m = re.match(r'# disposition ([A-Z]+-\d+) blocker ([^;\n]+)', line)
+    m = re.match(r'# disposition ([A-Z][A-Z0-9]*-\d+) blocker ([^;\n]+)', line)
     if not m:
         continue
-    for b, status in re.findall(r'([A-Z]+-\d+) \(([^)]*)\)', m[2]):
+    for b, status in re.findall(r'([A-Z][A-Z0-9]*-\d+) \(([^)]*)\)', m[2]):
         if status.split(',')[0] == 'To Do':
             blocks.setdefault(b, []).append(m[1])
 for b in list(blocks)[:20]:
