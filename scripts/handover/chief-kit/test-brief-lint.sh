@@ -26,7 +26,9 @@
 #      classifier crash refuses too; worktrees, plain directories and .single-writer repos pass; the lint agrees with
 #      the guard's main_checkout_verdict on a tracked file at the directory's top.
 set -u
+export JIRA_PROJECTS=HIMMEL,QQQ,ZZZ JIRA_PROJECT_KEY=HIMMEL
 export UNGUARDED_LAUNCH_OK=1
+unset BRIEF_LINT_TEST_ENVLOG
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
@@ -272,6 +274,7 @@ const ticket = (k) => {
   return { type: f('type'), labels: f('labels') };
 };
 if (a[0] === 'release' && a[1] === 'core-check') {
+  if (process.env.BRIEF_LINT_TEST_ENVLOG) fs.appendFileSync(process.env.BRIEF_LINT_TEST_ENVLOG, 'JIRA_PROJECTS=' + (process.env.JIRA_PROJECTS || '') + ' JIRA_PROJECT_KEY=' + (process.env.JIRA_PROJECT_KEY || '') + '\n');
   const paths = (opt('--paths') || '').split(',').filter(Boolean);
   const abs = paths.find((p) => p.startsWith('/'));
   if (abs) { console.error('release core-check: --paths takes repository-relative paths; ' + abs + ' is absolute'); process.exit(1); }
@@ -332,6 +335,47 @@ grep -Fq 'core brief HIMMEL-9411 is core' <<< "$err" && grep -Fq 'no signed mine
     && ok "8a2 the refusal names the key and the missing spec" || bad "8a2 refusal text: $err"
 ! grep -Eq 'Spec:|Core gate|bypass=' <<< "$err" && ok "8a3 the refusal names no line that would make it pass" || bad "8a3 refusal names a passing line: $err"
 expect_rc "8b a core brief whose key spec-check answers SPEC ok passes" 0 "$tmp/core_signed.md"
+mk core_gpt '# HIMMEL-9413 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+expect_rc "8x1 a model version in the title is not read as a key of an unlisted project" 0 "$tmp/core_gpt.md"
+mk core_gpt_unknown '# HIMMEL-9499 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+rc=0; err="$(bash "$LINT" "$tmp/core_gpt_unknown.md" 2>&1 >/dev/null)" || rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'core brief HIMMEL-9499 is not in the Jira mirror' <<< "$err"; } \
+    && ok "8x3 an unknown key of a configured project is still refused" || bad "8x3 rc=$rc: $err"
+git init -q "$tmp/fb-home" || exit 1; mkdir -p "$tmp/fb-home/no-config" "$tmp/fb-home/.himmel"
+fb_lint() {
+    local a=(); while [ "$1" != -- ]; do a+=("$1"); shift; done; shift
+    rc=0; err="$(cd "$tmp/fb-home" && env -u HIMMEL_PROFILE "${a[@]}" HOME="$tmp/fb-home" HIMMEL_CONFIG_DIR="$tmp/fb-home/no-config" HIMMELCTL_CACHE_DIR="$tmp/fb-home/no-cache" bash "$LINT" "$@" 2>&1 >/dev/null)" || rc=$?
+}
+fb_gpt6() { [ "$rc" -eq 3 ] && grep -Fq 'core brief GPT-6 is not in the Jira mirror' <<< "$err"; }
+fb_unleaked() { local g=0; [ -s "$1" ] || return 1; grep -Fvxq 'JIRA_PROJECTS= JIRA_PROJECT_KEY=' "$1" || g=$?; [ "$g" -eq 1 ]; }
+fb_lint -u JIRA_PROJECTS -u JIRA_PROJECT_KEY -- "$tmp/core_gpt.md"
+fb_gpt6 && ok "8x4 with no configured project any prefix is still read" || bad "8x4 rc=$rc: $err"
+: > "$tmp/fb-home/README"
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=*' -- "$tmp/core_gpt.md"
+fb_gpt6 && ok "8x4b only malformed entries fall back to any prefix and nothing is globbed" || bad "8x4b rc=$rc: $err"
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA' -- "$tmp/core_gpt.md"
+fb_gpt6 && ok "8x4c a space-separated list is malformed and falls back to any prefix" || bad "8x4c rc=$rc: $err"
+mk core_mixed '# HIMMEL-9499 + QQQ-9999 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA,QQQ' -- "$tmp/core_mixed.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'core brief QQQ-9999 is not in the Jira mirror' <<< "$err" && ! grep -Eq 'core brief (HIMMEL-9499|GPT-6) ' <<< "$err"; } \
+    && ok "8x4d a malformed entry is dropped and only the valid one beside it is read" || bad "8x4d rc=$rc: $err"
+fb_lint -u JIRA_PROJECTS JIRA_PROJECT_KEY=HIMMEL -- "$tmp/core_gpt.md"
+[ "$rc" -eq 0 ] && ok "8x5 the default project alone is a configured prefix" || bad "8x5 rc=$rc: $err"
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS= himmel , ' -- "$tmp/core_gpt.md"
+[ "$rc" -eq 0 ] && ok "8x6 padded lower-case entries are normalised" || bad "8x6 rc=$rc: $err"
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS="HIMMEL"' -- "$tmp/core_gpt.md"
+[ "$rc" -eq 0 ] && ok "8x6b a quoted value loses its quotes" || bad "8x6b rc=$rc: $err"
+printf 'JIRA_PROJECTS=HIMMEL\n' > "$tmp/fb-home/no-config/himmel.conf"
+fb_lint -u JIRA_PROJECTS -u JIRA_PROJECT_KEY BRIEF_LINT_TEST_ENVLOG="$tmp/fb-envlog" -- "$tmp/core_gpt.md"
+{ [ "$rc" -eq 0 ] && fb_unleaked "$tmp/fb-envlog"; } \
+    && ok "8x7 the prefixes come from himmel.conf and the CLI is handed neither key" || bad "8x7 rc=$rc envlog=$(cat "$tmp/fb-envlog" 2>&1): $err"  # read-sink-ok: this row's own scratch log
+fb_lint -u JIRA_PROJECTS -u JIRA_PROJECT_KEY BRIEF_LINT_TEST_ENVLOG="$tmp/fb-envlog-s" -- --skip-bucket "$tmp/core_gpt.md"
+{ [ "$rc" -eq 0 ] && fb_unleaked "$tmp/fb-envlog-s"; } \
+    && ok "8x7s the same holds on the generator's --skip-bucket lint" || bad "8x7s rc=$rc envlog=$(cat "$tmp/fb-envlog-s" 2>&1): $err"  # read-sink-ok: this row's own scratch log
+printf 'JIRA_PROJECTS=ZZZ\nJIRA_PROJECT_KEY=ZZZ\n' > "$tmp/fb-home/.himmel/project.conf"
+fb_lint -u JIRA_PROJECTS -u JIRA_PROJECT_KEY -- "$tmp/core_gpt_unknown.md"
+[ "$rc" -eq 0 ] && ok "8x8 the cwd repo's project.conf decides before himmel.conf" || bad "8x8 rc=$rc: $err"
+rm -f "$tmp/fb-home/no-config/himmel.conf" "$tmp/fb-home/.himmel/project.conf"
 expect_rc "8c a self-written Core gate: bypass= line passes nothing" 3 "$tmp/core_self_gate.md"
 expect_rc "8d a self-written Spec: line passes nothing when spec-check says NO-SPEC" 3 "$tmp/core_self_spec.md"
 expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
@@ -650,6 +694,9 @@ bk_lint bash "$LINT" "$tmp/bkd/HIMMEL-9429-x.md"
 { [ "$rc" -eq 3 ] && grep -Fq 'HIMMEL-9429' <<< "$err"; } && ok "8r21 a keyless title on a keyed doc name is asked, and refused for an outside key" || bad "8r21 doc-name key rc=$rc: $err"
 bk_lint bash "$LINT" --core-only "$tmp/bkd/HIMMEL-9429-x.md"
 [ "$rc" -eq 3 ] && ok "8r21b --core-only reads the doc name's key too" || bad "8r21b --core-only doc name rc=$rc: $err"
+mk bk_gpt '# HIMMEL-9432 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$RES0"
+bk_lint bash "$LINT" "$tmp/bk_gpt.md"
+{ [ "$rc" -eq 0 ] && grep -Fq 'HIMMEL-9432' "$BKLOG" && ! grep -Fq 'GPT-6' "$BKLOG"; } && ok "8x2 the bucket rule asks for the real key only" || bad "8x2 rc=$rc: $(cat "$BKLOG") $err"  # read-sink-ok: BKLOG is this suite's own scratch log under its mktemp dir
 mk bk_pair '# HIMMEL-9430 + HIMMEL-9431 — a pair' "$PA" '> **Contract:** y' "$RES0"
 bk_set HIMMEL-9431 'OUTSIDE HIMMEL-9431 v1.1.4 current=v1.1.3 open=2'
 bk_lint bash "$LINT" "$tmp/bk_pair.md"
@@ -880,6 +927,12 @@ took=$((SECONDS - t0))
 kill "$hold15" 2>/dev/null; wait "$hold15" 2>/dev/null
 { [ "$rc" -eq 0 ] && [ "$took" -lt 8 ] && [ "$(hl_n 'mirror --repair')" -eq 0 ] && grep -Fq 'was healed by another run' <<< "$err"; } \
     && ok "BL15 a launch during a focus-refresh-shaped sync waits for it and passes" || bad "BL15 rc=$rc took=$took: $err"
+
+hl_mirror m17 "$HL_INC"
+mk hl_gpt '# QQQ-9441 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$RES0"
+hl_lint m17 bash "$LINT" "$tmp/hl_gpt.md"
+{ [ "$rc" -eq 0 ] && [ "$(hl_n 'mirror --repair')" -eq 1 ] && ! grep -Fq 'holds keys of two projects' <<< "$err"; } \
+    && ok "8x9 a model version in the title does not block the heal of the brief's own root" || bad "8x9 rc=$rc: $err"
 
 # 9. A worker brief (a Contract line) carries the search directive, the notes query over BOTH collections and the graph
 # symbol named, whatever its Prior art line cites. A ticket key or #PR does not replace it.

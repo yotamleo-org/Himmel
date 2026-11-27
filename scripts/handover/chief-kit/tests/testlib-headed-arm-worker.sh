@@ -70,6 +70,7 @@ export XDG_RUNTIME_DIR="$tmp/pinned-xdg-runtime"
 # ~/.claude/himmel (a suite must not touch shared state).
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
+export JIRA_PROJECTS=HIMMEL,PROJ
 # the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
 REAL_HOME="$HOME"
 export HOME="$tmp/pinned-home"

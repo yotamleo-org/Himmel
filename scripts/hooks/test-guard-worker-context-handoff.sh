@@ -8,6 +8,7 @@
 #
 # bash 3.2-safe. Platform guard: env vars, jq, sha256sum/shasum, touch -t.
 set -uo pipefail
+export JIRA_PROJECTS=HIMMEL,PROJ
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/guard-worker-context-handoff.sh"
