@@ -165,6 +165,22 @@ for impl in bash cjs py; do
     if [ "$rc" -eq 2 ] && [ ! -s "$WS/out" ]; then pass "$impl empty HOME -> rc 2"; else fail "$impl empty HOME -> rc $rc"; fi
 done
 
+echo "== newline in a dir =="
+home="$WS/newline"; nl_dir="$WS/glm"$'\n'"split"
+mkdir -p "$home" "$nl_dir" && printf '%s\n' "$home/phi-root-fixture" > "$nl_dir/phi-roots"
+for impl in bash cjs py; do
+    rc=0
+    (
+        export HOME="$home" CLAUDE_GLM_CONFIG_DIR="$nl_dir"
+        case "$impl" in
+            bash) with_deadline bash -c '. "$1" && _guard_phi_list_paths phi-roots' _ "$LIB" ;;
+            cjs) with_deadline "$NODE" "$CJS" phi-roots ;;
+            py) with_deadline "$PYTHON" -I -B "$PYMOD" phi-roots ;;
+        esac
+    ) >"$WS/out" 2>"$WS/err" || rc=$?
+    if [ "$rc" -eq 2 ]; then pass "$impl a newline in the override -> rc 2"; else fail "$impl a newline in the override -> rc $rc, expected 2"; fi
+done
+
 echo "== python dir proof =="
 if [ "$(id -u)" -ne 0 ]; then
     for spec in "C8 .config/himmel/phi" "C15 .config/himmel/phi" "C16 .config/claude-glm" "C7 ."; do
@@ -190,6 +206,15 @@ for target in "$standin" "$standin/sub"; do
         fail "build at $target -> rc $rc, expected a refusal that creates nothing"
     fi
 done
+linked="$WS/linked-home"; elsewhere="$WS/link-target"; mkdir -p "$linked" "$elsewhere"
+ln -s "$elsewhere" "$linked/.config"
+rc=0
+phi_dirs_build C1 "$linked" 2>"$WS/err" || rc=$?
+if [ "$rc" -ne 0 ] && [ -z "$(ls -A "$elsewhere")" ]; then
+    pass "a fixture HOME that already holds a .config link is refused, nothing written through it"
+else
+    fail "pre-existing .config link -> rc $rc, expected a refusal that writes nothing through it"
+fi
 mkdir -p "$WS/shim"
 printf '#!/bin/sh\nexit 0\n' > "$WS/shim/getent"
 chmod +x "$WS/shim/getent"

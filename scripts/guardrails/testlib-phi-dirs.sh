@@ -71,8 +71,14 @@ _phi_dirs_list() {
 }
 
 phi_dirs_build() {
-    local id="$1" h="$2" c n d o lane root other
+    local id="$1" h="$2" c n d o lane root other p
     _phi_dirs_safe_target "$h" || return 1
+    for p in "$h/.config" "$h/glm-override" "$h/work"; do
+        if [ -e "$p" ] || [ -L "$p" ]; then
+            echo "phi_dirs: $p already exists, a build never writes through it, refusing" >&2
+            return 1
+        fi
+    done
     phi_dirs_expect "$id" id >/dev/null || { echo "phi_dirs: unknown case $id" >&2; return 1; }
     c="$h/.config"; n="$c/himmel/phi"; d="$c/claude-glm"; o="$h/glm-override"; lane="$c/claude-codex"
     root="$h/phi-root-fixture"; other="$h/phi-other-root"

@@ -40,6 +40,7 @@ _guard_phi_dir_provable() {
 _guard_phi_dirs() {
     local o="${CLAUDE_GLM_CONFIG_DIR:-}"
     [ -n "${HOME:-}" ] || return 2
+    case "$HOME$o" in *$'\n'*) return 2 ;; esac
     printf '%s\n' "$HOME/.config/himmel/phi"
     [ -z "$o" ] || printf '%s\n' "$o"
     [ "$o" = "$HOME/.config/claude-glm" ] || printf '%s\n' "$HOME/.config/claude-glm"

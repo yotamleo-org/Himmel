@@ -6,11 +6,15 @@
 
 const fs = require('fs');
 
+/**
+ * The dirs a list may sit in, in order; none without HOME. The bash resolver
+ * prints one dir per line, so a dir holding a newline is refused in every form.
+ */
 function phiDirs(env = process.env) {
   const home = env.HOME;
-  if (!home) return [];
-  const old = `${home}/.config/claude-glm`;
   const override = env.CLAUDE_GLM_CONFIG_DIR;
+  if (!home || `${home}${override || ''}`.includes('\n')) return [];
+  const old = `${home}/.config/claude-glm`;
   const dirs = [`${home}/.config/himmel/phi`];
   if (override) dirs.push(override);
   if (override !== old) dirs.push(old);

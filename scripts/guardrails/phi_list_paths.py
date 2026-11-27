@@ -12,10 +12,10 @@ import sys
 
 def phi_dirs(env=os.environ):
     home = env.get("HOME")
-    if not home:
+    override = env.get("CLAUDE_GLM_CONFIG_DIR")
+    if not home or "\n" in home + (override or ""):
         return []
     old = home + "/.config/claude-glm"
-    override = env.get("CLAUDE_GLM_CONFIG_DIR")
     dirs = [home + "/.config/himmel/phi"]
     if override:
         dirs.append(override)
