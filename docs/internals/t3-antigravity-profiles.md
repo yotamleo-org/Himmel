@@ -6,6 +6,10 @@ that already has the himmel hooks and the profile's skills. The registry is
 `scripts/t3/antigravity-profiles.json`: per profile, `fromProfiles` (names in
 `scripts/lanes/plugin-profiles.json`) and `pinnedSkills` (extra skills from a pinned git commit).
 
+Required top-level key, beside `profiles`: `laneMcpServers`, a list of the MCP server names every
+Antigravity thread may call (`t3-code`, `graphify`). Only the hook adapter reads it and checks its
+shape; without it every MCP call on every Antigravity thread is denied.
+
 Optional registry fields per profile:
 
 - `excludePlugins`: plugin ids dropped from the profile's resolved plugin list (a list of strings,
@@ -97,6 +101,25 @@ hook adapter denies shell commands naming `.agents` or `.gemini`. Every entry pa
 (symlinks followed) and refused with `REFUSED` (rc 3, nothing written) if it lands under
 `<T3 home>/userdata/providers/antigravity` or has a path segment starting `/.agents` or
 `/.gemini`. This also catches a plugin whose install path is a symlink into an Antigravity home.
+
+## What a thread may call
+
+The hook adapter (`scripts/hooks/antigravity-hook-adapter.sh`) reads the registry on every MCP call,
+by `mcp_*` name or `call_mcp_tool`:
+
+- A server in `laneMcpServers` is admitted on every thread.
+- A profile's declared servers (its `mcpServers` keys and `optionalMcpServers`) are admitted on that
+  profile's thread only, and each tool only when `scripts/guardrails/mcp-policy.json` gives the server,
+  under the name Antigravity reports, `verdict: "allow"` and classes the tool `read` or `write`. A new
+  profile's servers need such entries; a destructive or unlisted tool is denied.
+- Every other server is denied, and so is every MCP call when the registry cannot be read or has the
+  wrong shape.
+
+The thread's profile is the one whose instance home (above) holds the session's artifact folder. A
+folder with a symlink anywhere below the T3 provider home, or with an empty, `.` or `..` path
+segment, places no profile: the thread keeps the lane servers and loses the profile's servers and the
+right to read and write that folder. A T3 home that is itself a symlink still works. The guard chain
+on each admitted call still applies.
 
 ## Use
 

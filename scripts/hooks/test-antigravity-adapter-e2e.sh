@@ -28,9 +28,19 @@ export RUN_HOOK_CHAIN_SKIP_LOG="$TMP/hook-skips.jsonl"
 export HIMMEL_HOOK_INTEGRITY_DIR="$TMP/integrity"
 export HIMMEL_PRIMARY_BASELINE_DIR="$TMP/baseline"
 export HIMMEL_ANTIGRAVITY_PROJECT_DIR="$REPO"
+hex_of() {
+    local sum=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        sum="$(printf '%s' "$1" | sha256sum)"
+    else
+        sum="$(printf '%s' "$1" | shasum -a 256)"
+    fi
+    printf '%s' "${sum%% *}"
+}
+BARE_HEX="$(hex_of antigravity)"
 mkdir -p "$HOME/.himmel" "$HOME/.gemini/config" \
-    "$T3CODE_HOME/userdata/providers/antigravity/hash1/config" \
-    "$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-acp/brain/conv-1" \
+    "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config" \
+    "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/antigravity-acp/brain/conv-1" \
     "$TMP/bin"
 printf '{"providerInstances":{"claudeBypass":{"driver":"claudeAgent","environment":[{"name":"AGENTS_MD_OK","value":"1"}]}}}\n' > "$T3CODE_HOME/userdata/settings.json"
 
@@ -64,9 +74,9 @@ printf 'ok\n' > "$HOME/.agents/skills/sk/SKILL.md"
 ln -s ../../.agents/skills/sk "$HOME/.claude/skills/sk"
 ln -s "$WT_REPO/.agents/hooks.json" "$WT_REPO/lnk-hooks"
 ln -s "$HOME/.gemini/config" "$WT_REPO/lnk-gemini"
-ln -s "$T3CODE_HOME/userdata/providers/antigravity/hash1/config" "$WT_REPO/lnk-t3"
+ln -s "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config" "$WT_REPO/lnk-t3"
 
-ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-acp/brain/conv-1"
+ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/antigravity-acp/brain/conv-1"
 
 pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
@@ -223,9 +233,9 @@ assert_deny "write_file on worktree .agents/skills.json denied" "self-protect" \
 assert_deny "write_file on ~/.gemini/config/hooks.json denied" "self-protect" \
     "$(make_pre write_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p,Content:"{}"}')" )"
 assert_deny "write_file on T3 antigravity config/hooks.json denied" "self-protect" \
-    "$(make_pre write_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p,Content:"{}"}')" )"
+    "$(make_pre write_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config/hooks.json" '{Path:$p,Content:"{}"}')" )"
 assert_deny "read_file on antigravity-oauth-token denied" "oauth-token" \
-    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token" '{Path:$p}')" )"
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/antigravity-oauth-token" '{Path:$p}')" )"
 assert_deny "run_command writing .agents/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo {} > .agents/hooks.json"}')"
 assert_deny "run_command git restore -s show .agents/hooks.json denied" "self-protect" \
@@ -313,7 +323,7 @@ assert_deny "run_command write through symlink into T3 antigravity home denied" 
 assert_deny "run_command direct write ~/.gemini/config/hooks.json denied" "self-protect" \
     "$(make_pre run_command '{"CommandLine":"echo {} > ~/.gemini/config/hooks.json"}')"
 assert_deny "run_command direct write T3 antigravity config denied" "self-protect" \
-    "$(make_pre run_command "$(jq -cn --arg c "echo {} > $T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{CommandLine:$c}')")"
+    "$(make_pre run_command "$(jq -cn --arg c "echo {} > $T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config/hooks.json" '{CommandLine:$c}')")"
 assert_pass "run_command ls -la ~/.claude/skills (the directory itself, no symlink into .agents) allowed" \
     "$(make_pre run_command '{"CommandLine":"ls -la ~/.claude/skills"}')"
 assert_pass "run_command echo to ordinary worktree file allowed" \
@@ -339,11 +349,11 @@ if [ "$rc_stop" -eq 0 ] && [ ! -s "$TMP/last.out" ]; then ok "Stop exits 0 clean
 
 echo "== 7. S2b read fence, graphify-fence, and T3 MCP parity with the Claude lane =="
 assert_deny "read_file on T3 provider config/hooks.json denied by read fence" "provider home" \
-    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p}')")"
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config/hooks.json" '{Path:$p}')")"
 assert_deny "read_file on ~/.gemini/config/hooks.json denied by read fence" ".gemini" \
     "$(make_pre read_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p}')")"
 assert_deny "read_resource on antigravity-oauth-token denied by read fence" "oauth-token" \
-    "$(make_pre read_resource "$(jq -cn --arg u "file://$T3CODE_HOME/userdata/providers/antigravity/hash1/antigravity-oauth-token" '{ServerName:"t3-code",Uri:$u}')")"
+    "$(make_pre read_resource "$(jq -cn --arg u "file://$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/antigravity-oauth-token" '{ServerName:"t3-code",Uri:$u}')")"
 assert_pass "read_file inside session artifactDirectoryPath allowed" \
     "$(make_pre read_file "$(jq -cn --arg p "$ARTIFACT_DIR/plan.md" '{Path:$p}')")"
 
@@ -392,7 +402,7 @@ assert_deny "salus cwd: read_file on .env still denied" "secret" \
 assert_deny "salus cwd: run_command cat .env still denied" "secret" \
     "$(make_pre run_command "$(jq -cn --arg c "cat $SALUS_VAULT/.env" '{CommandLine:$c}')" "$SALUS_VAULT")"
 assert_deny "salus cwd: provider-home read still denied" "provider home" \
-    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/hash1/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
+    "$(make_pre read_file "$(jq -cn --arg p "$T3CODE_HOME/userdata/providers/antigravity/$BARE_HEX/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
 assert_deny "salus cwd: ~/.gemini/config read still denied" ".gemini" \
     "$(make_pre read_file "$(jq -cn --arg p "$HOME/.gemini/config/hooks.json" '{Path:$p}')" "$SALUS_VAULT")"
 assert_deny "salus cwd: git push still denied" "external-write" \
@@ -400,12 +410,8 @@ assert_deny "salus cwd: git push still denied" "external-write" \
 
 echo "== 9. Design MCP servers: eager mcp_* and lazy call_mcp_tool =="
 OTHER_ARTIFACT_DIR="$ARTIFACT_DIR"
-if command -v sha256sum >/dev/null 2>&1; then
-    DESIGN_HEX="$(printf '%s' antigravity_design | sha256sum)"
-else
-    DESIGN_HEX="$(printf '%s' antigravity_design | shasum -a 256)"
-fi
-ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1"
+DESIGN_HEX="$(hex_of antigravity_design)"
+ARTIFACT_DIR="$T3CODE_HOME/userdata/providers/antigravity/$DESIGN_HEX/antigravity-acp/brain/conv-1"
 mkdir -p "$ARTIFACT_DIR"
 make_lazy() {
     local srv="$1" tool="$2" args_json="${3:-}"
@@ -493,23 +499,274 @@ done
 assert_deny "eager unlisted MCP server still denied" "not allowlisted" "$(make_pre mcp_evil_query-docs '{}')"
 
 DESIGN_ARTIFACT_DIR="$ARTIFACT_DIR"
-HOME_T3_ART="$HOME/.t3/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1"
+HOME_T3_ART="$HOME/.t3/userdata/providers/antigravity/$DESIGN_HEX/antigravity-acp/brain/conv-1"
 ARTIFACT_DIR="$HOME_T3_ART"
 assert_pass "design profile under the default \$HOME/.t3 allowed" "$(make_lazy context7 query-docs)"
 for other_art in "$OTHER_ARTIFACT_DIR" "" \
-    "$TMP/elsewhere/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1" \
-    "$OTHER_ARTIFACT_DIR/userdata/providers/antigravity/${DESIGN_HEX%% *}/antigravity-acp/brain/conv-1" \
-    "$TMP/home/antigravity-acp/brain/conv-1" "$DESIGN_ARTIFACT_DIR/../../../../hash1/antigravity-acp/brain/conv-1"; do
+    "$TMP/elsewhere/userdata/providers/antigravity/$DESIGN_HEX/antigravity-acp/brain/conv-1" \
+    "$OTHER_ARTIFACT_DIR/userdata/providers/antigravity/$DESIGN_HEX/antigravity-acp/brain/conv-1" \
+    "$TMP/home/antigravity-acp/brain/conv-1" "$DESIGN_ARTIFACT_DIR/../../../../$BARE_HEX/antigravity-acp/brain/conv-1"; do
     ARTIFACT_DIR="$other_art"
     for srv_tool in context7:query-docs shadcn:get_audit_checklist playwright:browser_snapshot; do
         srv="${srv_tool%%:*}"; tool="${srv_tool#*:}"
-        assert_deny "outside the design profile, lazy $srv denied (artifact=<$other_art>)" "design profile" "$(make_lazy "$srv" "$tool")"
-        assert_deny "outside the design profile, eager $srv denied (artifact=<$other_art>)" "design profile" "$(make_pre "mcp_${srv}_${tool}" '{}')"
+        assert_deny "outside the design profile, lazy $srv denied (artifact=<$other_art>)" "does not declare" "$(make_lazy "$srv" "$tool")"
+        assert_deny "outside the design profile, eager $srv denied (artifact=<$other_art>)" "does not declare" "$(make_pre "mcp_${srv}_${tool}" '{}')"
     done
 done
 ARTIFACT_DIR="$OTHER_ARTIFACT_DIR"
 assert_pass "outside the design profile, lazy graphify still allowed" "$(make_lazy graphify graph_stats)"
 assert_pass "outside the design profile, eager t3-code still allowed" "$(make_pre mcp_t3-code_t3_environment_read '{}')"
+
+echo "== 10. Profile-declared MCP servers and the placed artifact =="
+PROBE_HEX="$(hex_of antigravity_probe)"
+OTHER_HEX="$(hex_of antigravity_other)"
+OTHER2_HEX="$(hex_of antigravity_other2)"
+PROVIDERS="$T3CODE_HOME/userdata/providers/antigravity"
+REG="$REPO/scripts/t3/antigravity-profiles.json"
+POL="$REPO/scripts/guardrails/mcp-policy.json"
+art_for() {
+    local hex=""
+    case "$1" in
+        -bare) hex="$BARE_HEX" ;;
+        -other) hex="$OTHER_HEX" ;;
+        -other2) hex="$OTHER2_HEX" ;;
+        probe) hex="$PROBE_HEX" ;;
+        *) hex="$(hex_of "antigravity_$1")" ;;
+    esac
+    printf '%s' "$PROVIDERS/$hex/antigravity-acp/brain/$2"
+}
+
+mk_fixture_root() {
+    local dir="$1"
+    mkdir -p "$dir/scripts/t3" "$dir/scripts/himmelctl/lib" || return 1
+    cp -R "$REPO/scripts/hooks" "$REPO/scripts/lib" "$REPO/scripts/guardrails" "$dir/scripts/" || return 1
+    cp "$REPO/scripts/himmelctl/lib/bypass-flags.json" "$dir/scripts/himmelctl/lib/bypass-flags.json" || return 1
+    jq '.profiles.probe = {mcpServers: {probesrv: {command: "true"}}}' \
+        "$REPO/scripts/t3/antigravity-profiles.json" > "$dir/scripts/t3/antigravity-profiles.json" || return 1
+    jq '.servers.probesrv = {verdict: "allow", egress: "local", tools: {probe_read: "read", probe_write: "write", probe_kill: "destructive"}}' \
+        "$REPO/scripts/guardrails/mcp-policy.json" > "$dir/scripts/guardrails/mcp-policy.json"
+}
+declared_policy_check() {
+    local out=""
+    out="$(jq -r --slurpfile pol "$2" '
+        [.profiles[] | ((.mcpServers // {}) | keys[]), ((.optionalMcpServers // [])[])]
+        | unique[] as $s
+        | $pol[0].servers[$s] as $e
+        | if ($s | test("\\A[A-Za-z0-9.-]+\\z") | not) then "BAD \($s): name outside the adapter server charset"
+          elif ($e | type) != "object" or $e.verdict != "allow" then "BAD \($s): no mcp-policy.json entry with verdict allow"
+          elif ([($e.tools // {})[] | select(. == "read" or . == "write")] | length) == 0 then "BAD \($s): no read or write tool"
+          else empty end
+    ' "$1")" || { echo "BAD registry: jq failed"; return 1; }
+    [ -z "$out" ] && return 0
+    printf '%s\n' "$out"
+    return 1
+}
+
+both_pass() {
+    local label="$1" srv="$2" tool="$3"
+    shift 3
+    assert_pass "$label (lazy)" "$(make_lazy "$srv" "$tool")" "$@"
+    assert_pass "$label (eager)" "$(make_pre "mcp_${srv}_${tool}" '{}')" "$@"
+}
+
+both_deny() {
+    local label="$1" needle="$2" srv="$3" tool="$4"
+    shift 4
+    assert_deny "$label (lazy)" "$needle" "$(make_lazy "$srv" "$tool")" "$@"
+    assert_deny "$label (eager)" "$needle" "$(make_pre "mcp_${srv}_${tool}" '{}')" "$@"
+}
+
+assert_link() {
+    if [ -L "$2" ]; then ok "$1 fixture is a symlink"; else bad "$1 fixture is not a symlink: $2"; fi
+}
+write_probe() {
+    local json
+    json="$(make_pre write_file "$(jq -cn --arg p "$ARTIFACT_DIR/plan.md" '{Path:$p,Content:"ok"}')")"
+    if [ "$1" = pass ]; then assert_pass "$2" "$json"; else assert_deny "$2" "self-protect" "$json"; fi
+}
+read_probe() {
+    local json
+    json="$(make_pre read_file "$(jq -cn --arg p "$ARTIFACT_DIR/plan.md" '{Path:$p}')")"
+    if [ "$1" = pass ]; then assert_pass "$2" "$json"; else assert_deny "$2" "denies reading T3 Antigravity provider home" "$json"; fi
+}
+
+FR="$TMP/fixture-root"
+mk_fixture_root "$FR" || bad "fixture root build"
+FRE="HIMMEL_ANTIGRAVITY_PROJECT_DIR=$FR"
+FR_REG="$FR/scripts/t3/antigravity-profiles.json"
+cp "$FR_REG" "$TMP/fr-registry.saved"
+PROBE_ART="$(art_for probe conv-1)"
+BARE_ART="$(art_for -bare conv-1)"
+DESIGN_ART="$DESIGN_ARTIFACT_DIR"
+mkdir -p "$PROBE_ART"
+ARTIFACT_DIR="$PROBE_ART"
+both_pass "T-1 probe session probesrv probe_read" probesrv probe_read "$FRE"
+both_pass "T-1 probe session probesrv probe_write" probesrv probe_write "$FRE"
+both_deny "T-2 destructive tool of a declared server" "not a read or write tool" probesrv probe_kill "$FRE"
+both_deny "T-3 unlisted tool of a declared server" "not a read or write tool" probesrv himmel-unlisted-probe "$FRE"
+for art in "$BARE_ART" "$DESIGN_ART"; do
+    ARTIFACT_DIR="$art"
+    both_deny "T-4 probesrv outside the probe profile (artifact=<$art>)" "does not declare" probesrv probe_read "$FRE"
+done
+ARTIFACT_DIR="$PROBE_ART"
+both_deny "T-5 probe session, context7" "does not declare" context7 query-docs "$FRE"
+ARTIFACT_DIR="$DESIGN_ART"
+both_pass "T-5 control: design session context7 passes in the fixture root" context7 query-docs "$FRE"
+T6_CALLS="context7:query-docs shadcn:get_audit_checklist playwright:browser_snapshot graphify:graph_stats t3-code:t3_environment_read"
+for srv_tool in $T6_CALLS; do
+    both_pass "T-6 control: ${srv_tool%%:*} passes with the fixture registry" "${srv_tool%%:*}" "${srv_tool#*:}" "$FRE"
+done
+jq '.profiles.design.mcpServers = {} | .profiles.design.optionalMcpServers = [] | .laneMcpServers = []' \
+    "$TMP/fr-registry.saved" > "$FR_REG"
+for srv_tool in $T6_CALLS; do
+    both_deny "T-6 emptied lists deny ${srv_tool%%:*}" "does not declare" "${srv_tool%%:*}" "${srv_tool#*:}" "$FRE"
+done
+cp "$TMP/fr-registry.saved" "$FR_REG"
+t7_deny() {
+    assert_deny "T-7 $1 denies graphify" "cannot read laneMcpServers" "$(make_lazy graphify graph_stats)" "$FRE"
+    cp "$TMP/fr-registry.saved" "$FR_REG"
+}
+rm -f "$FR_REG"; t7_deny "missing registry"
+printf 'not json\n' > "$FR_REG"; t7_deny "non-JSON registry"
+jq 'del(.laneMcpServers)' "$TMP/fr-registry.saved" > "$FR_REG"; t7_deny "laneMcpServers removed"
+printf '{\n' >> "$FR_REG"; t7_deny "valid registry then trailing brace"
+{ printf '{"laneMcpServers":"x"}\n'; cat "$TMP/fr-registry.saved"; } > "$FR_REG"; t7_deny "invalid document then valid registry"
+jq '.laneMcpServers = "graphify"' "$TMP/fr-registry.saved" > "$FR_REG"; t7_deny "laneMcpServers a string"
+jq '.laneMcpServers = ["a b"]' "$TMP/fr-registry.saved" > "$FR_REG"; t7_deny "lane name with a space"
+jq '.profiles.design.mcpServers = ["context7"]' "$TMP/fr-registry.saved" > "$FR_REG"; t7_deny "mcpServers an array"
+jq '.profiles["bad name"] = {}' "$TMP/fr-registry.saved" > "$FR_REG"; t7_deny "profile name with a space"
+jq '.profiles.bare2 = {}' "$TMP/fr-registry.saved" > "$FR_REG"
+assert_pass "T-7 control: a profile with no MCP keys keeps graphify" "$(make_lazy graphify graph_stats)" "$FRE"
+assert_pass "T-7 control: a profile with no MCP keys keeps design context7" "$(make_lazy context7 query-docs)" "$FRE"
+cp "$TMP/fr-registry.saved" "$FR_REG"
+t8_profiles="$(jq -r '.profiles | to_entries[] | select((((.value.mcpServers // {}) | length) + ((.value.optionalMcpServers // []) | length)) > 0) | .key' "$REG")"
+[ -n "$t8_profiles" ] || bad "T-8 no real profile declares MCP servers"
+for prof in $t8_profiles; do
+    ARTIFACT_DIR="$(art_for "$prof" conv-1)"
+    mkdir -p "$ARTIFACT_DIR"
+    declared="$(jq -r --arg p "$prof" '.profiles[$p] | ((.mcpServers // {}) | keys[]), ((.optionalMcpServers // [])[])' "$REG")"
+    for srv in $declared; do
+        read_tool="$(jq -r --arg s "$srv" '[.servers[$s].tools | to_entries[] | select(.value == "read") | .key][0] // empty' "$POL")"
+        [ -n "$read_tool" ] || bad "T-8 $prof $srv has no read tool in the policy"
+        both_pass "T-8 $prof $srv $read_tool passes" "$srv" "$read_tool"
+        for tool in $(jq -r --arg s "$srv" '.servers[$s].tools | to_entries[] | select(.value == "destructive") | .key' "$POL") himmel-unlisted-probe; do
+            both_deny "T-8 $prof $srv $tool denied" "not a read or write tool" "$srv" "$tool"
+        done
+    done
+    lane="$(jq -r '(.laneMcpServers // [])[]' "$REG")"
+    undeclared=""
+    for srv in $(jq -r '.servers | keys[]' "$POL"); do
+        case "$srv" in *[!A-Za-z0-9.-]*) continue ;; esac
+        if ! grep -qxF -- "$srv" <<<"$declared"$'\n'"$lane"; then undeclared="$srv"; break; fi
+    done
+    [ -n "$undeclared" ] || bad "T-8 $prof found no undeclared policy server"
+    both_deny "T-8 $prof undeclared $undeclared denied" "does not declare" "$undeclared" himmel-unlisted-probe
+done
+if t9_out="$(declared_policy_check "$REG" "$POL")"; then ok "T-9 every declared server has a usable policy entry"; else bad "T-9 $t9_out"; fi
+jq '.profiles.ghost = {mcpServers: {ghostsrv: {}, bad_srv: {}}}' "$TMP/fr-registry.saved" > "$TMP/ghost-registry.json"
+t9_out="$(declared_policy_check "$TMP/ghost-registry.json" "$FR/scripts/guardrails/mcp-policy.json")"; t9_rc=$?
+if [ "$t9_rc" -ne 0 ] && grep -qF 'BAD ghostsrv' <<<"$t9_out" && grep -qF 'BAD bad_srv' <<<"$t9_out"; then
+    ok "T-9 control: ghostsrv and bad_srv are reported"
+else
+    bad "T-9 control (rc=$t9_rc out=<$t9_out>)"
+fi
+ARTIFACT_DIR="$(art_for -bare conv-9)"
+ln -s "$DESIGN_ART" "$ARTIFACT_DIR"
+assert_link "T-10" "$ARTIFACT_DIR"
+both_deny "T-10 linked conv entry, context7" "does not declare" context7 query-docs
+write_probe deny "T-10 write through the linked conv entry denied"
+read_probe deny "T-10 read through the linked conv entry denied"
+rm -f "$(art_for -bare conv-9)"
+ARTIFACT_DIR="$(art_for -bare conv-2)"; mkdir -p "$ARTIFACT_DIR"
+write_probe pass "T-10 control: real conv folder write allowed"
+read_probe pass "T-10 control: real conv folder read allowed"
+ARTIFACT_DIR="$DESIGN_ART"
+both_pass "T-10 control: real design session passes" context7 query-docs
+DESIGN_BRAIN="$(dirname "$DESIGN_ART")"
+OTHER_ACP="$PROVIDERS/$OTHER_HEX/antigravity-acp"
+mkdir -p "$OTHER_ACP"
+ln -s "$DESIGN_BRAIN" "$OTHER_ACP/brain"
+assert_link "T-11" "$OTHER_ACP/brain"
+ARTIFACT_DIR="$(art_for -other conv-1)"
+both_deny "T-11 linked brain root, context7" "does not declare" context7 query-docs
+write_probe deny "T-11 write through the linked brain root denied"
+read_probe deny "T-11 read through the linked brain root denied"
+rm -f "$OTHER_ACP/brain"
+ARTIFACT_DIR="$(art_for -other2 conv-1)"; mkdir -p "$ARTIFACT_DIR"
+write_probe pass "T-11 control: second home with a real brain, write allowed"
+read_probe pass "T-11 control: second home with a real brain, read allowed"
+ARTIFACT_DIR="$DESIGN_ART"
+both_pass "T-11 control: real design session passes" context7 query-docs
+OUTSIDE_BRAIN="$TMP/outside/userdata/providers/antigravity/$(hex_of outside)/antigravity-acp/brain"
+mkdir -p "$OUTSIDE_BRAIN/conv-1"
+mv "$DESIGN_BRAIN" "$DESIGN_BRAIN.aside"
+ln -s "$OUTSIDE_BRAIN" "$DESIGN_BRAIN"
+assert_link "T-12" "$DESIGN_BRAIN"
+ARTIFACT_DIR="$DESIGN_ART"
+both_deny "T-12 outside brain root, in-home path" "does not declare" context7 query-docs
+ARTIFACT_DIR="$OUTSIDE_BRAIN/conv-1"
+both_deny "T-12 outside brain root, outside path" "does not declare" context7 query-docs
+rm -f "$DESIGN_BRAIN"
+mv "$DESIGN_BRAIN.aside" "$DESIGN_BRAIN"
+ln -s "$T3CODE_HOME" "$TMP/t3link"
+assert_link "T-12 control T3CODE_HOME" "$TMP/t3link"
+ARTIFACT_DIR="$TMP/t3link${DESIGN_ART#"$T3CODE_HOME"}"
+both_pass "T-12 control: symlinked T3CODE_HOME places the design session" context7 query-docs "T3CODE_HOME=$TMP/t3link"
+rm -f "$TMP/t3link"
+[ ! -e "$HOME/.t3" ] && [ ! -L "$HOME/.t3" ] || bad "T-12 \$HOME/.t3 already exists"
+ln -s "$T3CODE_HOME" "$HOME/.t3"
+assert_link "T-12 control HOME/.t3" "$HOME/.t3"
+ARTIFACT_DIR="$HOME/.t3${DESIGN_ART#"$T3CODE_HOME"}"
+assert_pass "T-12 control: symlinked \$HOME/.t3 places the design session (lazy)" "$(make_lazy context7 query-docs)" -u T3CODE_HOME
+assert_pass "T-12 control: symlinked \$HOME/.t3 places the design session (eager)" "$(make_pre mcp_context7_query-docs '{}')" -u T3CODE_HOME
+rm -f "$HOME/.t3"
+t13_rows() {
+    both_deny "$1 context7" "does not declare" context7 query-docs
+    write_probe deny "$1 write denied"
+}
+ln -s "$DESIGN_ART" "$DESIGN_BRAIN/conv-2"
+assert_link "T-13" "$DESIGN_BRAIN/conv-2"
+ARTIFACT_DIR="$DESIGN_BRAIN/conv-2"
+t13_rows "T-13 own-home linked conv"
+rm -f "$DESIGN_BRAIN/conv-2"
+ARTIFACT_DIR="$DESIGN_BRAIN/conv-1/../conv-1"
+t13_rows "T-14 dot-dot segment"
+ARTIFACT_DIR="$DESIGN_BRAIN/./conv-1"
+t13_rows "T-15 dot segment"
+ARTIFACT_DIR="$DESIGN_BRAIN//conv-1"
+t13_rows "T-16 empty segment"
+ARTIFACT_DIR="$DESIGN_ART"
+both_pass "T-13 control: real conv-1 passes the call" context7 query-docs
+write_probe pass "T-13 control: real conv-1 passes a write"
+gate_body() { sed -n '/^run_mcp_gate()/,/^}/p' "$1"; }
+lit_count() { gate_body "$1" | grep -c -e context7 -e shadcn -e playwright -e graphify; }
+t17_n="$(lit_count "$ADAPTER")"
+if [ "$t17_n" = 0 ]; then ok "T-17 run_mcp_gate names no declared or lane server"; else bad "T-17 run_mcp_gate names a server on $t17_n lines"; fi
+t17_t3="$(gate_body "$ADAPTER" | grep -c 't3-code')"
+if [ "$t17_t3" = 1 ]; then ok "T-17 run_mcp_gate names t3-code once (chain extra)"; else bad "T-17 t3-code lines in run_mcp_gate: $t17_t3"; fi
+awk '{ print } /^run_mcp_gate\(\)/ { print "        context7) ;;" }' "$ADAPTER" > "$TMP/adapter-literal.sh"
+if [ "$(lit_count "$TMP/adapter-literal.sh")" = "$((t17_n + 1))" ]; then ok "T-17 control: an inserted literal raises the count by one"; else bad "T-17 control count"; fi
+HOOKS_JSON_REL="userdata/providers/antigravity/$DESIGN_HEX/config/hooks.json"
+t18_writes() {
+    local label="$1" p="$HOME/.t3/$HOOKS_JSON_REL"
+    assert_deny "$label write_file" "self-protect denies modifying T3 Antigravity provider home" \
+        "$(make_pre write_file "$(jq -cn --arg p "$p" '{Path:$p,Content:"{}"}')")" -u T3CODE_HOME
+    assert_deny "$label edit_file" "self-protect denies modifying T3 Antigravity provider home" \
+        "$(make_pre edit_file "$(jq -cn --arg p "$p" '{Path:$p,Target:"a",Replacement:"b"}')")" -u T3CODE_HOME
+}
+[ ! -e "$HOME/.t3" ] && [ ! -L "$HOME/.t3" ] || bad "T-18 \$HOME/.t3 already exists"
+ln -s "$T3CODE_HOME" "$HOME/.t3"
+assert_link "T-18" "$HOME/.t3"
+ARTIFACT_DIR="$HOME/.t3${DESIGN_ART#"$T3CODE_HOME"}"
+t18_writes "T-18 symlinked \$HOME/.t3"
+assert_deny "T-18 symlinked \$HOME/.t3 read_file" "denies reading T3 Antigravity provider home" \
+    "$(make_pre read_file "$(jq -cn --arg p "$HOME/.t3/$HOOKS_JSON_REL" '{Path:$p}')")" -u T3CODE_HOME
+rm -f "$HOME/.t3"
+mkdir -p "$HOME/.t3"
+if [ -d "$HOME/.t3" ] && [ ! -L "$HOME/.t3" ]; then ok "T-18 control uses a real \$HOME/.t3 folder"; else bad "T-18 control: \$HOME/.t3 is not a real folder"; fi
+ARTIFACT_DIR="$HOME_T3_ART"
+t18_writes "T-18 control: real \$HOME/.t3"
+rm -rf "$HOME/.t3"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
