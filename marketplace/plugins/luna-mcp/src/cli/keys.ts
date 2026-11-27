@@ -19,6 +19,7 @@ import {
   type KeyRecord,
   type Provider,
 } from "../auth.js";
+import { loadNamedIndexes } from "../indexes.js";
 import { loadRoots } from "../vault-fs.js";
 
 export interface LockOptions {
@@ -63,6 +64,7 @@ export interface KeysIo {
   now: () => number;
   randomBytes: (n: number) => Buffer;
   listCollections?: () => Promise<string[]>;
+  listIsolated?: () => Promise<string[]>;
 }
 
 const DAY_MS = 86_400_000;
@@ -71,7 +73,7 @@ const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: DAY_MS };
 const PRINCIPAL = /^[A-Za-z0-9._-]{1,64}$/;
 const USAGE = [
   "usage: luna-mcp-keys <command>",
-  "  mint   --principal <name> --provider xai-grokbot|openai-chatgpt --collections all|<a,b,...> --ttl <90d|12h|30m> [--resource <https-url>] [--roles reader]",
+  "  mint   --principal <name> --provider xai-grokbot|openai-chatgpt --collections all|<a,b,...> (all,<name> adds a named index) --ttl <90d|12h|30m> [--resource <https-url>] [--roles reader]",
   "  list   [--json]",
   "  revoke <keyId>",
   "  rotate <keyId> --ttl <90d> [--overlap 24h]",
@@ -116,6 +118,8 @@ function newKeyId(deps: KeysDeps, taken: ReadonlySet<string>): string {
   }
   throw new Error("could not generate a unique key id");
 }
+
+const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
 const idsOf = (raw: readonly unknown[]): Set<string> =>
   new Set(raw.map((r) => (r && typeof r === "object" ? (r as { keyId?: unknown }).keyId : undefined)).filter((x): x is string => typeof x === "string"));
@@ -310,8 +314,10 @@ export async function runKeys(argv: string[], io: KeysIo): Promise<number> {
         if (!values.principal || !values.provider || !values.collections || !values.ttl || !resource) {
           throw new UsageError("mint needs --principal, --provider, --collections, --ttl and a resource (--resource or LUNA_MCP_PUBLIC_URL)");
         }
-        const known = (await (io.listCollections ?? (async () => [...(await loadRoots(io.env)).keys()]))()).filter((c) => c !== "salus");
-        const requested = values.collections === "all" ? known : values.collections.split(",").map((c) => c.trim()).filter((c) => c !== "");
+        const shared = (await (io.listCollections ?? (async () => [...(await loadRoots(io.env)).keys()]))()).filter((c) => c !== "salus");
+        const isolated = await (io.listIsolated ?? (async () => (await loadNamedIndexes(io.env)).flatMap((i) => [...i.roots.keys()])))();
+        const known = [...shared, ...isolated];
+        const requested = unique(values.collections.split(",").flatMap((c) => (c.trim() === "all" ? shared : [c.trim()])).filter((c) => c !== ""));
         const unknown = requested.filter((c) => c !== "salus" && !known.includes(c));
         if (unknown.length > 0) throw new UsageError(`unknown collection ${unknown.join(", ")}: define it in the QMD config first`);
         const params: MintParams = {

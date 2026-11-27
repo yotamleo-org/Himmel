@@ -64,7 +64,7 @@ for d in src tests systemd; do
   if [ -n "$(find "$HERE/$d" -type f -print -quit 2>/dev/null)" ]; then pass "$d/ has files to scan"; else fail "$d/ is empty"; fi
 done
 
-SUITES="audit.test.ts auth.test.ts cli.test.ts egress.test.ts paths.test.ts qmd-proxy.test.ts server.test.ts vault-fs.test.ts"
+SUITES="audit.test.ts auth.test.ts cli.test.ts egress.test.ts indexes.test.ts paths.test.ts qmd-proxy.test.ts server.test.ts vault-fs.test.ts"
 
 ts_files() { (cd "$1" && for f in *.ts; do [ -e "$f" ] && [ "$f" != helpers.ts ] && printf '%s\n' "$f"; done | sort); }
 suites_match() { [ "$(ts_files "$1")" = "$(printf '%s\n' "$SUITES" | tr ' ' '\n' | sort)" ]; }

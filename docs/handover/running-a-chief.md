@@ -864,6 +864,9 @@ environment. Unset, every launch is unchanged.
   window is gone (that new window becomes the chief's window), when D-Bus
   fails (a `WARN: tab launch` line in its launch log), on macOS, for chief
   arms, and when `HIMMEL_CONSOLE_NAME` is unset.
+- A bypass-granted launch from the bypass launch service (or its hand-started
+  daemon) never becomes or joins the shared workers window: it always opens its
+  own window.
 - The window keeps the first worker's `HIMMEL-` tab title, so the KWin rule
   that places new `HIMMEL-` windows still matches it.
 - Limits: two workers dispatched at the same instant before any window exists

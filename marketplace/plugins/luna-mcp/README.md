@@ -89,6 +89,7 @@ Everything comes from the environment. Nothing is hard-coded.
 | `LUNA_MCP_PUBLIC_URL` | The canonical public URL, an `https://` address ending in `/luna/mcp`. Required. | none |
 | `QMD_CONFIG_FILE` | QMD `index.yml`, read for each collection's root. | `$XDG_CONFIG_HOME/qmd/index.yml` |
 | `LUNA_MCP_COLLECTION_ROOTS` | Optional JSON file `{ "<collection>": "/absolute/root" }`; wins over `QMD_CONFIG_FILE`. | unset |
+| `LUNA_MCP_INDEXES` | Optional JSON file naming extra qmd indexes, each with its own daemon (see Named indexes). | unset |
 | `LUNA_MCP_KEYS_FILE` | The key file (mode 0600). | `$XDG_CONFIG_HOME/himmel/luna-mcp-keys.json` |
 | `LUNA_MCP_AUDIT_FILE` | The audit log (mode 0600, rotated at 10 MiB, five files kept). | `$XDG_STATE_HOME/himmel/luna-mcp-audit.jsonl` |
 | `QMD_URL` | The local QMD HTTP daemon. | `http://localhost:8181` |
@@ -97,6 +98,27 @@ Everything comes from the environment. Nothing is hard-coded.
 | `LUNA_MCP_PORT` | Bind port. | `8190` |
 | `LUNA_MCP_SEARCH_RATE_PER_MIN` | Searches per key per minute. | `10` |
 | `LUNA_MCP_SEARCH_TIMEOUT_MS` | QMD search timeout. | `45000` |
+
+## Named indexes
+
+Some collections live in their own qmd index, with their own daemon and token, so their content never
+passes through the shared daemon. `LUNA_MCP_INDEXES` names a JSON file that lists them:
+
+```json
+{ "gmail": { "url": "http://localhost:8183", "tokenFile": "/abs/path/http-token-gmail", "config": "/abs/path/gmail.yml" } }
+```
+
+* `url` must be http or https on a loopback host. `tokenFile` and `config` must be absolute paths.
+  `config` is that index's qmd config; its collections and roots are read from it.
+* A collection name may exist in one index only. A name that is also in the shared config, or in a
+  second named index, stops the service at start.
+* A named collection is searched alone. `qmd_search` with no `collections` skips it, and a search that
+  names it next to another collection answers 400 `isolated_collection` and calls no daemon. Send
+  `collections: ["gmail"]`. A key without that collection never learns that it exists.
+* The search goes only to that index's daemon. Every hit is checked on disk like any other hit.
+* `read_doc`, `multi_read`, `list_dir` and `recent_docs` read the files under the root, with the same
+  path jail, and need no daemon.
+* The egress matrix still decides which provider may see the collection.
 
 ## Install
 
@@ -152,6 +174,8 @@ npm run --silent keys -- revoke <keyId>
 
 * `--collections all` expands to every collection in the QMD config except `salus`; a list such as
   `luna-pa` makes a Luna-only key. A name that is not in the QMD config is refused.
+  A named-index collection is never part of `all`; add it by name, as in `--collections all,gmail`
+  or `--collections gmail`.
 * `--resource` defaults to `LUNA_MCP_PUBLIC_URL`; the key only works on that URL.
 * `--roles` defaults to `reader`, the only role Stage 1 supports.
 * `rotate` mints a successor with the same scope and shortens the old key to `--overlap`, so both work
