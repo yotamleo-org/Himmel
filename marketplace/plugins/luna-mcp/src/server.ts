@@ -328,7 +328,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     host,
     port: positiveInt(env, "LUNA_MCP_PORT", 8190, 0, 65535),
     searchPerMinute: positiveInt(env, "LUNA_MCP_SEARCH_RATE_PER_MIN", 10, 1, 600),
-    searchTimeoutMs: positiveInt(env, "LUNA_MCP_SEARCH_TIMEOUT_MS", 15000, 100, 120000),
+    searchTimeoutMs: positiveInt(env, "LUNA_MCP_SEARCH_TIMEOUT_MS", 45000, 100, 120000),
   };
 }
 
