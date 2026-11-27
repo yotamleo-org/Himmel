@@ -2158,14 +2158,15 @@ def snapshot_write(at, prs):
         os.makedirs(folder, exist_ok=True)
         with open(snap_path + '.lock', 'a') as lock:
             give_up = time.monotonic() + 2
-            while True:
+            locked = False
+            while not locked and time.monotonic() < give_up:
                 try:
                     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
+                    locked = True
                 except BlockingIOError:
-                    if time.monotonic() >= give_up:
-                        return
                     time.sleep(0.05)
+            if not locked:
+                return
             old = snapshot_load()
             clock_after_lock = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
             if disk_snapshot_stays(old, at, clock_after_lock):
