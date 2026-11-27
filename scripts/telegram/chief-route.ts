@@ -1094,7 +1094,7 @@ function closureKinds(r: LedgerRow, s: ReplayState, maxRound: Record<Kind, numbe
 function capRefusal(key: string, rows: LedgerRow[], kind: Kind, round: number): string | null {
   if (!roundNeedsRecord(replayStateOf(rows as Rows), kind, round)) return null;
   const base = round === CRITIC_ROUND_CAP + 1 ? `${key} ${kind} round ${round} needs a blocking finding in round ${CRITIC_ROUND_CAP} of either kind; sign it under 848, its minors go to the build`
-    : `${key} writer round ${round} needs a round-override or round-critical record`;
+    : `${key} writer round ${round} needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`;
   if (round !== kindRound(rows, kind) + 1 || kindRound(rows, kind) >= writerRound(rows)) return base;
   return `${base} (${kind} lags the writer round: open it with round-critical --closure --round ${kind}:${round}${extensionOffer(rows, kind, round)})`;
 }
@@ -1745,7 +1745,7 @@ async function verifyReturn(abs: string, text: string, opts: { spec?: string; si
 const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
 const needConsole = (verb: string) => { if (process.env.HIMMEL_CONSOLE !== "1") throw new Error(`${verb}: needs HIMMEL_CONSOLE=1, the chief's marker; a worker never writes a record`); };
 
-export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string }): Promise<void> {
+export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string; decision: string; quote: string }): Promise<void> {
   needConsole("round-override");
   await withLedgerLock(specs, key, async () => {
     const rows = await loadLedger(specs, key);
@@ -1771,7 +1771,10 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
       throw new Error(`round-override: ${lagging} is open only in ${kinds.join(" and ")}, which lags the writer round; ${how}, or name a finding of a kind at the writer round`);
     }
     const entries = named.filter(f => f.round === writer).map(({ round: _, ...f }) => f);
-    await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: entries, why: o.why, chief: o.chief });
+    const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => spendsDecision(r) && String(r.decision) === o.decision), latestRoundTs(rows));
+    if ("error" in q) throw new Error(`round-override: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-override: decision ${o.decision} was already used by a round-extension`);
+    await appendRow(specs, key, { row: "override", epoch: rows.checked.epoch, round_opened: writer + 1, findings: entries, why: o.why, chief: o.chief, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
   });
 }
 
@@ -2634,7 +2637,7 @@ export async function writeOwedReceipt(doc: string, key: string, messageId: numb
 
 const VERB_FLAGS: Record<string, { valued: string[]; bare: string[] }> = {
   "closure-pack": { valued: ["--specs"], bare: [] },
-  "round-override": { valued: ["--findings", "--why", "--chief", "--specs"], bare: [] },
+  "round-override": { valued: ["--findings", "--why", "--chief", "--decision", "--quote", "--specs"], bare: [] },
   "round-critical": { valued: ["--finding", "--decision", "--quote", "--round", "--specs"], bare: ["--no-round", "--restores", "--closure"] },
   "round-reset": { valued: ["--decision", "--quote", "--specs"], bare: [] },
   "round-reclass": { valued: ["--round", "--why", "--chief", "--specs"], bare: [] },
@@ -2728,7 +2731,7 @@ if (import.meta.main) {
         const given = a.opts["--specs"] ?? specsRootOf(process.cwd()); if (!given) throw new Error(`${verb}: pass --specs <specs root>`);
         const specs = await realpath(given);
         if (verb === "closure-pack") { if (a.pos[1] !== "spec" && a.pos[1] !== "plan") throw new Error("closure-pack: the kind is spec or plan"); process.stdout.write(await closurePack(specs, key, a.pos[1])); }
-        else if (verb === "round-override") await roundOverride(specs, key, { findings: need("--findings").split(",").map(s => s.trim()).filter(Boolean), why: need("--why"), chief: need("--chief") });
+        else if (verb === "round-override") await roundOverride(specs, key, { findings: need("--findings").split(",").map(s => s.trim()).filter(Boolean), why: need("--why"), chief: need("--chief"), decision: need("--decision"), quote: need("--quote") });
         else if (verb === "round-reclass") console.log(await roundReclass(specs, key, { round: need("--round"), why: need("--why"), chief: need("--chief") }));
         else if (verb === "round-extension") console.log(await roundExtension(specs, key, { findings: need("--findings").split(",").map(s => s.trim()).filter(Boolean), decision: need("--decision"), quote: need("--quote"), why: need("--why"), chief: need("--chief") }));
         else if (verb === "round-critical") await roundCritical(specs, key, { finding: a.on.has("--closure") ? a.opts["--finding"] ?? "" : need("--finding"), decision: need("--decision"), quote: need("--quote"), noRound: a.on.has("--no-round"), restores: a.on.has("--restores"), round: a.opts["--round"], closure: a.on.has("--closure") });
@@ -2782,7 +2785,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--sign | --by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> [--specs <root>] | round-reclass <KEY> --round <spec|plan>:<round> --why <line> --chief <session> [--specs <root>] |round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-critical <KEY> --decision <d> --quote <words> --closure [--round <spec|plan>:<n>] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] [--kind <kind>] [--owed <key> --doc <absolute chief doc>] <chat_id | operator> <text> | send-file [--sign | --by-request <the operator's request>] <chat_id> <path> [caption] | critic-round-check <verdict-file> <file-the-critic-read> | round-seed --all <specs root> | ledger-verify <verdict-file> [--spec <spec>] [--sign] | closure-pack <KEY> <spec|plan> [--specs <root>] | round-override <KEY> --findings <id,...> --why <line> --chief <session> --decision <d> --quote <words> [--specs <root>] | round-reclass <KEY> --round <spec|plan>:<round> --why <line> --chief <session> [--specs <root>] |round-critical <KEY> --finding <id[,id...]> --decision <d> --quote <words> [--restores] [--round <kind>:<n>] [--no-round] [--specs <root>] | round-critical <KEY> --decision <d> --quote <words> --closure [--round <spec|plan>:<n>] [--specs <root>] | round-reset <KEY> --decision <d> --quote <words> [--specs <root>] | round-extension <KEY> --findings <id,...> --decision <d> --quote <words> --why <line> --chief <session> [--specs <root>] | fold-list --spec <spec> [--specs <root>] | sign-shape <spec> [--plan <plan>] | round-status <KEY> [--specs <root>] [--json] | round-status --all --specs <root> --json | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

@@ -1265,8 +1265,8 @@ def writer_round_gate(l, ctx):
             why = str(s.get('why', ''))
             if s.get('critical_open'):
                 hint = 'the operator rules on open operator-critical findings first (round-critical)'
-            elif 'needs a round-override or round-critical record' in why:
-                hint = 'round-override requires an open blocking finding; otherwise hold for the owner'
+            elif 'needs a round-critical record with the operator' in why:
+                hint = 'ask the operator one plain line, write the verbatim-decision file, run round-critical with --decision and --quote (under decision 1418 the chief writes the decision file itself: it quotes 1418 and gives its reason)'
             else:
                 hint = 'for eligible capped nonblocking findings, use normal signing with --spec <canonical spec>, --plan <distinct canonical plan> and both actual latest paired --verdict returns; verified carry is automatic only if accepted; keep frozen bytes unchanged, with no reset or fabricated CLEAN; otherwise stop for the owner'
             die('worker %s: %s has had its writer rounds; %s; %s' % (label, key, why, hint))

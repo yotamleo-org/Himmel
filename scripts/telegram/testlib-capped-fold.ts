@@ -115,7 +115,7 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
     await ledgerVerify(verdict, { spec });
     verdicts.push(verdict); previous[r.kind] = lines.join('\n');
     for (const s of steps.filter(x => x.after === index)) {
-      if (s.step === 'override') { await underConsole(() => roundOverride(specsRoot, request.key, { findings: s.findings, why: s.why, chief: s.chief })); continue; }
+      if (s.step === 'override') { const quote = 'open one more review round for this ticket'; await decide('7311', quote); await underConsole(() => roundOverride(specsRoot, request.key, { findings: s.findings, why: s.why, chief: s.chief, decision: '7311', quote })); continue; }
       await decide(s.decision, s.quote);
       await underConsole(() => roundReset(specsRoot, request.key, { decision: s.decision, quote: s.quote }));
       rounds.spec = 0; rounds.plan = 0; previous.spec = null; previous.plan = null;

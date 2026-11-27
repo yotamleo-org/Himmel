@@ -268,7 +268,7 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
 |---|---|---|
 | 1 to 3 | always | the whole file |
 | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it | the closure pack only |
-| 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round | the closure pack only |
+| 5 and on | only the operator's words open it: a `round-critical` record with `--decision` and `--quote` | the closure pack only |
 
 - **Round 4 is a closure check.** Build the critic's input with
   `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan> --specs <bucket>/specs`:
@@ -281,9 +281,10 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   `## Folded critic findings`. Coverage is kind-scoped: `spec:F1` and `plan:F1`
   are separate. After a minors-only round 3, use the signing route below: do not
   ask for round 4.
-- **The override.** Past round 4, the chief may record one
-  `round-override <KEY> --findings <id,...> --why "<line>" --chief <session> --specs <bucket>/specs` per
-  ticket, ever, naming open blocking ids.
+- **Past round 4.** Ask the operator one plain line, write the verbatim-decision file,
+  run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>] --specs <bucket>/specs`
+  (`--round` opens a lagging critic's own round). Under standing decision 1418 the chief asks no one: it
+  writes that decision file itself, quoting 1418 and giving its reason.
 - **Operator-critical.** A finding tagged `operator-critical: <class>`, with one
   of the four classes (`spend-grant`, `account-or-terms`, `public-policy`,
   `reverses-ruling`), goes to the operator, not to a round. It stays open until the
@@ -414,7 +415,7 @@ A refused seal names its cause, and each has one next step:
   frozen nonblocking carry route below if eligible.
 - `is a closure check`: the return lacks the pack's marker line, or read a file
   round 3 did not seal; dispatch the critic again with `closure-pack`.
-- `needs a round-override or round-critical record`: stop; see At the cap.
+- `needs a round-critical record with the operator's words`: stop; see At the cap.
 - anything else: report it; the page stays refused.
 
 Every edit after a seal voids it: a fix, a `## Critic rounds` line, a status line,
@@ -477,9 +478,9 @@ critic is under the cap. send-file lists the findings in a `FINDINGS` return and
 every open operator-critical finding. Whatever else wants an edit it cannot have,
 an agreed panel finding or a Terminal lint gap, goes to the operator in a plain
 message with the page, and a lint gap also stops the hand-off. If the edit was
-made, put the sealed bytes back. A round past round 4 needs the chief's one
-`round-override` or a `round-critical` record carrying the operator's quoted
-words; the operator is asked in a plain message, since no page of the edited spec
+made, put the sealed bytes back. A round past round 4 needs a
+`round-critical` record carrying the operator's quoted
+words (under decision 1418 the chief's own decision file); the operator is asked in a plain message, since no page of the edited spec
 can be sent. A spec edit voids the plan critic's seal too; a blocking finding of
 either kind opens round 4 for both, so the plan gets its own closure check.
 

@@ -1927,9 +1927,9 @@ for hint in 'normal signing' '--spec' 'canonical spec' '--plan' 'distinct canoni
 done
 [ -z "$(cg_brief r14)" ] && [ ! -e "$CG/b-r14/launch-N941.sh" ] && pass "R14: the refused writer leg gets no brief and no launcher" || fail "R14: a brief was written for a key with no rounds left"
 has "R14: round-status is asked for the key over the path's specs root" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9434 --specs $WS --json"
-printf '{"key":"HIMMEL-9434","spec":4,"plan":4,"writer":4,"next":"none","why":"spec round 5: HIMMEL-9434 writer round 5 needs a round-override or round-critical record"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+printf '{"key":"HIMMEL-9434","spec":4,"plan":4,"writer":4,"next":"none","why":"spec round 5: HIMMEL-9434 writer round 5 needs a round-critical record with the operator'\''s words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cgo="$(cgrun r14)"; rc=$?
-[ "$rc" = 1 ] && has "exhausted blocking writer keeps its actual authority route" "$cgo" "needs a round-override or round-critical record" || fail "R14 blocking rc=$rc: $cgo"
+[ "$rc" = 1 ] && has "exhausted blocking writer keeps its actual authority route" "$cgo" "needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)" || fail "R14 blocking rc=$rc: $cgo"
 lacks "exhausted blocking writer does not suggest verified carry" "$cgo" "verified carry"
 printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"no round opens","critical_open":[{"id":"O1","class":"spend-grant"}]}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cgo="$(cgrun r14)"; rc=$?

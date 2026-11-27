@@ -2444,7 +2444,7 @@ test("DoD 1: round 3 left findings open, so round 4 seals once by the ledger cou
   const r5 = `${b.spec}.critic-spec-r5.md`; unsealedReturn(r5, D_TEXT, "SPEC CLEAN");
   grant(r, b.spec, 5);
   const five = await seal(r5, b.spec, sha(D_TEXT));
-  expect(five.err).toContain("HIMMEL-1 writer round 5 needs a round-override or round-critical record");
+  expect(five.err).toContain("HIMMEL-1 writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)");
   expect(five.code).not.toBe(0);
   expect(readFileSync(r5, "utf8")).not.toContain("CONTENT-SHA256");
   expect(ledgerRows(specsOf(r), "HIMMEL-1").filter((x) => x.row === "round").map((x) => x.round)).toEqual([4]);
@@ -2461,7 +2461,7 @@ test("readCriticBudget reads the kind's rounds from the ledger and whether the n
   expect(plan.rounds.map(f => [f.round, basename(f.path)])).toEqual([[1, "HIMMEL-1-design.md.critic-plan-r1.md"]]);
   const r4 = `${b.spec}.critic-spec-r4.md`; unsealedReturn(r4, D_TEXT, "SPEC FINDINGS 1", markerFor(specsOf(r), "HIMMEL-1", "spec", 4));
   expect((await seal(r4, b.spec, sha(D_TEXT))).err).toBe("");
-  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 4, requestedRound: 5, allowed: false, why: "HIMMEL-1 writer round 5 needs a round-override or round-critical record" });
+  expect(await readCriticBudget(b.spec, "spec")).toMatchObject({ count: 4, requestedRound: 5, allowed: false, why: "HIMMEL-1 writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)" });
 });
 
 test("DoD 1: an unsealed fourth return found on disk still keeps the page from going", async () => {
@@ -2522,7 +2522,7 @@ test("DoD 2: rounds 1 and 2 with findings stay refused, and each kind must reach
   expect(html).toContain("design.md.critic-plan-r3.md");
 });
 
-test("a spec seeded past 3 still goes with its findings when it is the bytes its last critic read, and its next round needs a round-override or round-critical record", async () => {
+test("a spec seeded past 3 still goes with its findings when it is the bytes its last critic read, and its next round needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)", async () => {
   const r = root(); const b = bundle(r);
   for (const n of [7, 8, 9]) critic(b.spec, "spec", n, "SPEC FINDINGS 4", D_SEAL);
   const res = await sendFile(r, "1", b.spec);
@@ -2531,7 +2531,7 @@ test("a spec seeded past 3 still goes with its findings when it is the bytes its
   const r10 = `${b.spec}.critic-spec-r10.md`; unsealedReturn(r10, D_TEXT);
   const next = await seal(r10, b.spec, sha(D_TEXT));
   expect(next.code).not.toBe(0);
-  expect(next.err).toContain("HIMMEL-1 writer round 10 needs a round-override or round-critical record");
+  expect(next.err).toContain("HIMMEL-1 writer round 10 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)");
 });
 
 const sendSealedPage = async (r: string, b: ReturnType<typeof bundle>, pageText: string) => {
@@ -3184,7 +3184,7 @@ test("R1: a return named for another spec file of the ticket is refused at round
   expect(four.err).toBe("");
   expect(ledgerRows(m.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 4, verdict_path: r4 });
   const five = await sealOn(`${m.a}.critic-spec-r5.md`, [m.a], "SPEC CLEAN");
-  expect(five.err).toContain(`${CAP_KEY} writer round 5 needs a round-override or round-critical record`);
+  expect(five.err).toContain(`${CAP_KEY} writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`);
 }, S1B);
 
 test("R3d: a plan round-3 major opens spec round 4 too, beside R1's fixture where both round 3s are clean (T1)", async () => {
@@ -3372,7 +3372,19 @@ test("R16: a clean latest critic file with a hand-appended CONTENT-SHA256 line n
   expect(res.lines.length).toBe(1);
 }, S1B);
 
-const verb = async (console: boolean, ...args: string[]) => {
+const OVR_WORDS = "open one more review round for this ticket";
+const withOverrideWords = (args: string[]): string[] => {
+  const at = args.indexOf("--no-words");
+  if (at >= 0) return args.filter((_, i) => i !== at);
+  if (args[0] !== "round-override" || args.includes("--decision")) return args;
+  const specs = args[args.indexOf("--specs") + 1];
+  mkdirSync(join(specs, "decisions"), { recursive: true });
+  const f = join(specs, "decisions", "verbatim-decision-7311-operator.txt"); writeFileSync(f, `${args[1]} operator: ${OVR_WORDS}\n`);
+  const later = new Date(Date.now() + 5000); utimesSync(f, later, later);
+  return [...args, "--decision", "7311", "--quote", OVR_WORDS];
+};
+const verb = async (console: boolean, ...rawArgs: string[]) => {
+  const args = withOverrideWords(rawArgs);
   const env: Record<string, string | undefined> = { ...process.env };
   if (console) env.HIMMEL_CONSOLE = "1"; else delete env.HIMMEL_CONSOLE;
   const p = Bun.spawn(["bun", ROUTE_TS, ...args], { env, stdout: "pipe", stderr: "pipe" });
@@ -3381,7 +3393,7 @@ const verb = async (console: boolean, ...args: string[]) => {
 };
 const T2 = (kind: string, r: number) => `${CAP_KEY} ${kind} round ${r} is a closure check of round ${r - 1}; build its input with closure-pack`;
 const T3 = (kind: string, r: number, paths: string) => `${CAP_KEY} ${kind} round ${r} is a closure check of the files round ${r - 1} read: ${paths}`;
-const T5 = (r: number) => `${CAP_KEY} writer round ${r} needs a round-override or round-critical record`;
+const T5 = (r: number) => `${CAP_KEY} writer round ${r} needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`;
 const T7 = (cls: string) => `round-critical: '${cls}' is not an operator-critical class (spend-grant, account-or-terms, public-policy, reverses-ruling)`;
 const closeOn = (t: { a: string; specs: string }, kind: "spec" | "plan", r: number, reads: string[], verdict: string, ...lines: string[]) =>
   sealOn(`${t.a}.critic-${kind}-r${r}.md`, reads, verdict, markerFor(t.specs, CAP_KEY, kind, r), ...lines);
@@ -3397,6 +3409,38 @@ const rowsOf = (specs: string, kind: string) => ledgerRows(specs, CAP_KEY).filte
 const status = async (specs: string) => JSON.parse((await routeCli("round-status", CAP_KEY, "--specs", specs, "--json")).out);
 const MAJOR = ["- **M1** (major) still open"];
 const SPEND = "approve the spend after another look";
+
+test("round-status at writer round 5 names round-critical with the operator's words and never round-override, and a ledger holding an old override row still reads", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  const json = await status(t.specs);
+  expect(json.writer).toBe(4);
+  expect(json.why).toContain(T5(5)); expect(json.why).toContain("round-critical"); expect(json.why).toContain("operator's words"); expect(json.why).not.toContain("round-override");
+  const plain = await routeCli("round-status", CAP_KEY, "--specs", t.specs);
+  expect(plain.out).toContain("round-critical"); expect(plain.out).not.toContain("round-override");
+  const r4 = rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 4);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "override", epoch: 0, round_opened: 5, findings: [{ id: "M2", severity: "major", critic: "spec", return_sha: r4.return_sha }], why: "the build cannot carry it", chief: "chief-x" })}\n`);
+  const old = await status(t.specs);
+  expect(old).toMatchObject({ writer: 4, overrideUsed: true, invalid: [] }); expect(old.why).not.toContain(T5(5));
+  expect((await routeCli("ledger-verify", `${t.a}.critic-spec-r4.md`, "--spec", t.a)).code).toBe(0);
+});
+
+test("round-override needs the operator's decision and a quote the decision holds, and writes no row without them", async () => {
+  const t = await roundTree(MAJOR, []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open")).err).toBe("");
+  const bare = await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--specs", t.specs, "--no-words");
+  expect(bare.code).toBe(1); expect(bare.err).toBe("round-override: --decision is required\n");
+  const noQuote = await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--decision", "7312", "--specs", t.specs, "--no-words");
+  expect(noQuote.code).toBe(1); expect(noQuote.err).toBe("round-override: --quote is required\n");
+  decide(t.specs, 7312, `${CAP_KEY} operator: ${OVR_WORDS}\n`);
+  const lie = await verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "w", "--chief", "chief-x", "--decision", "7312", "--quote", "words the operator never wrote", "--specs", t.specs, "--no-words");
+  expect(lie.code).toBe(1); expect(lie.err).toContain("round-override: decision 7312 does not hold the quote");
+  const { roundOverride } = await import("./chief-route.ts");
+  const consoleWas = process.env.HIMMEL_CONSOLE; process.env.HIMMEL_CONSOLE = "1";
+  try { await expect(roundOverride(t.specs, CAP_KEY, { findings: ["M2"], why: "w", chief: "chief-x", decision: "7399", quote: OVR_WORDS })).rejects.toThrow("round-override: 0 files match specs/decisions/verbatim-decision-7399-*.txt"); }
+  finally { if (consoleWas === undefined) Reflect.deleteProperty(process.env, "HIMMEL_CONSOLE"); else process.env.HIMMEL_CONSOLE = consoleWas; }
+  expect(rowsOf(t.specs, "override")).toEqual([]);
+});
 
 test("R2, R3, R3b, R3c: round 4 is a closure check: no marker gives T2, a new file gives T3, an edited snapshot gives T4 from closure-pack and the seal, and the marked return on the sealed file seals as closure", async () => {
   const t = await roundTree(MAJOR, []);
@@ -5444,7 +5488,7 @@ test("B1 known-single: refusedCap, overrideAdmitted and admittedNextRound each r
       expect(rounds.filter(r => r.critic === "plan").map(r => [r.round, r.mode])).toEqual([[1, "full"], [2, "full"], [3, "full"], [4, "closure"]]);
       const four = rounds.filter(r => r.critic === "plan").at(-1);
       expect(four.findings).toHaveLength(2); for (const x of four.findings) expect(x).toMatchObject({ severity: "minor", class: "out-of-closure" });
-      expect(state.next).toBe("none"); expect(state.plan).toBe(4); expect(state.why).toContain(`${key} writer round 5 needs a round-override or round-critical record`);
+      expect(state.next).toBe("none"); expect(state.plan).toBe(4); expect(state.why).toContain(`${key} writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`);
     }
     if (variant === "overrideAdmitted") {
       const four = rounds.filter(r => r.critic === "plan").at(-1);
@@ -6736,7 +6780,7 @@ test("W3 round-override, round-critical, round-reset and round-extension append 
   // override: once, from an open blocking finding of the latest round
   { const t = await roundTree(MAJOR, []); expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **M2** (major; reopens M1) still open", "- **n1** (minor) a note")).err).toBe("");
     const over = () => verb(true, "round-override", CAP_KEY, "--findings", "M2", "--why", "the build cannot carry it", "--chief", "chief-x", "--specs", t.specs);
-    const row = await appended(t.specs, over, ["v", "ts", "key", "row", "epoch", "round_opened", "findings", "why", "chief"], { row: "override", epoch: 0, round_opened: 5, why: "the build cannot carry it", chief: "chief-x", findings: [{ id: "M2", severity: "major", critic: "spec" }] });
+    const row = await appended(t.specs, over, ["v", "ts", "key", "row", "epoch", "round_opened", "findings", "why", "chief", "decision", "quote", "decision_path", "decision_sha"], { row: "override", epoch: 0, round_opened: 5, why: "the build cannot carry it", chief: "chief-x", decision: "7311", quote: OVR_WORDS, findings: [{ id: "M2", severity: "major", critic: "spec" }] });
     expect(row.findings[0].return_sha).toBe(rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 4).return_sha);
     await refused(t.specs, over, `round-override: ${CAP_KEY} already used its one override`); }
   // critical: needs the console, a decision naming the ticket, and is spent once
@@ -7140,7 +7184,7 @@ test("C2 v2 cap: the refusedCap closure shape carries its minors under legacy an
   const route = await c3Route(); const lib = await b1Lib();
   const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = route.keyOf(f.spec); const policy = route.v2Policy([key]);
   const state = await route.roundState(f.specsRoot, key);
-  expect(state.plan).toBe(4); expect(state.next).toBe("none"); expect(state.why).toContain(`${key} writer round 5 needs a round-override or round-critical record`);
+  expect(state.plan).toBe(4); expect(state.next).toBe("none"); expect(state.why).toContain(`${key} writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`);
   const got = await c3Both(f, policy);
   await c3Expect(f, "spec", got.spec, 5, 0, []); await c3Expect(f, "plan", got.plan, 4, 0, [["P4", "minor"], ["P5", "minor"]]);
   expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")).toMatch(/^READ-SHA256 [0-9a-f]{64}  \/\S+$/m);
@@ -7231,7 +7275,7 @@ test("F9 v2 headings: a closure major is nonblocking yet never carries, and the 
   const major = await run("major"); const state = await route.roundState(major.specsRoot, cappedKey);
   const row = b1Rows(major).filter(r => r.row === "round" && r.critic === "spec").at(-1);
   expect(row).toMatchObject({ round: 4, mode: "closure", findings: [{ id: "C1", severity: "major", class: "out-of-closure" }] });
-  expect(state.why, "the ledger refuses the next round, so only the heading stands in the way").toContain(`spec round 5: ${cappedKey} writer round 5 needs a round-override or round-critical record`);
+  expect(state.why, "the ledger refuses the next round, so only the heading stands in the way").toContain(`spec round 5: ${cappedKey} writer round 5 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)`);
   expect(await c3Message(c3Kind(major, "spec", policy))).toBe(c3Heading("- **C1** (major) a closure note"));
   const minor = await run("minor"); await c3Expect(minor, "spec", await c3Kind(minor, "spec", policy), 4, 0, [["C1", "minor"]]);
 }, S1B);
