@@ -1024,6 +1024,10 @@ doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: rev 1, the operator signs this on
 run21 "WRAPPED N6021"
 check "21e5 the last request that names a signer wins" "$(owed21 "$step21 | .actor")" chief
 
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: the operator signs this one; no chief sign-off needed' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+check "21e6 within the deciding line the operator wins over a later chief phrase" "$(owed21 "$step21 | .actor")" operator
+
 doc21 no '- 10:00 LIVE — x' '- 10:10 WRAPPED — lock released'
 run21 "WRAPPED N6021 READY-TO-SIGN sent: spec sha256 3333333333333333"
 contains "21e4 a request only in the event message is a sign step" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 333333333333)"

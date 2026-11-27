@@ -315,8 +315,8 @@ owe_next_step() {
     if [ -n "$ready" ]; then
         sha="$(grep -oiE 'spec( rev [0-9]+)?( sha256)? [0-9a-f]{8,64}' <<< "$ready" | tail -n 1 | grep -oiE '[0-9a-f]+$' | cut -c1-12)" || sha=""
         step="sign the design${sha:+ (last spec hash named: $sha)} if it is not signed yet, then dispatch the build"
-        signer="$(grep -oiE "(operator|chief)('s)? (signs|signature|sign-off)|signed by the (operator|chief)|(operator|chief) (must|to) sign" <<< "$ready" | tail -n 1)" || signer=""
-        if grep -qi 'operator' <<< "$signer"; then
+        signer="$(grep -iE "(operator|chief)('s)? (signs|signature|sign-off)|signed by the (operator|chief)|(operator|chief) (must|to) sign" <<< "$ready" | tail -n 1)" || signer=""
+        if grep -qiE "operator('s)? (signs|signature|sign-off)|signed by the operator|operator (must|to) sign" <<< "$signer"; then
             actor=operator
             step="ask the operator to $step"
         fi
