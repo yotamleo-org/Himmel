@@ -806,5 +806,30 @@ out27=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS27" 2>&1 ); rc27=$?
 [ "$rc27" -eq 5 ] && [ "$(cat "$OUT27/graph.json")" = "not json" ] && grep -q "could not set aside" <<<"$out27" \
   && pass "T27c a failed set-aside exits 5 with graph.json as it was" || fail "T27c (rc=$rc27): $out27"
 
+echo "T28: a run killed while copying the snapshot does not block the next run"
+CORPUS28="$WS/c28"; OUT28="$CORPUS28/graphify-out"; BIN28="$WS/bin28"; mkdir -p "$OUT28" "$BIN28"
+touch "$CORPUS28/a.sh" "$CORPUS28/b.sh"
+printf '%s\n' "$(date -u +%s)" > "$OUT28/.ast-forced-at"
+printf '%s\n' '{"nodes":[{"id":"a1","_origin":"ast","source_file":"a.sh","community":0}],"links":[]}' > "$OUT28/graph.json"
+cat > "$BIN28/cp" <<'STUB'
+#!/usr/bin/env bash
+printf '{"nodes":[' > "$2"
+kill -9 "$PPID"
+STUB
+chmod +x "$BIN28/cp"
+PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" >/dev/null 2>&1
+rm -rf "$OUT28/.promote.lock"
+out28=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" 2>&1 ); rc28=$?
+[ "$rc28" -eq 0 ] && pass "T28 the run after a killed copy succeeds" || fail "T28 (rc=$rc28): $out28"
+
+printf 'not json\n' > "$OUT28/graph.json"
+rm -f "$BIN28/cp" "$OUT28/.graph.pre-ast.json"
+# shellcheck disable=SC2016  # the stub's own $3 and $@ must reach the file unexpanded
+printf '#!/usr/bin/env bash\ncase "$3" in */graph.json) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v mv)" > "$BIN28/mv"
+chmod +x "$BIN28/mv"
+out28=$( PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" 2>&1 ); rc28=$?
+[ "$rc28" -eq 5 ] && grep -q "could not set aside" <<<"$out28" && grep -qF "kept at $OUT28/.graph.pre-ast.json" <<<"$out28" && ! grep -q "left as it was" <<<"$out28" \
+  && pass "T28b a failed put-back after a failed set-aside names the kept snapshot" || fail "T28b (rc=$rc28): $out28"
+
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
