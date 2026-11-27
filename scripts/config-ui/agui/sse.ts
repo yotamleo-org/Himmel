@@ -191,8 +191,8 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
   // The bus events not yet emitted that belong to this session: a send by or to it, and the
   // delivered/acked/expired follow-ups of those. A follow-up may land in a later poll than its send, hence `mine`.
   type BusDelta = AguiEvent & { timestamp: number; delta: { path: string; value?: { f?: string; r?: string } }[] };
-  let scanning = false, restUntil = 0, scanned: { name: string; batch: BusDelta[] } | undefined;
-  let collected: string | undefined;
+  let scanning = false, restUntil = 0, scanned: { name: string; at: number; batch: BusDelta[] } | undefined;
+  let collected: { name: string; at: number } | undefined;
   const collect = () => {
     const root = o.busRoot, name = session;
     if (!root || !name || scanning || Date.now() < restUntil) return;
@@ -201,19 +201,19 @@ export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8
     void (async () => {
       let batch: BusDelta[] = [];
       try { for await (const e of busEvents(root, { since: 0 })) batch.push(e as BusDelta); } catch { batch = []; } // no store yet: nothing to merge
-      scanned = { name, batch };
+      scanned = { name, at, batch };
       restUntil = Date.now() * 2 - at;
       wake?.();
     })();
   };
-  const busBehind = () => !!o.busRoot && !!session && (scanning || collected !== session);
+  const busBehind = () => !!o.busRoot && !!session && (collected?.name !== session || collected.at < grewAt + o.idleMs);
   const busFor = (): AguiEvent[] => {
     if (!scanned) return [];
-    const { name, batch } = scanned;
+    const { name, at, batch } = scanned;
     scanned = undefined;
     scanning = false;
     if (name !== session) return [];
-    collected = name;
+    collected = { name, at };
     const idOf = (e: BusDelta) => /^\/bus\/msgs\/([^/]+)/.exec(e.delta[0].path)?.[1] ?? "";
     for (const e of batch) {
       const d = e.delta[0];

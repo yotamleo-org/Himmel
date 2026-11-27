@@ -760,8 +760,11 @@ test("a run's journal events stream while the bus collection is still running", 
   const stream = new Response(journalStream(p, { ...direct, idleMs: 200, busRoot: root })).text();
   await sleep(600);
   unlock2();
+  await sleep(50);
+  await append(root, "worker-a", { t: Date.now(), b: "x", c: 0, i: "W2", f: "chief-x", r: "worker-a" });
   const paths = parse(await stream).filter((e) => e.type === "STATE_DELTA").flatMap((e) => (e.delta as { path: string }[]).map((d) => d.path));
   expect(paths).toContain("/bus/msgs/W1");
+  expect(paths).toContain("/bus/msgs/W2");
 });
 
 // bus traffic is activity: a stream fed only by bus messages stays open past idleMs while they keep arriving
