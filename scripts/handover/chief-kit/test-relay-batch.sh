@@ -625,4 +625,12 @@ census DEMO-40-N90b-lett-2026-10-28 DEMO-40-N90-lett-2026-10-28
 outl="$(: > "$WORK/bus.log"; bash "$RB" "$PDOC" --successor S10 2>&1)"
 check "an exact session match wins over a lettered one" "send DEMO-40-N90-lett-2026-10-28" "$(cat "$WORK/bus.log")"
 
+census DEMO-40-N90-lett-2026-10-28
+printf '{"schema":1,"workers":[]}\n' > "${PDOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N90","lane":"native"}]}\n' "$LWORK" > "${PDOC%.md}.fleet.moved.json"
+outm="$(: > "$WORK/bus.log"; bash "$RB" "$PDOC" --successor S10 2>&1)"
+check "a moved row is still relayed" "send DEMO-40-N90-lett-2026-10-28" "$(cat "$WORK/bus.log")"
+check "a moved row counts in the tally" "1" "$(printf '%s\n' "$outm" | grep -c '^RELAYED 1 of 1$')"
+rm -f "${PDOC%.md}.fleet.moved.json"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
