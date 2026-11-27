@@ -91,7 +91,8 @@ title_key_re() {
     done
     IFS=, read -r -a parts <<< "$raw"
     for p in "${parts[@]}"; do
-        p="$(printf '%s' "$p" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+        p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"
+        p="$(printf '%s' "$p" | tr '[:lower:]' '[:upper:]')"
         [[ "$p" =~ ^[A-Z][A-Z0-9]*$ ]] && out="${out:+$out|}$p"
     done
     if [ -n "$out" ]; then printf '\\b(?:%s)-[0-9]+\\b' "$out"; else printf '%s' '\b[A-Z][A-Z0-9]*-[0-9]+\b'; fi
