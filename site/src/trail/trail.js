@@ -1,8 +1,3 @@
-// Enhancement only: with this script removed every module and component is
-// still a native <details> with its full text. It opens the module a rail link
-// or an old #lvl-N link points at, highlights the module and its track in
-// view, remembers the last module opened, and on wide screens shows a
-// component's detail in a side panel.
 (function () {
   var KEY = 'himmel-trail-level';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');

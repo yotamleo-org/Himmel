@@ -14,9 +14,6 @@
 # data file fails here.
 #
 #   1. SYNC     — each page is exactly what render.mjs builds.
-#   2. NOJS     — with every script removed, each module is a <details id="m-<id>">
-#                 and each component's detail text sits inside its own
-#                 <details>; a copy missing its first component block fails.
 #   3. LINKS    — every relative href/src resolves: a file under docs/, or a site
 #                 route whose page is in site/allowlist.txt; every #fragment is
 #                 an id on the page.
@@ -38,10 +35,6 @@
 #                 where, and how to undo it, in that order on its first screen;
 #                 the other two pages exist, are linked, and the questions page
 #                 defines the ten newcomer terms.
-#  11. ORDER    — module edges have no cycle and follow each track's order.
-#  12. TRACK-NEEDS — each track's Needs line equals what its edges reach.
-#  13. ALIASES  — each old #lvl-N anchor sits in its module card's summary.
-#  14. VOCAB    — no Base camp, climb or level frame on the trail.
 #
 # Platform guard (posix-bash): POSIX bash 3.2+ plus grep/sed/jq/perl/python3
 # and node.
@@ -102,8 +95,6 @@ fi
 
 # --- 2. NOJS ------------------------------------------------------------------
 
-# Prints one line per module or component whose text a reader without JavaScript
-# would not see (empty = all present).
 nojs_missing() {
   python3 -I - "$1" "$2" <<'PY' || echo "checker exited non-zero (rc=$?)"
 import html, json, re, sys

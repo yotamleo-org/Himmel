@@ -1,11 +1,4 @@
 #!/usr/bin/env node
-// Builds the three trail pages, each from layout.html and its own body
-// template: docs/adoption-trail.html (hero.html), docs/adoption-trail-levels.html
-// (levels.html, with the tracks and modules from levels.json and trail.js) and
-// docs/adoption-trail-questions.html (questions.html). Each page is
-// self-contained (no request to another file or host) because the docs site
-// copies it through unchanged (HTML_PASSTHROUGH in site/astro.config.mjs).
-//
 // Usage: node site/src/trail/render.mjs           write the pages
 //        node site/src/trail/render.mjs --check   exit 1 when a page differs
 import { readFileSync, writeFileSync } from 'node:fs';
