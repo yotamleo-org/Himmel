@@ -73,7 +73,7 @@ async function setup(over: { readerRun?: PollerDeps["readerRun"]; matrix?: Polle
   const cfg: Config = {
     operatorBotId: "999000999", operatorChatId: 4242, bridgeRoot: tmp("peer-poller-bridge-"), himmelRoot: himmelRoot(), maxTextChars: 4000, addressing: "command",
     peers: { example: { peerBotId: PEER_ID, chatId: CHAT, allowFrom: [PEER_ID, "42"], opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, maxReaderRunsPerDay: 50, maxReaderRunsPerKindPerDay: { question: 30, status: 10, info: 10 }, maxWakesPerDay: 30,
-      theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07" }, ...(over.peerOver ?? {}) } as any },
+      theirs: { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", keys: [] }, ...(over.peerOver ?? {}) } as any },
     ...(over.operatorDm ? { operatorDmChatId: 4242 } : {}), ...(over.stationName ? { self: { stationName: over.stationName } } : {}),
   } as any;
   const peersPath = join(configDir, "peers.json");
@@ -1732,4 +1732,171 @@ test("peer-card records count toward the rate cap after a restart", async () => 
   await again.recover();
   await again.processBatch([cardUpdate()]);
   expect(inboxOf(e).length).toBe(1);
+});
+
+const KEY_A = Buffer.alloc(32, 5).toString("base64"), KEY_B = Buffer.alloc(32, 6).toString("base64");
+const MIN = 60_000;
+async function pairEnv(over: Parameters<typeof setup>[0] = {}) {
+  const logs: string[] = [];
+  const e = await setup({ operatorDm: true, stationName: "yotam", ...over });
+  const poller = await Poller.create({ ...e.deps, log: l => logs.push(l) });
+  await poller.recover();
+  return { ...e, poller, logs };
+}
+type PairEnv = Awaited<ReturnType<typeof pairEnv>>;
+const pairRecs = (e: Env) => readChain(join(e.peerDir, "pairing.jsonl")) as any[];
+const offersOf = (e: Env) => pairRecs(e).filter(r => r.kind === "card-offer");
+const closesOf = (e: Env) => pairRecs(e).filter(r => r.kind === "offer-result");
+const pairNotes = (e: Env, type: string) => (readChain(notifyFile(e.stateDir)) as any[]).filter(r => r.type === type);
+const send = (e: PairEnv, key = KEY_A, over: Record<string, unknown> = {}) => e.poller.processBatch([cardUpdate("example", key, over)]);
+const why = (e: PairEnv) => e.logs.filter(l => l.startsWith("card-no-offer")).map(l => l.split("why=")[1]);
+const theirsBase = { username: "example_bot", opens: ["question", "status", "info"], maxOpenThreads: 5, maxPerMinute: 10, copiedAt: "2026-11-07", keys: [] };
+const keyEntry = (pub: string, at: number) => ({ id: keyId(pub), pub, addedAt: new Date(at).toISOString().replace(/\.\d{3}Z$/, "Z") });
+async function trustAtTerminal(e: PairEnv, pub: string, at = e.c.t) {
+  const doc = JSON.parse(readFileSync(e.deps.peersPath, "utf8"));
+  doc.peers.example.theirs.keys = [keyEntry(pub, at)];
+  writeFileSync(e.deps.peersPath, JSON.stringify(doc), { mode: 0o600 });
+  await e.poller.reload();
+}
+async function later(e: PairEnv, ms: number) { e.c.t += ms; await e.poller.tick(); }
+
+test("only the peer bot's card in the configured group makes an offer and a pair-offer notify", async () => {
+  const e = await pairEnv();
+  const good = cardUpdate("example", KEY_A);
+  await e.poller.processBatch([cardUpdate("example", KEY_B, { from: { id: 42, is_bot: true } }), cardUpdate("example", KEY_B, { chat: { id: -100555, type: "supergroup" } }), good]);
+  expect(offersOf(e).map(o => [o.key, o.station, o.chat_id, o.message_id])).toEqual([[KEY_A, "example", CHAT, good.message.message_id]]);
+  expect(pairNotes(e, "pair-offer").map(n => [n.offer, n.key, n.exp])).toEqual([[offersOf(e)[0].offer, KEY_A, offersOf(e)[0].exp]]);
+  expect(offersOf(e)[0].exp).toBe(e.c.t + 30 * MIN);
+  expect(cardIntents(e)).toEqual([]);
+});
+
+const NO_OFFER: [string, () => Promise<PairEnv>][] = [
+  ["no-dm", async () => { const e = await pairEnv({ operatorDm: false }); await send(e); return e; }],
+  ["killed", async () => { const e = await pairEnv(); writeFileSync(join(e.configDir, "example.killed"), ""); await send(e); return e; }],
+  ["already-paired", async () => { const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, keys: [keyEntry(KEY_B, T0)] } } }); await send(e); return e; }],
+  ["name-differs", async () => { const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, stationName: "another" } } }); await send(e); return e; }],
+  ["two-cards-today", async () => { const e = await pairEnv(); await send(e, KEY_A); await send(e, KEY_B); await send(e, KEY_A); return e; }],
+  ["already-offered", async () => { const e = await pairEnv(); await send(e); await send(e); return e; }],
+  ["same-message", async () => { const e = await pairEnv(); await send(e, KEY_A, { message_id: 77 }); await later(e, 31 * MIN); await send(e, KEY_A, { message_id: 77 }); return e; }],
+  ["rejected-today", async () => {
+    const e = await pairEnv();
+    await send(e);
+    await new Chain().append(join(e.peerDir, "pairing.jsonl"), { kind: "offer-result", offer: offersOf(e)[0].offer, state: "REJECTED", ts: Math.floor(e.c.t / 1000) });
+    await send(e);
+    return e;
+  }],
+  ["daily-offers", async () => { const e = await pairEnv(); for (let i = 0; i < 6; i++) { await send(e); await later(e, 31 * MIN); } return e; }],
+];
+for (const [rule, run] of NO_OFFER) {
+  test(`no offer: ${rule}`, async () => {
+    const e = await run();
+    expect(why(e).at(-1)).toBe(rule);
+    const made = rule === "two-cards-today" || rule === "already-offered" || rule === "same-message" || rule === "rejected-today" ? 1 : rule === "daily-offers" ? 5 : 0;
+    expect(offersOf(e).length).toBe(made);
+  });
+}
+
+test("when two checks refuse, the earlier one in the order is named", async () => {
+  const e = await pairEnv({ peerOver: { theirs: { ...theirsBase, keys: [keyEntry(KEY_B, T0)] } } });
+  writeFileSync(join(e.configDir, "example.killed"), "");
+  await send(e);
+  expect(why(e)).toEqual(["killed"]);
+});
+
+test("a second, different key while an offer is open closes it two-cards, makes none, and alerts once; a third meets two-cards-today", async () => {
+  const e = await pairEnv();
+  await send(e, KEY_A);
+  await send(e, KEY_B);
+  expect(offersOf(e).length).toBe(1);
+  expect(closesOf(e).map(r => [r.state, r.rule])).toEqual([["REFUSED", "two-cards"]]);
+  expect([pairNotes(e, "pair-alert").length, pairNotes(e, "pair-result").map(n => [n.state, n.rule])]).toEqual([1, [["REFUSED", "two-cards"]]]);
+  await send(e, Buffer.alloc(32, 8).toString("base64"));
+  expect([why(e).at(-1), offersOf(e).length]).toEqual(["two-cards-today", 1]);
+});
+
+test("a different key closes the open offer also at the day's offer cap, and when it was rejected earlier that day", async () => {
+  const capped = await pairEnv();
+  for (let i = 0; i < 4; i++) { await send(capped); await later(capped, 31 * MIN); }
+  await send(capped);
+  await send(capped, KEY_B);
+  expect(closesOf(capped).at(-1)).toMatchObject({ state: "REFUSED", rule: "two-cards" });
+  const rejected = await pairEnv();
+  await send(rejected, KEY_B);
+  await new Chain().append(join(rejected.peerDir, "pairing.jsonl"), { kind: "offer-result", offer: offersOf(rejected)[0].offer, state: "REJECTED", ts: Math.floor(rejected.c.t / 1000) });
+  await send(rejected, KEY_A);
+  await send(rejected, KEY_B);
+  expect(closesOf(rejected).at(-1)).toMatchObject({ state: "REFUSED", rule: "two-cards" });
+});
+
+test("settle closes an expired offer once, with one pair-result", async () => {
+  const e = await pairEnv();
+  await send(e);
+  await later(e, 31 * MIN);
+  await later(e, MIN);
+  expect(closesOf(e).map(r => r.state)).toEqual(["EXPIRED"]);
+  expect(pairNotes(e, "pair-result").map(n => n.state)).toEqual(["EXPIRED"]);
+});
+
+test("settle: its own key trusted before the expiry is APPROVED by terminal-or-replay, also when the restart comes after the expiry", async () => {
+  const e = await pairEnv();
+  await send(e);
+  await trustAtTerminal(e, KEY_A);
+  await later(e, MIN);
+  expect(closesOf(e).map(r => [r.state, r.by])).toEqual([["APPROVED", "terminal-or-replay"]]);
+  const crashed = await pairEnv();
+  await send(crashed);
+  await trustAtTerminal(crashed, KEY_A);
+  crashed.c.t += 40 * MIN;
+  const again = await Poller.create({ ...crashed.deps, cfg: readPeersFile(crashed.deps.peersPath) });
+  await again.recover();
+  expect(closesOf(crashed).map(r => r.state)).toEqual(["APPROVED"]);
+});
+
+test("settle: its own key trusted only after the expiry is EXPIRED, and another key trusted is REFUSED already-paired", async () => {
+  const late = await pairEnv();
+  await send(late);
+  late.c.t += 31 * MIN;
+  await trustAtTerminal(late, KEY_A);
+  await late.poller.tick();
+  expect(closesOf(late).map(r => r.state)).toEqual(["EXPIRED"]);
+  const other = await pairEnv();
+  await send(other);
+  await trustAtTerminal(other, KEY_B);
+  await other.poller.tick();
+  expect(closesOf(other).map(r => [r.state, r.rule])).toEqual([["REFUSED", "already-paired"]]);
+});
+
+test("settle re-appends a pair-offer, a pair-result and a pair-alert that a crash lost", async () => {
+  const e = await pairEnv();
+  await send(e);
+  dropLast(notifyFile(e.stateDir), 1);
+  await e.poller.tick();
+  expect(pairNotes(e, "pair-offer").length).toBe(1);
+  await send(e, KEY_B);
+  dropLast(notifyFile(e.stateDir), 2);
+  await e.poller.tick();
+  await e.poller.tick();
+  expect([pairNotes(e, "pair-result").length, pairNotes(e, "pair-alert").length]).toEqual([1, 1]);
+});
+
+function noFingerprintOutsideDm(e: PairEnv, key: string) {
+  const bare = fingerprint(key).replace(/ /g, "");
+  const outside = [
+    ...e.sent.filter(s => s.chat !== 4242).map(s => s.text), ...e.logs,
+    ...["outbox.jsonl", "inbox.jsonl", "pairing.jsonl"].map(f => (existsSync(join(e.peerDir, f)) ? readFileSync(join(e.peerDir, f), "utf8") : "")),
+  ];
+  for (const text of outside) expect(text.replace(/ /g, "")).not.toContain(bare);
+}
+
+test("the fingerprint reaches the operator's chat and nowhere else, at the offer and after a two-cards close", async () => {
+  const e = await pairEnv();
+  await send(e, KEY_A);
+  const dm = e.sent.filter(s => s.chat === 4242);
+  expect(dm.length).toBe(1);
+  expect(dm[0].text).toContain(fingerprint(KEY_A));
+  expect(dm[0].markup.inline_keyboard[0][0].callback_data).toBe(`pair:ok:example:${offersOf(e)[0].offer}`);
+  noFingerprintOutsideDm(e, KEY_A);
+  await send(e, KEY_B);
+  noFingerprintOutsideDm(e, KEY_A);
+  noFingerprintOutsideDm(e, KEY_B);
 });

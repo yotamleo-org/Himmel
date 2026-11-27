@@ -4,20 +4,22 @@
 // intent record before every Telegram call, and drains the spool that send.ts,
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
+import { hostname as osHostname } from "node:os";
 import { join } from "node:path";
 import { atomicWrite } from "../telegram/bus";
 import { CODE_VERSION, Chain, PidLockError, acquirePidLock, drainSpool, readChain, signTap, startIdentity, submitSpool, sweepResults, tapSigOk, verifyChain, writeResult, type IntentRec, type SpoolRec } from "./chain";
-import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, cardMessage, clampToSchema,loadAllowlist, loadConfig, type AllowEntry, type Config } from "./config";
+import { ConfigError, DEFAULT_BUDGETS, EXIT_CONFIG, cardMessage, clampToSchema, loadAllowlist, loadConfig, trustRefusal, type AllowEntry, type Config } from "./config";
 import { digestFile, parseAck, writeCursor, type DigestRec, type EffectRec, type JobRec } from "./digests";
 import { checkCardOutbound, checkEnvelopeOutbound, checkOutbound, refusalRecord, type OutCtx, type Outcome, type Refusal } from "./egress";
 import { OUTCOMES, buildEnvelope, encodeCanonical, type Envelope } from "./envelope";
-import { admit, admitCard, admitEnvelope, appendUnknownChat, createGateState, looksLikeCard, looksLikeEnvelope,matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerEnvRec, type PeerMsgRec } from "./gate";
+import { admit, admitCard, admitEnvelope, appendUnknownChat, createGateState, looksLikeCard, looksLikeEnvelope,matchEnvelope, noteAdmitted, noteRate, rebuildFromInbox, type GateState, type PeerCardRec, type PeerEnvRec, type PeerMsgRec } from "./gate";
 import { ENV_LINE_RE, mintId } from "./grammar";
 import { botIdFromToken, configDir, peersFile, stateDir, utcDay } from "./ids";
 import { dueJobs, isTerminal, newInJob, newOutJob, queueDepth, remaining, step, type JobEvent, type SendSpec } from "./jobstate";
 import { ReaderLedger, runReader, type Digest, type ModelRoute, type ReaderKind } from "./reader";
 import { resolveCapacity, resolveReq, resolveRes, type JobRecord } from "./resolve";
-import { currentSigningKey, publicKeyOf, sign } from "./sign";
+import { currentSigningKey, keyId, publicKeyOf, sign } from "./sign";
+import { MAX_OFFERS_PER_DAY, PAIR_OFFER_TTL_MS, offerState, offersOf, offersToday, resultOf, type CardOffer, type OfferResult, type OfferState, type PairRec } from "./pairing";
 import { PeerTelegram, RetryAfter, TelegramError } from "./telegram";
 import { MAX_AUTO_PER_HOUR, Threads, effectiveRoute, templateLine, type Action, type Route, type ThreadRec, type Transition, type WakeEvent, type WakeLabel } from "./threads";
 import { appendNotify, notifyFile, renderChainAlert, renderFallback, renderNotify, type DailyNotify, type Keyboard, type NotifyRec,type ResultNotify, type UnpairedNotify } from "./notify";
@@ -293,6 +295,7 @@ export class Poller {
       }
       for (const peer of Object.keys(this.cfg.peers)) await this.replayEffects(peer);
       await this.settleDrafts();
+      await this.settleOffers();
       await this.flush();
     });
   }
@@ -519,6 +522,76 @@ export class Poller {
     }
     await this.chain.append(this.file(r.peer, "inbox.jsonl"), r.rec);
     noteAdmitted(this.gate, r.rec);
+    await this.offerCard(r.peer, r.rec);
+  }
+
+  private pairRecs = (peer: string) => readChain(this.file(peer, "pairing.jsonl")) as unknown as PairRec[];
+
+  private notified(type: string, offer: string): boolean {
+    return (readChain(notifyFile(this.deps.stateDir)) as Record<string, any>[]).some(r => r.type === type && r.offer === offer);
+  }
+
+  private async offerNotify(o: CardOffer): Promise<void> {
+    if (!this.notified("pair-offer", o.offer)) await appendNotify(this.chain, notifyFile(this.deps.stateDir), { kind: "notify", type: "pair-offer", peer: o.peer, offer: o.offer, station: o.station, key: o.key, exp: o.exp, ts: this.now() });
+  }
+
+  private async closeNotify(o: CardOffer, res: OfferResult): Promise<void> {
+    const file = notifyFile(this.deps.stateDir);
+    if (!this.notified("pair-result", o.offer)) await appendNotify(this.chain, file, { kind: "notify", type: "pair-result", peer: o.peer, offer: o.offer, state: res.state, key: o.key, ...(res.rule ? { rule: res.rule } : {}), ts: this.now() });
+    if (res.rule === "two-cards" && !this.notified("pair-alert", o.offer)) await appendNotify(this.chain, file, { kind: "notify", type: "pair-alert", peer: o.peer, offer: o.offer, ts: this.now() });
+  }
+
+  private async closeOffer(o: CardOffer, state: OfferState, extra: { rule?: string; by?: string } = {}): Promise<void> {
+    const res: OfferResult = { kind: "offer-result", offer: o.offer, state, ...extra, ts: this.ts() };
+    await this.chain.append(this.file(o.peer, "pairing.jsonl"), res);
+    await this.closeNotify(o, res);
+  }
+
+  private hostName = () => this.deps.hostname ?? osHostname();
+
+  private async offerCard(peer: string, card: PeerCardRec): Promise<void> {
+    const recs = this.pairRecs(peer);
+    const offers = offersOf(recs);
+    const now = this.now();
+    const open = offers.filter(o => offerState(recs, o, now) === "OPEN");
+    const closedToday = (o: CardOffer, pred: (r: OfferResult) => boolean) => {
+      const r = resultOf(recs, o.offer);
+      return r !== undefined && pred(r) && utcDay(r.ts * 1000) === utcDay(now);
+    };
+    const no = (why: string) => this.log(`card-no-offer peer=${peer} key=${keyId(card.key)} why=${why}`);
+    if ((this.cfg.operatorDmChatId ?? null) === null) return no("no-dm");
+    if (this.gate.killed.has(peer)) return no("killed");
+    const rule = trustRefusal(this.cfg, peer, card.station, card.key, this.hostName(), { firstOnly: true });
+    if (rule !== null) return no(rule);
+    if (offers.some(o => closedToday(o, r => r.rule === "two-cards"))) return no("two-cards-today");
+    const other = open.find(o => o.key !== card.key);
+    if (other) {
+      await this.closeOffer(other, "REFUSED", { rule: "two-cards" });
+      return no("two-cards");
+    }
+    if (open.length) return no("already-offered");
+    if (offers.some(o => o.chat_id === card.chat_id && o.message_id === card.message_id)) return no("same-message");
+    if (offers.some(o => o.key === card.key && closedToday(o, r => r.state === "REJECTED"))) return no("rejected-today");
+    if (offersToday(recs, peer, now) >= MAX_OFFERS_PER_DAY) return no("daily-offers");
+    const offer: CardOffer = { kind: "card-offer", peer, offer: mintId(), station: card.station, key: card.key, chat_id: card.chat_id, message_id: card.message_id, ts: this.ts(), exp: now + PAIR_OFFER_TTL_MS };
+    await this.chain.append(this.file(peer, "pairing.jsonl"), offer);
+    await this.offerNotify(offer);
+  }
+
+  private async settleOffers(): Promise<void> {
+    for (const peer of Object.keys(this.cfg.peers)) {
+      const recs = this.pairRecs(peer);
+      const keys = this.cfg.peers[peer].theirs.keys ?? [];
+      for (const o of offersOf(recs)) {
+        const res = resultOf(recs, o.offer);
+        if (res) { await this.closeNotify(o, res); continue; }
+        const own = keys.find(k => k.pub === o.key);
+        if (own) await (Date.parse(own.addedAt) <= o.exp ? this.closeOffer(o, "APPROVED", { by: "terminal-or-replay" }) : this.closeOffer(o, "EXPIRED"));
+        else if (keys.length) await this.closeOffer(o, "REFUSED", { rule: "already-paired" });
+        else if (this.now() > o.exp) await this.closeOffer(o, "EXPIRED");
+        else await this.offerNotify(o);
+      }
+    }
   }
 
   private async onEnvelope(u: any): Promise<void> {
@@ -800,6 +873,7 @@ export class Poller {
       await this.fireKills();
       await this.fireDeadlines();
       await this.settleDrafts();
+      await this.settleOffers();
       await this.flush();
       for (const peer of Object.keys(this.cfg.peers)) sweepResults(this.dir(peer), 86_400_000, this.now());
       for (const peer of Object.keys(this.cfg.peers)) await this.writeDailies(peer);
