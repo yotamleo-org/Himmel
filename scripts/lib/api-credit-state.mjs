@@ -82,7 +82,6 @@ function reclaim(lock, env) {
   let held = null;
   try {
     const seen = lockId(lock);
-    if (!isCrashedLock(lockFacts(lock), env)) return false;
     held = takeGuard(`${lock}.reclaim.${seen}`, env);
     if (!held) return false;
     const f = lockFacts(lock);
