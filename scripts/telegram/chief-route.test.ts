@@ -9244,9 +9244,10 @@ const LINT_REFUSAL = "reads bytes the signer's trace lint refuses";
 const LINT_ESTIMATE = '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n';
 const lintSpecText = (o: { cite?: string; inv?: string; plan?: boolean } = {}) =>
   `---\ntickets: HIMMEL-1\n${o.plan ? "plan: ../plans/HIMMEL-1-p.md\n" : ""}---\n# D\n\nEstimate record: estimate.json\n\n## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| route | \`${o.cite ?? "scripts/telegram/chief-route.ts"}\` | route | n/a |\n\n## Invariants\n\n${o.inv ?? "none"}\n`;
-const lintShim = (mode: "log" | "exit2" = "log") => {
+const plainSpecText = (inv: string) => `---\ntickets: HIMMEL-1\nplan: ../plans/HIMMEL-1-p.md\n---\n# D\n\nEstimate record: estimate.json\n\n## Invariants\n\n${inv}\n`;
+const lintShim = (mode: "log" | "exit2" = "log", also = "") => {
   const dir = root(); const log = join(dir, "lint.log");
-  const answer = mode === "exit2" ? "; echo 'shim: lint cannot run' >&2; exit 2" : "";
+  const answer = mode === "exit2" ? "; echo 'shim: lint cannot run' >&2; exit 2" : also;
   writeFileSync(join(dir, "bash"), `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) printf '%s\\n' "$*" >> '${log}'` + answer + `;; esac\nexec '${Bun.which("bash")}' "$@"\n`);
   chmodSync(join(dir, "bash"), 0o755);
   return { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, runs: () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").length : 0 };
@@ -9338,7 +9339,7 @@ const onPath = async (path: string, run: () => Promise<void>) => {
 test("lint seal: one process remembers only a passing lint of the same spec and plan bytes", async () => {
   const { sealRound } = await import("./chief-route");
   const cleanPlan = "# P\n\n- I1: test-x.sh\n";
-  const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), cleanPlan);
+  const f = await lintTree(plainSpecText("I1. one rule."), cleanPlan);
   const v = lintReturn(f.spec, "plan", [f.plan, f.spec]);
   const shim = lintShim();
   await onPath(shim.env.PATH, async () => { await sealRound(v, f.plan); await sealRound(v, f.spec); });
@@ -9347,12 +9348,35 @@ test("lint seal: one process remembers only a passing lint of the same spec and 
   await expect(sealRound(v, f.spec), "changed plan bytes").rejects.toThrow(LINT_REFUSAL);
   await expect(sealRound(v, f.spec), "a refusal is not remembered").rejects.toThrow(LINT_REFUSAL);
   writeFileSync(f.plan, cleanPlan);
-  writeFileSync(f.spec, lintSpecText({ cite: "chief-route.ts", inv: "I1. one rule.", plan: true }));
+  writeFileSync(f.spec, plainSpecText("I1. one rule.\n- a stray line"));
   await expect(sealRound(v, f.plan), "changed spec bytes").rejects.toThrow(LINT_REFUSAL);
-  const g = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  const g = await lintTree(plainSpecText("a stray line"));
   const w = lintReturn(g.spec, "spec", [g.spec]);
   await onPath(lintShim("exit2").env.PATH, () => sealRound(w, g.spec));
   await expect(sealRound(w, g.spec), "an unavailable lint is not remembered").rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a plan swapped while the lint runs does not remember a pass for the bytes hashed before it", async () => {
+  const { sealRound } = await import("./chief-route");
+  const badPlan = "# P\n\n- I1: build it.\n";
+  const f = await lintTree(plainSpecText("I1. one rule."), badPlan);
+  const v = lintReturn(f.spec, "plan", [f.spec]);
+  const clean = join(root(), "clean-plan.md"); writeFileSync(clean, "# P\n\n- I1: test-x.sh\n");
+  await onPath(lintShim("log", `; cp '${clean}' '${f.plan}'`).env.PATH, () => sealRound(v, f.spec));
+  writeFileSync(f.plan, badPlan);
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
+});
+
+test("lint seal: a cited file removed after a passing seal is noticed by the next seal", async () => {
+  const { sealRound } = await import("./chief-route");
+  const t = specsTree();
+  expect(Bun.spawnSync(["git", "init", "-q", t.specs]).exitCode).toBe(0);
+  mkdirSync(join(t.specs, "only-here")); writeFileSync(join(t.specs, "only-here", "source.ts"), "export {};\n");
+  const f = await lintTree(lintSpecText({ cite: "only-here/source.ts" }), undefined, t.specs);
+  const v = lintReturn(f.spec, "spec", [f.spec]);
+  await sealRound(v, f.spec);
+  unlinkSync(join(t.specs, "only-here", "source.ts"));
+  await expect(sealRound(v, f.spec)).rejects.toThrow(LINT_REFUSAL);
 });
 
 test("lint seal: a spec-kind and a plan-kind closure return whose diff adds a bare-name cell are refused", async () => {

@@ -1344,12 +1344,14 @@ export async function sealRound(verdict: string, readPath: string): Promise<void
   const governing = await readFile(t.governing, "utf8");
   if (estimateLine(governing)) {
     const plan = t.kind === "plan" ? planOf(t.governing) : null;
-    const key = JSON.stringify([t.governing, sha256(Buffer.from(governing)), plan, plan === null ? null : sha256(await readFile(plan))]);
+    const keyOfBytes = async (spec: string) => JSON.stringify([t.governing, sha256(Buffer.from(spec)), plan, plan === null ? null : sha256(await readFile(plan))]);
+    const key = await keyOfBytes(governing);
     if (!lintPassed.has(key)) {
       const lint = traceLint(t.governing, plan);
       const lines = lintLines(lint);
       if (lines.length) throw new Error(`${t.v} reads bytes the signer's trace lint refuses; fix them and run the critic again for round ${kindRound(await loadLedger(t.specs, t.key), t.kind) + 1}: ${lines.join("\n")}`);
-      if ("ok" in lint && lint.ok) lintPassed.add(key);
+      const citesNothing = !governing.includes("`");
+      if ("ok" in lint && lint.ok && citesNothing && await keyOfBytes(await readFile(t.governing, "utf8")) === key) lintPassed.add(key);
     }
   }
   const bytes = await readFile(t.page); const readSha = sha256(bytes); const sum = returnSha(t.text);
