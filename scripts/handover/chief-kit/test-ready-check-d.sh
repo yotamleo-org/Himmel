@@ -183,8 +183,9 @@ p1() {
     run_bump "$2" "$files"
     contains "(11344-p1) $1: item 9 says $3" "$out" "$mark"
     git -C "$c" worktree add -q --detach "$wt" "$2"
-    (cd "$wt" && bash "$REPO_ROOT/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/main) >/dev/null 2>&1 || crc=$?
+    ck=$(cd "$wt" && bash "$REPO_ROOT/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/main 2>&1) || crc=$?
     git -C "$c" worktree remove --force "$wt"
+    contains "(11344-p1) $1: the checker gave a verdict" "$ck" "check-plugin-drift --bump-required:"
     check "(11344-p1) $1: checker rc agrees" "$crc" "$want"
 }
 

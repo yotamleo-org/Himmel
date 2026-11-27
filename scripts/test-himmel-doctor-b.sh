@@ -2116,6 +2116,32 @@ else
 fi
 rm -rf "$c79_t"
 
+c79_want_warn() {
+    out="$(c79_run)"
+    if grepq "$out" 'WARN C79-plugin-cache-drift' && grepq "$out" -F "$2"; then
+        pass "$1"
+    else
+        fail "$1 -> $(printf '%s' "$out" | grep -A1 C79)"
+    fi
+    rm -rf "$c79_t"
+}
+echo "== C79 (11344-e5): a checkout git cannot read -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+printf 'gitdir: %s/nonexistent\n' "$c79_t" > "$c79_t/repo/.git"
+c79_want_warn "(11344-e5) unreadable git checkout -> WARN cannot compare" 'cannot compare'
+
+echo "== C79 (11344-e6): a script that lost its executable bit -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/bin" "$c79_cachedir/bin"
+printf 'x\n' > "$c79_tree/bin/tool"; cp "$c79_tree/bin/tool" "$c79_cachedir/bin/tool"; chmod 755 "$c79_tree/bin/tool"
+c79_want_warn "(11344-e6) mode drift -> WARN naming the file" 'bin/tool'
+
+echo "== C79 (11344-e7): a shipped symlink the cache lacks -> WARN naming it =="
+c79_setup "$c79_main"; c79_paths
+mkdir -p "$c79_tree/agents"
+ln -s ../hooks/hooks.json "$c79_tree/agents/link.json"
+c79_want_warn "(11344-e7) missing symlink -> WARN naming it" 'agents/link.json'
+
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a

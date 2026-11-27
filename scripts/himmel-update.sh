@@ -3439,9 +3439,9 @@ EOF
 # re-enables), and a failed install after the uninstall is loud and fails the run: a plugin must never be left uninstalled silently.
 
 _remove_cache_extras() {
-    local tree="$1" cache="$2" kind rel
-    while IFS=' ' read -r kind rel; do
-        [ "$kind" = X ] && [ -n "$rel" ] || continue
+    local tree="$1" cache="$2" line rel
+    while IFS= read -r line; do
+        case "$line" in "X "?*) rel="${line#X }" ;; *) continue ;; esac
         case "/$rel/" in //*|*/../*) continue ;; esac
         [ -f "$cache/$rel" ] && [ ! -L "$cache/$rel" ] && [ ! -e "$tree/$rel" ] || continue
         rm -f -- "$cache/$rel" || echo "    could not remove $cache/$rel" >&2

@@ -835,6 +835,7 @@ drift_run() {
     log_d="$(cat "$log_drift")"
 }
 drift_same_alone() {
+    assert_contains "$1 (the refresh ran)" "plugin install p1@himmel" "$log_d"
     assert_not_contains "$1" "same@himmel" "$log_d"
 }
 
@@ -864,6 +865,13 @@ drift_put "$p1c/bin/old" gone
 drift_run
 assert_contains "(11344-d3) p1 is reinstalled" "plugin install p1@himmel" "$log_d"
 if [ ! -e "$p1c/bin/old" ] && [ "$rc_d" -eq 0 ]; then assert_pass "(11344-d3) the cache no longer has bin/old"; else assert_fail "(11344-d3) bin/old stays (rc=$rc_d) — out: $out_d"; fi
+
+echo "Test: (11344-d10) removing a space-prefixed extra never takes its ignored namesake"
+drift_new d10; drift_p1_equal
+drift_put "$p1t/.gitignore" kp.txt; drift_put "$p1c/.gitignore" kp.txt
+drift_put "$p1c/kp.txt" runtime; drift_put "$p1c/ kp.txt" extra
+drift_run
+if [ -f "$p1c/kp.txt" ] && [ ! -e "$p1c/ kp.txt" ]; then assert_pass "(11344-d10) only the space-prefixed extra is removed"; else assert_fail "(11344-d10) wrong file removed (rc=$rc_d) — out: $out_d"; fi
 
 echo "Test: (11344-d5) a gitignored runtime file is left alone"
 drift_new d5
