@@ -123,15 +123,15 @@ url_port() {
 url_port_n=""
 if [ "$QMD_INDEX_NAME" != index ]; then
   if [ -z "$unit_url" ]; then
-    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   fi
   url_port_n="$(url_port "$QMD_MCP_URL")" || {
-    echo "ensure-qmd-daemon: ERROR - QMD_MCP_URL '$QMD_MCP_URL' must name a numeric port 1-65535 for the named index '$QMD_INDEX_NAME'." >&2
+    echo "ensure-qmd-daemon: ERROR - QMD_MCP_URL '$QMD_MCP_URL' must name a numeric port 1-65535 for the named index '$QMD_INDEX_NAME'." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   }
   if [ "$url_port_n" -eq "$shared_port" ]; then
-    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port $shared_port, the shared server's; set QMD_MCP_URL to the index's own port." >&2
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port $shared_port, the shared server's; set QMD_MCP_URL to the index's own port." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   fi
 fi
@@ -150,7 +150,10 @@ unit_env_lines() {
   [ -z "$unit_url" ] || unit_env_line QMD_MCP_URL "$unit_url" || return 1
   for f in QMD_HTTP_TOKEN_FILE QMD_HTTP_AUTH_FILE; do
     [ -n "${!f:-}" ] || continue
-    case "${!f}" in /*) ;; *) echo "ensure-qmd-daemon: $f must be an absolute path to go into the boot unit" >&2; return 1 ;; esac  # t13b-ok: message text only, starts nothing
+    case "${!f}" in
+      /*) ;;
+      *) echo "ensure-qmd-daemon: $f must be an absolute path to go into the boot unit" >&2; return 1 ;;  # t13b-ok: message text only, starts nothing
+    esac
     unit_env_line "$f" "${!f}" || return 1
   done
   [ -z "${QMD_WAIT_TRIES:-}" ] || case "$QMD_WAIT_TRIES" in
@@ -640,7 +643,7 @@ fi
 body="$(probe_body)"
 if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
   if ! index_serves; then
-    echo "ensure-qmd-daemon: ERROR - $QMD_MCP_URL answers, but it is not the '$QMD_INDEX_NAME' index's server (no live $pidfile naming --index $QMD_INDEX_NAME); set QMD_MCP_URL to that index's own port." >&2
+    echo "ensure-qmd-daemon: ERROR - $QMD_MCP_URL answers, but it is not the '$QMD_INDEX_NAME' index's server (no live $pidfile naming --index $QMD_INDEX_NAME); set QMD_MCP_URL to that index's own port." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   fi
   check_ceiling

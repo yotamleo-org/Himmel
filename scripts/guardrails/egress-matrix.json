@@ -31,7 +31,7 @@
     "peer-jobs": "typed peer-bridge envelopes (slice B): signed four-line messages that jobs.ts, the poller and runner.ts build from resolved values. Every field is a closed enum, a bounded integer, a resolved commit SHA, a hex value the receiver compares or a suite path on a public repo; no free text. Each also passes the bridge's own envelope policy (schema re-check, content rules on line 3, line 4 verified as our signature)",
     "chief-tell": "the one line of text scripts/peer-bridge/tell.ts was given by a station Claude session that is not a peer desk and not peer-tainted, after the bridge content rules. tell.ts is refused when the transcript names a salus or PHI path or phi-read-mark.sh marked the session when a tool touched one; a path neither sees (one a command builds at run time) is the residual, the same deliberate-evasion class as a same-user process that writes the bridge spool directly",
     "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills",
-    "gmail": "the operator's Gmail archive as markdown, one file per email (~/Mail/gmail-md), indexed by the separate local-only qmd index `gmail` (own daemon, own token); private mail, not PHI"
+    "gmail": "the operator's Gmail archive as markdown, one file per email (~/Mail/gmail-md), indexed by the separate local-only qmd index `gmail` (own qmd server, own token); private mail, not PHI"
   },
   "providers": {
     "local-ollama": { "region": "local", "note": "zero egress; includes qmd local GGUF embeddings" },
