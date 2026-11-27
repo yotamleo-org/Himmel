@@ -19,14 +19,22 @@
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
 # merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
-# blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
-# natural order; none last), then priority, then key.
+# blocked_by link. Rank: the band, then the tier and the `priority:` line position (below), then earliest unreleased
+# fixVersion (HIMMEL.versions.tsv, natural order; none last), then priority, then key. The band (band() in the script):
+# 0 Highest/High of the earliest unreleased version, 1 the rest of that version, 2 later or versionless work, and
+# everything when there is no version list. So no Medium or later-version fresh row is listed while a ready Highest or
+# High current-version fresh row is cut below --top (with stacked_series on, a lower-band ticket can still join a
+# listed series: a join takes no slot).
 #
 # --top and the RESUME rows: the worker-less In Progress / In Review / IN CI rows (RESUME and MERGED-NOT-CLOSED) go
 # first, but at most half of --top (rounded up); the fresh rows (LOCAL, CLOUD, LOCAL?, DESIGN) follow while slots are
 # left; the RESUME rows the cap skipped (the backfill) fill what the fresh rows leave, so a listing keeps its row
-# count. The plain listing ends its rows with `# resume=<k>`, the RESUME and MERGED-NOT-CLOSED rows it printed.
-# --resume-only has no cap and no such line.
+# count. The band does not move these build RESUME rows past fresh rows. A proof row (a RESUME row that writes nothing
+# and whose only open item is a dated proof) takes none of those slots: proof rows print after them, in rank order, up
+# to half of --top (rounded up) plus every slot the build rows left empty, followed by `# proof=<printed>/<budget>`
+# (`,cut=<m>` when the budget left m out; --why names each as `# proof-cut`), and no such line when there is none.
+# The plain listing ends its rows with `# resume=<k>`, the RESUME and MERGED-NOT-CLOSED rows it printed, proof rows
+# included. --resume-only has no cap, no proof split and neither line.
 #
 # Tiers (the first that applies; tier_of() in the script): 1 the operator pool
 # head: label ps3-blocker / must-<earliest unreleased version>, or a key on the ordered `priority:` line
@@ -37,15 +45,17 @@
 # data-loss label; 4 the rest of the earliest unreleased version (so with an empty or
 # stale `priority:` line every unblocked To Do ticket of that version is still in the
 # pool); 5 later or versionless work, by the rank above. --priority-pool-only prints
-# tiers 1-4 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no worker, no open PR)
-# lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth), up to half the slots left
-# when the tier starts (rounded up); the tier's other RESUME rows follow its To Do rows, before the next tier;
+# tiers 1-4 only, walked band by band and tier by tier inside a band: per tier, the RESUME rows (In Progress /
+# In Review / IN CI, no worker, no open PR) lead that tier's To Do rows in the first band that has a To Do row,
+# filtered like To Do rows (dropped platform, residual depth), up to half the slots left when the tier starts there
+# (rounded up); the tier's other RESUME rows follow its To Do rows of that band, before the next tier; later bands
+# list To Do rows only. Proof rows of tiers 1-4 print after the walk (above);
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
-# next to --doc: a session owns until its PR merges or closes or a cloud-takeover row names it) and print none without one. It ends with `# pool=<rows>/<top>`,
+# next to --doc: a session owns until its PR merges or closes or a cloud-takeover row names it) and print none without one. It ends with `# pool=<rows>/<top>`, rows counting no proof row,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
 # that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
 # open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line (`# intake <m>: <keys>` with no open version; --dispositions prints it too, for the tick's INTAKE=); an empty
-# pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
+# pool (no build row and no proof row) prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, with their `# overlap` lines), never dispatched from here.
 #
 # Residual depth: a ticket labelled residual-depth-<n> (n >= 1) is a judge, CR or
@@ -72,7 +82,7 @@
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
 # umbrella by hand); a chief/operator step (`owed -> chief|operator|proof by YYYY-MM-DD`) prints
-# `OWED <KEY>: merged PR #n owes <who> by <date>`; proof instead lists as an executable proof RESUME row. A body with
+# `OWED <KEY>: merged PR #n owes <who> by <date>`; proof instead lists as an executable proof RESUME row (under the proof budget above). A body with
 # neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
 # merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
@@ -940,8 +950,13 @@ def tier_of(i):
         return 3
     return 4 if first_ver is not None else 5  # no version list: nothing is known to be current
 
+def band(i):
+    if first_ver is None or first_ver not in i['ver']:
+        return 2
+    return 0 if PRIO.get(i['prio'], 5) <= 1 else 1
+
 def ranked(i):
-    return (tier_of(i), prio_order.get(i['key'], 10**6)) + rank(i)
+    return (band(i), tier_of(i), prio_order.get(i['key'], 10**6)) + rank(i)
 
 def load_platform_re():
     # The one pattern file gen-briefs.py reads too: its first non-blank, non-# line.
@@ -2457,6 +2472,15 @@ def classify(batch):
     return cls
 
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+
+def proof_row(i):
+    steps = i.get('owed_next')
+    return not i['merged'] and bool(i.get('nowrite')) and bool(i.get('proof_only') or (steps and all(s['actor'] == 'proof' for s in steps)))
+
+proof_rows = []
+if not resume_only:
+    proof_rows = sorted((i for i in resume if proof_row(i)), key=ranked)
+    resume = [i for i in resume if not proof_row(i)]
 if rate_limited:
     print('# WARN: GitHub rate limit: gh answered "%s"; the reads it refused are unknown, not empty, so rows may be missing' % rate_limited[0])
 for line in unknown_notes:
@@ -2661,6 +2685,8 @@ def drop_summary():
             k = i['key']
             if k in lane_of:
                 d = 'listed ' + lane_of[k]
+            elif k in proof_cut:
+                d = 'proof-cut past the proof budget %d' % proof_cut[k]
             elif k in dropped:
                 d = dropped[k]
             elif i['type'] in ('Epic', 'Sub-task'):
@@ -2704,13 +2730,33 @@ def emit_resume(rows, cap=None):
             continue
         say_overlaps(i, against_listed=not resume_only)
         picked.extend((f, i['key']) for f in i['files'])
-        emitted.append(i)
-        lane_of[i['key']] = 'RESUME'
-        say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])
-                       + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
-                       + ([proof_field(i)] if i.get('nowrite') else [])))
+        list_resume(i)
         n += 1
     return []
+
+def list_resume(i):
+    emitted.append(i)
+    lane_of[i['key']] = 'RESUME'
+    say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])
+                  + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
+                  + ([proof_field(i)] if i.get('nowrite') else [])))
+
+proof_cut = {}
+
+def emit_proof(built_rows):
+    rows = [i for i in proof_rows if not pool_only or tier_of(i) <= 4]
+    if not rows:
+        return 0
+    budget = half_up(top) + (top - built_rows)
+    shown, cut = rows[:budget], rows[budget:]
+    for i in shown:
+        list_resume(i)
+    say('# proof=%d/%d%s' % (len(shown), budget, (',cut=%d' % len(cut)) if cut else ''))
+    for i in cut:
+        proof_cut[i['key']] = budget
+        if os.environ.get('ND_WHY') == '1':
+            say('# proof-cut %s past the proof budget %d' % (i['key'], budget))
+    return len(shown)
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
 cls_cache = {}
@@ -2815,24 +2861,30 @@ def emit_free(rows):
             break
 
 if pool_only:
-    # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
-    for t in (1, 2, 3, 4):
-        tier_resume = [i for i in resume if tier_of(i) == t]
-        if resume_only:
-            emit_resume(tier_resume)
-            continue
-        skipped = emit_resume(tier_resume, half_up(top - n))
-        held_back[:] = skipped
-        emit_free([i for i in free if tier_of(i) == t])
-        emit_resume(skipped)
-        held_back[:] = []
+    if resume_only:
+        for t in (1, 2, 3, 4):
+            emit_resume([i for i in resume if tier_of(i) == t])
+    else:
+        first_fresh_band = min((band(i) for i in free), default=0)
+        for b in (0, 1, 2):
+            for t in (1, 2, 3, 4):
+                tier_free = [i for i in free if band(i) == b and tier_of(i) == t]
+                if b != first_fresh_band:
+                    emit_free(tier_free)
+                    continue
+                skipped = emit_resume([i for i in resume if tier_of(i) == t], half_up(top - n))
+                held_back[:] = skipped
+                emit_free(tier_free)
+                emit_resume(skipped)
+                held_back[:] = []
+    proofs = emit_proof(n)
     flush_rows()
     if not resume_only:
         emit_stackable()
         intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
         print_intake(intake)
-    if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
+    if n == 0 and not proofs and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
         for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not named_unknown][:top]:
@@ -2851,6 +2903,7 @@ held_back[:] = skipped
 emit_free(free)
 emit_resume(skipped)
 held_back[:] = []
+emit_proof(n)
 flush_rows()
 print('# resume=%d' % sum(1 for v in lane_of.values() if v in ('RESUME', 'MERGED-NOT-CLOSED')))
 emit_stackable()
