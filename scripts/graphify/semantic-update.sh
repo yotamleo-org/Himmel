@@ -108,7 +108,7 @@
 # run it once on a corpus whose graph already carries a semantic pass, or the
 # first run treats every file as changed.
 #
-# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure, a claude-api run while the station's graph config reads unreadable (nothing copied, no model call; --seed-manifest and --dry-run are exempt);
+# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure, a leftover .graph.pre-ast.json (nothing merged), a claude-api run while the station's graph config reads unreadable (nothing copied, no model call; --seed-manifest and --dry-run are exempt);
 # 3 bank at/over threshold, or a refusal only the new flags make (a waiting batch, a verdict other than PROCEED),
 # nothing touched, or over-cap (a batch: nothing submitted; the synchronous path: the chunks sent before the cap
 # merged, the refused files unstamped); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
@@ -315,6 +315,13 @@ acquire_promote_lock() {
   date -u +%s > "$PROMOTE_LOCK/acquired"
 }
 
+pre_ast_leftover() {
+  [ -e "$OUT_DIR/.graph.pre-ast.json" ] || return 1
+  local env_part=""
+  if [ -n "${GRAPHIFY_OUT:-}" ]; then env_part="GRAPHIFY_OUT='$GRAPHIFY_OUT' "; fi
+  echo "semantic-update: REFUSING to merge: $OUT_DIR/.graph.pre-ast.json is left by a code-graph rebuild that did not finish, so graph.json may lack facts -- graph.json untouched. Recover: ${env_part}bash '$HERE/ast-update.sh' '$CORPUS_ROOT' (the next AST run restores it), then rerun" >&2
+}
+
 if [ "$SEED" -eq 1 ]; then
   [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, not stamping the manifest"; RESULT_WORD=no-op; exit 0; }
   acquire_promote_lock
@@ -403,6 +410,7 @@ acquire_promote_lock
 RESUME=0
 if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi
 plan_or_noop
+if pre_ast_leftover; then RESULT_WORD=corpus-failed; exit 2; fi
 
 TOKENS_IN=0 TOKENS_OUT=0 FAILED_CHUNKS="" START="$(date +%s)"
 # Summed verified cost of the lane calls so far (0 off the claude-api path, which never writes the file).
@@ -799,6 +807,11 @@ PY
   done
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
+fi
+
+if pre_ast_leftover; then
+  "${MERGE[@]}" failrow --name "$NAME" --out "$OUT_DIR" --backend "$BACKEND" --cost-usd "$(spent_usd)" --rc 2 || true
+  RESULT_WORD=corpus-failed; exit 2
 fi
 
 # A failed or refused file's cache entry is evicted from both copies, or the cp-back below would restore it.

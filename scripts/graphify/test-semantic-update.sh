@@ -142,6 +142,7 @@ if [ -n "\${GRAPHIFY_STUB_REFUSEDLOG:-}" ]; then
   # FIXTURE: the chunk-failed line of the 10-23 14:35 cadence run (graphmap-publish-himmel.log.prev), verbatim
   echo '[graphify] chunk 2/14 failed: claude -p exited 2: claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})'
 fi
+[ -z "\${GRAPHIFY_STUB_SNAPSHOT:-}" ] || : > "\$GRAPHIFY_STUB_SNAPSHOT"
 [ -z "\${GRAPHIFY_STUB_RC:-}" ] || exit "\$GRAPHIFY_STUB_RC"
 # GRAPHIFY_STUB_CHUNKFAIL: the two lines graphify printed (verbatim) when 8 of 9 chunks died under the
 # 0.25 USD per-call cap (himmel batch 1, 2026-10-16); the run still wrote a graph and exited 0.
@@ -1919,6 +1920,37 @@ out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
 python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};json.dump(m,open(p,"w"))' "$C88/semantic-manifest.json"
 out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T88 a stamped file is no longer held" || fail "T88 stamped (rc=$rc): $out"
+
+echo "T95: a killed AST rebuild's leftover .graph.pre-ast.json -> the refresh refuses, graph.json byte-identical"
+C95="$WS/c95"; new_corpus "$C95"; : > "$WS/calls.log"
+cp "$C95/graphify-out/graph.json" "$C95/graphify-out/.graph.pre-ast.json"
+python3 - "$C95/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+g["nodes"] = [n for n in g["nodes"] if n["id"] != "stale_a"]; g["links"] = []
+json.dump(g, open(sys.argv[1], "w"))
+PY
+cp "$C95/graphify-out/graph.json" "$WS/c95.orig"
+out=$(run --name t95 --corpus-root "$C95" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 2 ] && cmp -s "$WS/c95.orig" "$C95/graphify-out/graph.json" && [ ! -e "$C95/graphify-out/semantic-manifest.json" ] \
+  && pass "T95 refused, graph.json byte-identical" || fail "T95 (rc=$rc) ids: $(ids "$C95") :: $out"
+grep -qF "$C95/graphify-out/.graph.pre-ast.json" <<<"$out" && grep -qF "ast-update.sh" <<<"$out" \
+  && pass "T95 names the snapshot and the recovery command" || fail "T95 message: $out"
+[ ! -s "$WS/calls.log" ] && [ ! -e "$C95/graphify-out/.promote.lock" ] \
+  && pass "T95 refused before the bank and graphify, lock released" || fail "T95 calls: $(cat "$WS/calls.log")"
+
+echo "T95b: negative control: with the snapshot gone the same refresh merges"
+rm -f "$C95/graphify-out/.graph.pre-ast.json"
+out=$(run --name t95 --corpus-root "$C95" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [ "$(ids "$C95")" = "code_a head_a.md sem_a.md_alpha sem_b.md_beta sem_sub_c.md_gamma" ] \
+  && pass "T95b merged as before" || fail "T95b (rc=$rc) ids: $(ids "$C95") :: $out"
+
+echo "T95c: a snapshot that appears during the extraction refuses the merge"
+C95C="$WS/c95c"; new_corpus "$C95C"; cp "$C95C/graphify-out/graph.json" "$WS/c95c.orig"
+out=$(GRAPHIFY_STUB_SNAPSHOT="$C95C/graphify-out/.graph.pre-ast.json" run --name t95c --corpus-root "$C95C" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 2 ] && cmp -s "$WS/c95c.orig" "$C95C/graphify-out/graph.json" && grep -qF ".graph.pre-ast.json" <<<"$out" \
+  && [ "$(lastrun "$C95C" extract_rc)" = 2 ] \
+  && pass "T95c refused before the merge, the billed run left its row" || fail "T95c (rc=$rc) ids: $(ids "$C95C") :: $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
