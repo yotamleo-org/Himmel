@@ -1329,6 +1329,8 @@ export async function refuseRoundPastCap(verdict: string, readPath: string): Pro
   if (t) await admit(t, await loadLedger(t.specs, t.key));
 }
 
+const lintPassed = new Set<string>();
+
 function lintLines(lint: Lint): string[] {
   if ("unavailable" in lint) { console.error(`NOTE: trace lint unavailable (${lint.unavailable}); not checked`); return []; }
   return lint.ok ? [] : lint.lines;
@@ -1339,9 +1341,16 @@ function lintLines(lint: Lint): string[] {
 export async function sealRound(verdict: string, readPath: string): Promise<void> {
   const t = await sealTarget(verdict, readPath);
   if (!t) return;
-  if (estimateLine(await readFile(t.governing, "utf8"))) {
-    const lines = lintLines(traceLint(t.governing, t.kind === "plan" ? planOf(t.governing) : null));
-    if (lines.length) throw new Error(`${t.v} reads bytes the signer's trace lint refuses; fix them and run the critic again for round ${kindRound(await loadLedger(t.specs, t.key), t.kind) + 1}: ${lines.join("\n")}`);
+  const governing = await readFile(t.governing, "utf8");
+  if (estimateLine(governing)) {
+    const plan = t.kind === "plan" ? planOf(t.governing) : null;
+    const key = JSON.stringify([t.governing, sha256(Buffer.from(governing)), plan, plan === null ? null : sha256(await readFile(plan))]);
+    if (!lintPassed.has(key)) {
+      const lint = traceLint(t.governing, plan);
+      const lines = lintLines(lint);
+      if (lines.length) throw new Error(`${t.v} reads bytes the signer's trace lint refuses; fix them and run the critic again for round ${kindRound(await loadLedger(t.specs, t.key), t.kind) + 1}: ${lines.join("\n")}`);
+      if ("ok" in lint && lint.ok) lintPassed.add(key);
+    }
   }
   const bytes = await readFile(t.page); const readSha = sha256(bytes); const sum = returnSha(t.text);
   await withLedgerLock(t.specs, t.key, async () => {

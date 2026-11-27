@@ -1,4 +1,4 @@
-import { expect, test, spyOn, setDefaultTimeout } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename, resolve } from "node:path";
@@ -12,7 +12,6 @@ import { consoleInboxPath, foldLine, renderMarkdownHtml, splitParts, type Consol
 // Every test runs against a scratch bridge root and a fake reply
 // seam, never the real ~/.claude/handover/bridge, never Telegram.
 const root = () => mkdtempSync(join(tmpdir(), "chief-route-"));
-setDefaultTimeout(60_000);
 const NAME = "HIMMEL-nextleg-2026-09-21V-chief";
 
 test("judge: lockdown blocks already-pending work at the real agent boundary", async () => {
@@ -9329,6 +9328,31 @@ test("lint seal: a lint-clean plan return seals the plan, the spec and the estim
   const reads = [f.plan, f.spec, f.estimate]; const v = lintReturn(f.spec, "plan", reads);
   for (const read of reads) expect(await sealRead(v, read), basename(read)).toEqual({ code: 0, err: "" });
   expect(ledgerRows(f.specs, "HIMMEL-1").map(r => r.row)).toEqual(["round", "seal", "seal"]);
+});
+
+const onPath = async (path: string, run: () => Promise<void>) => {
+  const prior = process.env.PATH; process.env.PATH = path;
+  try { await run(); } finally { process.env.PATH = prior; }
+};
+
+test("lint seal: one process remembers only a passing lint of the same spec and plan bytes", async () => {
+  const { sealRound } = await import("./chief-route");
+  const cleanPlan = "# P\n\n- I1: test-x.sh\n";
+  const f = await lintTree(lintSpecText({ inv: "I1. one rule.", plan: true }), cleanPlan);
+  const v = lintReturn(f.spec, "plan", [f.plan, f.spec]);
+  const shim = lintShim();
+  await onPath(shim.env.PATH, async () => { await sealRound(v, f.plan); await sealRound(v, f.spec); });
+  expect(shim.runs(), "a pass on the same bytes is linted once").toBe(1);
+  writeFileSync(f.plan, "# P\n\n- I1: build it.\n");
+  await expect(sealRound(v, f.spec), "changed plan bytes").rejects.toThrow(LINT_REFUSAL);
+  await expect(sealRound(v, f.spec), "a refusal is not remembered").rejects.toThrow(LINT_REFUSAL);
+  writeFileSync(f.plan, cleanPlan);
+  writeFileSync(f.spec, lintSpecText({ cite: "chief-route.ts", inv: "I1. one rule.", plan: true }));
+  await expect(sealRound(v, f.plan), "changed spec bytes").rejects.toThrow(LINT_REFUSAL);
+  const g = await lintTree(lintSpecText({ cite: "chief-route.ts" }));
+  const w = lintReturn(g.spec, "spec", [g.spec]);
+  await onPath(lintShim("exit2").env.PATH, () => sealRound(w, g.spec));
+  await expect(sealRound(w, g.spec), "an unavailable lint is not remembered").rejects.toThrow(LINT_REFUSAL);
 });
 
 test("lint seal: a spec-kind and a plan-kind closure return whose diff adds a bare-name cell are refused", async () => {
