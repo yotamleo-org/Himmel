@@ -319,7 +319,7 @@ _lr_json() {
 _lr_phase() {
     case "$1" in
         brief-lint|chief-mismatch|denial-unacked|handover-root|unguarded-checkout|worktree-missing) echo brief-validation ;;
-        bank-exhausted|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
+        bank-exhausted|fleet-admission|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
         bus-register|bus-name-too-long) echo bus-registration ;;
         headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal|start-signal) echo handoff ;;
         manifest) echo manifest ;;
@@ -3249,10 +3249,13 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # then appended to the log as before.
     _pf_err="$(mktemp "${TMPDIR:-/tmp}/headed-arm-worker-pf.XXXXXX" 2>/dev/null)" || _pf_err=""  # swallow-ok: without it the stderr goes to the log and a duplicate reads as the cap, as before
     preflight_token="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"${_pf_err:-$LOG}")"
-    _pf_dup=0
+    _pf_dup=0 _pf_why=""
     if [ -n "$_pf_err" ]; then
         cat "$_pf_err" >> "$LOG" 2>/dev/null  # swallow-ok: a log that cannot be appended to is not a reason to stop the launch
         grep -q 'refusing as a duplicate declared launch' "$_pf_err" 2>/dev/null && _pf_dup=1
+        if ! grep -Eq 'at/over (its own )?cap .*— skipping worker=' "$_pf_err" 2>/dev/null; then
+            _pf_why="$(grep -E '^fleet-runtime: fleet-paused:|^bank-preflight: .*(refusing|fleet-paused|could not acquire)' "$_pf_err" | awk '{ printf "%s%s", sep, $0; sep = "; " }')"
+        fi
         rm -f "$_pf_err"
     fi
     if [ "$preflight_token" = SKIPPED-FLEET ]; then
@@ -3268,6 +3271,12 @@ if [ -f "$BANK_PREFLIGHT" ]; then
             # not the fleet cap - a slot is already held under this worker's name (a launch still arming, or an
             # older refused one that left it); the preflight line above says who holds it and when it lapses.
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - a fleet reservation for this worker already exists (the fleet has room; the preflight line above names the holder and when it lapses)" >> "$LOG"
+        elif [ -n "$_pf_why" ]; then
+            case "$_pf_why" in
+                *fleet-paused*) _launch_refusal_note fleet-paused "$_pf_why" ;;
+                *) _launch_refusal_note fleet-admission "$_pf_why" ;;
+            esac
+            echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet admission refused, not the fleet cap: $_pf_why" >> "$LOG"
         else
             _launch_refusal_note fleet-cap
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet-size cap reached (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >> "$LOG"

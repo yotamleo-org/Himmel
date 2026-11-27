@@ -1121,7 +1121,11 @@ def run(args):
                 raise Refused('reservation worker or root conflict')
             if value['mode'] != 'active' or value['generation'] != record['control_generation']:
                 raise Refused('fleet-paused or reservation generation changed')
-            if (slots_root() / '.admit/pid').read_text().strip() != str(os.getppid()):
+            try:
+                holder = (slots_root() / '.admit/pid').read_text().strip()
+            except FileNotFoundError:
+                holder = None
+            if holder not in (None, str(os.getppid())):
                 raise Refused('reservation admission lock is not held by preflight')
             publish(slot / 'managed.json', {'attempt_id': args.attempt_id, 'owner': owner})
             record['reservation'] = {'path': str(slot), 'owner': owner}

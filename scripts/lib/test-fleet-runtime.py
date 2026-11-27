@@ -143,6 +143,39 @@ class Runtime(unittest.TestCase):
         self.call('runtime', 'stamp', '--slot', slot, '--attempt-id', 'one', '--pid', os.getpid(), ok=False)
         self.assertFalse((slot / 'managed.json').exists())
 
+    def stamp_after(self, change):
+        """A real managed preflight whose admission lock is changed by `change` after the claim and before stamp reads its pid."""
+        self.active()
+        self.rt('begin')
+        tools = self.bucket / 'stamp-tools'
+        tools.mkdir()
+        shim = tools / 'python3'
+        shim.write_text('#!/bin/sh\nif [ "$3" = stamp ]; then touch "$HOME/stamp-raced"; %s; fi\nexec %s "$@"\n'
+                        % (change, shlex.quote(shutil.which('python3'))))
+        shim.chmod(0o755)
+        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one', PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        p = self.entry('scripts/lib/usage-preflight.sh', env=env)
+        self.assertTrue((self.bucket / 'stamp-raced').exists(), p.stderr)
+        return p
+
+    def test_a_lock_released_before_the_stamp_reads_it_is_not_fleet_paused(self):
+        p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+        self.assertIn(p.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), p.stderr)
+        self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').exists(), p.stderr)
+
+    def test_a_lock_held_by_another_pid_still_refuses_the_stamp(self):
+        p = self.stamp_after('echo 1 > "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('reservation admission lock is not held by preflight', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_pause_before_the_stamp_still_refuses_with_the_lock_released(self):
+        p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"; bash %s control set %s --mode paused --expect-gen 2 >/dev/null'
+                             % (shlex.quote(str(WRITER)), shlex.quote(str(self.m))))
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('fleet-paused', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
     def test_missing_locator_is_derived_and_conflicting_locator_refuses(self):
         self.call('runtime', 'check', '--doc', self.doc, ok=False)
         self.active()
