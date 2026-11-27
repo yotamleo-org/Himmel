@@ -58,14 +58,6 @@
 # forced run walks the whole corpus, and graphify never AST-caches JS/TS
 # (extract.py _JS_CACHE_BYPASS_SUFFIXES), which is ~1,300 re-extractions on
 # himmel. Without it only the files that differ from the manifest are extracted.
-# An unforced run keeps graphify's node-count shrink guard: a refusal exits
-# graphify 1 and this script 5 (the cadence alerts), and the next forced run
-# clears it.
-# $OUT_DIR/.ast-forced-at holds the start time of the last SUCCESSFUL forced
-# run; a missing, unreadable or >= 24 h old stamp forces.
-#
-# PRIORITY: graphify runs at nice 15, idle I/O class where ionice exists, and
-# with at most 8 extraction workers (a smaller GRAPHIFY_MAX_WORKERS is kept).
 #
 # Usage: ast-update.sh <corpus-root>
 #
