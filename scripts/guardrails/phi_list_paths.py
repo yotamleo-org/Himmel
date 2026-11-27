@@ -18,19 +18,22 @@ def phi_dirs(env=os.environ):
     return dirs
 
 
+def _lstat_says_missing(path):
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
 def phi_dir_provable(path):
     """os.path.exists is not used: it is False on EACCES, so a locked dir would
     read as "no list here".
     """
     d = path
-    while True:
-        try:
-            os.lstat(d)
-            break
-        except FileNotFoundError:
-            pass
-        except OSError:
-            break
+    while _lstat_says_missing(d):
         if d == "/":
             return True
         if d == ".":
