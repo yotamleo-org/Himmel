@@ -163,6 +163,7 @@ lacks "a Codex build lane gets no ceiling text" "$out" "$SECRET"
 lacks "a Codex build lane gets no trigger text" "$out" "a glob test fails"
 out=$(under codex -u CLAUDECODE CODEX_THREAD_ID=t1 -- -- a.sh)
 has "a Codex build lane reads the rows for one touched file" "$out" "$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')"
+lacks "a Codex build lane gets no row of an untouched file" "$out" "C-0002"
 out=$(under other -u CLAUDECODE CODEX_THREAD_ID=t1 -- "${range[@]}")
 has "CODEX_THREAD_ID with no codex ancestor is withheld" "$out" "CEILINGS: withheld (non-Claude session: CLAUDECODE is not 1)"
 lacks "CODEX_THREAD_ID with no codex ancestor shows no row" "$out" "C-0001"

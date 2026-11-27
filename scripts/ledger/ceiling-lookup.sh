@@ -18,8 +18,7 @@
 #
 # Row text shows only in a Claude session (scripts/lib/session-lane.sh
 # session_lane_claude_only), checked before the ledger is read; a Codex build
-# lane (CODEX_THREAD_ID its only lane signal, codex the nearest agent in the
-# process chain) gets the --ids lines instead of the withheld line. --ids prints
+# lane gets the --ids lines instead of the withheld line. --ids prints
 # the same header and then `<id>\t<file>\t<anchor>\t<ticket>` lines with no
 # ceiling, trigger or note text, so it skips that gate and lists every open row.
 # Ledger path and row state: ledger-lib.sh.
