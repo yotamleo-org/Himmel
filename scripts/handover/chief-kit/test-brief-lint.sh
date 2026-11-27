@@ -355,8 +355,10 @@ fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=*' -- "$tmp/core_gpt.md"
 fb_gpt6 && ok "8x4b only malformed entries fall back to any prefix and nothing is globbed" || bad "8x4b rc=$rc: $err"
 fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA' -- "$tmp/core_gpt.md"
 fb_gpt6 && ok "8x4c a space-separated list is malformed and falls back to any prefix" || bad "8x4c rc=$rc: $err"
-fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA,QQQ' -- "$tmp/core_gpt.md"
-[ "$rc" -eq 0 ] && ok "8x4d a malformed entry is dropped and a valid one beside it is kept" || bad "8x4d rc=$rc: $err"
+mk core_mixed '# HIMMEL-9499 + QQQ-9999 — adopt the GPT-6.2 models' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA,QQQ' -- "$tmp/core_mixed.md"
+{ [ "$rc" -eq 3 ] && grep -Fq 'core brief QQQ-9999 is not in the Jira mirror' <<< "$err" && ! grep -Eq 'core brief (HIMMEL-9499|GPT-6) ' <<< "$err"; } \
+    && ok "8x4d a malformed entry is dropped and only the valid one beside it is read" || bad "8x4d rc=$rc: $err"
 fb_lint -u JIRA_PROJECTS JIRA_PROJECT_KEY=HIMMEL -- "$tmp/core_gpt.md"
 [ "$rc" -eq 0 ] && ok "8x5 the default project alone is a configured prefix" || bad "8x5 rc=$rc: $err"
 fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS= himmel , ' -- "$tmp/core_gpt.md"
