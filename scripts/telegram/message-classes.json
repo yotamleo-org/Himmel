@@ -4,6 +4,7 @@
     {
       "kind": "merge-blocked",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/lib/merge-block-alert.sh",
       "pin": "@${short}: ${rule}\" merge-blocked",
       "sample": "Merge refused: PR 4882 in octo/demo. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants"
@@ -11,6 +12,7 @@
     {
       "kind": "token-in-output",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/hooks/detect-token-in-output.sh",
       "pin": "_mba_send \"$chat\" \"$msg\" token-in-output",
       "sample": "A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token"
@@ -18,6 +20,7 @@
     {
       "kind": "config-audit",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/lib/config-audit.sh",
       "pin": "reply --kind config-audit \"$chat\" \"$text\"",
       "sample": "A session changed .env: JIRA_API_TOKEN. Blocks: nothing. Do: check it was you, else restore the file from its backup"
@@ -25,6 +28,7 @@
     {
       "kind": "hold-ask-operator",
       "class": "escalate",
+      "group": "asks",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "pin": "*) kind=hold-ask-operator ;;",
       "sample": "A worker on a ticket needs a settings or CI file: .github/workflows/ci.yml. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
@@ -32,6 +36,7 @@
     {
       "kind": "hold-ask-stuck",
       "class": "escalate",
+      "group": "asks",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "pin": "\"$end\" hold-ask-stuck",
       "sample": "A file ask waited 30 min: a worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
@@ -39,6 +44,7 @@
     {
       "kind": "denial-stuck",
       "class": "escalate",
+      "group": "asks",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "pin": "\"$end\" denial-stuck",
       "sample": "A worker N4992b has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: its ticket. Do: open the session in Remote Control, or run ack-denial.sh with the label"
@@ -46,13 +52,15 @@
     {
       "kind": "monitor-chat-down",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/telegram/poller.ts",
-      "pin": "replyViaOutbox(root, chat, monitorChatDownText(",
+      "pin": "kindChat(\"monitor-chat-down\"",
       "sample": "The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: check the two monitoring lines in the bridge env file and that the monitoring bot is in its group, then restart the bridge"
     },
     {
       "kind": "recover-failed",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/station-ops/recover.sh",
       "pin": "reply --kind \"$kind\" \"$chat\" \"$status\"",
       "sample": "Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service"
@@ -60,6 +68,7 @@
     {
       "kind": "chief-reply",
       "class": "escalate",
+      "group": "asks",
       "sender": "docs/handover/running-a-chief.md",
       "cap": "none"
     },
@@ -119,6 +128,7 @@
     {
       "kind": "afk-grant-expired",
       "class": "escalate",
+      "group": "status",
       "sender": "scripts/lib/afk-sudo-request",
       "pin": "nothing ran\" afk-grant-expired",
       "sample": "An AFK grant ask expired unanswered: a worker's blocked command did not run. Blocks: that worker. Do: answer its next ask in time, or tell its chief to take another route"
@@ -579,6 +589,7 @@
     {
       "kind": "cadence:security-audit",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/security/security-audit-cadence.sh",
       "pin": "'fail', 'security-audit'",
       "sample": "security-audit: 2 new high or critical findings. Cause: new-high-critical findings in the dependency audit. Blocks: nothing yet. Do: read the audit log and decide which finding to fix"
@@ -586,6 +597,7 @@
     {
       "kind": "cadence:snyk-scan",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/security/snyk-scan-cadence.sh",
       "pin": "fail snyk-scan",
       "sample": "snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix"
@@ -593,6 +605,7 @@
     {
       "kind": "cadence:graph-key-*",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/graphify/semantic-update.sh",
       "pin": "fail \"graph-key-$1\"",
       "sample": "graph-key-A: account A API key rejected. Cause: HTTP 401 or 403 from the provider. Blocks: the semantic graph update for that account. Do: rotate that account's key file, or remove the account from the route"
@@ -600,12 +613,14 @@
     {
       "kind": "bypass-ask",
       "class": "escalate",
+      "group": "asks",
       "sender": "scripts/station-ops/bypass-launchd.sh",
       "sample": "A chief asked to launch a worker with a bypass: it wants settings access for one ticket. Blocks: that launch. Do: reply go 4821 to launch it, or no 4821 to refuse; the ask expires in 6 h"
     },
     {
       "kind": "bypass-failed",
       "class": "escalate",
+      "group": "alerts",
       "sender": "scripts/station-ops/bypass-launchd.sh",
       "sample": "A bypass launch you approved failed (rc 1): the worker did not start. Blocks: that worker. Do: read the launch log in the bypass queue, then ask the chief to relaunch it"
     },
@@ -629,6 +644,7 @@
     {
       "kind": "version-approval",
       "class": "escalate",
+      "group": "asks",
       "sender": "scripts/handover/chief-kit/version-approval-alert.sh",
       "pin": "_mba_send \"$chat\" \"$text\" version-approval",
       "sample": "An out-of-version approval was signed for a ticket in the current version, for 14 days; 3 approvals are open. Blocks: nothing. Do: check you gave this approval, else revoke it"
@@ -822,6 +838,45 @@
         "to": "chief",
         "reason": "the line reports a symptom (a Grafana rule, a rate), not one fault a verb can fix"
       }
+    },
+    {
+      "kind": "chief-status",
+      "class": "escalate",
+      "group": "status",
+      "sender": "docs/handover/running-a-chief.md",
+      "cap": "none"
+    },
+    {
+      "kind": "spec-cc",
+      "class": "escalate",
+      "group": "asks",
+      "sender": "scripts/handover/chief-kit/spec-cc.sh",
+      "pin": "_mba_send \"$chat\" \"$text\" spec-cc",
+      "sample": "Copy, no action needed: the chief signed a ticket spec under your standing approval; no page sent: no page sealed at its current bytes"
+    },
+    {
+      "kind": "spec-signer",
+      "class": "escalate",
+      "group": "asks",
+      "sender": "scripts/handover/chief-kit/spec-signer-alert.sh",
+      "pin": "_mba_send \"$chat\" \"$text\" spec-signer",
+      "sample": "\"the chief may sign these\" - spec signer: the station default now signed by the chief, decision 12"
+    },
+    {
+      "kind": "bridge-dispatch-failed",
+      "class": "escalate",
+      "group": "alerts",
+      "sender": "scripts/telegram/poller.ts",
+      "pin": "kindChat(\"bridge-dispatch-failed\"",
+      "sample": "The bridge failed every dispatch for one session 5 times and keeps retrying. Blocks: that chat's replies. Do: check the poller log, then restart the bridge"
+    },
+    {
+      "kind": "chief-heartbeat-stale",
+      "class": "escalate",
+      "group": "alerts",
+      "sender": "scripts/telegram/poller.ts",
+      "pin": "kindChat(\"chief-heartbeat-stale\"",
+      "sample": "A chief's wait heartbeat has been stale for 900s while its session runs. Blocks: that chief's wakes. Do: check the chief session"
     }
   ]
 }

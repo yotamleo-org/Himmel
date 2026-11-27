@@ -202,6 +202,100 @@ if want("docs"):
         if not re.search(r"^\|\s*`%s`\s*\|\s*%s\s*\|" % (re.escape(r["kind"]), re.escape(r["class"])), text, re.M):
             err("docs", "%s has no table row with class %s in the doc" % (r["kind"], r["class"]))
 
+GROUPS = ["asks", "alerts", "status"]
+if want("groups"):
+    for r in rows:
+        if r["class"] == "escalate":
+            if r.get("group") not in GROUPS:
+                err("groups", "%s has no group (one of %s)" % (r["kind"], ", ".join(GROUPS)))
+        elif "group" in r:
+            err("groups", "%s is %s and must carry no group" % (r["kind"], r["class"]))
+
+VARIABLE_SITES = {
+    "scripts/handover/chief-kit/chief-wait.sh": ["hold-ask-operator", "hold-ask-stuck", "denial-stuck", "denial-page"],
+    "scripts/lib/afk-sudo-request": ["afk-grant-expired", "afk-grant-approved", "afk-grant-denied"],
+    "scripts/lib/merge-block-alert.sh": [],
+    "scripts/luna/vault-stall-alert.sh": ["cadence:vault-stall", "cadence:vault-stall-repair", "failure-review", "cache-health"],
+    "scripts/station-ops/recover.sh": ["recover-failed", "recover-ok"],
+    "scripts/station-ops/bypass-launchd.sh": ["bypass-ask", "bypass-failed", "bypass-result"],
+    "scripts/telegram/chief-route.ts": [],
+}
+SHELL_WORD = re.compile(r"""\s*((?:"(?:\\.|[^"\\])*"|'[^']*'|[^\s;|&()<>"'`]+)+)(?![<>])""")
+ROUTE_SH = re.compile(r"""chief-route\.ts["']?\s+(?:reply|receipt)\b(.*)""")
+SH_KIND = re.compile(r"""--kind[ =]+("[^"]*"|'[^']*'|[^\s;|&()<>"'`}]+)""")
+PY_LIST = re.compile(r"\[[^\[\]]*\]")
+PY_KIND = re.compile(r"""["']--kind["']\s*,\s*([^,\]]+)""")
+TS_CALL = re.compile(r"""(?<![A-Za-z0-9_.])(function\s+)?kindChat\(\s*([^,)]+)""")
+
+
+def literal(word):
+    bare = word[1:-1] if len(word) > 1 and word[0] == word[-1] and word[0] in "\"'" else word
+    return bare if re.fullmatch(r"[a-z0-9][a-zA-Z0-9:._-]*", bare) else None
+
+
+def shell_kinds(text):
+    for line in text.split("\n"):
+        for m in re.finditer(r"(?<![A-Za-z0-9_])_mba_send(?=\s)", line):
+            pos, words = m.end(), []
+            while len(words) < 3:
+                w = SHELL_WORD.match(line, pos)
+                if not w:
+                    break
+                words.append(w.group(1))
+                pos = w.end()
+            if len(words) == 3:
+                yield words[2]
+        r = ROUTE_SH.search(line)
+        k = SH_KIND.search(r.group(1)) if r else None
+        if k:
+            yield k.group(1)
+
+
+def sent_kinds(rel, text):
+    if rel.endswith(".py"):
+        if "chief-route.ts" in text:
+            for lst in PY_LIST.findall(text):
+                if re.search(r"""chief-route\.ts|["'](reply|receipt|operator|--owed)["']""", lst):
+                    for w in PY_KIND.findall(lst):
+                        w = w.strip()
+                        yield w if w[0] in "\"'" else "$" + w
+    elif rel.endswith((".ts", ".mjs", ".js")):
+        for m in TS_CALL.finditer(text):
+            if not m.group(1):
+                w = m.group(2).strip()
+                yield w if w[0] in "\"'" else "$" + w
+    else:
+        for w in shell_kinds(text.replace("\\\n", " ")):
+            yield w
+
+
+if want("kinds"):
+    rels = set(subprocess.run(["git", "-C", repo, "ls-files", "scripts", "marketplace"], capture_output=True, text=True).stdout.split("\n"))
+    if opt["--overlay"]:
+        for top, _, names in os.walk(opt["--overlay"]):
+            rels.update(os.path.relpath(os.path.join(top, n), opt["--overlay"]) for n in names)
+    for rel in sorted(rels):
+        base = os.path.basename(rel)
+        if base.startswith(("test-", "testlib")) or ".test." in base or "/tests/" in "/" + rel or "/fixtures/" in "/" + rel:
+            continue
+        if not (rel.endswith((".sh", ".bash", ".py", ".ts", ".mjs", ".js")) or "." not in base):
+            continue
+        p = find(rel)
+        if p is None:
+            continue
+        for w in sent_kinds(rel, code_text(p)):
+            k = literal(w)
+            if k is None:
+                if rel not in VARIABLE_SITES:
+                    err("kinds", "%s: non-literal kind %s at a route call, and the file is not on the named list" % (rel, w))
+            elif resolve(k) is None:
+                err("kinds", "%s in %s has no row" % (k, rel))
+    for rel, kinds in VARIABLE_SITES.items():
+        for k in kinds:
+            if resolve(k) is None:
+                err("kinds", "%s in %s has no row" % (k, rel))
+
+
 def on_alert_action(e):
     nonempty = lambda v: isinstance(v, str) and v.strip() != ""
     do = e.get("do")
@@ -391,6 +485,25 @@ mut "$T/no-watcher.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="caden
 lint_dirty "a rule with no row fails the lint" "Watcher down" --table "$T/no-watcher.json" --only grafana
 mut "$T/no-nodata.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="cadence:grafana-DatasourceNoData"]'
 lint_dirty "cadence:grafana-DatasourceNoData without a row fails the lint" "DatasourceNoData" --table "$T/no-nodata.json" --only grafana
+
+lint_clean "K1: every escalate row names a group and no monitor or silent row does" --table "$TABLE" --only groups
+mut "$T/grp-none.json" '[r.pop("group", None) for r in t["kinds"] if r["kind"]=="token-in-output"]'
+lint_dirty "K1: a table copy with the token-in-output group removed fails the lint" "token-in-output has no group" --table "$T/grp-none.json" --only groups
+mut "$T/grp-mon.json" '[r.update({"group":"alerts"}) for r in t["kinds"] if r["kind"]=="cadence:rollup"]'
+lint_dirty "K1: a monitor row given a group fails the lint" "cadence:rollup is monitor and must carry no group" --table "$T/grp-mon.json" --only groups
+mut "$T/grp-bad.json" '[r.update({"group":"digest"}) for r in t["kinds"] if r["kind"]=="merge-blocked"]'
+lint_dirty "K1: a group outside the three fails the lint" "merge-blocked has no group" --table "$T/grp-bad.json" --only groups
+
+lint_clean "K2: every kind a code file sends has a row" --table "$TABLE" --only kinds
+mut "$T/no-spec-cc.json" 't["kinds"]=[r for r in t["kinds"] if r["kind"]!="spec-cc"]'
+lint_dirty "K2: a table copy without spec-cc fails the lint naming the kind and file" "spec-cc in scripts/handover/chief-kit/spec-cc.sh has no row" --table "$T/no-spec-cc.json" --only kinds
+mkdir -p "$T/ovk1/scripts/x" "$T/ovk2/scripts/x" "$T/ovk3/scripts/x"
+printf '#!/usr/bin/env bash\n_mba_send "$chat" "$msg" "$kind" || exit 1\n' > "$T/ovk1/scripts/x/new-sender.sh"
+lint_dirty "K2: a non-literal kind at a route call outside the named list fails the lint" "scripts/x/new-sender.sh: non-literal kind" --table "$TABLE" --only kinds --overlay "$T/ovk1"
+printf '#!/usr/bin/env bash\nbash "$OWE_SH" add --kind step\n' > "$T/ovk2/scripts/x/owes.sh"
+lint_clean "K2: a --kind of another command is ignored" --table "$TABLE" --only kinds --overlay "$T/ovk2"
+printf 'import { kindChat } from "../telegram/chief-route";\nkindChat("no-such-kind", 1, "x", d);\n' > "$T/ovk3/scripts/x/sender.ts"
+lint_dirty "K2: a TypeScript kindChat call with an unknown kind fails the lint" "no-such-kind in scripts/x/sender.ts has no row" --table "$TABLE" --only kinds --overlay "$T/ovk3"
 
 missing=""
 for f in $CONTROL_SENDERS; do [ -f "$REPO/$f" ] || missing="$missing $f"; done
