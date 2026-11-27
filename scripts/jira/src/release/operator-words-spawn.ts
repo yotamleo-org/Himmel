@@ -1,4 +1,3 @@
-// The one spawn of scripts/telegram/operator-words.ts, with a pinned env and an absolute script path.
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +18,6 @@ export interface VerifySeams { spawn?: VerifierSpawn; env?: Readonly<Record<stri
 
 const run: VerifierSpawn = (cmd, args, o) => spawnSync(cmd, args, { ...o, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
-/** The only variables a child of the go-answer verb inherits. */
 export function pinnedEnv(from: Readonly<Record<string, string | undefined>>): Record<string, string> {
   const env: Record<string, string> = {};
   for (const name of PINNED_ENV) {

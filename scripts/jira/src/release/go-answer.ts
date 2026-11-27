@@ -1,5 +1,3 @@
-// One go-code-confirmed Telegram reply becomes one operator record taking a ticket out of a version.
-// Run by the bypass daemon only; every refusal throws and writes nothing.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

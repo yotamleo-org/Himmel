@@ -87,7 +87,6 @@ export function operatorDecision(ctx: Ctx, o: DecisionInput): OperatorRow {
   return locked(ctx, (l) => recordDecision(ctx, l, o));
 }
 
-/** No fence: the caller fences and holds the release lock. A row gets a go block only from the `go` argument. */
 export function recordDecision(ctx: Ctx, l: Loaded, o: DecisionInput, go?: GoProof): OperatorRow {
   const again = o.decision_sha256 === undefined ? undefined : l.operator.verified.find((x) => x.kind === 'decision' && x.decision === o.decision
     && sameKeys(x.keys, o.keys) && x.op === o.op && (x.from_v ?? null) === o.from_v && (x.to_v ?? null) === o.to_v

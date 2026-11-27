@@ -1,5 +1,3 @@
-// G13's child: one goAnswer run whose verifier waits until both children reach it, so both pass the outer
-// lookup before either takes the lock. Test-only; it reads the fake proc tree its config names, never /proc.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { goAnswer, type GoAnswerArgs, type GoAnswerDeps } from '../go-answer.js';
