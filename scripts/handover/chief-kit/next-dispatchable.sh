@@ -419,7 +419,6 @@ PATH_TOKEN_RE = re.compile(r"(?<![\w./~-])([\w.+@-]+(?:/[\w.+@-]+)*\.[A-Za-z0-9]
 
 @functools.lru_cache(maxsize=None)
 def suffix_index():
-    # every '/'-bounded suffix of every path on main -> the paths ending in it
     index = {}
     try:
         listed = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'ls-tree', '-r', '-z', '--name-only', os.environ['ND_MAIN_REF']],
@@ -434,7 +433,6 @@ def suffix_index():
     return index
 
 def path_tokens(text, names=True):
-    # (start, end, path): every FILE_RE match, then, with names, every other file name that ends exactly one path on main
     found = [(m.start(), m.end(), m.group(1)) for m in FILE_RE.finditer(text)]
     spans = [(start, end) for start, end, _ in found]
     for m in PATH_TOKEN_RE.finditer(text) if names else ():
@@ -483,18 +481,16 @@ def split_reads(text, names=True):
     reads = [f for f in named if f in run and f not in written]
     return [f for f in named if f not in reads], reads
 
-MID_MARKER_RE = re.compile(r'(?<=\s)\**(Writes?|Files?)\**(?:\s*\([^)\n]*\))?\s*:')  # case-sensitive: a lowercase mid-line `files:` is prose
-SPECS_RE = re.compile(r'(?<![\w./-])specs/[\w.+@-]+/')  # a state-repo path: a write that holds no file of this repo
+MID_MARKER_RE = re.compile(r'(?<=\s)\**(Writes?|Files?)\**(?:\s*\([^)\n]*\))?\s*:')
+SPECS_RE = re.compile(r'(?<![\w./-])specs/[\w.+@-]+/')
 
 def marker(line):
-    # ('w' or 'f', the text after the marker) for a Writes:/Files: line, else None
     m = EXPLICIT_RE.match(line) or MID_MARKER_RE.search(line)
     return (m.group(1)[0].lower(), line[m.end():]) if m else None
 
-LONG_EXT_RE = re.compile(r'\.[A-Za-z][A-Za-z0-9]{1,7}$')  # leaves out `e.g` and a version number
+LONG_EXT_RE = re.compile(r'\.[A-Za-z][A-Za-z0-9]{1,7}$')
 
 def bare_name(value):
-    # a file named outside specs/: on a line with no repo path it may be a repo file, so no state-repo-only verdict
     return any(not t.startswith('specs/') and (LONG_EXT_RE.search(t) or t in suffix_index()) for t in PATH_TOKEN_RE.findall(value))
 
 def scope_of(body):
@@ -1845,7 +1841,7 @@ def override_from_parts(i, parts):
         i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
                  proof_only=True, proof_due=proof_parts[-1]['handed'][1])
     if latest:
-        files, reads = split_reads(latest[0]['text'], names=False)  # PR prose cites inputs and other tickets' files by bare name
+        files, reads = split_reads(latest[0]['text'], names=False)
         nowrite = not files and latest[0]['nowrite']
         if files or nowrite:
             i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
