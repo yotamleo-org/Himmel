@@ -273,22 +273,18 @@ _rd_gpath="${_rd_rest%%$'\001'*}"
 _rd_cmd="${_rd_rest#*$'\001'}"
 
 HARNESS_TOKEN_GLOBS=()
-case "$tool" in
-    Read|Grep|Bash|PowerShell)
-        _hr_args=()
-        for _hr_f in "$SCRIPT_DIR/../harnesses"/*.json; do _hr_args+=(--rawfile "${_hr_f##*/}" "$_hr_f"); done
-        if _hr_out=$(jq -nr "${_hr_args[@]}" --arg out tokens -f "$SCRIPT_DIR/../harnesses/registry.jq" 2>&1) \
-            && [ -n "$_hr_out" ]; then
-            while IFS= read -r _hr_f; do
-                HARNESS_TOKEN_GLOBS[${#HARNESS_TOKEN_GLOBS[@]}]="${_hr_f%$'\r'}"
-            done <<<"$_hr_out"
-        elif [ "${READ_SECRETS_OK:-0}" != "1" ]; then
-            printf 'block-read-secrets: the harness registry %s cannot be read, so the token paths are unknown — failing closed\n%s\nFix the descriptor with the Edit tool, or relaunch with READ_SECRETS_OK=1 (operator only).\n' \
-                "$SCRIPT_DIR/../harnesses" "$_hr_out" >&2
-            exit 2
-        fi
-        ;;
-esac
+_hr_args=()
+for _hr_f in "$SCRIPT_DIR/../harnesses"/*.json; do _hr_args+=(--rawfile "${_hr_f##*/}" "$_hr_f"); done
+if _hr_out=$(jq -nr "${_hr_args[@]}" --arg out tokens -f "$SCRIPT_DIR/../harnesses/registry.jq" 2>&1) \
+    && [ -n "$_hr_out" ]; then
+    while IFS= read -r _hr_f; do
+        HARNESS_TOKEN_GLOBS[${#HARNESS_TOKEN_GLOBS[@]}]="${_hr_f%$'\r'}"
+    done <<<"$_hr_out"
+elif [ "${READ_SECRETS_OK:-0}" != "1" ]; then
+    printf 'block-read-secrets: the harness registry %s cannot be read, so the token paths are unknown — failing closed\n%s\nFix the descriptor with the Edit tool, or relaunch with READ_SECRETS_OK=1 (operator only).\n' \
+        "$SCRIPT_DIR/../harnesses" "$_hr_out" >&2
+    exit 2
+fi
 
 # _canon_parent DIR: sets _CP_OUT to guard_canon_path DIR, without the fork when
 # the answer is DIR itself. A glob over thousands of directories (one name
