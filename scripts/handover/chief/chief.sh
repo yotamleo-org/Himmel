@@ -2564,12 +2564,25 @@ EOF
             && mv -f "$pend.tmp" "$pend" \
             && jq --slurpfile o "$old" '.workers as $n | .workers = $n + [($o[0].workers // [])[] | select(.doc as $x | any($n[]; .doc == $x) | not)]' "$pend" > "$moved.tmp" \
             && mv -f "$moved.tmp" "$moved" \
-            && out="$(jq --arg d "$docs" --slurpfile n "$pend" '($d | split("\n")) as $c | .workers = [(.workers // .legs)[] | . as $r | if type != "object" then $r else (first($n[0].workers[] | select(.doc == $r.doc)) // (if any($c[]; . == $r.doc) then empty else $r end)) end] | del(.legs)' "$staged")" \
+            && out="$(jq --arg d "$docs" --slurpfile n "$pend" 'def resume: sub("\\.md$"; "-RESUME.md");
+                ($d | split("\n")) as $c | $n[0].workers as $p
+                | .workers = [(.workers // .legs)[] | . as $r
+                    | if type != "object" then $r
+                      else ($r.doc | resume) as $o
+                      | (first($p[] | select(.doc == $r.doc))
+                         // (if any($c[]; . == $r.doc) then empty
+                             elif any($c[]; . == $o) then (if any($p[]; .doc == $o) then $r else empty end)
+                             else $r end))
+                      end]
+                | [.workers[] | objects | .doc] as $s
+                | .workers += [$p[] | .doc as $x | select((any($c[]; . == $x) or any($s[]; . == $x or resume == $x)) | not)]
+                | del(.legs)' "$staged")" \
             && printf '%s\n' "$out" > "$staged"; }; then
             rm -f "$pend.tmp" "$moved.tmp"
             err "could not save the outgoing rows of $pred to $moved; nothing was moved"
             return 1
         fi
+        repoint_resume_rows "$staged"
         [ "${#gone[@]}" -eq 0 ] || bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
             || {
                 drop_listed_rows "$moved" "$pred" || err "warning: could not clear $moved of the rows $pred still lists"
@@ -3115,19 +3128,17 @@ cmd_next() {
         trap 'rm -f "$doc" "$staged_manifest"' EXIT
         cp "$predecessor_manifest" "$staged_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $staged_manifest"; exit 1; }
         carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest")" || { err "cannot read the rows of $predecessor_manifest"; exit 1; }
-        local keep kept_from
-        for keep in "$successor_manifest" "${predecessor_manifest%.json}.moved.json.pending"; do
-            [ -f "$keep" ] || continue
-            if [ "$keep" = "$successor_manifest" ]; then
-                kept_from="$(jq -r '.carried_from // empty' "$keep")" || { err "cannot read the leftover $keep; move it aside and run next again"; exit 1; }
-                [ "$kept_from" = "$predecessor_manifest" ] || continue
-            fi
-            if carried="$(jq --slurpfile e "$keep" '(.workers // .legs // []) as $w | .workers = $w + [($e[0].workers // $e[0].legs // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)] | del(.legs)' "$staged_manifest")"; then
+        local kept_from=""
+        if [ -f "$successor_manifest" ]; then
+            kept_from="$(jq -r '.carried_from // empty' "$successor_manifest")" || { err "cannot read the leftover $successor_manifest; move it aside and run next again"; exit 1; }
+        fi
+        if [ "$kept_from" = "$predecessor_manifest" ]; then
+            if carried="$(jq --slurpfile e "$successor_manifest" '(.workers // .legs // []) as $w | .workers = $w + [($e[0].workers // $e[0].legs // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)] | del(.legs)' "$staged_manifest")"; then
                 printf '%s\n' "$carried" > "$staged_manifest"
             else
-                err "could not keep the rows of $keep"; exit 1
+                err "could not keep the rows of $successor_manifest"; exit 1
             fi
-        done
+        fi
         if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$staged_manifest")"; then
             printf '%s\n' "$carried" > "$staged_manifest"
         else

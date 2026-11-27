@@ -534,6 +534,8 @@ has "a moved row still resolves its worker doc (quoted-back)" "$out" "N1 quoted-
 has "a moved row with no quote-back is missing, not closed" "$out" "N2 missing"
 lacks "the missing worker is not also classified closed" "$out" "N2 closed"
 lacks "the quoted-back worker is not also classified closed" "$out" "N1 closed"
+lacks "the missing worker is not also classified quoted-back" "$out" "N2 quoted-back"
+lacks "the quoted-back worker is not also classified missing" "$out" "N1 missing"
 rm -f "${MAN%.json}.moved.json"
 
 printf '\n%d failure(s)\n' "$fails"

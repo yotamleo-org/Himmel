@@ -4524,6 +4524,15 @@ state() {
     echo "$1 $2 $3 succ=$s both=$both" >> "$FM10728_LOG"
 }
 [ -z "${FM10728_LOG:-}" ] || state before "$1" "$2"
+if [ -n "${FM10728_PAUSE:-}" ] && [ "$1" = remove ] && [ "$2" = "$FM10728_PAUSE_ON" ] && [ ! -e "$FM10728_PAUSE.ran" ]; then
+    pause="$FM10728_PAUSE"
+    : > "$pause.ran"
+    unset FM10728_PAUSE
+    # hold this removal until the second next either waits on the hand-over lock or has finished
+    bash "$pause" >/dev/null 2>&1 &
+    tries=0
+    while [ ! -e "$pause.waiting" ] && [ ! -e "$pause.done" ] && [ "$tries" -lt 600 ]; do sleep 0.2; tries=$((tries + 1)); done
+fi
 bash "$0.real" "$@"; rc=$?
 [ -z "${FM10728_LOG:-}" ] || state after "$1" "$2"
 if [ -n "${FM10728_NEWER:-}" ] && [ "$1" = remove ]; then bash "$0.real" add "$2" "$FM10728_NEWER" --lane native --arm 400k >/dev/null 2>&1; fi
@@ -4611,6 +4620,33 @@ QL10728_ADD="${A10877%.md}.fleet.json" QL10728_DOC="$W10877/DEMO-8-N8-late-dead.
 mv "$ql10728.real" "$ql10728"
 check "10728 the late dead row was added while next ran (control)" "$([ -e "$tmp/ql10728.flag" ] && echo yes || echo no)" "yes"
 check "10728 a dead row added after the staging is still retired from the outgoing manifest" "$(jq -r '[.workers[] | select(.label == "N8")] | length' "${A10877%.md}.fleet.json")" "0"
+rel10877
+mk10877 two10728
+res10728="$W10877/DEMO-70-N70-worker-RESUME.md"
+sib10728="${res10728%-RESUME.md}.md"
+printf '# RESUME brief\n' > "$res10728"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$sib10728"
+touch -d '1 hour ago' "$res10728"  # gnu-ok: Linux-only kit
+bash "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" add "${A10877%.md}.fleet.json" "$res10728" --lane native --pending >/dev/null 2>&1
+fk10728="$tmp/flock10728"; mkdir -p "$fk10728"
+printf '#!/bin/sh\n[ "$*" != "-x 9" ] || : > "%s"\nexec %s "$@"\n' "$tmp/second10728.sh.waiting" "$(command -v flock)" > "$fk10728/flock"
+chmod +x "$fk10728/flock"
+{
+    printf '#!/usr/bin/env bash\ncd %q || exit 1\n' "$fixture_repo"
+    # shellcheck disable=SC2016 # $PATH expands in the generated script
+    printf 'PATH=%q:"$PATH" HANDOVER_DIR=%q USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR=%q bash %q next --bucket two10728dstb --doc %q > %q 2>&1\n' \
+        "$fk10728" "$root" "$tmp/defaultwork" "$C" "$A10877" "$tmp/second10728.out"
+    printf 'echo "$?" > %q\n' "$tmp/second10728.sh.done"
+} > "$tmp/second10728.sh"
+rct10728=0
+FM10728_PAUSE="$tmp/second10728.sh" FM10728_PAUSE_ON="${A10877%.md}.fleet.json" \
+    chief next --bucket two10728dsta --doc "$A10877" >/dev/null 2>"$tmp/two10728.err" || rct10728=$?
+tries10728=0
+while [ ! -e "$tmp/second10728.sh.done" ] && [ "$tries10728" -lt 600 ]; do sleep 0.2; tries10728=$((tries10728 + 1)); done
+both10728="$(cat "$root/tester/two10728dsta/DEMO-nextleg-${today}B-chief.fleet.json" "$root/tester/two10728dstb/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)"
+check "10728 two nexts: the second one ran while the first held its removal (control)" "$([ -e "$tmp/second10728.sh.ran" ] && echo yes || echo no)" "yes"
+check "10728 two nexts: both finish with exit 0 (control)" "$rct10728 $(cat "$tmp/second10728.sh.done" 2>/dev/null)" "0 0"
+check "10728 two nexts: no worker is listed in both successor manifests" "$(printf '%s\n' "$both10728" | jq -rs '[.[].workers[].label] | sort | join(",")')" "N1,N2,N3,N4,N5,N70"
 rel10877
 mv "$fm10728.real" "$fm10728"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
