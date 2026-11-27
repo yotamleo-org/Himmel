@@ -218,9 +218,11 @@ if [ "$have_data" = 1 ]; then
   bad_status="$(jq -r '.modules[].components[]? | select(.status | IN("shipped","beta","roadmap") | not) | .name' "$DATA" | tr '\n' ' ')"
   if [ -z "$bad_status" ]; then ok "every component status is shipped, beta or roadmap"; else bad "components with an unknown status" "$bad_status"; fi
 
-  no_id="$(jq -r '.modules[].components[] | select((.id // "") | test("^[a-z0-9]+(-[a-z0-9]+)*$") | not) | .name' "$DATA" | tr '\n' ' ')"
+  no_id="$(jq -r '.modules[].components[] | select(((.id | type) == "string" and (.id | test("^[a-z0-9]+(-[a-z0-9]+)*$"))) | not) | .name' "$DATA" | tr '\n' ' ')"
   dup_id="$(jq -r '[.modules[].components[].id // empty] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$DATA" | tr '\n' ' ')"
   if [ -z "$no_id$dup_id" ]; then ok "every component has a slug id, unique in the data file"; else bad "components without a slug id, or sharing one" "no id: ${no_id:-none}; shared: ${dup_id:-none}"; fi
+  num_id="$(jq '.modules[0].components[0].id = 123' "$DATA" | jq -r '.modules[].components[] | select(((.id | type) == "string" and (.id | test("^[a-z0-9]+(-[a-z0-9]+)*$"))) | not) | .name')"
+  if [ -n "$num_id" ]; then ok "control: a numeric component id is reported"; else bad "control: the slug-id check accepted a numeric component id"; fi
 fi
 
 all_n="$(jq '.items | length' "$MANIFEST")"
@@ -711,8 +713,11 @@ for m in d.get("modules") or []:
 OLD = {0: "install", 1: "guardrails", 2: "second-brain", 3: "reach", 4: "review", 5: "spend", 6: "always-on", 7: "fleet"}
 got = {}
 for m in d.get("modules") or []:
-    if m.get("legacy_n") is not None:
-        got.setdefault(m["legacy_n"], []).append(m["id"])
+    n = m.get("legacy_n")
+    if type(n) is int:
+        got.setdefault(n, []).append(m["id"])
+    elif n is not None:
+        print("legacy_n of %s is %r, not an integer" % (m["id"], n))
 for n in sorted(set(OLD) | set(got), key=str):
     if got.get(n) != [OLD.get(n)]:
         print("legacy_n %s was %s on the old numbered page, the data gives it to %s" % (n, OLD.get(n), got.get(n)))
@@ -741,7 +746,9 @@ if [ "$have_data" = 1 ]; then
   jq '.modules |= map(if .id == "review" then del(.legacy_n) else . end)' "$DATA" > "$tmp/drop.json"
   swapped="$(alias_gaps "$tmp/swap.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 0 was install')"
   dropped="$(alias_gaps "$tmp/drop.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 4 was review')"
-  if [ -n "$swapped" ] && [ -n "$dropped" ]; then
+  jq '.modules |= map(if .id == "install" then .legacy_n = false else . end)' "$DATA" > "$tmp/bool.json"
+  boolean="$(alias_gaps "$tmp/bool.json" "$LEVELS" "$PAGE" | grep -F 'legacy_n 0 was install')"
+  if [ -n "$swapped" ] && [ -n "$dropped" ] && [ -n "$boolean" ]; then
     ok "control: a swapped legacy_n (install and guardrails) and a dropped one (review) are each reported"
   else
     bad "control: the ALIASES check missed a swapped or dropped legacy_n" "swap: ${swapped:-none}; drop: ${dropped:-none}"
