@@ -127,6 +127,11 @@ carry_late_rows() {
     [ -n "$pmanifest" ] || return 0
     echo "== CARRY (rows the predecessor's manifest gained after the copy)"
     pmoved="${pmanifest%.json}.moved.json.pending"; [ -f "$pmoved" ] || pmoved=/dev/null
+    if [ "$pmoved" != /dev/null ]; then
+        if ! { jq --slurpfile s "$smanifest" '($s[0].workers // $s[0].legs // [] | map(.doc)) as $have | .workers |= map(select(.doc as $x | any($have[]; . == $x) | not))' "$pmoved" > "$pmoved.tmp" && mv -f "$pmoved.tmp" "$pmoved"; }; then
+            echo "warning: could not clear the rows $smanifest already lists from $pmoved"
+        fi
+    fi
     if carried_at="$(jq -er '.carried_at | strings' "$smanifest")" && late="$(jq -r --slurpfile s "$smanifest" --slurpfile m "$pmoved" --arg t "$carried_at" '
             ($s[0].workers // $s[0].legs // [] | map(.doc)) as $have
             | (.workers // .legs // []) as $p

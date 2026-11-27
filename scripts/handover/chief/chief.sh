@@ -2569,13 +2569,23 @@ EOF
             return 1
         fi
         [ "${#gone[@]}" -eq 0 ] || bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
-            || { err "could not remove the carried rows from $pred; nothing was moved"; return 1; }
+            || {
+                if drop_listed_rows "$pend" "$pred" && jq -e '.workers == []' "$pend" >/dev/null; then rm -f "$pend"; fi
+                err "could not remove the carried rows from $pred; nothing was moved"
+                return 1
+            }
     fi
     if [ ! -d "$succ" ] && mv -f "$staged" "$succ"; then rm -f "$pend"; return 0; fi
     err "could not write the successor's manifest $succ"
-    [ ! -f "$pend" ] || { restore_manifest_rows "$pred" "$pend" && rm -f "$pend"; } \
+    [ ! -f "$pend" ] || { restore_manifest_rows "$pred" "$pend" && drop_listed_rows "$moved" "$pend" && rm -f "$pend"; } \
         || err "could not put the rows back into $pred: they are in $pend"
     return 1
+}
+
+drop_listed_rows() {
+    local out
+    out="$(jq --slurpfile l "$2" '($l[0].workers // $l[0].legs // [] | map(.doc?)) as $has | .workers |= map(select(.doc as $x | any($has[]; . == $x) | not))' "$1")" \
+        && printf '%s\n' "$out" > "$1"
 }
 
 restore_manifest_rows() (

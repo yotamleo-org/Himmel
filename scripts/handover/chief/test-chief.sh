@@ -4245,7 +4245,7 @@ check "10877 Must disposition lists the RESUME doc of the wrapped worker" "$(pri
 check "10877 Must disposition lists the open PR of the wrapped worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #77')" "1"
 check "10877 Must disposition leaves out the open PR of a live worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #78')" "0"
 check "10877 next retires the dead manifest row from the successor manifest" "$(jq -r '[.workers[].label] | join(",")' "${B10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
-check "10877 next leaves no carried row in the predecessor manifest" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" ""
+check "10877 next leaves no carried row in the predecessor manifest" "$(jq -er '[.workers[].label] | "labels=" + join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "labels="
 check "10877 next retires the dead manifest row from the predecessor's moved rows" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
 h10877="$root/tester/m10877/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 check "10877 the HANDOFF lists the two workers that hold a lock off the manifest" "$(grep -cE '^- N[67]: .*lock only' "$h10877")" "2"
@@ -4570,6 +4570,14 @@ rcf10728=0
 chief next --bucket fail10728dst --doc "$A10877" >/dev/null 2>"$tmp/f10728.err" || rcf10728=$?
 check "10728 a failed successor-manifest write exits non-zero" "$([ "$rcf10728" -ne 0 ] && echo refused || echo "rc=$rcf10728")" "refused"
 check "10728 a failed successor-manifest write leaves every row in the outgoing manifest" "$(jq -cS '.workers' "${A10877%.md}.fleet.json")" "$before10728"
+check "10728 a restored row leaves the moved rows" "$(jq -r '.workers | length' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "0"
+rel10877
+mk10877 noremove10728
+printf '{"workers":[{"doc":"%s","label":"N1"}]}\n' "$W10877/DEMO-1-N1-worker.md" > "${A10877%.md}.fleet.json"
+rcn10728=0
+chief next --bucket noremove10728dst --doc "$A10877" >/dev/null 2>"$tmp/n10728.err" || rcn10728=$?
+check "10728 a refused removal refuses the hand-over" "$([ "$rcn10728" -ne 0 ] && echo refused || echo "rc=$rcn10728")" "refused"
+check "10728 a refused removal leaves no row pending that the outgoing manifest still lists" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
 rel10877
 mv "$fm10728.real" "$fm10728"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -250,7 +250,9 @@ printf '{"schema":1,"workers":[]}\n' > "${IPRED%.md}.fleet.json"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N35","lane":"native","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-35-N35-worker.md" > "${IPRED%.md}.fleet.moved.json"
 cp "${IPRED%.md}.fleet.moved.json" "${IPRED%.md}.fleet.moved.json.pending"
 printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${IPRED%.md}.fleet.json" > "${ISUCC%.md}.fleet.json"
-bash "$AZ" --doc "$ISUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
+irc=0
+bash "$AZ" --doc "$ISUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1 || irc=$?
+check "the retrying acquire exits 0" "0" "$irc"
 check "a late row an interrupted carry left only in the moved rows is carried by the next acquire" "1" "$(jq -r --arg d "$ROOT/DEMO-35-N35-worker.md" '[.workers[] | select(.doc == $d)] | length' "${ISUCC%.md}.fleet.json" 2>/dev/null)"
 check "the retried row stays in the moved rows" "1" "$(jq -r '.workers | length' "${IPRED%.md}.fleet.moved.json" 2>/dev/null)"
 check "a published row is no longer pending" "0" "$(jq -r '.workers | length' "${IPRED%.md}.fleet.moved.json.pending" 2>/dev/null)"
@@ -262,10 +264,19 @@ printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","wor
 # shellcheck disable=SC2016 # literal backticks
 mtok="$(bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only 2>&1 | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" release "$MSUCC" "$mtok" >/dev/null 2>&1
+check "the first acquire carried one late row and not the other" "1 0" "$(jq -r --arg a "$ROOT/DEMO-36-N36-worker.md" --arg b "$ROOT/DEMO-37-N37-worker.md" '"\([.workers[] | select(.doc == $a)] | length) \([.workers[] | select(.doc == $b)] | length)"' "${MSUCC%.md}.fleet.json" 2>/dev/null)"
 bash "$HERE/fleet-manifest.sh" remove "${MSUCC%.md}.fleet.json" "$ROOT/DEMO-36-N36-worker.md" >/dev/null 2>&1
-bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
+mout="$(bash "$AZ" --doc "$MSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
+check "the second acquire reaches CARRY again" "1" "$(printf '%s\n' "$mout" | grep -c '^== CARRY')"
 check "after a partly failed carry, a carried row removed since is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-36-N36-worker.md" '[.workers[] | select(.doc == $d)] | length' "${MSUCC%.md}.fleet.json" 2>/dev/null)"
 check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
 check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
+NPRED="$ROOT/DEMO-nextleg-2026-11-25I-chief.md"; NSUCC="$ROOT/DEMO-nextleg-2026-11-25J-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$NSUCC"
+printf '{"schema":1,"workers":[]}\n' > "${NPRED%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N38","lane":"native","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-38-N38-worker.md" > "${NPRED%.md}.fleet.moved.json.pending"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[{"doc":"%s","label":"N38","lane":"native"}]}\n' "${NPRED%.md}.fleet.json" "$ROOT/DEMO-38-N38-worker.md" > "${NSUCC%.md}.fleet.json"
+bash "$AZ" --doc "$NSUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
+check "a pending row the successor already lists stops being pending" "0" "$(jq -r '.workers | length' "${NPRED%.md}.fleet.moved.json.pending" 2>/dev/null)"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
