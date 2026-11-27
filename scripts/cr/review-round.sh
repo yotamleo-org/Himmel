@@ -67,8 +67,8 @@
 # without one defer exits 6 naming the flag. A pre-existing Important classed polish
 # cannot be noted: reclassify it or supply --defer-to <plain ticket>.
 # Defer also notes unadjudicated polish Suggestions/nits from ancestor
-# rounds on this branch. It exits 4 if only open rows outside this route
-# remain, and propagates the final marker clearance result after writing.
+# rounds on this branch. It exits 4 if unresolved earlier findings remain
+# without eligible work, and propagates the final clearance result after writing.
 # A Suggestions-only round below the cap closes early on a change that touches
 # no CI trust path. Its polish rows file nothing (see above); an explicit
 # --defer-to attaches pending findings at the requested head to that existing ticket, and a
@@ -112,7 +112,7 @@ if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]] [--full]   (prints <round>, <round> increment <L>, <round> delta <L> or <round> carried <R>; --full reviews the whole PR and is never classified)" >&2
-    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]   (includes earlier polish; exit 4 for open findings outside the deferral path when no work remains, otherwise propagates clearance after writing)" >&2
+    echo "       review-round.sh defer --branch <name> --head <sha> [--defer-to <ticket>] [--fu-why <code>] [--fu-override <id>]   (includes earlier polish, exits 4 for unresolved earlier findings when no eligible work remains, and propagates clearance after writing)" >&2
     echo "       review-round.sh promote [--check] --branch <name> --head <sha>   (--check: the same verdict, read only, nothing written)" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha> [--open-threads-ok <reason>]   (after the cap: a signed judge GO at <sha> stands in for the review; refused while the PR has an unresolved review thread unless the chief names the override)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
@@ -2756,19 +2756,20 @@ const resolvesToHead = (value) => resolveCommit(value) === e.FULL_HEAD;
 // (a stale/incomparable --head) would let a later, never-reviewed commit
 // findings get marked fixed with no real evidence either way.
 const ancestorCache = new Map();
-function isAncestorOfHead(commit) {
+function isAncestorOfHead(commit, head = e.FULL_HEAD) {
   const h = String(commit || "");
   if (!h) return false;
-  if (h === e.FULL_HEAD) return true;
-  if (!ancestorCache.has(h)) {
+  if (h === head) return true;
+  const key = [h, head].join(SEP);
+  if (!ancestorCache.has(key)) {
     let ok = false;
     try {
-      cp.execFileSync("git", ["merge-base", "--is-ancestor", h, e.FULL_HEAD], {stdio: "ignore"});
+      cp.execFileSync("git", ["merge-base", "--is-ancestor", h, head], {stdio: "ignore"});
       ok = true;
     } catch { ok = false; }
-    ancestorCache.set(h, ok);
+    ancestorCache.set(key, ok);
   }
-  return ancestorCache.get(h);
+  return ancestorCache.get(key);
 }
 // Merge every amend.set for a (branch, target_head, finding_id, artifact,
 // perspective) key in ledger (chronological) order — a later amend field
@@ -3127,7 +3128,8 @@ explicit_defer=0
 if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
 analysis="$(FULL_HEAD="$full_head" LEDGER="$ledger" BRANCH="$branch" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e "$ledger_reader_js"'
 const findings = new Map(), origSeverities = new Map();
-const pending = [], capDeferred = [], blocking = [], unclassified = [], earlierOpen = [];
+const pending = [], capDeferred = [], blocking = [], unclassified = [], otherOpen = [];
+let earlierBlocking = false;
 const CAP_REASONS = [e.CAP_REASON, e.DELTA_REASON];
 const RANK = {nit: 0, sug: 1, imp: 2, crit: 3};
 const rankOf = (s) => (s in RANK ? RANK[s] : -1);
@@ -3172,7 +3174,11 @@ for (const row of findingRows) {
   if (verdict && !alreadyNoted) continue;
   const refusal = earlierPolishRefusal(row, o);
   if (refusal) {
-    if (!verdict) earlierOpen.push(row.finding_id + "@" + row.head + " (" + refusal + ")");
+    if (!verdict) {
+      const later = refusal === "non-ancestor head" && isAncestorOfHead(e.FULL_HEAD, resolveCommit(row.head));
+      otherOpen.push(row.finding_id + "@" + row.head + " (" + (later ? "later head" : refusal) + ")");
+      if (!later) earlierBlocking = true;
+    }
     continue;
   }
   if (alreadyNoted) {
@@ -3242,7 +3248,7 @@ for (const [key, o] of findings) {
   else if (!verdict) blocking.push(id);
 }
 for (const f of pending) f.noted = !!f.noted || (e.EXPLICIT_DEFER !== "1" && f.fu_class === "polish" && polishSeverity(f.severity));
-process.stdout.write(JSON.stringify({malformed, pending, capDeferred, blocking, unclassified, earlierOpen}));
+process.stdout.write(JSON.stringify({malformed, pending, capDeferred, blocking, unclassified, otherOpen, earlierBlocking}));
 ' 2>/dev/null)"
 if [ -z "$analysis" ]; then
     echo "review-round: could not evaluate findings at $full_head" >&2
@@ -3260,9 +3266,9 @@ if [ -z "$malformed" ] || [ -z "$pending_count" ] || [ -z "$cap_deferred_count" 
     echo "review-round: could not parse the ledger evaluation" >&2
     exit 5
 fi
-earlier_open="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).earlierOpen.join("\n  ")))')" || exit 5
-if [ -n "$earlier_open" ]; then
-    printf 'review-round: open findings outside the earlier-round polish route:\n  %s\n' "$earlier_open" >&2
+other_open="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).otherOpen.join("\n  ")))')" || exit 5
+if [ -n "$other_open" ]; then
+    printf 'review-round: open findings outside the earlier-round polish route:\n  %s\n' "$other_open" >&2
 fi
 if [ -n "$blocking" ] && [ "$delta_mode" -eq 1 ]; then
     echo "review-round: Critical or escape-class finding(s) remain blocking in the delta round: $blocking" >&2
@@ -3282,7 +3288,10 @@ if [ -n "$blocking" ]; then
     exit 4
 fi
 if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
-    [ -z "$earlier_open" ] || exit 4
+    if [ -n "$other_open" ]; then
+        earlier_blocking="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).earlierBlocking)))')" || exit 5
+        [ "$earlier_blocking" = false ] || exit 4
+    fi
     exit 0
 fi
 

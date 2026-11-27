@@ -983,8 +983,10 @@ real_row rr-earlier "$head_a" r1-lowered ""
 TW_SEV=crit
 real_row rr-earlier "$head_a" r1-critical ""
 shapes
-divergent="$(git -C "$repo" rev-parse HEAD)"
+later="$(git -C "$repo" rev-parse HEAD)"
+divergent="$(git -C "$repo" commit-tree "$head_a^{tree}" -p "$head_a" -m 'divergent review head')" || exit 1
 unresolved=0123456789012345678901234567890123456789
+real_row rr-earlier "$later" later ""
 real_row rr-earlier "$divergent" divergent ""
 real_row rr-earlier "$unresolved" unresolved ""
 real_row rr-earlier "$head_a" r1-escape ""
@@ -994,7 +996,7 @@ before="$(cksum < "$ledger")"
 : > "$tmp/jira-notes"
 defer_earlier
 assert_eq "$rc" 4 "11392 earlier rows outside the polish route refuse"
-for id in r1-important r1-critical r1-lowered r1-escape "divergent@$divergent" "unresolved@$unresolved"; do
+for id in r1-important r1-critical r1-lowered r1-escape "later@$later (later head)" "divergent@$divergent (non-ancestor head)" "unresolved@$unresolved (unresolvable head)"; do
     assert_has "$out" "$id" "11392 refusal names $id"
 done
 assert_lacks "$out" 'review-round.sh defer --head' "11392 refusal gives no defer command for excluded rows"
