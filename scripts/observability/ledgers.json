@@ -99,7 +99,7 @@
       "default_path": "~/.himmel/state/guard-refusals.jsonl",
       "override_env": "HIMMEL_GUARD_REFUSALS_LOG",
       "writer": "scripts/hooks/guard-t3-thread-tools.sh",
-      "readers": [],
+      "readers": ["scripts/handover/chief-kit/chief-duty-sweep.sh", "scripts/himmel-doctor.sh"],
       "format": "jsonl",
       "rotation": "none",
       "retention": "unbounded",

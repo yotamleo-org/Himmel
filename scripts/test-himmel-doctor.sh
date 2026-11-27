@@ -2701,4 +2701,49 @@ else
     echo "  SKIP: C95 probe budget — no timeout binary"
 fi
 
+echo "== C101: a guard refusal class with no owning open ticket -> WARN =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/c101.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/mirror" "$t/home/.himmel/state"
+c101_row() {
+    jq -cn --arg rule "$1" --arg instance "$2" --arg title "${3:-}" \
+        '{v:1, ts:"2026-11-25T10:00:00Z", host:"h", source:"guard-t3-thread-tools", kind:"refusal", guard:"guard-t3-thread-tools", rule:$rule, instance:$instance, title:$title}' >> "$t/rows.jsonl"
+}
+c101_ticket() {
+    printf -- '---\nkey: "HIMMEL-%s"\nstatusCategory: "%s"\n---\n\n%s\n' "$1" "$2" "$3" > "$t/mirror/HIMMEL-$1.md"
+}
+c101_run() {
+    env CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_JIRA_MIRROR="$t/mirror" HIMMEL_GUARD_REFUSALS_LOG="${1-$t/rows.jsonl}" bash "$DOC" --only C101 --no-color 2>&1
+}
+out="$(c101_run)"
+if grepq "$out" 'OK   C101-guard-refusals'; then pass "C101 a missing row file passes"; else fail "C101 missing file -> $out"; fi
+: > "$t/rows.jsonl"
+out="$(c101_run)"
+if grepq "$out" 'OK   C101-guard-refusals'; then pass "C101 an empty row file passes"; else fail "C101 empty file -> $out"; fi
+c101_row off-narrow antigravity "Orchestrator (Neon) sk-SETTINGSVALUE"
+c101_row off-narrow antigravity "Orchestrator (Carbon)"
+c101_ticket 1 "To Do" 'guard-t3-thread-tools refuses something else (rule off-narrow-extra)'
+c101_ticket 2 "Done" 'guard-t3-thread-tools rule off-narrow, fixed'
+out="$(c101_run)"
+if grepq "$out" -F 'WARN C101-guard-refusals: guard refusal class with no owning open ticket: guard=guard-t3-thread-tools rule=off-narrow instance=antigravity count=2'; then pass "C101 an unowned class WARNs with guard, rule, instance and count (a Done ticket and a longer rule name do not own it)"; else fail "C101 unowned -> $out"; fi
+if ! grepq "$out" -E 'Orchestrator|SETTINGSVALUE'; then pass "C101 no thread title or row text is printed"; else fail "C101 leaked row text -> $out"; fi
+c101_ticket 3 "In Progress" 'The guard guard-t3-thread-tools refuses with rule off-narrow.'
+out="$(c101_run)"
+if grepq "$out" 'OK   C101-guard-refusals' && ! grepq "$out" 'WARN C101'; then pass "C101 a class an open ticket names does not WARN"; else fail "C101 owned -> $out"; fi
+c101_row bypass-instance,off-narrow codex
+out="$(c101_run)"
+if grepq "$out" -F 'rule=bypass-instance,off-narrow instance=codex count=1' && ! grepq "$out" -F 'instance=antigravity'; then pass "C101 a joined rule list needs every rule named; the owned class stays quiet"; else fail "C101 joined rules -> $out"; fi
+rm -f "$t/rows.jsonl"; c101_row non-string-instance '{"apiKey": "hunter2 value"}'
+out="$(c101_run)"
+if grepq "$out" -F 'rule=non-string-instance instance=non-token count=1' && ! grepq "$out" hunter2; then pass "C101 a field that is not a plain token prints as non-token"; else fail "C101 non-token -> $out"; fi
+cp "$t/rows.jsonl" "$t/home/.himmel/state/guard-refusals.jsonl"
+out="$(c101_run "")"
+if grepq "$out" -F 'instance=non-token count=1'; then pass "C101 with no override the path comes from the ledger registry"; else fail "C101 default path -> $out"; fi
+mv "$t/mirror" "$t/mirror.gone"
+out="$(c101_run)"
+if grepq "$out" 'INFO C101-guard-refusals' && ! grepq "$out" 'WARN C101'; then pass "C101 no ticket mirror -> INFO, ownership not judged"; else fail "C101 no mirror -> $out"; fi
+mkdir "$t/rows.dir"
+out="$(c101_run "$t/rows.dir")"
+if grepq "$out" 'INFO C101-guard-refusals'; then pass "C101 a path that is no readable file is not judged"; else fail "C101 unreadable -> $out"; fi
+rm -rf "$t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

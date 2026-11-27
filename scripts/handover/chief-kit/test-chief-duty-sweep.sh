@@ -69,7 +69,9 @@ set_tail() { printf '# HIMMEL-9100 — worker N1\n\n## Results (newest at the bo
 set_lane() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"%s"}]}\n' "$DOC1" "$1" > "$WORK/w/fleet.json"; }
 
 sweep_env() {
-    CHIEF_DUTY_STALL_SECS="${STALL_SECS:-3600}" CHIEF_DUTY_SWEEP_NOW="${SWEEP_AT:-$NOW}" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    local rlog="${REFUSALS_AT:-$WORK/w/refusals.jsonl}"
+    [ "$rlog" != default ] || rlog=""
+    HIMMEL_GUARD_REFUSALS_LOG="$rlog" CHIEF_DUTY_STALL_SECS="${STALL_SECS:-3600}" CHIEF_DUTY_SWEEP_NOW="${SWEEP_AT:-$NOW}" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/seam-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
@@ -445,6 +447,70 @@ world; set_tail "- 10:05 READY 101 $H1 GREEN"; printf 'not json' > "$WORK/w/prs.
 sweep
 has "unread PR list: named" "DUTY? prs unread" "$OUT"
 hasnt "unread PR list: no go-owed on a guess" "go-owed" "$OUT"
+
+refusal() {
+    jq -cn --arg ts "$1" --arg rule "$2" --arg instance "$3" --arg title "${4:-}" \
+        '{v:1, ts:$ts, host:"h", source:"guard-t3-thread-tools", kind:"refusal", guard:"guard-t3-thread-tools", rule:$rule, instance:$instance, title:$title}' >> "$WORK/w/refusals.jsonl"
+}
+at() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+rworld() { world; printf '[]\n' > "$WORK/w/prs.json"; }
+replay() {
+    refusal "$(at $((NOW - 600)))" off-narrow antigravity "Orchestrator (Neon) sk-SETTINGSVALUE"
+    refusal "$(at $((NOW - 300)))" off-narrow antigravity "Orchestrator (Carbon)"
+}
+WAKE_AG="DUTY guard-refusal guard=guard-t3-thread-tools rule=off-narrow instance=antigravity :: a new guard refusal class :: next: find the open ticket that owns this guard and rule, or file one"
+
+rworld; replay
+sweep
+check "refusal: the 11-25 Antigravity replay wakes once, naming only the three key fields" "$WAKE_AG" "$OUT"
+hasnt "refusal: no thread title in the wake" "Orchestrator" "$OUT"
+hasnt "refusal: no title text in the wake" "SETTINGSVALUE" "$OUT"
+sweep
+check "refusal: a second sweep says nothing" "" "$OUT"
+refusal "$(at $((NOW + 3600)))" off-narrow antigravity "again"
+SWEEP_AT=$((NOW + 3700)) sweep
+check "refusal: a repeat inside 24 h folds" "" "$OUT"
+SWEEP_AT=$((NOW + 90000)) sweep
+check "refusal: a folded repeat does not wake later" "" "$OUT"
+refusal "$(at $((NOW + 90100)))" off-narrow antigravity
+SWEEP_AT=$((NOW + 90200)) sweep
+check "refusal: a repeat past 24 h wakes again" "$WAKE_AG" "$OUT"
+
+rworld; replay; sweep
+refusal "$(at $((NOW + 10)))" bypass-instance antigravity
+SWEEP_AT=$((NOW + 20)) sweep
+has "refusal: another rule wakes again" "rule=bypass-instance instance=antigravity " "$OUT"
+hasnt "refusal: and the woken class stays folded" "rule=off-narrow" "$OUT"
+refusal "$(at $((NOW + 30)))" off-narrow gemini
+SWEEP_AT=$((NOW + 40)) sweep
+has "refusal: another instance wakes again" "rule=off-narrow instance=gemini " "$OUT"
+check "refusal: and only that one" "1" "$(printf '%s\n' "$OUT" | grep -c .)"
+
+rworld; refusal "$(at "$NOW")" chief-title ""
+sweep
+has "refusal: an empty instance is the class '-'" "rule=chief-title instance=- " "$OUT"
+
+rworld; refusal "$(at "$NOW")" non-string-instance '{"apiKey": "hunter2 value"}'
+printf 'not json\n{"kind":"refusal"}\n' >> "$WORK/w/refusals.jsonl"
+sweep
+has "refusal: a field that is not a plain token is named non-token" "instance=non-token " "$OUT"
+hasnt "refusal: and its text stays out of the wake" "hunter2" "$OUT"
+check "refusal: a bad line and a keyless row add nothing" "1" "$(printf '%s\n' "$OUT" | grep -c .)"
+
+rworld
+sweep
+check "refusal: a missing row file is silent" "" "$OUT"
+: > "$WORK/w/refusals.jsonl"
+sweep
+check "refusal: an empty row file is silent" "" "$OUT"
+mkdir "$WORK/w/refusals.dir"
+OUT=$(REFUSALS_AT="$WORK/w/refusals.dir" sweep_env 2>"$WORK/w/err")
+check "refusal: a path that is no readable file is named unread" "DUTY? guard-refusals unread" "$OUT"
+
+rworld; mkdir -p "$WORK/w/home/.himmel/state"; replay
+mv "$WORK/w/refusals.jsonl" "$WORK/w/home/.himmel/state/guard-refusals.jsonl"
+OUT=$(REFUSALS_AT=default HOME="$WORK/w/home" sweep_env 2>"$WORK/w/err")
+check "refusal: with no override the path comes from the ledger registry" "$WAKE_AG" "$OUT"
 
 check "no gh call outside the seam" "" "$(cat "$STUB/path-gh-calls")"
 

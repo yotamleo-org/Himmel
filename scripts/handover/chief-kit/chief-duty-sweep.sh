@@ -6,7 +6,7 @@
 # This reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the
 # verdicts, the Jira mirror (through the dispatcher's dispositions) and owed.jsonl, and prints
 #   DUTY <kind> <id> :: <why> :: next: <command>
-# for each of nine kinds:
+# for each of ten kinds:
 #   go-owed        a standing READY (no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED after
 #                  it) at the PR's current head, with no GO file
 #   merge-owed     the GO file exists (10 min old or more), the PR is open at that head, and the
@@ -24,6 +24,10 @@
 #                  one thing it waits on (a ruling, a judge or GO, CI, an operator ask, a launcher state)
 #   dead-wake      a HELD queue entry with wake=done:<KEY> where KEY has no live worker and no dispatchable
 #                  row, or an open PR with no live owner that no hold names: a chief defect to re-rule
+#   guard-refusal  a new (guard, rule, instance) class in the guard-refusals ledger. The line names those
+#                  three fields only (a field that is not a plain token prints as non-token, an empty one
+#                  as -). It is printed once; a row of the same class dated inside 24 h of that wake folds
+#                  into it, and a later one wakes again
 # A clean fleet prints nothing and exits 0. An input that cannot be read prints one
 #   DUTY? <source> unread
 # line and the kinds that depend on it are left out: an unread input never adds an item.
@@ -38,11 +42,13 @@
 #       a spec for gen-judge-brief.py (--dispatch-json), written once and never rewritten.
 #   <state>/chief-duty-sweep-stall.tsv
 #       the clock of each open PR: head, owner-tail checksum and the epoch they were first seen unchanged.
+#   <state>/chief-duty-sweep-refusals.tsv
+#       the last-woken epoch of each refusal class, written after its line is printed.
 # It writes nothing else: no GO, verdict, message, bucket file or Jira row.
 #
 # Seams (tests): CHIEF_DUTY_SWEEP_NOW (epoch), _PRS (a `gh pr list` JSON file), _RUNS (the CI runs
 # cache), _GO_ROOT, _MIRROR, _DISPOSITIONS (dispatcher output), _GH, _DELTA (delta-class.sh), _OWE,
-# TICK_STATE_DIR, CANCEL_RUNS_PACE_STATE.
+# TICK_STATE_DIR, CANCEL_RUNS_PACE_STATE, HIMMEL_GUARD_REFUSALS_LOG, HIMMEL_LEDGERS_JSON.
 # Exit 0, or 2 on a usage error. Linux-only kit; bash 3.2-safe apart from flock.
 # shellcheck disable=SC2031  # bucket, anchor and gh_bin are assigned once in the main shell; the pipelines below only read them
 set -u
@@ -545,10 +551,40 @@ if [ -s "$bucket/owed.jsonl" ]; then
     fi
 fi
 
+refusal_stamps="$state/chief-duty-sweep-refusals.tsv"
+refusal_woken=""
+refusal_file="${HIMMEL_GUARD_REFUSALS_LOG:-}"
+if [ -z "$refusal_file" ]; then
+    refusal_file=$(jq -er '.ledgers[] | select(.id == "guard-refusals") | .default_path' "${HIMMEL_LEDGERS_JSON:-$REPO/scripts/observability/ledgers.json}" 2>/dev/null) || refusal_file=""  # swallow-ok: an unreadable registry is named unread below
+    case "$refusal_file" in \~/*) refusal_file="${HOME:-}/${refusal_file#\~/}" ;; esac
+fi
+if [ -z "$refusal_file" ]; then
+    unread "guard-refusals"
+elif [ -e "$refusal_file" ]; then
+    if [ -f "$refusal_file" ] && refusal_rows=$(jq -rR '
+        def token: if type != "string" then "non-token" elif . == "" then "-" elif test("\\A[A-Za-z0-9_.,:-]{1,120}\\z") then . else "non-token" end;
+        fromjson? | objects | select(.kind == "refusal" and has("guard") and has("rule"))
+        | [(.guard | token), (.rule | token), (.instance // "" | token), (.ts | try fromdateiso8601 catch 0)] | @tsv' "$refusal_file" 2>/dev/null); then  # swallow-ok: a failed read is named unread
+        refusal_woken=$(printf '%s\n' "$refusal_rows" | awk -F'\t' -v now="$now" -v stamps="$refusal_stamps" '
+            BEGIN { while ((getline l < stamps) > 0) if (split(l, a, "\t") == 4) woke[a[1] FS a[2] FS a[3]] = a[4] }
+            NF == 4 { k = $1 FS $2 FS $3; if (!(k in last) || $4 + 0 > last[k]) last[k] = $4 + 0 }
+            END { for (k in last) if (!(k in woke) || last[k] >= woke[k] + 86400) print k FS now }')
+        while IFS=$'\t' read -r rguard rrule rinst _; do
+            [ -n "$rguard" ] || continue
+            add "DUTY guard-refusal guard=$rguard rule=$rrule instance=$rinst :: a new guard refusal class :: next: find the open ticket that owns this guard and rule, or file one"
+        done <<< "$refusal_woken"
+    else
+        unread "guard-refusals"
+    fi
+fi
+
 out=$(printf '%s' "$items" | sed '/^$/d')
 if [ -n "$out" ]; then
     printf '%s\n' "$out" | grep '^DUTY? ' | sort -u
     printf '%s\n' "$out" | grep '^DUTY ' | LC_ALL=C sort
 fi
 [ -z "$ran" ] || printf '%s' "$ran"
+if [ -n "$refusal_woken" ]; then
+    ( . "$REPO/scripts/lib/prim.sh" && { printf '%s\n' "$refusal_woken"; cat "$refusal_stamps" 2>/dev/null; } | awk -F'\t' '!seen[$1 FS $2 FS $3]++' | atomic_write "$refusal_stamps" ) 2>/dev/null  # swallow-ok: an unwritten stamp repeats the wake, never loses one
+fi
 exit 0
