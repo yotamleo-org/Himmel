@@ -197,6 +197,62 @@ and `ineligibility_reasons` follow the execution provenance rules under "Sweep
 rows". n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
+## Miss bins (`score.py misses`)
+
+Tells a keyword-match miss from a finding that was never near the defect. It is
+free: it re-reads stored bundles, calls no model and appends no ledger row.
+
+```bash
+python3 scripts/eval/review-panel/score.py misses --outputs <bundle> [--outputs <bundle> ...] \
+  [--critics codex] [--adjudications <jsonl>] [--json <file>]
+```
+
+The default roster is `codex`, the production critic; two or more critics add a
+`panel` row (their union). With the matcher and window above, each labelled
+defect gets one bin per critic and bundle:
+
+| bin | meaning |
+|---|---|
+| `key-hit` | location and class matched |
+| `location-only` | a finding of that critic within the window, no class match |
+| `no-location` | the critic answered the case and no finding is within the window |
+| `unscored` | the case or the critic is unscored in that bundle (a leaked case too) |
+
+- **Open half**: one line per defect and critic, the bins in bundle order, then
+  `stable` (the same bin in every bundle) or `flaky`.
+- **Sealed half**: whole-half totals only. No sealed case id, defect id or
+  per-class cell is printed or written to `--json`, and a refusal's message has
+  sealed case ids replaced.
+- **Null window**: per seeded case, one added line of the seeded diff at least
+  10 lines from every defect line, and under a wide window further than that
+  defect's window plus the case's widest (a line of another file qualifies), drawn with
+  `random.Random(11085)` and recorded for open cases. The share of cases with a
+  finding of that critic within the window of the drawn line (the widest window
+  among that case's defects, so a key override can exceed `--window`) is the
+  location-only rate that finding density alone would give. It counts cases and
+  the location-only share counts defects, which differ on a case with two or
+  more. A diff with no such
+  line is left out of the denominator. The clean-twin count at the seed line is
+  secondary: the repair usually touched that line.
+- **Grades** (`--adjudications`, with the validation sidecar): each
+  `location-only` defect becomes `proxy-false-miss` (a bound label marks one of
+  its near findings `correct` and names the defect in `target_ids`; `blocking`
+  is added when that finding is Critical or Important), `genuine-located` (every
+  near finding is labelled, none right) or `undecided`. A label binds only
+  where the bundle's run manifest records the case inputs the fixtures hold. The
+  bin itself never changes.
+- **Rows**: a `proxy` row per bundle and critic (key-match at any severity and
+  at gating severity, with k/n and a Wilson interval), and apart from it one
+  `verified` row. `misses` computes no verified figure: it reads the newest `ok`
+  `review-panel-judged` row of the eval-runs ledger (`--ledger`), which the
+  judged eval writes: metrics `catch_rate` (gating),
+  `catch_rate_any_severity` and `clean_pass_rate`, each with `<name>.k`,
+  `<name>.n` and a `ci` entry. Without such a row, or a figure in it, it prints
+  `unavailable`.
+
+It reports and gives no verdict on a change, and no CI job or merge script
+reads it.
+
 ## Open and sealed seeds
 
 Half the pairs are sealed. Per class, `random.Random(7519)` picked one of its

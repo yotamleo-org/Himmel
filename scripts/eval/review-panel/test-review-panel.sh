@@ -1496,6 +1496,199 @@ JR2="$TMP/m4-21.json"; out=$(vscore "$VO" "$LR2" "$JR2"); rc=$?
 eq "missed_rulings_merge: two missed rulings of one target over different findings merge instead of conflicting" \
   "$rc:$(jget "$JR2" verified/targets/case-19/quoting-a-1)" "0:missed"
 
+MS="$TMP/misses"; mkdir -p "$MS/fx"
+mscase() { python3 -c 'import sys
+d, cid, n, stem = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+f = "scripts/%s.sh" % stem
+open("%s/%s.patch" % (d, cid), "w").write("diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n@@ -0,0 +1,%d @@\n" % (f, f, f, f, n)
+    + "".join("+echo row %d\n" % i for i in range(1, n + 1)))' "${4:-$MS/fx}" "$1" "$2" "${3:-$1}"; }
+mskey() { python3 -c 'import json,sys
+cases = {}
+for spec in sys.argv[2:]:
+    cid, cls, split, line = spec.split(":")
+    pair = "p" + cid
+    cases[cid] = {"kind": "seeded", "pair": pair, "split": split,
+                  "defects": [{"id": pair + "-1", "class": cls, "file": "scripts/%s.sh" % cid, "line": int(line)}]}
+    cases[cid + "c"] = {"kind": "clean", "pair": pair, "split": split, "defects": []}
+json.dump({"canary": "ms-canary-value", "cases": cases}, open(sys.argv[1], "w"))' "$@"; }
+for c in case-61 case-62 case-63; do mscase "$c" 40; mscase "${c}c" 40 "$c"; done
+mskey "$MS/k1.json" case-61:logic:open:5 case-62:quoting:open:5 case-63:toctou:open:5
+M1="$MS/b1"; mkdir -p "$M1"
+review "$M1/case-61.md" codex "imp:scripts/case-61.sh:5:off-by-one in the retention count"
+review "$M1/case-62.md" codex "sug:scripts/case-62.sh:5:prefer a longer name here"
+review "$M1/case-63.md" codex "sug:scripts/other.sh:5:an unrelated remark"
+review "$M1/case-61c.md" codex "sug:scripts/case-61.sh:5:an unrelated remark"
+review "$M1/case-62c.md" codex
+review "$M1/case-63c.md" codex
+misses() { python3 "$SCORE" misses --fixtures "$MS/fx" --key "$@" 2>&1; }
+out=$(misses "$MS/k1.json" --outputs "$M1" --json "$MS/m1.json"); rc=$?
+eq "MA1 misses: exit 0 (codex is the default roster)" "$rc" "0"
+has "MA1 misses: the four bins per critic" "$out" "open   codex bins: key-hit 1, location-only 1, no-location 1, unscored 0"
+has "MA1 misses: an open defect's own line" "$out" "case-62 pcase-62-1 [quoting] codex: location-only"
+has "MA1 misses: the no-location defect" "$out" "case-63 pcase-63-1 [toctou] codex: no-location"
+has "MA1 misses: the clean twin at the seed line is a secondary row" "$out" "clean twin at the seed line (secondary) 1/3"
+out=$(misses "$MS/k1.json" --outputs "$M1" --critics codex,glm)
+has "MA1 misses: a critic the bundle never ran is unscored, per critic" "$out" "open   glm bins: key-hit 0, location-only 0, no-location 0, unscored 3"
+M1b="$MS/b1b"; cp -r "$M1" "$M1b"; review "$M1b/case-62.md" codex
+out=$(misses "$MS/k1.json" --outputs "$M1" --outputs "$M1b")
+has "MA1 misses: a bin that differs across bundles is flaky" "$out" "case-62 pcase-62-1 [quoting] codex: location-only,no-location flaky"
+has "MA1 misses: and the same bin everywhere is stable" "$out" "case-61 pcase-61-1 [logic] codex: key-hit,key-hit stable"
+
+mskey "$MS/k1b.json" case-61:logic:open:5
+misses "$MS/k1b.json" --outputs "$M1" --json "$MS/m1b.json" >/dev/null
+drawn=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"]; print("%s:%d" % (d[0], d[1]))' "$MS/m1b.json" 2>/dev/null)
+want=$(python3 -c 'import random; print("scripts/case-61.sh:%d" % random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 10]))')
+eq "MA1b misses: the recorded draw is Random(11085) over the added lines at least 10 lines off the defect" "$drawn" "$want"
+M1c="$MS/b1c"; cp -r "$M1" "$M1c"
+review "$M1c/case-61.md" codex "sug:${drawn%:*}:${drawn##*:}:a remark at the drawn line"
+out=$(misses "$MS/k1b.json" --outputs "$M1c")
+has "MA1b misses: a finding at the drawn line counts 1" "$out" "null window 1/1"
+mkdir -p "$MS/fx-short"; cp "$MS/fx"/*.patch "$MS/fx-short/"
+out=$(misses "$MS/k1.json" --outputs "$M1")
+has "MA1b misses: three seeded diffs give a denominator of 3" "$out" "null window 0/3"
+mscase case-63 8 case-63 "$MS/fx-short"
+out=$(python3 "$SCORE" misses --fixtures "$MS/fx-short" --key "$MS/k1.json" --outputs "$M1" 2>&1)
+has "MA1b misses: a diff with no line 10 off is skipped and the denominator drops by 1" "$out" "null window 0/2"
+misses "$MS/k1b.json" --outputs "$M1" --window 7 --json "$MS/m1w.json" >/dev/null; rc=$?
+eq "MA1b misses: a wide-window run exits 0" "$rc" "0"
+python3 -c 'import json,sys
+k = json.load(open(sys.argv[1]))
+k["cases"]["case-61"]["defects"].append({"id": "pcase-61-2", "class": "logic", "file": "scripts/zz.sh", "line": 1, "window": 12})
+json.dump(k, open(sys.argv[2], "w"))' "$MS/k1b.json" "$MS/k1m.json"
+misses "$MS/k1m.json" --outputs "$M1" --json "$MS/m1m.json" >/dev/null; rc=$?
+mdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1m.json" 2>/dev/null)
+mwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 16]))')
+eq "MA1b misses: each defect is cleared by its own window plus the case's widest" "$rc:$mdrawn" "0:$mwant"
+python3 -c 'import json,sys
+k = json.load(open(sys.argv[1]))
+k["cases"]["case-61"]["defects"].append({"id": "pcase-61-3", "class": "logic", "file": "scripts/case-61.sh", "line": 40, "window": 6})
+json.dump(k, open(sys.argv[2], "w"))' "$MS/k1b.json" "$MS/k1s.json"
+misses "$MS/k1s.json" --outputs "$M1" --json "$MS/m1s.json" >/dev/null; rc=$?
+sdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1s.json" 2>/dev/null)
+swant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 10 and abs(n - 40) >= 13]))')
+eq "MA1b misses: a wider defect of the same file clears its own lines too" "$rc:$sdrawn" "0:$swant"
+wdrawn=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["null_window"]["draws"]["case-61"][1])' "$MS/m1w.json" 2>/dev/null)
+wwant=$(python3 -c 'import random; print(random.Random(11085).choice([n for n in range(1, 41) if abs(n - 5) >= 15]))')
+eq "MA1b misses: under a wide window the null window never overlaps the defect's window" "$wdrawn" "$wwant"
+has "MA1b misses: the two shares name their units" "$out" "location-only share 1/3 defects; null window 0/2 cases"
+out=$(misses "$MS/k1.json" --outputs "$M1" --critics codex,panel); rc=$?
+eq "MA1 misses: panel is a reserved critic name" "$rc:$(printf '%s' "$out" | grep -c 'reserved')" "2:1"
+
+for c in case-71 case-72; do mscase "$c" 40; mscase "${c}c" 40 "$c"; done
+mskey "$MS/k2.json" case-61:logic:open:5 case-71:fail-open:sealed:5 case-72:spec-miss:sealed:5
+M2="$MS/b2"; mkdir -p "$M2"; cp "$M1/case-61.md" "$M1/case-61c.md" "$M2/"
+for c in case-71 case-71c case-72 case-72c; do review "$M2/$c.md" codex; done
+out=$(misses "$MS/k2.json" --outputs "$M2" --json "$MS/m2.json")
+has "MA2 misses: the sealed half as whole-half totals" "$out" "sealed codex bins: key-hit 0, location-only 0, no-location 2, unscored 0"
+has "MA2 misses: the json report was written" "$(cat "$MS/m2.json")" '"open_defects"'
+eq "MA2 misses: no sealed case id, defect id or sealed class cell in the report or the json" \
+  "$(printf '%s\n' "$out" | cat - "$MS/m2.json" | grep -cE 'case-7[12]|pcase-7|fail-open|spec-miss')" "0"
+mkdir -p "$MS/named"; cp -r "$M2" "$MS/named/case-71"
+out=$(misses "$MS/k2.json" --outputs "$MS/named/case-71" --json "$MS/m2n.json")
+has "MA2 misses: a bundle named after a sealed case is reported redacted" "$out" "bundle <sealed case>"
+python3 -B -c 'import sys
+sys.path.insert(0, sys.argv[1]); import eval_runs
+eval_runs.append_row(eval_runs.make_row("review-panel-judged", "fixture", {}, {"catch_rate": 0.5}, run_id="judged-case-72",
+                                        gitsha="0" * 40), sys.argv[2])' "$HERE/../lib" "$MS/judged-named.jsonl"
+out="$out$(misses "$MS/k2.json" --outputs "$M2" --ledger "$MS/judged-named.jsonl" --json "$MS/m2r.json")"
+has "MA2 misses: a judged run id naming a sealed case is reported redacted" "$out" "verified (judged run judged-<sealed case>)"
+cp -r "$M2" "$MS/named/pcase-72-1"
+out="$out$(misses "$MS/k2.json" --outputs "$MS/named/pcase-72-1" --json "$MS/m2d.json")"
+has "MA2 misses: a bundle named after a sealed defect id is reported redacted" "$out" "bundle <sealed defect>"
+eq "MA2 misses: all three json reports were written" \
+  "$(cat "$MS/m2n.json" "$MS/m2r.json" "$MS/m2d.json" | grep -c '"open_defects"')" "3"
+eq "MA2 misses: no outside name carries a sealed case or defect id" \
+  "$(printf '%s\n' "$out" | cat - "$MS/m2n.json" "$MS/m2r.json" "$MS/m2d.json" | grep -cE 'case-7[12]')" "0"
+out=$(misses "$MS/k2.json" --outputs "$M2" --validation "$MS/no-such-sidecar.json" --adjudications "$MS/none.jsonl"); rc=$?
+eq "MA2 misses: an unreadable sidecar is refused" "$rc" "2"
+mkdir -p "$MS/fx-gone"; cp "$MS/fx"/case-61*.patch "$MS/fx-gone/"
+out=$(python3 "$SCORE" misses --fixtures "$MS/fx-gone" --key "$MS/k2.json" --outputs "$M2" 2>&1); rc=$?
+eq "MA2 misses: a refusal over a sealed fixture names no sealed case id" "$rc:$(printf '%s' "$out" | grep -cE 'case-7[12]')" "2:0"
+
+mskey "$MS/k3.json" case-62:quoting:open:19 case-63:toctou:open:19
+mkdir -p "$MS/fx3"; for c in case-62 case-62c case-63 case-63c; do mscase "$c" 20 "${c%c}" "$MS/fx3"; done
+M3="$MS/b3"; mkdir -p "$M3"
+review "$M3/case-62.md" codex "sug:scripts/case-62.sh:19:prefer a longer name here"
+review "$M3/case-63.md" codex "sug:scripts/case-63.sh:22:a remark past the end of the hunk"
+review "$M3/case-62c.md" codex
+review "$M3/case-63c.md" codex
+python3 -c 'import json,sys
+cases = json.load(open(sys.argv[1]))["cases"]
+out = {c: {"state": "pending", "effective_kind": v["kind"], "mechanism": "m", "trigger": "t", "expected_behavior": "e",
+           "contract": "c", "target_ids": [d["id"] for d in v["defects"]], "added_targets": [], "residuals": [],
+           "repair_evidence": "r", "evidence_refs": [], "curator": "fixture-curator"} for c, v in cases.items()}
+json.dump({"v": 1, "cases": out}, open(sys.argv[2], "w"))' "$MS/k3.json" "$MS/val3.json"
+mslabels() { python3 -B -c 'import json,sys
+sys.path.insert(0, sys.argv[1]); import adjudication, score
+out, bundle, correctness, key, fx, val = sys.argv[2:8]
+cases = score.load_key(key)["cases"]
+inputs = score.case_inputs(fx, cases, sorted(cases))
+json.dump({"v": 1, "protocol": {}, "provenance": {}, "cases": {}, "inputs": inputs, "critics": []},
+          open(bundle + "/run-manifest.json", "w"))
+with open(out, "a") as fh:
+    for cid in sys.argv[8:]:
+        for f in score.parse_review(open("%s/%s.md" % (bundle, cid)).read())[0]:
+            fh.write(json.dumps({"v": 1, "case_id": cid, "case_input_sha256": adjudication.case_input_sha256(inputs[cid]),
+                "gold_revision": adjudication.gold_revision(val), "finding_sha256": adjudication.finding_sha256(f),
+                "observed_execution_ids": [], "correctness": correctness,
+                "target_ids": [cases[cid]["defects"][0]["id"]] if correctness == "correct" else [], "scope": "in",
+                "severity_valid": None, "rationale": "fixture", "evidence_refs": ["testdata:synthetic"],
+                "adjudicator": "fixture-adjudicator", "reviewed_by": "fixture-reviewer",
+                "adjudicated_at": "2026-11-27"}) + "\n")' "$HERE" "$1" "$2" "$3" "$MS/k3.json" "$MS/fx3" "$MS/val3.json" "${@:4}"; }
+misses3() { python3 "$SCORE" misses --fixtures "$MS/fx3" --key "$MS/k3.json" --validation "$MS/val3.json" --outputs "$M3" "$@" 2>&1; }
+out=$(misses3)
+eq "MA3 misses: an ungraded location-only finding stays location-only" \
+  "$(printf '%s\n' "$out" | grep -c 'codex: location-only stable'):$(printf '%s\n' "$out" | grep -c proxy-false-miss)" "2:0"
+mslabels "$MS/l3.jsonl" "$M3" correct case-62
+out=$(misses3 --adjudications "$MS/l3.jsonl")
+has "MA3 misses: a bound right-place right-reason label is a proxy false miss" "$out" "case-62 pcase-62-1 [quoting] codex: location-only(proxy-false-miss)"
+has "MA3 misses: outside the hunk with no label stays undecided" "$out" "case-63 pcase-63-1 [toctou] codex: location-only(undecided)"
+has "MA3 misses: the grade totals" "$out" "open   codex location-only grades: proxy-false-miss 1 (blocking 0), genuine-located 0, undecided 1"
+mslabels "$MS/l3b.jsonl" "$M3" incorrect case-62
+has "MA3 misses: a graded wrong reason is a genuine miss, located" "$(misses3 --adjudications "$MS/l3b.jsonl")" "case-62 pcase-62-1 [quoting] codex: location-only(genuine-located)"
+review "$M3/case-62.md" codex "imp:scripts/case-62.sh:19:prefer a longer name here"
+mslabels "$MS/l3c.jsonl" "$M3" correct case-62
+has "MA3 misses: a proxy false miss at blocking severity says so" "$(misses3 --adjudications "$MS/l3c.jsonl")" "case-62 pcase-62-1 [quoting] codex: location-only(proxy-false-miss, blocking)"
+cat "$MS/l3b.jsonl" "$MS/l3c.jsonl" > "$MS/clash.jsonl"
+review "$M3/case-62.md" codex "sug:scripts/case-62.sh:19:prefer a longer name here"
+mslabels "$MS/clash.jsonl" "$M3" correct case-62
+setsplit "$MS/k3.json" "$MS/k3s.json" pcase-62=sealed
+out=$(python3 "$SCORE" misses --fixtures "$MS/fx3" --key "$MS/k3s.json" --validation "$MS/val3.json" --outputs "$M3" --adjudications "$MS/clash.jsonl" 2>&1); rc=$?
+eq "MA3 misses: conflicting labels are refused, naming no sealed case id" \
+  "$rc:$(printf '%s' "$out" | grep -c 'conflicting adjudication labels'):$(printf '%s' "$out" | grep -c case-62)" "2:1:0"
+rm -f "$M3/run-manifest.json"
+has "MA3 misses: no label binds to a bundle that recorded no case inputs" "$(misses3 --adjudications "$MS/l3c.jsonl")" \
+  "grades: 4 scored case(s) have unrecorded or changed inputs, so no label binds there"
+M1d="$MS/b1d"; cp -r "$M1" "$M1d"; echo "ms-canary-value" > "$M1d/case-61.err"
+has "MA1 misses: a leaked case is unscored" "$(misses "$MS/k1.json" --outputs "$M1d")" "open   codex bins: key-hit 0, location-only 1, no-location 1, unscored 1"
+
+python3 -B -c 'import sys
+sys.path.insert(0, sys.argv[1]); import eval_runs
+m = {"catch_rate": 0.25, "catch_rate.k": 2, "catch_rate.n": 8, "catch_rate_any_severity": 0.5,
+     "catch_rate_any_severity.k": 4, "catch_rate_any_severity.n": 8, "clean_pass_rate": 0.75,
+     "clean_pass_rate.k": 6, "clean_pass_rate.n": 8}
+ci = {"catch_rate": {"lo": 0.07, "hi": 0.59}, "catch_rate_any_severity": {"lo": 0.22, "hi": 0.78},
+      "clean_pass_rate": {"lo": 0.41, "hi": 0.93}}
+eval_runs.append_row(eval_runs.make_row("review-panel-judged", "fixture", {"series": "fx"}, m, n=16, ci=ci, ci_level=0.95,
+                                        ci_method="wilson", run_id="judged-fixture-1", gitsha="0" * 40), sys.argv[2])' \
+  "$HERE/../lib" "$MS/judged.jsonl"
+out=$(misses "$MS/k1.json" --outputs "$M1" --ledger "$MS/judged.jsonl")
+has "MA4 misses: the proxy row, any severity and gating, with its own counts" "$out" "proxy b1 codex: key-match any-severity 1/3 [0.06,0.79], gating 1/3 [0.06,0.79]"
+has "MA4 misses: the verified row, gating beside any-severity, with its own counts" "$out" "verified (judged run judged-fixture-1): catch rate gating 2/8 [0.07,0.59], any-severity 4/8 [0.22,0.78]; clean pass 6/8 [0.41,0.93]"
+rows=$(wc -l < "$MS/judged.jsonl" | tr -d ' ')
+eq "MA4 misses: appends no ledger row" "$rows" "1"
+: > "$MS/judged.jsonl"
+has "MA4 misses: without the ledger row the verified row is unavailable" "$(misses "$MS/k1.json" --outputs "$M1" --ledger "$MS/judged.jsonl")" "verified: unavailable"
+
+echo '[]' > "$MS/arm.json"
+{ misses "$MS/k1.json" --outputs "$M1" --json "$MS/m5.json"; cat "$MS/m5.json"
+  misses3 --adjudications "$MS/l3c.jsonl"
+  python3 "$SCORE" compare-paired --baseline-scores "$MS/arm.json" --candidate-scores "$MS/arm.json" --key "$MS/k1.json" 2>&1; } > "$MS/ma5.txt" 2>&1
+has "MA5 misses: the report was produced" "$(cat "$MS/ma5.txt")" "open   codex bins:"
+eq "MA5 misses: neither verb prints a verdict word" "$(grep -ciE 'keep|revert' "$MS/ma5.txt")" "0"
+hits=$(git -C "$HERE/../../.." grep -n 'score.py misses\|compare-paired' -- .github scripts/handover/merge-on-green.sh 2>&1); rc=$?
+eq "MA5 misses: no CI job or merge script reads either verb (git grep ran and matched nothing)" "$rc:$hits" "1:"
+
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]
