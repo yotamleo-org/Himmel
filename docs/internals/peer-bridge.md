@@ -183,7 +183,7 @@ Claude session, a TTY):
 
 | Command | Does |
 |---|---|
-| `pair <peer> [<station-name>] [--card '<their card>']` | the guided form, one command per side: sets our station name if it is unset, makes the station key once (later runs show the same key again), and prints our pairing card `#pair station=<name> key=<pubkey>` to post in the group by hand, then the fingerprint to read out of band. The card never holds the fingerprint. With `--card` and the peer's card it runs the `trust` check below on their name and key |
+| `pair <peer> [<station-name>] [--card '<their card>']` | the guided form, one command per side: sets our station name if it is unset, makes the station key once (later runs show the same key again), prints the fingerprint to read out of band, asks our running poller to post our pairing card in the group and prints its answer (`queued; it appears in the group within a minute`, `asked 3 times today for this key`, another refusal rule, or that the poller did not answer). It also prints the card line, for the peer's operator to paste into their own `--card` if the tap does not reach them. The card never holds the fingerprint. With `--card` and the peer's card (the bare line or the two-line Telegram copy) it then runs the `trust` check below on their name and key |
 | `station-name <name>` | sets our `self.stationName` (what `from` carries). A name `egress.ts` `badHost` would refuse (the host's name or first label, `localhost`, a `.local` name) is refused, because egress would refuse every envelope that holds it |
 | `keygen --show` | prints the current key's public part, key id and fingerprint again; never the private key |
 | `keygen` | creates `C/station.ed25519` (PKCS8, 0600, `O_CREAT\|O_EXCL`) and prints the public key (base64), its key id (8 hex of `sha256(pub)`) and its fingerprint (20 hex in groups of four) |
@@ -200,7 +200,49 @@ any write, so a `trust`, `pair`, `dm` or station name takes effect with no
 A signed message dropped because pairing is not finished (no trusted key with
 its key id, our station name unset, or theirs unset) puts one `unpaired` record
 on the notify chain per peer, missing step and key id. The operator reads one
-line naming the step and the `setup.ts pair` command that finishes it.
+line naming the step and the `setup.ts pair` command that finishes it. That line
+keeps its terminal wording, so it can arrive beside a pairing offer.
+
+**Every `peers.json` write takes one lock.** `peers.json.lock` is a file holding
+its writer's pid and start identity, linked into place whole; a lock whose holder
+is gone, or whose file is older than 10 s, is broken by renaming it away and
+checking it is still the file ruled stale. A writer waits up to 2 s, then reports
+`busy`. Each writer compares the file with the bytes it read before its change,
+so a `setup.ts` verb whose prompt outlasted another write refuses with
+`peers.json changed while you were at the prompt; run it again`. A hand edit of
+`peers.json` takes no lock and can drop a tapped key: edit it only with no offer
+open, and run `pair` or `trust` again if `remote-setup.sh status` then shows their
+key missing.
+
+**The one-tap pairing offer** covers a peer's first key only.
+
+- On a `card` spool record (only `pair` submits one) the poller posts
+  `/peer@<their bot>` and our card, built from our config and current key, at
+  most three requests per peer and key id per UTC day. The card gate
+  (`checkCardOutbound`) rebuilds those exact bytes, checks the station name,
+  the `peer-pairing` egress cell and `redact_check` with no waiver, when the card
+  is queued and again just before the send.
+- A card is admitted only from the peer bot's own id, in the confirmed group, as
+  a fresh two-line message that passes the admission rules above. It is chained to
+  `inbox.jsonl` as `peer-card` and never reaches the reader or the desk.
+- The poller makes an offer only when, in this order: the operator's chat is
+  recorded; the peer is not killed; the trust rules pass with no key trusted yet;
+  no offer for the peer was closed `two-cards` today; no open offer carries a
+  different key (one that does is closed `two-cards`, no offer is made, and the
+  operator is told to pair at the terminal for the rest of the day); no open offer
+  carries the same key; no offer came from this message; the key was not rejected
+  today; and fewer than five offers were made for the peer today.
+- The offer lives 30 minutes in `S/<peer>/pairing.jsonl`. The operator's chat
+  shows the station name, the full fingerprint (no key id) and Approve and Reject.
+  The offer closes `APPROVED` when its key was trusted at the terminal before it
+  expired, and `EXPIRED` when that happened later.
+- An Approve tap trusts only from the operator, on the offer's own message in the
+  operator's chat, before the expiry, with lockdown off, the peer not killed and
+  no key trusted. The poller applies it itself (there is no spool record for it)
+  through `config.ts` `addTrustedKey`, which re-checks lockdown and the kill file
+  under the lock, then reloads the config. A key rotation, a second key, a peer on
+  an older build, a station with no operator chat and an expired offer stay at the
+  terminal.
 
 ### The envelope
 
@@ -734,6 +776,16 @@ claim.
   zero-width characters, `<<<` and `>>>` runs and tag shapes, then are capped.
 - **Receiver-owned limits.** Deadlines and caps come only from the receiver's
   config. A sender cannot make us wait longer than our clamp or raise our caps.
+- **Card admission.** A pairing card is read only from the peer bot's own id in
+  the confirmed group, and its fields are closed by regex, so no card text reaches
+  a model.
+- **The pair tap is applied inside the poller.** The spool has no pair-tap type, so
+  no local spool writer can cause a trust write through it.
+- **One trust writer, one lock.** The only `peers.json` write an inbound module
+  reaches is `config.ts` `addTrustedKey`, which adds a peer's first key and its
+  station name and changes nothing else; every rename goes through the one lock
+  and compare, and `policy.test.ts` pins both. The fingerprint is shown only in
+  the operator's chat, never in the group.
 
 ### Instructional: a prompt asks, nothing enforces
 
@@ -749,6 +801,29 @@ claim.
 ### Accepted residuals
 
 These are known and accepted for this slice.
+
+- **Pairing: compare instead of type.** The tap does not check the operator's
+  comparison. A party posting as the peer bot can cheaply grind a key whose first
+  two or three fingerprint groups match the real one, so compare all five. The
+  offer shows no key id, a second key closes the open offer and sends you to the
+  terminal, only a peer's first key can be tapped in, and the typed terminal path
+  stays.
+- **Pairing: the same OS user.** A process running as you can write `peers.json`,
+  or a `card` spool record that makes the poller post our own public card, up to
+  three times per key per day. It cannot change what the card says.
+- **Pairing: a stale lock.** A writer that dies holding `peers.json.lock` is
+  cleared when its pid is gone or reused, or when the file is older than 10 s, so
+  others can answer `busy` for at most that long. A writer stopped inside its lock
+  for more than 10 s can lose it and rename after another writer did, and three
+  contenders inside one break can leave two holders.
+- **Pairing: the peer's bot names its station.** The fingerprint compare does not
+  bind the station name, as on the terminal path.
+- **Pairing: lockdown after the last check.** Lockdown and the kill file are
+  written by processes that do not take the lock, so one that lands between the
+  check under it and the rename comes too late, a window of one rename.
+- **Pairing: a resent card.** The daily cap counts requests, so a crash after
+  Telegram accepted a card can post one request twice; the receiver makes one
+  offer from it.
 
 - **The poller runs as the same OS user.** Anything running as you can read the
   token, the key and the inbox, or kill the poller. The path deny and the
