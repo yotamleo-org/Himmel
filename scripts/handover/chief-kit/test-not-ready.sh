@@ -35,10 +35,10 @@ fi
 [ "$*" = "$(cat "$FIXTURE/$seam.argv")" ] || exit 97
 if [ -f "$FIXTURE/$seam.slow" ]; then
     if [ "$(cat "$FIXTURE/$seam.slow")" = escape ]; then
-        exec setsid --wait bash -c 'sleep 12; :' "$FIXTURE/marker-child"
+        exec setsid --wait bash -c 'echo up > "$0.up"; sleep 12; :' "$FIXTURE/marker-child"
     fi
     [ "$(cat "$FIXTURE/$seam.slow")" != trap ] || trap '' TERM
-    bash -c 'sleep 10; :' "$FIXTURE/marker-child" &
+    bash -c 'echo up > "$0.up"; sleep 10; :' "$FIXTURE/marker-child" &
     sleep 10
 fi
 grep -v '^## ' "$FIXTURE/$seam.out"
@@ -531,6 +531,7 @@ r_deadline() {
         t0="$(date +%s%N)"; run_case NOT_READY_DEADLINE=7; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
         [ "$ms" -le 8000 ] || fail "$mode: took ${ms} ms"
         grep -q '^NOT_READY_JIRA_CLI ' "$C/calls.log" || fail "$mode: the slow stand-in never ran"
+        [ -f "$C/marker-child.up" ] || fail "$mode: the slow child never started"
         completeness partial; blind_is 'bucket-check,rounds'
         expect HIMMEL-9432 cannot-judge 'bucket-check:'
         [ "$(grep -c '^not-ready: ' <<<"$OUT")" -eq 1 ] || fail "$mode: want one trailer"
@@ -543,6 +544,7 @@ r_deadline() {
     echo escape > "$C/NOT_READY_JIRA_CLI.slow"
     t0="$(date +%s%N)"; run_case NOT_READY_DEADLINE=7; ms=$(( ($(date +%s%N) - t0) / 1000000 ))
     [ "$ms" -le 8000 ] || fail "escape: a child that left the group held the run for ${ms} ms"
+    if [ ! -f "$C/marker-child.up" ] || [ "$ms" -lt 3000 ]; then fail "escape: the escaped child never held the run (${ms} ms)"; fi
     expect HIMMEL-9432 cannot-judge 'bucket-check:'
     pkill -f "$C/marker-child" 2>/dev/null || true  # swallow-ok: nothing left to stop is the clean case
 }
