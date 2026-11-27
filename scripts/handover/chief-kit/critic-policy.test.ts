@@ -267,7 +267,7 @@ test("check_exit_json", async () => {
 test("no_route_or_dispatch_fields", async () => {
   const fx = fixture({ spec: 5 });
   const eligible = fixture();
-  operatorRecord(fx, 4);
+  operatorRecord(fx, 6);
   const outputs = [
     check(eligible, request(eligible)), check(fx, request(fx, { requested_round: 6 })), check(fx, request(fx, { requested_round: 9 })),
     check(fx, "{not json"), check(fx, request(fx, { model: "x" })),

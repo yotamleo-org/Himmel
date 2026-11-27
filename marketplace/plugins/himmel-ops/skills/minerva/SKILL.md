@@ -480,8 +480,7 @@ an agreed panel finding or a Terminal lint gap, goes to the operator in a plain
 message with the page, and a lint gap also stops the hand-off. If the edit was
 made, put the sealed bytes back. A round past round 6 needs a
 `round-critical` record carrying the operator's quoted
-words (under decision 1418 the chief's own decision file); the operator is asked in a plain message, since no page of the edited spec
-can be sent. A spec edit voids the plan critic's seal too; a blocking finding of
+words (under decision 1418 the chief's own decision file). A spec edit voids the plan critic's seal too; a blocking finding of
 either kind opens round 6 for both, so the plan gets its own closure check.
 
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
@@ -545,7 +544,7 @@ Optional readiness check: the marked paragraph before Stage 2 applies here with 
 
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
-fix → re-critic until clean, **cap 3 rounds**, counted per ticket in the same
+fix → re-critic until clean, **cap 5 rounds**, counted per ticket in the same
 round ledger and capped by the same table as Stage 2. A plan round 6 is a closure
 check too: build its input with `closure-pack <KEY> plan --specs <bucket>/specs`.
 
