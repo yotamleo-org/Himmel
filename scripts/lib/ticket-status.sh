@@ -70,8 +70,7 @@
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D6n as D6, but the ticket is In Progress and the owner's brief says Completes ticket: no
-#       above ## Results: To Do, its lock released or not: the next step is an owed row (worker-event.sh),
-#       never an In Progress status
+#       above ## Results: To Do, its lock released or not
 #   D7  no PR, no worker doc, not at IN CI or no D5d/D5c   no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
