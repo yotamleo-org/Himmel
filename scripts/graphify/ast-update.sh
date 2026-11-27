@@ -405,7 +405,9 @@ _workers="${GRAPHIFY_MAX_WORKERS:-8}"
 case "$_workers" in *[!0-9]*) _workers=8 ;; esac
 [ "$((10#$_workers))" -ge 1 ] && [ "$((10#$_workers))" -le 8 ] || _workers=8
 export GRAPHIFY_MAX_WORKERS="$_workers"
-_nice_by=$((15 - $(nice)))
+_nice_now=$(ps -o nice= -p $$ 2>/dev/null | tr -d ' ') || _nice_now=""
+[[ "$_nice_now" =~ ^-?[0-9]+$ ]] || _nice_now=0
+_nice_by=$((15 - _nice_now))
 [ "$_nice_by" -gt 0 ] || _nice_by=0
 _lowprio=(nice -n "$_nice_by")
 if command -v ionice >/dev/null 2>&1; then _lowprio=(ionice -t -c 3 "${_lowprio[@]}"); fi

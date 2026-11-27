@@ -644,6 +644,17 @@ run23 b GRAPHIFY_MAX_WORKERS=32
 [ "$wk23" = 8 ] && pass "T23 a larger preset is capped at 8" || fail "T23 preset 32 should cap to 8, got '$wk23'"
 run23 c GRAPHIFY_MAX_WORKERS=2
 [ "$wk23" = 2 ] && pass "T23 a smaller preset is kept" || fail "T23 preset 2 should stay 2, got '$wk23'"
+BSD23="$WS/bsd23"; mkdir -p "$BSD23"
+cat > "$BSD23/nice" <<STUB
+#!/usr/bin/env bash
+[ "\$#" -gt 0 ] || { echo "usage: nice [-n increment] utility [argument ...]" >&2; exit 125; }
+exec "$(command -v nice)" "\$@"
+STUB
+chmod +x "$BSD23/nice"
+mkdir -p "$WS/c23d"
+out23=$( PATH="$BSD23:$BIN23:$PATH" bash "$SCRIPT" "$WS/c23d" 2>&1 ); rc23=$?
+[ "$rc23" -eq 0 ] && pass "T23 a BSD nice (no bare form) does not stop the rebuild" \
+  || fail "T23 BSD nice (rc=$rc23): $out23"
 
 echo "T24: incremental by default; one forced run per 24 h per corpus"
 CORPUS24="$WS/c24"; OUT24="$CORPUS24/graphify-out"; mkdir -p "$CORPUS24"
