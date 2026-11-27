@@ -817,7 +817,9 @@ printf '{"nodes":[' > "$2"
 kill -9 "$PPID"
 STUB
 chmod +x "$BIN28/cp"
-PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" >/dev/null 2>&1
+PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" >/dev/null 2>&1; killed28=$?
+[ "$killed28" -eq 137 ] && [ "$(cat "$OUT28/.graph.pre-ast.json.tmp" 2>/dev/null)" = '{"nodes":[' ] && [ ! -e "$OUT28/.graph.pre-ast.json" ] \
+  && pass "T28 the killed copy leaves only a partial temp file" || fail "T28 kill setup (rc=$killed28): $(ls -A "$OUT28")"
 rm -rf "$OUT28/.promote.lock"
 out28=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" 2>&1 ); rc28=$?
 [ "$rc28" -eq 0 ] && pass "T28 the run after a killed copy succeeds" || fail "T28 (rc=$rc28): $out28"
@@ -828,7 +830,7 @@ rm -f "$BIN28/cp" "$OUT28/.graph.pre-ast.json"
 printf '#!/usr/bin/env bash\ncase "$3" in */graph.json) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v mv)" > "$BIN28/mv"
 chmod +x "$BIN28/mv"
 out28=$( PATH="$BIN28:$BIN26:$PATH" bash "$SCRIPT" "$CORPUS28" 2>&1 ); rc28=$?
-[ "$rc28" -eq 5 ] && grep -q "could not set aside" <<<"$out28" && grep -qF "kept at $OUT28/.graph.pre-ast.json" <<<"$out28" && ! grep -q "left as it was" <<<"$out28" \
+[ "$rc28" -eq 5 ] && grep -q "could not set aside" <<<"$out28" && grep -qF "kept at $OUT28/.graph.pre-ast.json" <<<"$out28" && ! grep -q "left as it was" <<<"$out28" && [ "$(cat "$OUT28/.graph.pre-ast.json" 2>/dev/null)" = "not json" ] \
   && pass "T28b a failed put-back after a failed set-aside names the kept snapshot" || fail "T28b (rc=$rc28): $out28"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

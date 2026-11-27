@@ -415,7 +415,7 @@ if [ -f "$_pre_ast" ] \
   echo "ast-update: FAILED -- a snapshot left by an interrupted rebuild could not be restored into $OUT_DIR/graph.json; it is kept at $_pre_ast, nothing run. Exiting 5" >&2
   exit 5
 fi
-rm -f "$_pre_ast"
+rm -f "$_pre_ast" "$_pre_ast.tmp"
 if [ -f "$OUT_DIR/graph.json" ] && ! { cp "$OUT_DIR/graph.json" "$_pre_ast.tmp" 2>/dev/null && mv -f "$_pre_ast.tmp" "$_pre_ast" 2>/dev/null; }; then
   rm -f "$_pre_ast.tmp"
   echo "ast-update: FAILED -- could not snapshot $OUT_DIR/graph.json before the rebuild (unreadable or disk full), so the semantic nodes it would drop could not be restored; nothing run. Exiting 5" >&2
