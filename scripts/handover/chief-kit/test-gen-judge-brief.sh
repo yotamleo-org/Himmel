@@ -385,7 +385,7 @@ if [ "$rc" = 2 ] && grep -q -- '--no-persist needs --dispatch-json' "$WORK/np.er
 masked() {
     python3 -I -c 'import json,sys; d=json.load(sys.stdin); p=d.pop("prompt"); print(json.dumps(d, sort_keys=True)); print(p, end="")' \
         | sed -e "s#$WORK#@WORK@#g" -e "s#$(cd "$HERE/../.." && pwd)#@SCRIPTS@#g" -e 's/^JUDGE-BRIEF: [0-9a-f]\{16\}$/JUDGE-BRIEF: @MASKED@/' \
-            -e 's/Z-j2599a-[0-9a-f]\{8\}/Z-j2599a-@MASKED@/g' -e 's/^CEILINGS: .*/CEILINGS: @MASKED@/'
+            -e 's/Z-j2599a-[0-9a-f]\{8\}/Z-j2599a-@MASKED@/g' -e 's/^CEILINGS: .*/CEILINGS: @MASKED@/' -e "s/$HEAD40/@HEAD@/g"
 }
 cat > "$WORK/golden.txt" <<'GOLDEN'
 {"description": "Judge j2599a on HIMMEL-3746", "model": "opus", "run_in_background": false, "subagent_type": "judge-ro"}
@@ -404,8 +404,8 @@ RETASK: your nonce is `Z-j2599a-@MASKED@`. Your direct parent, the session that 
 **Searching:** Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun. Describe a credential shape in words and never paste one into a query: a GitHub-token-shaped string, real or invented, leaves the station and is refused.
 
 **Evidence:**
-1. PR 2599 at head `0123456789abcdef0123456789abcdef01234567`: the change under review. Read the diff at that head, not main (check `gh pr view 2599 --json headRefOid` equals the head and `git cat-file -t 0123456789abcdef0123456789abcdef01234567` prints `commit`, a bare `git fetch origin` if not, never a refspec fetch; then `git diff origin/main...0123456789abcdef0123456789abcdef01234567`, `git show 0123456789abcdef0123456789abcdef01234567:<path>` or `git archive 0123456789abcdef0123456789abcdef01234567` for a tree; never FETCH_HEAD, which a parallel judge's fetch overwrites).
-2. Recorded ceilings for the touched files, as `bash @SCRIPTS@/ledger/ceiling-lookup.sh --range origin/main...0123456789abcdef0123456789abcdef01234567` printed them when this brief was written (re-run it if the header says `not read`): context to verify, not a verdict. Check each one still matches the code; a ceiling never waives a defect the change introduces. Cite a row by its id only; never quote its ceiling or trigger.
+1. PR 2599 at head `@HEAD@`: the change under review. Read the diff at that head, not main (check `gh pr view 2599 --json headRefOid` equals the head and `git cat-file -t @HEAD@` prints `commit`, a bare `git fetch origin` if not, never a refspec fetch; then `git diff origin/main...@HEAD@`, `git show @HEAD@:<path>` or `git archive @HEAD@` for a tree; never FETCH_HEAD, which a parallel judge's fetch overwrites).
+2. Recorded ceilings for the touched files, as `bash @SCRIPTS@/ledger/ceiling-lookup.sh --range origin/main...@HEAD@` printed them when this brief was written (re-run it if the header says `not read`): context to verify, not a verdict. Check each one still matches the code; a ceiling never waives a defect the change introduces. Cite a row by its id only; never quote its ceiling or trigger.
 
 ```text
 CEILINGS: @MASKED@
@@ -423,9 +423,9 @@ What you may gather for yourself: a cold read of any file the items above name, 
 
 **Scope:** read-only. Do not: everything except reading and the verdict file
 
-**Persist your verdict before you reply** (your parent may wrap before it reads your reply, and `verdicts/j2599a/` is what its successor reads): make your scratch dir with `bash <primary checkout>/scripts/judge-dir.sh 2599`, write your evidence to one file in it with the Write tool (a heredoc, printf or tee in Bash is refused by the Bash text guards) with the verdict line left out, then run `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh j2599a <GO|NO-GO> 0123456789abcdef0123456789abcdef01234567 --pr 2599 --evidence-file <your evidence file> --model claude-opus-5-5 --effort high` and put the path it prints in your reply. `<primary checkout>` is the directory holding the `.git` that `git rev-parse --path-format=absolute --git-common-dir` prints. A refused write is reported in your reply under your GUARD RULE, never re-spelled.
+**Persist your verdict before you reply** (your parent may wrap before it reads your reply, and `verdicts/j2599a/` is what its successor reads): make your scratch dir with `bash <primary checkout>/scripts/judge-dir.sh 2599`, write your evidence to one file in it with the Write tool (a heredoc, printf or tee in Bash is refused by the Bash text guards) with the verdict line left out, then run `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh j2599a <GO|NO-GO> @HEAD@ --pr 2599 --evidence-file <your evidence file> --model claude-opus-5-5 --effort high` and put the path it prints in your reply. `<primary checkout>` is the directory holding the `.git` that `git rev-parse --path-format=absolute --git-common-dir` prints. A refused write is reported in your reply under your GUARD RULE, never re-spelled.
 
-**Result contract:** the first line of your reply is `**GO**` or `**NO-GO**` for the head named above; then the evidence you checked. Completion condition: GO or NO-GO on head `0123456789abcdef0123456789abcdef01234567`, one paragraph of reason citing at least one Evidence item by number; a finding you cannot confirm is NO-GO, and each rejected reading gets one sentence of why not.
+**Result contract:** the first line of your reply is `**GO**` or `**NO-GO**` for the head named above; then the evidence you checked. Completion condition: GO or NO-GO on head `@HEAD@`, one paragraph of reason citing at least one Evidence item by number; a finding you cannot confirm is NO-GO, and each rejected reading gets one sentence of why not.
 GOLDEN
 dj spec
 printf '%s' "$dj_out" | masked > "$WORK/now.txt"
