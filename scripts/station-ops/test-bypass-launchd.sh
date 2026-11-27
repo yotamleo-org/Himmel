@@ -1278,7 +1278,7 @@ wait_for "$Q/daemon.log" "start pid="
 code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_absent "RED 11169: a recorded worker_tabs=1 never puts the tabs switch in a child that carries granted bypass flags" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "RED 11164: a recorded worker_tabs=1 reaches a granted child as join-only, never as 1" "HIMMEL_WORKER_SESSION_TABS=join" "$(grep '^HIMMEL_WORKER_SESSION_TABS=' "$D/launch.fullenv" 2>/dev/null)"
 assert_eq "11169: the child still carries its granted flag, exactly 1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(grep -x 'HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$D/launch.fullenv" 2>/dev/null)"
 assert_absent "11164: and the pin's own name never joins the child" "worker_tabs=" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
@@ -1307,7 +1307,7 @@ start HIMMEL_WORKER_SESSION_TABS=1
 code=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_absent "RED 11169: a hand-start launch with a granted registry flag never inherits the operator shell's tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "RED 11164: a hand-start launch with a granted registry flag turns the operator shell's tabs switch into join-only" "HIMMEL_WORKER_SESSION_TABS=join" "$(grep '^HIMMEL_WORKER_SESSION_TABS=' "$D/launch.fullenv" 2>/dev/null)"
 assert_eq "11169: the hand-start child still carries its granted flag, exactly 1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(grep -x 'HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$D/launch.fullenv" 2>/dev/null)"
 stop
 setup tabs-handstart-billed
@@ -1315,8 +1315,15 @@ start HIMMEL_WORKER_SESSION_TABS=1
 code=$(ask_code r flags=HIMMEL_BILLED_OK decision=921)
 reply "$OPERATOR" "$OPERATOR" "go $code"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_absent "RED 11169: a hand-start launch granted HIMMEL_BILLED_OK (not in the registry) never inherits the tabs switch" "HIMMEL_WORKER_SESSION_TABS" "$(cat "$D/launch.fullenv" 2>/dev/null)"
+assert_eq "RED 11164: a hand-start launch granted HIMMEL_BILLED_OK (not in the registry) gets join-only too" "HIMMEL_WORKER_SESSION_TABS=join" "$(grep '^HIMMEL_WORKER_SESSION_TABS=' "$D/launch.fullenv" 2>/dev/null)"
 assert_eq "11169: the billed child still carries its granted flag, exactly 1" "HIMMEL_BILLED_OK=1" "$(grep -x 'HIMMEL_BILLED_OK=1' "$D/launch.fullenv" 2>/dev/null)"
+stop
+setup tabs-handstart-off
+start HIMMEL_WORKER_SESSION_TABS=0
+code=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go $code"
+wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+assert_absent "11164: a hand-start shell without the switch on passes no join-only value" "HIMMEL_WORKER_SESSION_TABS=join" "$(cat "$D/launch.fullenv" 2>/dev/null)"
 stop
 
 echo "-- the session environment is data, checked, and a failure refuses before the ask (N2) --"
