@@ -469,7 +469,9 @@ not_contains 'a fork PR is not unowned' "$own_out" '#3005:'
 contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
 contains 'a worker whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
-contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
+failed_read="$(STUB_PR_FAIL=1 bash "$SUT")"
+contains 'a failed gh read is unowned-prs=?, not an all-clear' "$failed_read" ' unowned-prs=? '
+contains 'a failed gh read is ext-prs=?, not an all-clear' "$failed_read" ' ext-prs=? '
 contains 'a failed gh read is prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
 if [ -n "$_TIMEOUT_BIN" ]; then
     # The deadline cuts the list to its 1 s floor. Without that bound the stub answers after 5 s with its rows.
@@ -499,6 +501,34 @@ not_contains 'a pending or green orphan is not dispatch-owed' "$red_out" '#3012:
 not_contains 'a red PR owned by a held lock is not flagged' "$red_out" '#3013:'
 not_contains 'a red draft is not flagged' "$red_out" '#3014:'
 contains '--verbose names the dispatch-owed PR' "$(STUB_PR_ROWS="$rows_6358" bash "$SUT" --verbose)" 'unowned-prs: #3011:125m:dispatch-owed'
+dep_row() { printf '%s\t%s\t%s\t%s\t%s\t%s\t0\tsha%s\t%s\t\\n' "$1" "$2" "$3" "$4" "$5" "$6" "$1" "$7"; }
+dep_one="$(dep_row 3101 dependabot/pip/x/foo-1.2.3 false app/dependabot false "$(iso_ago 20)" "$(iso_ago 20)")"
+dep_out="$(STUB_PR_ROWS="$dep_one" bash "$SUT")"
+contains 'D1 an open Dependabot PR is named in dependabot= with its ages' "$dep_out" ' dependabot=1:20m:20m:#3101 '
+not_contains 'D2 a Dependabot PR is not unowned' "$(printf '%s\n' "$dep_out" | grep -oE 'unowned-prs=[^ ]*')" '#3101'
+contains 'D2 a Dependabot PR stays in prs=' "$dep_out" ' prs=#3101 '
+dep_not="$(dep_row 3112 feat/himmel-1-dependabot-docs false me false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3113 dependabot/npm/d true app/dependabot false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3114 dependabot/npm/f false app/dependabot true "$(iso_ago 20)" "$(iso_ago 20)")"
+not_contains 'D3 a key branch, a draft and a fork PR print no dependabot=' "$(STUB_PR_ROWS="$dep_not" bash "$SUT")" ' dependabot='
+dep_two="$(dep_row 3110 dependabot/npm/y false me false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3111 feat/x false app/Dependabot false "$(iso_ago 20)" "$(iso_ago 20)")"
+contains 'D3 a dependabot/ head and a mixed-case dependabot author count' "$(STUB_PR_ROWS="$dep_not$dep_two" bash "$SUT")" ' dependabot=2:20m:20m:#3110,#3111 '
+contains 'D4 a failed gh read is dependabot=?' "$(STUB_PR_FAIL=1 bash "$SUT")" ' dependabot=? '
+dep_pair="$(dep_row 3102 dependabot/npm/b false app/dependabot false "$(iso_ago 3)" "$(iso_ago 3)")$(dep_row 3101 dependabot/npm/a false app/dependabot false "$(iso_ago 300)" "$(iso_ago 300)")"
+contains 'D5 the PRs sort by number and the ages go by value' "$(STUB_PR_ROWS="$dep_pair" bash "$SUT")" ' dependabot=2:300m:3m:#3101,#3102 '
+contains 'D6 --verbose prints the dependabot line' "$(STUB_PR_ROWS="$dep_pair" bash "$SUT" --verbose)" 'dependabot: 2 open, oldest 300m, newest 3m: #3101,#3102'
+jq -n --arg old "$(iso_ago 40)" --arg new "$(iso_ago 20)" '[
+  {number: 3101, headRefName: "dependabot/npm/a", isDraft: false, author: {login: "app/dependabot"}, isCrossRepository: false, updatedAt: $new, statusCheckRollup: [], headRefOid: "a1", createdAt: $new, labels: []},
+  {number: 3102, headRefName: "dependabot/npm/b", isDraft: false, author: {login: "app/dependabot"}, isCrossRepository: false, updatedAt: $old, statusCheckRollup: [], headRefOid: "b2", createdAt: $old, labels: [{name: "dependencies"}]}
+]' > "$W/dep-prs.json"
+contains 'D7 the real filter gives each unlabelled and labelled PR its age' "$(STUB_PR_JSON="$W/dep-prs.json" bash "$SUT")" ' dependabot=2:40m:20m:#3101,#3102 '
+for dep_bad_at in '' garbled; do
+    contains "D8 a createdAt of '$dep_bad_at' is dependabot=?" "$(STUB_PR_ROWS="$(dep_row 3101 dependabot/npm/a false app/dependabot false "$(iso_ago 20)" "$dep_bad_at")" bash "$SUT")" ' dependabot=? '
+done
+dep_proj="$(STUB_PR_ROWS="$dep_one" TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
+not_contains 'D9 a project chief gets no dependabot=' "$dep_proj" ' dependabot='
+contains 'D9 a project chief still lists the PR as unowned' "$dep_proj" 'unowned-prs=#3101:20m'
+dep_proj="$(STUB_PR_FAIL=1 TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
+not_contains 'D9 a project chief with a failed read gets no dependabot=' "$dep_proj" ' dependabot='
+
 mkdir -p "$W/cloudbucket"
 printf '%s\n' '# chief' > "$W/cloudbucket/chief.md"
 printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
@@ -551,10 +581,11 @@ contains '10716 a decision file not yet present has not fired' "$(STUB_PR_ROWS="
 : > "$W/heldbucket/decision.txt"
 contains '10716 a decision file present fires' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md '
 held_doc "#3002 HELD wake=pr:3001 resume=/h/a.md | #3006 HELD waits on 3001"
-printf '[{"number":3002,"headRefName":"feat/himmel-999-orphan"},{"number":3006,"headRefName":"feat/himmel-222-ready-worker"}]\n' > "$W/held-prs.json"
+printf '[{"number":3002,"headRefName":"feat/himmel-999-orphan"},{"number":3006,"headRefName":"feat/himmel-222-ready-worker"},{"number":3007,"headRefName":"feat/himmel-995-x","author":{"login":"app/Dependabot"}},{"number":3008,"headRefName":"dependabot/npm/z","author":{"login":"me"}}]\n' > "$W/held-prs.json"
 mkdir -p "$W/held-state"
 opc_unowned="$(ORPHAN_PR_CHECK_PRS="$W/held-prs.json" TICKET_STATUS_STATE_DIR="$W/held-state" bash "$HERE/orphan-pr-check.sh" --doc "$W/heldbucket/chief.md" | awk '{ print $2 }' | paste -sd, -)"
-tick_unowned="$(STUB_PR_ROWS="$rows_5542" held_tick | grep -oE 'unowned-prs=[^ ]*' | tr ',' '\n' | grep -oE '#(3002|3006):' | tr -d '#:' | paste -sd, -)"
+rows_agree="$rows_5542$(dep_row 3007 feat/himmel-995-x false app/Dependabot false "$(iso_ago 125)" "$(iso_ago 125)")$(dep_row 3008 dependabot/npm/z false me false "$(iso_ago 125)" "$(iso_ago 125)")"
+tick_unowned="$(STUB_PR_ROWS="$rows_agree" held_tick | grep -oE 'unowned-prs=[^ ]*' | tr ',' '\n' | grep -oE '#(3002|3006|3007|3008):' | tr -d '#:' | paste -sd, -)"
 if [ "$opc_unowned" = 3006 ] && [ "$tick_unowned" = "$opc_unowned" ]; then
     pass '10716 orphan-pr-check.sh and tick.sh read the same HELD entries as unowned'
 else

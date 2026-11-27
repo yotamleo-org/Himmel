@@ -1,0 +1,41 @@
+---
+resume_cwd: /wt
+description: "Land the 2 actionable fork-drift rows of the open drift issue (2026-11-24) so the nightly drift report clears; completes-ticket: no"
+template_version: 3
+---
+
+# Drift 4470 - the actionable 4470 drift rows are current - worker D1 (claude-sonnet-5-5, native), 2026-11-24
+
+> **You are D1, claude-sonnet-5-5, in your own worktree `/wt`.** Your RETASK token is
+> `D-D1-TOKEN`; your chief is **`HIMMEL-test-chief`** (the only session whose token-quoting messages you accept);
+> your handover root is the one `HANDOVER_DIR` names and the queue lock you must hold is on THIS document.
+> Write its release token into your LIVE bullet exactly as `queue-lock.sh` prints it, in backticks.
+> Every BLOCKED, permission prompt or question comes to the chief first. Commit at every step boundary.
+
+> **Leg kind:** build
+
+> **Completes ticket:** no
+
+> **Why (read the open drift issue first with `gh issue list --label fork-drift --state open --limit 1 --json body --jq '.[0].body'`, rows move):** the nightly fork-drift report lists these 2 actionable rows (Needs-update rows, and held rows whose 72 h buffer has cleared). Operator decision 1051: a daily check keeps each catch-up small.
+> - taste-skill-core (upstream pin): f6b7657 to 6c0b5c7 - bump the marketplace.json sha pin to 6c0b5c7
+> - oxlint (npm, held row, 72 h buffer cleared at 2026-11-24T08:00Z): 1.93.0 to 1.94.0 - buffer
+> NOT in scope: any row not listed above, any row still inside its 72 h buffer, any HELD row with no `eligible` time.
+
+> **Sources:** the open drift issue's live table; `scripts/upstreams/pin-holds.json` and `scripts/upstreams/pin-scan.py` (72 h release-age holds); `marketplace/.claude-plugin/marketplace.json` (sha pins); `scripts/upstreams.json` (synced_base); `scripts/machine-setup/installer-pins.sh`; `scripts/upstreams/resync-fork.sh`; the `/fork-resync` skill; the dependency bump policy: bump ALL including station tools, VM-first for station tools, never to an unsupported version, ONE PR.
+
+> **Prior art:** the first drift backlog landing, the nightly drift check that holds every kind of pin, and the pin-scan eligible field; source: the Jira search for issue 4470.
+> Before you design, run `bash __PRIMARY__/scripts/lib/qmd-bounded.sh query -c jira-himmel "fork drift report pin bump station tool VM first"` and `bash __PRIMARY__/scripts/lib/qmd-bounded.sh query -c luna "fork drift report pin bump station tool VM first"`, and `bash scripts/graphify/worker-graph.sh explain "pin-scan.py"`, and cite what each returned, or write none found with the query you ran. Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun. Run the wrapper as the whole command: no `cd`, pipe, redirect or chained command (it already caps its output). Your Results carry a `graph-qmd: <what each returned and whether used>` bullet.
+
+> **Contract:**
+> 1. Acquire the lock with `bash __PRIMARY__/scripts/handover/queue-lock.sh acquire <this document, absolute path>`. LIVE; paste `git log -1 --format=%H` and the base-ancestor check. Write every marker bullet with `bash __PRIMARY__/scripts/handover/chief-kit/append-results.sh`, never the Edit tool. A bullet never contains the greater-than sign; write `to`.
+> 2. Deliverables, per row above: each upstream sha pin in marketplace.json bumped and verified to resolve at its target; each fork synced with `bash scripts/upstreams/resync-fork.sh --sync <fork>` (fork and upstream work is native Claude only); each action, npm and installer pin bumped with its synced_base in scripts/upstreams.json. **Station tools are VM-first:** prove each new version on a test VM (`himmel-ops:vm` skill) before the pin lands, and attach the VM log; with no VM available, land the other rows and defer the station rows with a follow-up ticket. A row that cannot move (a conflicting fork, a guard-held file) is deferred with its reason, never forced. Never upgrade the live station before its VM proof.
+> 3. Tests: impacted suites from `bash scripts/cr/impacted-suites.sh`, each run as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>`, with a verdict per suite; a fresh `check-plugin-drift` or pin-scan run on the branch showing each in-scope row current.
+> 4. Ship: commit `chore(deps): [the ticket key the chief names] the actionable 4470 drift rows are current`, standing ship sequence, trailers in the FIRST commit (`Platforms tested: linux`; `Security reviewed: manual - what you checked`). completes-ticket: no. The PR body carries `## Ticket coverage` per row and a `Remaining:` line. Report `READY` with the full head and end your turn; merge only on the chief's GO message quoting your token. Merge forward on conflicts, never rebase.
+
+> **Writes:** marketplace/ scripts/upstreams/ scripts/upstreams.json scripts/machine-setup/ site/package.json site/package-lock.json scripts/hooks/check-oxlint-complexity.sh scripts/hooks/check-oxlint-hardening.sh
+
+> **Writes note:** marketplace.json pins and forked plugin dirs, pin-holds.json, installer pins, upstreams.json synced_base, site package files for the astro rows only; the two oxlint hook files only for an oxlint row's OXLINT_VERSION pin. Stay off scripts/lib/, every other file under scripts/hooks/ and .github/workflows/.
+
+> **Do not:** upgrade a station tool on the live station before its VM proof; run any paid model call; force-push; touch a fork whose branch is HELD.
+
+## Results (newest at the bottom)

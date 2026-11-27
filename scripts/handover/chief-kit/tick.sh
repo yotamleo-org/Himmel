@@ -568,6 +568,10 @@ daily failure review (ci-cadence.sh review: a local read of the newest failure-r
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
+dependabot=<n>:<oldest>m:<newest>m:#<pr>[,#<pr>...] follows unowned-prs= and names every open Dependabot PR (an author containing "dependabot",
+any case, or a dependabot/ head; not drafts or forks) from the one PR read: the count, the largest and smallest age in whole minutes since the
+PR was opened, and the PRs by number. Such a PR is never in unowned-prs= and stays in prs=. Hidden when none is open; ? = the read failed or a
+creation time did not parse, never an all-clear. Absent, ? included, on a chief for another checkout.
 drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
 held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is the gh seam; DRIFT_NOW the clock seam). ? = the
 read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
@@ -2932,7 +2936,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 tick_deadline_off
 pr_refused="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-refused.XXXXXX" 2>/dev/null)" || pr_refused=""  # swallow-ok: no file means no named reason, prs=? still prints
-pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
+pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,createdAt,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), .createdAt, ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
 pr_list_rc=$?
 [ "$pr_list_rc" -eq 0 ] || { pr_out=""; pr_read_failed=1; }
 pr_stall_named=""
@@ -2991,13 +2995,28 @@ prs=""
 unowned_prs=""
 ext_prs=""
 crfirst_rows=""
-while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_head pr_labels; do
+dep_rows=""
+dep_bad=""
+while IFS=$'\t' read -r pr pr_branch pr_draft pr_author pr_fork pr_updated pr_red pr_head pr_created pr_labels; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
     [ -n "$pr_branch" ] || continue
     if [ "$pr_fork" = true ]; then ext_prs="$(csv_add "$ext_prs" "#$pr")"; continue; fi
     [ "$pr_draft" = true ] && continue
     [ -z "$pr_head" ] || crfirst_rows="$crfirst_rows$pr	$pr_head	$pr_labels"$'\n'
+    if [ "$pr_repo" = "$REPO" ]; then
+        case "$pr_author:$pr_branch" in
+            *[Dd][Ee][Pp][Ee][Nn][Dd][Aa][Bb][Oo][Tt]*:*|*:dependabot/*)
+                if [ -n "$pr_created" ] && pr_born="$(date -d "$pr_created" +%s 2>/dev/null)"; then  # gnu-ok: Linux-only kit
+                    dep_age=$(( ($(date +%s) - pr_born) / 60 ))
+                    [ "$dep_age" -ge 0 ] || dep_age=0
+                    dep_rows="$dep_rows$pr $dep_age"$'\n'
+                else
+                    dep_bad=1
+                fi
+                continue ;;
+        esac
+    fi
     pr_key="$(ticket_key "$pr_branch")"
     if [ -n "$pr_key" ]; then
         case "$owner_keys" in *" $pr_key "*) continue ;; esac
@@ -3015,8 +3034,16 @@ done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 [ -n "$unowned_prs" ] || unowned_prs=none
 [ -n "$ext_prs" ] || ext_prs=none
+dependabot=""
+if [ -n "$dep_rows" ]; then
+    dependabot="$(printf '%s' "$dep_rows" | sort -n | awk 'NR == 1 { o = $2; w = $2 } { if ($2 + 0 > o + 0) o = $2; if ($2 + 0 < w + 0) w = $2; l = l (l == "" ? "" : ",") "#" $1 } END { printf "%d:%dm:%dm:%s", NR, o, w, l }')"
+fi
+[ -z "$dep_bad" ] || dependabot='?'
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
-[ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
+if [ -n "${pr_read_failed:-}" ]; then
+    prs='?'; unowned_prs='?'; ext_prs='?'
+    [ "$pr_repo" != "$REPO" ] || dependabot='?'
+fi
 relaunch=""
 [ -z "$held_read_failed" ] || relaunch='?'
 if [ -n "$held_tsv" ]; then
@@ -5362,6 +5389,11 @@ if [ "$verbose" -eq 1 ]; then
     printf 'open PRs: %s\n' "$prs"
     printf 'ci-red issues: %s\n' "$cired_summary"
     printf 'unowned-prs: %s\n' "$unowned_prs"
+    case "$dependabot" in
+        '') ;;
+        '?') printf 'dependabot: ?\n' ;;
+        *) printf '%s\n' "$dependabot" | sed 's/^\([^:]*\):\([^:]*\):\([^:]*\):\(.*\)$/dependabot: \1 open, oldest \2, newest \3: \4/' ;;
+    esac
     printf 'ext-prs: %s\n' "$ext_prs"
     [ -z "$relaunch" ] || printf 'relaunch: %s\n' "$relaunch"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
@@ -5492,6 +5524,7 @@ else
     compact_field suites "$suites"
     compact_field prs "$prs"
     compact_field unowned-prs "$unowned_prs"
+    compact_field dependabot "$dependabot"
     compact_field ext-prs "$ext_prs"
     compact_field relaunch "$relaunch"
     compact_field dispatch "$dispatch_summary"

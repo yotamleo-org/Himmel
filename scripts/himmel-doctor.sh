@@ -6194,7 +6194,7 @@ check_c102_lane_grants() {
         case "$line" in
             'problem: '*) emit WARN C102-lane-grants "${line#problem: }" "$fix" ;;
             'info: '*) emit INFO C102-lane-grants "${line#info: }" ;;
-            'antigravity: '*|'codex: '*) lanes="${lanes:+$lanes; }$line" ;;
+            'antigravity: '*|'codex: '*|'antigravity hosts: '*|'codex hosts: '*) lanes="${lanes:+$lanes; }$line" ;;
         esac
     done <<EOF
 $out
