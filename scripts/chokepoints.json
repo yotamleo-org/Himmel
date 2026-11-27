@@ -17,6 +17,9 @@
   "scripts/handover/chief-kit/go.sh": {
     "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO", "HIMMEL_LEGACY_NAMES", "GO_DELIVER_BUS", "GO_DELIVER_CENSUS"]
   },
+  "scripts/handover/chief-kit/worker-token.sh": {
+    "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_CONSOLE_RELAY"]
+  },
   "scripts/handover/chief-kit/auto-go.sh": {
     "seam_env_vars": ["AUTO_GO_ANCHOR", "AUTO_GO_BUS", "AUTO_GO_CENSUS", "GH_CMD", "JIRA_CMD", "HIMMEL_LEGACY_NAMES"]
   },

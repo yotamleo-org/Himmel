@@ -766,18 +766,32 @@ EOF
 )
 
 # --- GO authentication ------------------------------
-# A GO used to be the mere existence of a file with a head= line, so any
-# process able to write the handover root (a chief-spawned worker included)
-# could forge its own. go.sh now signs "himmel-go-v2|<nwo>|<pr>|<sha>" with
-# HMAC-SHA256 under a key only go.sh mints (the chief's zero-`!` path: it
-# creates the key on first use, mode 0600); go_gate verifies the mac and never
-# creates a key. The key's *.key name puts it under block-read-secrets (a
-# worker's cat/Read/Grep of it is hook-denied), and it sits outside every worker's
-# additionalDirectories grant.
 
 # go_key_file — path of the chief's GO signing key.
 go_key_file() {
     printf '%s/.config/himmel/go-hmac.key\n' "${HOME:-}"
+}
+
+go_key_ensure() {
+    local key kdir tmp
+    [ -n "${HOME:-}" ] || { echo "go_key_ensure: HOME is unset - cannot locate the GO key" >&2; return 1; }
+    key=$(go_key_file)
+    if [ ! -e "$key" ]; then
+        command -v openssl >/dev/null 2>&1 || { echo "go_key_ensure: openssl is required to mint the GO key" >&2; return 1; }
+        kdir=$(dirname "$key")
+        ( umask 077 && mkdir -p "$kdir" ) 2>/dev/null || true
+        tmp=$(umask 077 && mktemp "$kdir/.go-hmac.XXXXXX" 2>/dev/null) || tmp=""
+        if [ -n "$tmp" ]; then
+            ( umask 077; openssl rand -hex 32 > "$tmp" ) 2>/dev/null || true
+            if grep -qxE '[0-9a-f]{64}' "$tmp" 2>/dev/null; then
+                # prim-ok: mv -n never clobbers a key another process minted first; atomic_write would replace it
+                mv -n "$tmp" "$key" 2>/dev/null || true
+            fi
+            rm -f "$tmp" 2>/dev/null || true
+        fi
+    fi
+    grep -qxE '[0-9a-f]{64}' "$key" 2>/dev/null \
+        || { echo "go_key_ensure: no valid GO key at $key (absent, or not 64 lowercase hex chars)" >&2; return 1; }
 }
 
 # go_mac <pr-num> <head-sha> <nwo> — HMAC-SHA256(key,

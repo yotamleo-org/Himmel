@@ -34,6 +34,7 @@ jget() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(e
 
 # nothing of the operator's environment may leak in: scratch HOME, a local origin that stands in for github
 export HOME="$tmp/home"; mkdir -p "$HOME"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 export XDG_CONFIG_HOME="$HOME/.config" GIT_CONFIG_NOSYSTEM=1 FORGE=github
 unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES SERIES_LEDGER_LOCK_TIMEOUT HIMMEL_FLAG_STACKED_SERIES

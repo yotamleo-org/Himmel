@@ -129,3 +129,5 @@
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$
 ^scripts/handover/chief-kit/(test-)?close-facts\.sh$
 ^scripts/handover/chief-kit/(test-)?close-sweep\.sh$
+# The one writer of the record of each worker's current RETASK token: the relay quotes what it derives.
+^scripts/handover/chief-kit/(test-)?worker-token\.sh$

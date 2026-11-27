@@ -14,6 +14,9 @@ check() { # <name> <expected> <actual>
 }
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/relay-cost-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+export HOME="$WORK/home" HANDOVER_DIR="$WORK/handover-root"
+mkdir -p "$HOME" "$HANDOVER_DIR"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 FX="$WORK/messages.json"
 
 python3 -I "$PY" gen --out "$FX" >/dev/null

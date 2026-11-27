@@ -24,6 +24,8 @@ ends_nl() { [ -s "$2" ] && [ "$(tail -c1 "$2" | od -An -c | tr -d ' ')" = '\n' ]
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/json-final-nl-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/repo"
+export HOME="$WORK/home"; mkdir -p "$HOME" "$WORK/handovers"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 cat > "$WORK/wt.sh" <<'EOF'
 #!/usr/bin/env bash
