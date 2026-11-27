@@ -14,6 +14,7 @@ const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const WIRE_LIB = path.join(MODULE_DIR, '..', 'lib', 'wire-pretooluse-hooks.sh');
 const { resolveBash } = createRequire(import.meta.url)('./run-hook-with-bash.js');
+const { RUNNER_LIBS } = createRequire(import.meta.url)('./hook-integrity.js');
 const trioCache = new Map();
 function trioSpecs(anchor, nodePath, bashPath) {
   const args = ['--print-trio', anchor, '--node', String(nodePath), '--bash', String(bashPath)];
@@ -1332,6 +1333,10 @@ function resolveOwnedEntry(info, guardrail, anchor, auditAnchor) {
     auditWrapperPath,
     wrapperMatchesAuditAnchor: pathsMatchAnchor(info.parsed.wrapperPath, auditWrapperPath),
     wrapperIntegrity: contentIntegrity(info.parsed.wrapperPath, anchor, wrapperRelativePath),
+    wrapperLibIntegrity: RUNNER_LIBS.map((rel) => {
+      const relativePath = `scripts/hooks/${rel}`;
+      return { relativePath, ...contentIntegrity(path.join(path.dirname(info.parsed.wrapperPath), rel), anchor, relativePath) };
+    }),
     scriptPath: info.parsed.scriptPath,
     scriptResolves: isSaneContentFile(info.parsed.scriptPath),
     anchorScriptPath,
@@ -1562,6 +1567,7 @@ export function statusDetail(data, ctx = {}) {
       auditWrapperPath: path.join(auditAnchor.repo, 'scripts', 'hooks', WRAPPER),
       wrapperMatchesAuditAnchor: false,
       wrapperIntegrity: missingIntegrity(wrapperRelativePath),
+      wrapperLibIntegrity: RUNNER_LIBS.map((rel) => ({ relativePath: `scripts/hooks/${rel}`, ...missingIntegrity(`scripts/hooks/${rel}`) })),
       scriptPath: null,
       scriptResolves: false,
       anchorScriptPath: path.join(anchor.repo, 'scripts', 'hooks', guardrail.basename),
@@ -1586,6 +1592,7 @@ export function statusDetail(data, ctx = {}) {
       entry.wrapperMatchesAnchor = primary.wrapperMatchesAnchor;
       entry.wrapperMatchesAuditAnchor = primary.wrapperMatchesAuditAnchor;
       entry.wrapperIntegrity = primary.wrapperIntegrity;
+      entry.wrapperLibIntegrity = primary.wrapperLibIntegrity;
       entry.scriptPath = primary.scriptPath;
       entry.scriptResolves = primary.scriptResolves;
       entry.scriptMatchesAnchor = primary.scriptMatchesAnchor;
@@ -1600,7 +1607,8 @@ export function statusDetail(data, ctx = {}) {
       && h.matcherMatches && h.bashResolves && h.nodeResolves && h.wrapperResolves && h.scriptResolves
       && h.wrapperMatchesAnchor && h.scriptMatchesAnchor
   ));
-  const contentIntegrityComplete = hooks.every((h) => h.wrapperIntegrity.verdict === 'healthy' && h.scriptIntegrity.verdict === 'healthy');
+  const contentIntegrityComplete = hooks.every((h) => h.wrapperIntegrity.verdict === 'healthy' && h.scriptIntegrity.verdict === 'healthy'
+    && h.wrapperLibIntegrity.every((lib) => lib.verdict === 'healthy'));
   const auditAnchorComplete = anchorMatchesAudit && hooks.every((h) => h.wrapperMatchesAuditAnchor && h.scriptMatchesAuditAnchor);
   const attestationComplete = complete && contentIntegrityComplete && auditAnchorComplete;
   return { mode, anchor, auditAnchor, anchorMatchesAudit, complete, contentIntegrityComplete, auditAnchorComplete, attestationComplete, hooks };

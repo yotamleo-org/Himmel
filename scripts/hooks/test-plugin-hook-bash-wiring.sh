@@ -72,7 +72,9 @@ else
     bad "plugin hook-integrity.js drifted from scripts/hooks/hook-integrity.js"
 fi
 
-for f in lib/harness-tool-translate.js lib/harness-tool-map.json; do
+runner_libs="$(node -e 'process.stdout.write(require(process.argv[1]).RUNNER_LIBS.join("\n"))' "$CANONICAL_HOOK_INTEGRITY")"
+[ -n "$runner_libs" ] || bad "RUNNER_LIBS could not be read from $CANONICAL_HOOK_INTEGRITY"
+for f in $runner_libs; do
     if cmp -s "$HOOKS_DIR/$f" "$PLUGIN_ROOT/hooks/$f"; then
         ok "plugin $f is byte-identical to scripts/hooks/$f"
     else

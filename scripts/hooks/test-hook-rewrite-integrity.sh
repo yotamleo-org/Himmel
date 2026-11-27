@@ -2304,5 +2304,272 @@ else
   bad "row 66: expected rc=2 with a DENY message, got rc=$rc66 err=$(cat "$T/row66.err")"
 fi
 
+LIB_BASE=4ad9069832402eb0a319de44e2674b0edecf5dcd
+MAP_REL='scripts/hooks/lib/harness-tool-map.json'
+XLATE_REL='scripts/hooks/lib/harness-tool-translate.js'
+PROBE_DIR="$T/probe"
+LOAD_LOG="$T/load.log"
+cat > "$T/load-tracer.js" <<'TRACER_EOF'
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('node:module');
+const realRequire = Module.prototype.require;
+Module.prototype.require = function tracedRequire(request) {
+  let resolved = '';
+  try { resolved = Module._resolveFilename(request, this); } catch (_e) { resolved = ''; }
+  if (path.basename(resolved) === 'harness-tool-translate.js') fs.appendFileSync(process.env.LOAD_LOG, `${resolved}\n`);
+  return realRequire.apply(this, arguments);
+};
+TRACER_EOF
+
+lib_files() {
+  mkdir -p "$1/scripts/hooks/lib"
+  cp "$HOOKS_DIR/run-hook-with-bash.js" "$HOOKS_DIR/hook-integrity.js" "$1/scripts/hooks/"
+  cp "$HOOKS_DIR/lib/harness-tool-translate.js" "$HOOKS_DIR/lib/harness-tool-map.json" "$1/scripts/hooks/lib/"
+  local p
+  for p in probe-a probe-b; do
+    # shellcheck disable=SC2016  # the probe script expands these, not this shell
+    printf '#!/usr/bin/env bash\ncat > "$PROBE_DIR/$(basename "$0" .sh)"\nexit 0\n' > "$1/scripts/hooks/$p.sh"
+    chmod +x "$1/scripts/hooks/$p.sh"
+  done
+}
+
+lib_payload() {
+  printf '{"session_id":"%s","hook_event_name":"PreToolUse","tool_name":"%s","tool_input":{"command":"printf harmless"}}' "$1" "$2"
+}
+
+lib_record() {
+  lib_payload "$2" Bash | CLAUDE_PROJECT_DIR="$1" HIMMEL_HOOK_INTEGRITY_DIR="$1.out" bash "$RECORDER" >/dev/null 2>&1
+}
+
+mk_lib_project() {
+  lib_files "$1"
+  git -C "$1" init -q
+  git -C "$1" -c user.email=t@t -c user.name=t add -A
+  git -C "$1" -c user.email=t@t -c user.name=t commit -q -m libs
+  lib_record "$1" "$2"
+}
+
+drop_map_entry() {
+  local f="$1/$MAP_REL"
+  jq 'del(.tools.run_terminal_command)' "$f" > "$f.new" && mv "$f.new" "$f"
+}
+
+run_lib() {
+  local cwd="$1" proj="$2" rec="$3" runner="$4" payload="$5"
+  shift 5
+  rm -rf "$PROBE_DIR" "$LOAD_LOG"
+  mkdir -p "$PROBE_DIR"
+  (cd "$cwd" && printf '%s' "$payload" | CLAUDE_PROJECT_DIR="$proj" HIMMEL_HOOK_INTEGRITY_DIR="$rec" \
+    PROBE_DIR="$PROBE_DIR" LOAD_LOG="$LOAD_LOG" NODE_OPTIONS="--require $T/load-tracer.js" \
+    node "$runner" "$@" >"$T/last.out" 2>"$T/last.err")
+  LAST_RC=$?
+}
+
+saw() { jq -r '.tool_name // ""' "$PROBE_DIR/${1:-probe-a}" 2>/dev/null; }
+loads() { if [ -f "$LOAD_LOG" ]; then wc -l < "$LOAD_LOG" | tr -d ' '; else printf 0; fi; }
+
+expect_saw() {
+  if [ "$LAST_RC" -eq 0 ] && [ "$(saw "${3:-probe-a}")" = "$2" ]; then
+    ok "$1"
+  else
+    bad "$1 — expected rc=0 and the guard to see $2, got rc=$LAST_RC saw='$(saw "${3:-probe-a}")' err=$(cat "$T/last.err")"
+  fi
+}
+
+expect_unloaded_deny() {
+  local label="$1" s
+  shift
+  if [ "$LAST_RC" -ne 2 ] || [ -e "$PROBE_DIR/probe-a" ] || [ -e "$PROBE_DIR/probe-b" ] || [ -e "$LOAD_LOG" ]; then
+    bad "$label — expected rc=2, no guard run and no translator load, got rc=$LAST_RC probe=$(ls "$PROBE_DIR") loads=$(loads) err=$(cat "$T/last.err")"
+    return
+  fi
+  for s in "$@"; do
+    grep -qF -- "$s" "$T/last.err" || { bad "$label — stderr does not name '$s': $(cat "$T/last.err")"; return; }
+  done
+  ok "$label"
+}
+
+P0P="$T/lib-p0"
+mk_lib_project "$P0P" lib-s0
+run_lib "$P0P" "$P0P" "$P0P.out" "$P0P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s0 run_terminal_command)" --optional "$P0P/scripts/hooks/probe-a.sh"
+expect_saw "P0: a pinned table translates a Grok call to Bash" Bash
+if [ "$(loads)" = "1" ]; then ok "P0: the translator was loaded exactly once"; else bad "P0: expected one translator load, got $(loads)"; fi
+cp "$PROBE_DIR/probe-a" "$T/p0-head.payload" 2>/dev/null || : > "$T/p0-head.payload"
+P0B="$T/lib-p0-base"
+mkdir -p "$P0B/scripts/hooks/lib"
+if git -C "$REPO_ROOT" show "$LIB_BASE:scripts/hooks/run-hook-with-bash.js" > "$P0B/scripts/hooks/run-hook-with-bash.js" \
+  && git -C "$REPO_ROOT" show "$LIB_BASE:scripts/hooks/hook-integrity.js" > "$P0B/scripts/hooks/hook-integrity.js" \
+  && git -C "$REPO_ROOT" show "$LIB_BASE:$XLATE_REL" > "$P0B/$XLATE_REL" \
+  && git -C "$REPO_ROOT" show "$LIB_BASE:$MAP_REL" > "$P0B/$MAP_REL"; then
+  cp "$P0P/scripts/hooks/probe-a.sh" "$P0B/scripts/hooks/"
+  run_lib "$P0B" "$P0B" "$P0B.out" "$P0B/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s0 run_terminal_command)" --optional "$P0B/scripts/hooks/probe-a.sh"
+  if [ "$LAST_RC" -eq 0 ] && [ -s "$T/p0-head.payload" ] && cmp -s "$T/p0-head.payload" "$PROBE_DIR/probe-a"; then
+    ok "P0: the guard got the same bytes the base runner gives it"
+  else
+    bad "P0: payload differs from the base runner's, rc=$LAST_RC head=$(cat "$T/p0-head.payload") base=$(cat "$PROBE_DIR/probe-a" 2>/dev/null)"
+  fi
+else
+  bad "P0: could not read the base runner at $LIB_BASE"
+fi
+
+P1P="$T/lib-p1"
+mk_lib_project "$P1P" lib-s1
+drop_map_entry "$P1P"
+run_lib "$P1P" "$P1P" "$P1P.out" "$P1P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s1 run_terminal_command)" --optional "$P1P/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P1: a table edited after recording refuses before any guard or translator load" 'DENY run-hook-with-bash.js' "$MAP_REL"
+
+P1C="$T/lib-p1c"
+mk_lib_project "$P1C" lib-s1c
+jq '.tools.Bash = {"claude": "Nothing"}' "$P1C/$MAP_REL" > "$P1C/$MAP_REL.new" && mv "$P1C/$MAP_REL.new" "$P1C/$MAP_REL"
+run_lib "$P1C" "$P1C" "$P1C.out" "$P1C/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s1c Bash)" --optional "$P1C/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P1c: a table keyed by a Claude name refuses Claude's own Bash call" 'DENY run-hook-with-bash.js'
+run_lib "$P0P" "$P0P" "$P0P.out" "$P0P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s0 Bash)" --optional "$P0P/scripts/hooks/probe-a.sh"
+expect_saw "P1c control: the pinned table leaves a Claude Bash call as Bash" Bash
+
+P2P="$T/lib-p2"
+mk_lib_project "$P2P" lib-s2
+printf 'module.exports = { translateToolCall: (text) => ({ text }) };\n' >> "$P2P/$XLATE_REL"
+run_lib "$P2P" "$P2P" "$P2P.out" "$P2P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s2 run_terminal_command)" --optional "$P2P/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P2: an edited translator refuses before it is loaded" "$XLATE_REL"
+
+run_lib "$P1P" "$P1P" "$P1P.out" "$P1P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s1 run_terminal_command)" --chain "$P1P/scripts/hooks/probe-a.sh" "$P1P/scripts/hooks/probe-b.sh"
+expect_unloaded_deny "P3: --chain refuses before either member runs" 'DENY run-hook-with-bash.js'
+run_lib "$P0P" "$P0P" "$P0P.out" "$P0P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s0 run_terminal_command)" --chain "$P0P/scripts/hooks/probe-a.sh" "$P0P/scripts/hooks/probe-b.sh"
+if [ "$LAST_RC" -eq 0 ] && [ "$(saw probe-a)" = Bash ] && [ "$(saw probe-b)" = Bash ]; then
+  ok "P3 control: a pinned table through --chain gives both members Bash"
+else
+  bad "P3 control: expected rc=0 and both members seeing Bash, got rc=$LAST_RC a='$(saw probe-a)' b='$(saw probe-b)' err=$(cat "$T/last.err")"
+fi
+
+P4_PAYLOAD='{"session_id":"lib-s1","hook_event_name":"SessionStart","source":"startup"}'
+run_lib "$P1P" "$P1P" "$P1P.out" "$P1P/scripts/hooks/run-hook-with-bash.js" "$P4_PAYLOAD" --chain --lifecycle "$P1P/scripts/hooks/probe-a.sh"
+if [ "$LAST_RC" -eq 0 ] && [ "$(cat "$PROBE_DIR/probe-a" 2>/dev/null)" = "$P4_PAYLOAD" ]; then
+  ok "P4: a SessionStart payload runs its member with the payload byte-identical"
+else
+  bad "P4: expected rc=0 and the untouched payload, got rc=$LAST_RC got=$(cat "$PROBE_DIR/probe-a" 2>/dev/null) err=$(cat "$T/last.err")"
+fi
+
+run_lib "$P1P" "$P1P" "$P1P.out" "$P1P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s1 run_terminal_command)" --chain --lifecycle "$P1P/scripts/hooks/probe-a.sh"
+if [ "$LAST_RC" -eq 2 ] && [ ! -e "$PROBE_DIR/probe-a" ]; then
+  ok "P4b: --lifecycle refuses a tool call over an edited table before the member runs"
+else
+  bad "P4b: expected rc=2 and no member run, got rc=$LAST_RC probe=$(ls "$PROBE_DIR") err=$(cat "$T/last.err")"
+fi
+
+P5C="$T/cache/hooks"
+mkdir -p "$P5C/lib"
+cp "$HOOKS_DIR/run-hook-with-bash.js" "$HOOKS_DIR/hook-integrity.js" "$P5C/"
+cp "$HOOKS_DIR/lib/harness-tool-translate.js" "$HOOKS_DIR/lib/harness-tool-map.json" "$P5C/lib/"
+jq 'del(.tools.run_terminal_command)' "$P5C/lib/harness-tool-map.json" > "$P5C/lib/m.new" && mv "$P5C/lib/m.new" "$P5C/lib/harness-tool-map.json"
+run_lib "$P0P" "$P0P" "$P0P.out" "$P5C/run-hook-with-bash.js" "$(lib_payload lib-s0 run_terminal_command)" --optional "$P0P/scripts/hooks/probe-a.sh"
+expect_saw "P5: a cache runner's tampered table is not checked (foreign: the ceiling)" run_terminal_command
+
+P6P="$T/lib-p6"
+mk_lib_project "$P6P" lib-s6
+mkdir -p "$T/lib-p6-outside"
+cp "$P6P/scripts/hooks/lib/"* "$T/lib-p6-outside/"
+jq 'del(.tools.run_terminal_command)' "$T/lib-p6-outside/harness-tool-map.json" > "$T/lib-p6-outside/m.new" \
+  && mv "$T/lib-p6-outside/m.new" "$T/lib-p6-outside/harness-tool-map.json"
+rm -rf "$P6P/scripts/hooks/lib"
+ln -s "$T/lib-p6-outside" "$P6P/scripts/hooks/lib"
+run_lib "$P6P" "$P6P" "$P6P.out" "$P6P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s6 run_terminal_command)" --optional "$P6P/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P6: a lib/ symlinked out of the project is refused as an escape" 'spelled inside the project' 'outside the project' "$XLATE_REL"
+
+lib_fixture() {
+  fixture "$1"
+  lib_files "$FX_PROJ"
+  git -C "$FX_PROJ" add -A
+  git -C "$FX_PROJ" commit -q -m libs
+  fx_publish HEAD
+}
+strip_lib_pins() {
+  chmod u+w "$1"
+  jq --arg a "$MAP_REL" --arg b "$XLATE_REL" 'del(.pins[$a], .pins[$b])' "$1" > "$1.new" && mv "$1.new" "$1"
+  chmod 400 "$1"
+}
+lib_v2_ok() {
+  if jq -e '(.anchor_ref // "") != "" and (.git_dir // "") != ""' "$2" >/dev/null 2>&1; then return 0; fi
+  bad "$1 fixture: the recorder did not write a v2 record: $(cat "$2" 2>/dev/null)"
+  return 1
+}
+
+lib_fixture lib-p7a
+lib_payload lib-s7a Bash | CLAUDE_PROJECT_DIR="$FX_PROJ" HIMMEL_HOOK_INTEGRITY_DIR="$FX_OUT" bash "$RECORDER" >/dev/null 2>&1
+R7A="$FX_OUT/lib-s7a.json"
+if lib_v2_ok P7a "$R7A"; then
+  strip_lib_pins "$R7A"
+  run_lib "$FX_PROJ" "$FX_PROJ" "$FX_OUT" "$FX_PROJ/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s7a run_terminal_command)" --optional "$FX_PROJ/scripts/hooks/probe-a.sh"
+  expect_saw "P7a-rc: unpinned libs equal to origin/main's tip translate as before" Bash
+  expect_pin "$R7A" "$MAP_REL" "$(fx_blob "$MAP_REL")" "P7a-pin: the table's adoption is persisted in the record"
+  cp "$R7A" "$T/p7a.before"
+  run_lib "$FX_PROJ" "$FX_PROJ" "$FX_OUT" "$FX_PROJ/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s7a run_terminal_command)" --optional "$FX_PROJ/scripts/hooks/probe-a.sh"
+  if [ "$LAST_RC" -eq 0 ] && cmp -s "$T/p7a.before" "$R7A"; then
+    ok "P7a-pin: a second call leaves the record unchanged (fast path)"
+  else
+    bad "P7a-pin: second call rc=$LAST_RC changed the record: $(diff "$T/p7a.before" "$R7A")"
+  fi
+fi
+
+lib_fixture lib-p7b
+lib_payload lib-s7b Bash | CLAUDE_PROJECT_DIR="$FX_PROJ" HIMMEL_HOOK_INTEGRITY_DIR="$FX_OUT" bash "$RECORDER" >/dev/null 2>&1
+if lib_v2_ok P7b "$FX_OUT/lib-s7b.json"; then
+  strip_lib_pins "$FX_OUT/lib-s7b.json"
+  drop_map_entry "$FX_PROJ"
+  run_lib "$FX_PROJ" "$FX_PROJ" "$FX_OUT" "$FX_PROJ/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s7b run_terminal_command)" --optional "$FX_PROJ/scripts/hooks/probe-a.sh"
+  expect_unloaded_deny "P7b: an unpinned table on no anchor-line commit is refused" 'no session pin vouches'
+fi
+
+lib_fixture lib-p7c
+C7_FIRST="$(git -C "$FX_PROJ" rev-parse HEAD)"
+jq '.tools.zz_fixture = {"claude": "Read"}' "$FX_PROJ/$MAP_REL" > "$FX_PROJ/$MAP_REL.new" && mv "$FX_PROJ/$MAP_REL.new" "$FX_PROJ/$MAP_REL"
+git -C "$FX_PROJ" commit -q -am "table changed"
+fx_publish HEAD
+lib_payload lib-s7c Bash | CLAUDE_PROJECT_DIR="$FX_PROJ" HIMMEL_HOOK_INTEGRITY_DIR="$FX_OUT" bash "$RECORDER" >/dev/null 2>&1
+R7C="$FX_OUT/lib-s7c.json"
+if lib_v2_ok P7c "$R7C"; then
+  strip_lib_pins "$R7C"
+  git -C "$FX_PROJ" show "$C7_FIRST:$MAP_REL" > "$FX_PROJ/$MAP_REL"
+  run_lib "$FX_PROJ" "$FX_PROJ" "$FX_OUT" "$FX_PROJ/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s7c run_terminal_command)" --optional "$FX_PROJ/scripts/hooks/probe-a.sh"
+  expect_saw "P7c-rc: an older anchor-line table is accepted in a pre-merge record (the rollout residual)" Bash
+  expect_pin "$R7C" "$MAP_REL" "$(fx_blob "$MAP_REL")" "P7c-pin: the older table is what the record now pins"
+fi
+
+P8P="$T/lib-p8"
+mk_lib_project "$P8P" lib-s8
+P8W="$T/lib-p8-wt"
+git -C "$P8P" worktree add -q -b lib-wt "$P8W"
+drop_map_entry "$P8W"
+R8="$P8P.out/lib-s8.json"
+chmod u+w "$R8"
+jq --arg g "$P8P/.git" '. + {git_dir: $g}' "$R8" > "$R8.new" && mv "$R8.new" "$R8"
+P8_AUDIT="$P8P/.git/hook-integrity-bypass.jsonl"
+run_lib "$P8W" "$P8W" "$P8P.out" "$P8W/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s8 run_terminal_command)" --optional "$P8W/scripts/hooks/probe-a.sh"
+if [ "$LAST_RC" -eq 2 ] && [ ! -e "$P8_AUDIT" ]; then
+  ok "P8 control: without the bypass the worktree's edited table is refused"
+else
+  bad "P8 control: expected rc=2 and no audit, got rc=$LAST_RC err=$(cat "$T/last.err")"
+fi
+(export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1
+ run_lib "$P8W" "$P8W" "$P8P.out" "$P8W/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s8 run_terminal_command)" --optional "$P8W/scripts/hooks/probe-a.sh"
+ printf '%s\n' "$LAST_RC" > "$T/p8.rc")
+LAST_RC="$(cat "$T/p8.rc")"
+p8_lines="$(wc -l < "$P8_AUDIT" 2>/dev/null | tr -d ' ')"
+if [ "$LAST_RC" -eq 0 ] && [ "$(saw)" = run_terminal_command ] && [ "$p8_lines" = "1" ] && grep -q 'harness-tool-map.json' "$P8_AUDIT"; then
+  ok "P8: the bypass runs the edited table in a linked worktree, with one audit line naming it"
+else
+  bad "P8: expected rc=0, native name and one audit line naming the table, got rc=$LAST_RC saw='$(saw)' lines=${p8_lines:-none} err=$(cat "$T/last.err")"
+fi
+
+P9P="$T/lib-p9"
+mk_lib_project "$P9P" lib-s9
+printf "module.exports.verifyRunnerLibs = () => { throw new Error('p9 fixture'); };\n" >> "$P9P/scripts/hooks/hook-integrity.js"
+run_lib "$P9P" "$P9P" "$P9P.out" "$P9P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-s9 Bash)" --optional "$P9P/scripts/hooks/probe-a.sh"
+expect_unloaded_deny "P9: a throwing integrity check refuses the call" 'the integrity check threw'
+
+run_lib "$P1P" "$P1P" "$P1P.out" "$P1P/scripts/hooks/run-hook-with-bash.js" "$(lib_payload lib-unrecorded run_terminal_command)" --optional "$P1P/scripts/hooks/probe-a.sh"
+expect_saw "P10: with no record the edited table is not checked (the Q3 ceiling)" run_terminal_command
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
