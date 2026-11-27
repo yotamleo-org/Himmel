@@ -8,6 +8,11 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.120] — 2026-11-28
+
+### Changed
+- The salus egress hook and posture text stop calling Claude the only processor. A new floors addendum (`_CLAUDE.salus-floors.md`, appended once) says which egress floor loads for which harness: the vault hook for Claude sessions, himmel's `block-agy-salus-egress.sh` for Antigravity sessions through the user-scope backstop, none for any other harness. The hook's refusals, patterns and exit codes are unchanged.
+
 ## [0.4.119] — 2026-11-26
 
 ### Changed

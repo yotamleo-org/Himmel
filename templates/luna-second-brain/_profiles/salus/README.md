@@ -17,6 +17,8 @@ skill runbook, the egress-floor hook, and templates.
 - `_media/skin/.gitkeep` — the photo store.
 - `_derm-visit-prep.template.md` — clinic-visit prep template.
 - `_CLAUDE.salus.md` — medical posture block, appended to the vault's `_CLAUDE.md`.
+- `_CLAUDE.salus-floors.md` — which egress floor loads for which harness, appended
+  once to the vault's `_CLAUDE.md`.
 - `.salus-profile` — marker dropped at the vault root so `upgrade.sh` knows this
   vault is on the medical profile and may carry medic-asset updates.
 - `.salus` — the PHI guard marker, dropped alongside
