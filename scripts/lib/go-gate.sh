@@ -1070,7 +1070,7 @@ go_adapter_entry() {
     raw=$("$gh_bin" api "repos/$nwo/contents/scripts/guardrails/himmel-adapters.json?ref=$dbranch" \
         -H 'Accept: application/vnd.github.raw' 2>/dev/null) || raw=""
     br=$(printf '%s' "$raw" | jq -r --arg n "$target" \
-        'def ok: type == "string" and (contains("\n") | not); [.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0] | if has("pin_branch") then (if (.pin_branch | ok) then "p:" + .pin_branch else "p:" end) else "h:" + ((.himmel_branch // "") | if ok then . else "" end) end) else "" end' 2>/dev/null) || br=""
+        'def ok: type == "string" and test("\\A[A-Za-z0-9][A-Za-z0-9._/-]*\\z");[.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0] | if has("pin_branch") then (if (.pin_branch | ok) then "p:" + .pin_branch else "p:" end) else "h:" + ((.himmel_branch // "") | if ok then . else "" end) end) else "" end' 2>/dev/null) || br=""
     key=himmel_branch
     case "$br" in p:*) key=pin_branch ;; esac
     br=${br#[ph]:}

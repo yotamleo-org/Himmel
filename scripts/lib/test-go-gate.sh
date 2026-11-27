@@ -688,7 +688,7 @@ fg_entry "[$(fg_obj ',"pin_branch":"pin-x"')]"
 { [ "$rc" = 0 ] && [ "$got" = pin-x ]; } || fail "10c2a: pin_branch pin-x must be the one GO base (rc=$rc, out=[$got])"
 fg_entry "[$(fg_obj '')]"
 { [ "$rc" = 0 ] && [ "$got" = himmel/pin ]; } || fail "10c2b: a row without pin_branch keeps himmel_branch (rc=$rc, out=[$got])"
-for pv in '"-x"' 42 null false '""' '"pin-x\n"'; do
+for pv in '"-x"' 42 null false '""' '"pin-x\n"' '"pin-x\u0000y"'; do
     fg_entry "[$(fg_obj ",\"pin_branch\":$pv")]"
     { [ "$rc" = 2 ] && printf '%s' "$got" | grep -q 'pin_branch'; } || fail "10c2c: pin_branch [$pv] must refuse naming pin_branch, never fall back (rc=$rc, out=[$got])"
 done
