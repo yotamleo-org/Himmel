@@ -163,7 +163,7 @@ run_fix() {
 }
 allowed() {
     if [ "$3" != 0 ]; then bad "$1 (adapter exit $3)"; return; fi
-    case "$2" in *'"permissionDecision":"deny"'*) bad "$1 ($2)";; *) ok "$1";; esac
+    if [ -z "$2" ]; then ok "$1"; else bad "$1 ($2)"; fi
 }
 denied_by() { case "$2" in *'"permissionDecision":"deny"'*"$3"*) ok "$1";; *) bad "$1 ($2)";; esac; }
 

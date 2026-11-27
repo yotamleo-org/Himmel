@@ -13,7 +13,8 @@ T="$(cd "$T" && pwd -P)" || exit 1
 trap 'rm -rf "$T"' EXIT
 export HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" GIT_CONFIG_NOSYSTEM=1
 export HIMMEL_POLICY_FOLLOWS_HOME=1
-unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_CONFIG GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_CONFIG GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM \
+    GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 mkdir -p "$HOME/.himmel"
 chmod 700 "$HOME/.himmel"
 CFG="$HOME/.himmel/config.json"
@@ -292,6 +293,8 @@ if command -v timeout >/dev/null 2>&1; then
         HIMMEL_POLICY_FOLLOWS_HOME="" && _himmel_policy_dir() { printf /nonexistent/.himmel; } && lane_grants_report' _ "$LIBDIR"); rc=$?
     case "$rc:$got" in 0:*'info: lane grants not checked'*) ok ;; *) bad "redirected report on a FIFO (rc $rc '$got')" ;; esac
     rm -f "$CFG"
+else
+    echo "  SKIP both FIFO rows: no timeout on this host"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
