@@ -443,22 +443,18 @@ def own_path(f):
 
 
 def own_dir_filter(files, text):
-    """(files, text) without this eval's own directory: its paths, and graph NODE lines sourced there."""
     return ([f for f in files if not own_path(f)],
             "".join(ln for ln in text.splitlines(True)
                     if not any(own_path(s) for s in re.findall(r"\[src=([^\s\]]+)", ln))))
 
 
 def qmd_requests(args):
-    """The lex, vec and rerank calls one qmd query carries."""
     kinds = [s["type"] for s in args["searches"]]
     return {"lex": kinds.count("lex"), "vec": kinds.count("vec"), "rerank": int(bool(args.get("rerank")))}
 
 
-def qmd_ask(args, timeout, admit):
-    """(rows, None), or (None, the arm's failed result). admit, when given, takes the request's
-    counts before it is sent; False means do not send it."""
-    if admit and not admit(qmd_requests(args)):
+def qmd_rows_or_failed_result(args, timeout, may_send):
+    if may_send and not may_send(qmd_requests(args)):
         return None, ([], "", False, True, "not sent: --max-qmd-requests reached")
     cmd = os.environ.get("RETRIEVAL_EVAL_QMD_CMD")
     if cmd:
@@ -482,29 +478,33 @@ def qmd_ask(args, timeout, admit):
     return rows, None
 
 
-def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, admit=None):
-    """qmd cuts at its limit, so a reply holding a file of this directory is asked again with that
-    many more rows: the arm still reads k rows, and a clean reply costs one request."""
-    vec = vocab_expand.shape_vec(q) if hybrid else ""
-    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
-            "collections": [collection], "limit": k, "intent": q}
-    args["rerank"] = hybrid and rerank
-    path = lambda r: re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))  # noqa: E731
+def reask_until_k_rows_outside_own_dir(args, k, path, timeout, may_send):
     spare, t0 = 0, time.time()
     while True:
         args["limit"] = k + spare
         left = timeout - (time.time() - t0) if spare else timeout
         if left <= 0:
-            return [], "", True, False, "timed out"
-        rows, failed = qmd_ask(args, left, admit)
+            return None, ([], "", True, False, "timed out")
+        rows, failed = qmd_rows_or_failed_result(args, left, may_send)
         if failed:
-            return failed
+            return None, failed
         own = sum(own_path(path(r)) for r in rows)
         if own <= spare or len(rows) < args["limit"]:
-            break
+            return [r for r in rows if not own_path(path(r))][:k], None
         spare = own
+
+
+def arm_qmd(q, hybrid, timeout, k, collection, rerank=True, may_send=None):
+    vec = vocab_expand.shape_vec(q) if hybrid else ""
+    args = {"searches": [{"type": "lex", "query": vocab_expand.shape_lex(q, quote_flags=True)}] + ([{"type": "vec", "query": vec}] if vec else []),
+            "collections": [collection], "limit": k, "intent": q}
+    args["rerank"] = hybrid and rerank
+    path = lambda r: re.sub(r"^(?:qmd://[^/]+|%s)/" % re.escape(collection), "", str(r.get("file", "")))  # noqa: E731
+    rows, failed = reask_until_k_rows_outside_own_dir(args, k, path, timeout, may_send)
+    if failed:
+        return failed
     files, text = [], []
-    for r in [r for r in rows if not own_path(path(r))][:k]:
+    for r in rows:
         f = path(r)
         if f and f not in files:
             files.append(f)
