@@ -769,8 +769,8 @@ EOF
 # A GO used to be the mere existence of a file with a head= line, so any
 # process able to write the handover root (a chief-spawned worker included)
 # could forge its own. go.sh now signs "himmel-go-v2|<nwo>|<pr>|<sha>" with
-# HMAC-SHA256 under a key only go.sh mints (the chief's zero-`!` path: it
-# creates the key on first use, mode 0600); go_gate verifies the mac and never
+# HMAC-SHA256 under a key go_key_ensure mints (the chief's zero-`!` path: go.sh or
+# worker-token.sh mint creates it on first use, mode 0600); go_gate verifies the mac and never
 # creates a key. The key's *.key name puts it under block-read-secrets (a
 # worker's cat/Read/Grep of it is hook-denied), and it sits outside every worker's
 # additionalDirectories grant.
