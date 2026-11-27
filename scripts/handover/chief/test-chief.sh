@@ -4578,6 +4578,7 @@ rcn10728=0
 chief next --bucket noremove10728dst --doc "$A10877" >/dev/null 2>"$tmp/n10728.err" || rcn10728=$?
 check "10728 a refused removal refuses the hand-over" "$([ "$rcn10728" -ne 0 ] && echo refused || echo "rc=$rcn10728")" "refused"
 check "10728 a refused removal leaves no row pending that the outgoing manifest still lists" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
+check "10728 a refused removal leaves no saved copy of a row the outgoing manifest still lists" "$(jq -r '.workers | length' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "0"
 rel10877
 mv "$fm10728.real" "$fm10728"
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
