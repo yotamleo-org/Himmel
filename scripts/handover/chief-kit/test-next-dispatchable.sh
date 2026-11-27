@@ -3149,7 +3149,7 @@ q6run() { # <mode> [extra env...] -- [dispatcher args...]: sets Q6_OUT, Q6_RC, Q
         ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?  # gnu-ok: the chief kit is Linux-only
     Q6_SECS=$(( $(date +%s) - t0 ))
 }
-q6_paused() { # <row name> <want prefix: quota-pause or gh-stall>: line 1 is the pause line, rc 0, no count and no RESUME row
+q6_paused() {
     [ "$Q6_RC" = 0 ] && pass "T6 $1: rc 0" || fail "T6 $1: rc 0 (got $Q6_RC after ${Q6_SECS}s)"
     has "T6 $1: line 1 is # $2" "$(printf '%s\n' "$Q6_OUT" | sed -n 1p)" "# $2 "
     lacks "T6 $1: no POOL-EMPTY" "$Q6_OUT" "POOL-EMPTY"
@@ -3166,6 +3166,7 @@ has "T6 gql-out: the line names the graphql bucket" "$Q6_OUT" "QUOTA-PAUSE githu
 [ "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")" = 0 ] && pass "T6 I2 gql-out: a paused run makes no call but the probes" || fail "T6 I2 gql-out: a paused run makes no call but the probes ($(grep -v -e rateLimit -e 'api -i user' "$Q6/log" | head -3))"
 q6run secondary -- --priority-pool-only
 q6_paused "secondary (Retry-After at the probe)" quota-pause
+has "T6 secondary: the first refused gate's line is the one printed" "$(printf '%s\n' "$Q6_OUT" | sed -n 1p)" "QUOTA-PAUSE github graphql "
 q6run hung -- --priority-pool-only
 q6_paused "hung (a probe times out)" gh-stall
 [ "$Q6_SECS" -le 15 ] && pass "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)" || fail "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)"
@@ -3261,10 +3262,10 @@ q7_never() {
     done
 }
 
+q7_stall_line='# gh-stall GH-STALL github read timed out after 2s token=main caller=next-dispatchable nothing-was-judged'
+q7_quota_line='# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged'
 q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_STALE_BUDGET=0 -- --priority-pool-only
-q7_stall_line="$Q6_OUT"
-check "10222 stale-off: budget 0 prints exactly one line" 1 "$(printf '%s\n' "$Q6_OUT" | grep -c .)"
-has "10222 stale-off: and it is the stall line" "$Q6_OUT" "# gh-stall GH-STALL"
+check "10222 stale-off: budget 0 prints exactly today's one line" "$q7_stall_line" "$Q6_OUT"
 q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
 q7_three stale-stall
 check "10222 stale-stall: line 1 keeps its bytes" "$q7_stall_line" "$(q7line 1)"
@@ -3284,14 +3285,18 @@ has "10222 stale-noresume control: a healthy run calls it merged-not-closed" "$Q
 lacks "10222 stale-negative: a healthy run has no stale-gh" "$Q6_OUT" "stale-gh"
 
 q7run gql-out Q_RESET=1 NEXT_DISPATCH_STALE_BUDGET=0 -- --priority-pool-only
-q7_quota_line="$Q6_OUT"
+check "10222 stale-off: the quota line is today's one line too" "$q7_quota_line" "$Q6_OUT"
+mkdir -p "$Q7/no-tmp"
+q7run gql-out Q_RESET=1 TMPDIR="$Q7/no-tmp/missing" -- --priority-pool-only
+q7_one stale-no-tmp "$q7_quota_line"
 q7run gql-out Q_RESET=1 -- --priority-pool-only
 q7_three stale-quota
 check "10222 stale-quota: line 1 keeps its bytes" "$q7_quota_line" "$(q7line 1)"
 check "10222 stale-quota: no gh call but the probes" 0 "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")"
 
-q7run hung-after-probe NEXT_DISPATCH_DEADLINE=20 NEXT_DISPATCH_STALE_BUDGET=8 -- --priority-pool-only
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=20 NEXT_DISPATCH_STALE_BUDGET=8 -- --priority-pool-only --dispositions --scope-batch "$Q7/batch-cut.txt"
 q7_three stale-cut
+[ ! -e "$Q7/batch-cut.txt" ] && pass "10222 stale-cut: a run cut at the PR read wrote no batch" || fail "10222 stale-cut: a run cut at the PR read wrote no batch"
 has "10222 stale-cut: the cut names the GitHub pass's bound" "$(q7line 1)" "after 12s"
 [ "$Q6_SECS" -le 25 ] && pass "10222 stale-cut: ends inside 25s (${Q6_SECS}s)" || fail "10222 stale-cut: ends inside 25s (${Q6_SECS}s)"
 q7run hung-after-probe NEXT_DISPATCH_DEADLINE=10 -- --priority-pool-only
@@ -3325,6 +3330,19 @@ printf 'CORE HIMMEL-9820 label core\n' > "$CG/core/HIMMEL-9820"; printf 'NO-SPEC
 q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_MIRROR="$Q7D" NEXT_DISPATCH_JIRA_CLI="$WORK/cg-stub/index.js" -- --priority-pool-only
 has "10222 stale-design: a DESIGN row" "$Q6_OUT" "DESIGN	HIMMEL-9820	NO-SPEC	"
 check "10222 stale-design: and it ends stale-gh" 1 "$(q7rows)"
+
+Q7S="$WORK/q7s/HIMMEL"; mkdir -p "$Q7S"; cp "$WORK/q7m/HIMMEL.versions.tsv" "$WORK/q7s/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$Q7S"
+for n in 9831 9832; do
+    mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "family $n" "Edit scripts/q7fam/f$n.sh only."
+    sed 's/^type: "Task"/type: "Sub-task"/; s/^parent: null/parent: "HIMMEL-9830"/' "$Q7S/HIMMEL-$n.md" > "$Q7S/HIMMEL-$n.tmp" && mv "$Q7S/HIMMEL-$n.tmp" "$Q7S/HIMMEL-$n.md"
+done
+M="$M_SAVE"
+q6run healthy HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$Q7S" -- --priority-pool-only
+has "10222 stale-series control: a healthy run offers the family" "$Q6_OUT" "SERIES FAMILY "
+q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$Q7S" -- --priority-pool-only
+has "10222 stale-series: a stale pass ran" "$(q7line 2)" "# stale-gh rows=0 "
+lacks "10222 stale-series: and offers no series" "$Q6_OUT" "SERIES "
 
 mkdir -p "$Q7/hold" "$Q7/crash"
 cat > "$Q7/hold/index.js" <<'JSEOF'

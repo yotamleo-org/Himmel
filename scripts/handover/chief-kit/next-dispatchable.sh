@@ -298,11 +298,15 @@ export ND_OWE="$HERE/owe.sh" ND_READINESS="$HERE/readiness.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
 nd_qtmp=""; nd_out=""; nd_flags=""; nd_pred_tmp=""; nd_pid=""; nd_pre=""
+nd_head() {
+    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+}
 nd_temp_failure() {
     if [ -n "$why_ticket" ]; then
         printf 'UNKNOWN %s: temporary storage unavailable\n' "$why_ticket"
         exit 3
     fi
+    [ -z "$nd_pre" ] || { nd_head "$nd_pre"; exit 0; }
     exit 1
 }
 trap '[ -z "$nd_out" ] || rm -f "$nd_out"; [ -z "$nd_flags" ] || rm -f "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"; [ -z "$nd_pred_tmp" ] || rm -rf "$nd_pred_tmp"' EXIT
@@ -369,7 +373,7 @@ sys.stdout.reconfigure(errors='backslashreplace')
 sys.stderr.reconfigure(errors='backslashreplace')
 
 why_key = os.environ.get('ND_WHY_TICKET', '')
-gh_stale = os.environ.get('ND_STALE') == '1'  # the stale pass: the mirror and local files only
+gh_stale = os.environ.get('ND_STALE') == '1'
 
 def unknown(reason):
     print('UNKNOWN %s: %s' % (why_key, ' '.join(str(reason).split())))
@@ -1028,7 +1032,7 @@ cloud_taken = set()
 hold_row = {}
 merge_fields = {}
 unconfirmed = set()
-stale_withheld = set()  # the stale pass: keys with a pre-merge row the helper could not confirm
+stale_withheld = set()
 
 
 def effective_rows(path):
@@ -1638,7 +1642,7 @@ CLOUD_KEY_RE = re.compile(r'^[A-Z][A-Z0-9]*-[0-9]+$')
 
 def cloud_prs(key, secs):
     if gh_stale:
-        return None  # unread: the session keeps its key
+        return None
     try:
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'all', '--search', key, '--limit', '100', '--json',
                               'number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments'],
@@ -2117,7 +2121,6 @@ pr_keys = set()
 pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
 
-# The last open-PR list a full pass read, for the stale pass: the one open-PR fact that guards against a duplicate launch.
 snap_env = os.environ.get('NEXT_DISPATCH_PR_SNAPSHOT', '')
 snap_path = '' if snap_env == 'off' or (not snap_env and os.environ.get('NEXT_DISPATCH_GH_CMD')) else (
     snap_env or os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'next-dispatchable', 'open-prs.json'))
@@ -2141,10 +2144,12 @@ def snapshot_load():
                 return None
         return at, d['prs']
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return None  # swallow-ok: a missing or corrupt snapshot reads as none, which the stale pass says
+        return None
+
+def disk_snapshot_stays(old, at, clock):
+    return old is not None and at <= old[0] <= clock
 
 def snapshot_write(at, prs):
-    # replaced only by a newer `at`, or over one stamped ahead of this writer's clock; the compare and rename share one lock
     if not snap_path:
         return
     tmp = ''
@@ -2159,11 +2164,11 @@ def snapshot_write(at, prs):
                     break
                 except BlockingIOError:
                     if time.monotonic() >= give_up:
-                        return  # the next run writes
+                        return
                     time.sleep(0.05)
             old = snapshot_load()
-            clock = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())  # read now, not at the run's start: a writer that got in first is not "ahead"
-            if old is not None and at <= old[0] <= clock:
+            clock_after_lock = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
+            if disk_snapshot_stays(old, at, clock_after_lock):
                 return
             fd, tmp = tempfile.mkstemp(prefix='open-prs.', suffix='.tmp', dir=folder)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -2171,13 +2176,12 @@ def snapshot_write(at, prs):
             os.replace(tmp, snap_path)
             tmp = ''
     except OSError:
-        pass  # swallow-ok: an unwritable snapshot leaves the stale pass at prs=none or the older file
+        pass
     finally:
         if tmp and os.path.exists(tmp):
             os.remove(tmp)
 
 def pr_owns(num, text, cross, updated):
-    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     idle = None
     if cross:
         try:
@@ -2223,7 +2227,7 @@ try:
         if len(cols) >= 3 and cols[0].isdigit():
             listed_prs.append({'number': int(cols[0]), 'title': cols[1], 'head': cols[2], 'cross': cross, 'updatedAt': updated, 'files': pr_file_map.get(cols[0])})
     if not resume_only:
-        snapshot_write(titles_at, listed_prs)  # right after the title read: a run flagged or cut later has still written it
+        snapshot_write(titles_at, listed_prs)
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
@@ -2353,7 +2357,7 @@ if stacked and workers_from:
             print('next-dispatchable: series ledger %s is unreadable: the files it holds are unknown' % n, file=sys.stderr)
 
 if gh_stale:
-    stacked = False  # the ledgers' holds are read above; the stale pass offers no series and no STACKABLE row
+    stacked = False
 
 # An IN CI ticket nobody holds is merged-not-closed when a merged PR cites it, else a RESUME row.
 # One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
@@ -2491,7 +2495,7 @@ def pool_class(i, parts):
     return None
 
 resume = []
-for i in () if gh_stale else issues.values():  # in-work rows need GitHub: unknown in the stale pass, never empty
+for i in () if gh_stale else issues.values():
     if i.get('owed_wait'):
         step = i['owed_wait']
         owed_rows.append((i['key'], 'owed:' + step['id'], step['actor'], step['due']))
@@ -2627,7 +2631,7 @@ for k, prs in needs_note:
           'body could not be read (gh failed)' if unread else 'has no Remaining: line and no deferred line under ## Ticket coverage',
           '' if unread else '; to clear it add one to PR %s\'s body (gh pr edit <n> --body-file), or close %s by hand if nothing remains' % (', '.join('#' + p for p in prs), k)))
 if gh_stale:
-    del scope_questions[:], series_orphans[:]  # chief notes and orphans wait for a full pass
+    del scope_questions[:], series_orphans[:]
 scope_questions.sort(key=lambda k: ranked(issues[k]))
 scope_shown = scope_questions if os.environ.get('ND_WHY') == '1' else scope_questions[:top]
 for k in scope_shown:
@@ -2812,7 +2816,7 @@ def drop_summary():
     counts = {}
     for _, r in rows:
         counts[r.split(' ')[0]] = counts.get(r.split(' ')[0], 0) + 1
-    if not gh_stale:  # a count a reader would trust as complete
+    if not gh_stale:
         print('# dropped from %s: %d of %d To Do (%s)' % (first_ver, len(rows), len(todo), ', '.join('%s %d' % kv for kv in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))) or 'none'))
     if os.environ.get('ND_WHY') == '1':
         for k, r in rows:
@@ -2854,7 +2858,6 @@ def stale_field():
     return ['stale-gh'] if gh_stale else []
 
 def stale_tail():
-    # printed last, once the row count is known; the shell moves it to line 2, and a pass that never reaches it is discarded
     if gh_stale:
         print('# stale-gh rows=%d skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=%s' % (len(emitted), snap_note))
 
@@ -3081,7 +3084,7 @@ nd_stale() {
     return 1
 }
 nd_pause() {
-    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+    nd_head "$1"
     if nd_stale; then
         tail -n 1 "$nd_out"
         sed '$d' "$nd_out"

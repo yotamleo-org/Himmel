@@ -1497,7 +1497,7 @@ dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
     local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}" paused_age deadline=() secs
     ghpaused_fresh=""
-    pool_lf=();pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""; pool_dispatch=""; pool_left=""
+    pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""; pool_dispatch=""; pool_left=""
     [ -r "$dispatch_cmd" ] || return 0
     if [ -e "$pool_paused_file" ]; then
         paused_age=$(( $(date +%s) - $(stat -c %Y "$pool_paused_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the probe is due
@@ -1570,10 +1570,11 @@ pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '#
         }'
 }
 ghpaused_wake() {
-    local age keys head
+    local age mtime keys head
     [ -n "${pool_paused:-}" ] && [ -e "$ghpaused_rows_file" ] || return 1
     if [ -z "$ghpaused_fresh" ]; then
-        age=$(( $(date +%s) - $(stat -c %Y "$ghpaused_rows_file" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: a failed stat reads epoch 0, so the file is too old to wake
+        mtime="$(stat -c %Y "$ghpaused_rows_file")" || return 1  # gnu-ok: Linux-only kit
+        age=$(( $(date +%s) - mtime ))
         [ "$age" -le "${CHIEF_WAIT_PAUSED_REPROBE_SEC:-300}" ] || return 1
     fi
     keys="$(awk -F'\t' '$NF == "stale-gh" { print $2 }' "$ghpaused_rows_file" | sort -u)"
