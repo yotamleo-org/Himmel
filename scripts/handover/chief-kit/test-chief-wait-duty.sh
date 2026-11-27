@@ -281,6 +281,18 @@ if want D13; then
     contains 'D13 the old go-owed wakes' "$OUT" 'WAKE chief-duty 1 new=go-owed:12@abcdef0'
 fi
 
+if want D13b; then
+    reset D13b
+    a='DUTY answer-owed N7 :: a BLOCKED with no answer :: next: x'
+    lists "$a" "$a"
+    seed answer-owed N7 - 1100 1 0
+    quiet 2 'a young answer-owed'
+    reset D13b; lists "$a" "$a"
+    seed answer-owed N7 - 1300 1 0
+    woke 1 'a 21 min old answer-owed'
+    contains 'D13b the old answer-owed wakes' "$OUT" 'WAKE chief-duty 1 new=answer-owed:N7'
+fi
+
 if want D14; then
     reset D14
     d='DUTY dispatch-owed HIMMEL-1 :: x :: next: x'
