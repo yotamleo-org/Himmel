@@ -4532,8 +4532,9 @@ mk10877 mv10728
 B10728="$root/tester/mv10728dst/DEMO-nextleg-${today}B-chief.md"
 late10728="$W10877/DEMO-30-N30-late.md"
 printf '%s\n' '# worker' '## Results' > "$late10728"
-printf '#!/usr/bin/env bash\nbash "%s" add "%s" "%s" --lane native --pending >/dev/null 2>&1\necho "== STUB action-zero"\n' \
-    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" "$late10728" > "$tmp/az10728.sh"
+printf '#!/usr/bin/env bash\nbash "%s" add "%s" "%s" --lane native --pending >/dev/null 2>&1\nbash "%s" add "%s" "%s" --lane unknown --arm 200k >/dev/null 2>&1\necho "== STUB action-zero"\n' \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" "$late10728" \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" "$W10877/DEMO-1-N1-worker.md" > "$tmp/az10728.sh"
 rc10728=0
 FM10728_P="${A10877%.md}.fleet.json" FM10728_S="${B10728%.md}.fleet.json" FM10728_LOG="$tmp/fm10728.log" \
     ACTION_ZERO_SCRIPT="$tmp/az10728.sh" chief next --bucket mv10728dst --doc "$A10877" >/dev/null 2>"$tmp/10728.err" || rc10728=$?
@@ -4543,6 +4544,17 @@ check "10728 the outgoing manifest lists no carried worker, and keeps the row th
 check "10728 the outgoing rows are removed while the successor's manifest does not exist yet" \
     "$(grep -m 1 "^before remove ${A10877%.md}.fleet.json " "$tmp/fm10728.log" 2>/dev/null | grep -c ' succ=no ')" "1"
 check "10728 no recorded instant holds a worker in both manifests" "$(grep -vc ' both=0$' "$tmp/fm10728.log" 2>/dev/null)" "0"
+check "10728 a row updated while next runs is published as updated" "$(jq -r '.workers[] | select(.label == "N1") | .arm' "${B10728%.md}.fleet.json" 2>/dev/null)" "200k"
+rel10877
+mk10877 again10728
+G10728="$root/tester/again10728dst/DEMO-nextleg-${today}B-chief.md"
+mkdir -p "$(dirname "$G10728")"
+printf '{"schema":1,"carried_from":"%s","workers":[{"doc":"/x/DEMO-60-N60.md","label":"N60"}]}\n' "${A10877%.md}.fleet.json" > "${G10728%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"/x/DEMO-60-N60.md","label":"N60"}]}\n' > "${A10877%.md}.fleet.moved.json"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$W10877/DEMO-1-N1-worker.md" > "${A10877%.md}.fleet.json"
+CHIEF_SEED_TEST_DROP='' chief next --bucket again10728dst --doc "$A10877" >/dev/null 2>"$tmp/again10728.err"
+check "10728 a second hand-over into the same successor keeps the rows of both, from a legs manifest too" "$(jq -r '[.workers[].label] | sort | join(",")' "${G10728%.md}.fleet.json" 2>/dev/null)" "N1,N60"
+check "10728 a second hand-over keeps the earlier moved rows" "$(jq -r '[.workers[].label] | sort | join(",")' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "N1,N60"
 rel10877
 mk10877 fail10728
 mkdir -p "$root/tester/fail10728dst/DEMO-nextleg-${today}B-chief.fleet.json"

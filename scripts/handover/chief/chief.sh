@@ -2554,19 +2554,26 @@ move_manifest_rows() {
     done <<EOF
 $docs
 EOF
+    local now="$moved.now" old="$moved" out
     if [ "${#gone[@]}" -gt 0 ]; then
-        if ! { jq --arg d "$docs" "$JQ_W"'($d | split("\n")) as $c | {schema: 1, workers: [W[] | objects | select(.doc as $x | any($c[]; . == $x))]}' "$pred" > "$moved.tmp" && mv -f "$moved.tmp" "$moved"; }; then
-            rm -f "$moved.tmp"
+        [ -f "$old" ] || old=/dev/null
+        if ! { jq --arg d "$docs" "$JQ_W"'($d | split("\n")) as $c | {schema: 1, workers: [W[] | objects | select(.doc as $x | any($c[]; . == $x))]}' "$pred" > "$now" \
+            && jq --slurpfile o "$old" '.workers as $n | .workers = $n + [($o[0].workers // [])[] | select(.doc as $x | any($n[]; .doc == $x) | not)]' "$now" > "$moved.tmp" \
+            && mv -f "$moved.tmp" "$moved" \
+            && out="$(jq --slurpfile n "$now" '.workers = [(.workers // .legs)[] | . as $r | if type == "object" then ([$n[0].workers[] | select(.doc == $r.doc)][0] // $r) else $r end] | del(.legs)' "$staged")" \
+            && printf '%s\n' "$out" > "$staged"; }; then
+            rm -f "$moved.tmp" "$now"
             err "could not save the outgoing rows of $pred to $moved; nothing was moved"
             return 1
         fi
         bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
-            || { err "could not remove the carried rows from $pred; nothing was moved"; return 1; }
+            || { rm -f "$now"; err "could not remove the carried rows from $pred; nothing was moved"; return 1; }
     fi
-    if [ ! -d "$succ" ] && mv -f "$staged" "$succ"; then return 0; fi
+    if [ ! -d "$succ" ] && mv -f "$staged" "$succ"; then rm -f "$now"; return 0; fi
     err "could not write the successor's manifest $succ"
-    [ "${#gone[@]}" -eq 0 ] || restore_manifest_rows "$pred" "$moved" \
+    [ "${#gone[@]}" -eq 0 ] || restore_manifest_rows "$pred" "$now" \
         || err "could not put the rows back into $pred: they are in $moved"
+    rm -f "$now"
     return 1
 }
 
@@ -3095,7 +3102,7 @@ cmd_next() {
         cp "$predecessor_manifest" "$staged_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $staged_manifest"; exit 1; }
         carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest" 2>/dev/null)" || carried_docs=""  # swallow-ok: a manifest with no readable row moves none
         if [ -f "$successor_manifest" ] && [ "$(jq -r '.carried_from // empty' "$successor_manifest" 2>/dev/null)" = "$predecessor_manifest" ]; then  # swallow-ok: an unreadable leftover names no predecessor and is replaced, as before
-            if carried="$(jq --slurpfile e "$successor_manifest" '(.workers // []) as $w | .workers = $w + [($e[0].workers // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)]' "$staged_manifest")"; then
+            if carried="$(jq --slurpfile e "$successor_manifest" '(.workers // .legs // []) as $w | .workers = $w + [($e[0].workers // $e[0].legs // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)] | del(.legs)' "$staged_manifest")"; then
                 printf '%s\n' "$carried" > "$staged_manifest"
             else
                 err "could not keep the rows already in $successor_manifest"; exit 1

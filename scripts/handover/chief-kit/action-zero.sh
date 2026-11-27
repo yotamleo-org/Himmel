@@ -91,6 +91,7 @@ bounded() {
 
 take_late_row() {
     local moved="${1%.json}.moved.json" have='{"schema":1,"workers":[]}'
+    jq -e --arg d "$2" 'any((.workers // .legs // [])[] | objects; .doc == $d)' "$1" >/dev/null 2>&1 || return 0
     [ ! -f "$moved" ] || have="$(cat "$moved")" || return 1
     if ! { printf '%s\n' "$have" | jq --arg d "$2" --slurpfile p "$1" '.workers = [.workers[] | select(.doc != $d)] + [($p[0].workers // $p[0].legs)[] | objects | select(.doc == $d)]' > "$moved.tmp" && mv -f "$moved.tmp" "$moved"; }; then
         rm -f "$moved.tmp"; return 1
@@ -100,19 +101,23 @@ take_late_row() {
 put_back_late_row() (
     # prim-ok: the manifest writers' own bounded lock on fd 9
     exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
-    jq --arg d "$2" --slurpfile m "${1%.json}.moved.json" '.workers = [(.workers // [])[] | select(.doc != $d)] + [$m[0].workers[] | select(.doc == $d)]' "$1" > "$1.restore" \
-        && mv -f "$1.restore" "$1"
+    moved="${1%.json}.moved.json"
+    jq --arg d "$2" --slurpfile m "$moved" '.workers = [(.workers // [])[] | select(.doc != $d)] + [$m[0].workers[] | select(.doc == $d)]' "$1" > "$1.restore" \
+        && mv -f "$1.restore" "$1" \
+        && jq --arg d "$2" '.workers |= map(select(.doc != $d))' "$moved" > "$moved.tmp" && mv -f "$moved.tmp" "$moved"
 )
 
 carry_late_rows() {
-    local smanifest="${doc%.md}.fleet.json" pmanifest="" carried_at late ncarry nfail cdoc clabel clane cll carm cargs
+    local smanifest="${doc%.md}.fleet.json" pmanifest="" pmoved carried_at late ncarry nfail cdoc clabel clane cll carm cargs
     [ -f "$smanifest" ] && [ ! -e "$smanifest.carried" ] || return 0
     pmanifest="$(jq -r '.carried_from // empty' "$smanifest" 2>/dev/null)" || pmanifest=""  # swallow-ok: an unreadable manifest names no predecessor, the CARRY section is skipped
     [ -n "$pmanifest" ] || return 0
     echo "== CARRY (rows the predecessor's manifest gained after the copy)"
-    if carried_at="$(jq -er '.carried_at | strings' "$smanifest")" && late="$(jq -r --slurpfile s "$smanifest" --arg t "$carried_at" '
+    pmoved="${pmanifest%.json}.moved.json"; [ -f "$pmoved" ] || pmoved=/dev/null
+    if carried_at="$(jq -er '.carried_at | strings' "$smanifest")" && late="$(jq -r --slurpfile s "$smanifest" --slurpfile m "$pmoved" --arg t "$carried_at" '
             ($s[0].workers // $s[0].legs // [] | map(.doc)) as $have
-            | (.workers // .legs // [])[] | objects
+            | (.workers // .legs // []) as $p
+            | ($p + [($m[0].workers // [])[] | select(.doc as $x | any($p[] | objects; .doc == $x) | not)])[] | objects
             | select($t != "" and (.added // "") >= $t and ((.doc // "") as $d | $d != "" and (any($have[]; . == $d) | not)))
             | [.doc, .label // "-", .lane // "native", (if .lockless == true then "1" else "0" end), .arm // "-"] | @tsv' "$pmanifest" 2>/dev/null)"; then
         ncarry=0; nfail=0

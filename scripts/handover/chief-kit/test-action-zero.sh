@@ -242,6 +242,16 @@ printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","wor
 fout="$(bash "$AZ" --doc "$FSUCC" --root "$ROOT" --acquire --lock-only 2>&1)"
 check "a row whose add fails is printed as not carried" "1" "$(printf '%s\n' "$fout" | grep -c '^NOT carried N34 ')"
 check "a row whose add fails is put back in the predecessor's manifest" "1" "$(jq -r --arg d "$ROOT/DEMO-34-N34-worker.md" '[.workers[] | select(.doc == $d)] | length' "${FPRED%.md}.fleet.json" 2>/dev/null)"
+check "a row put back leaves the moved rows, so a later removal stays removed" "0" "$(jq -r '.workers | length' "${FPRED%.md}.fleet.moved.json" 2>/dev/null)"
+IPRED="$ROOT/DEMO-nextleg-2026-11-25E-chief.md"; ISUCC="$ROOT/DEMO-nextleg-2026-11-25F-chief.md"
+printf '# chief\n\n## Live state\nworkers: none\n' > "$ISUCC"
+: > "$ROOT/DEMO-35-N35-worker.md"
+printf '{"schema":1,"workers":[]}\n' > "${IPRED%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N35","lane":"native","added":"2026-11-25T04:27:00Z"}]}\n' "$ROOT/DEMO-35-N35-worker.md" > "${IPRED%.md}.fleet.moved.json"
+printf '{"schema":1,"carried_from":"%s","carried_at":"2026-11-25T04:26:00Z","workers":[]}\n' "${IPRED%.md}.fleet.json" > "${ISUCC%.md}.fleet.json"
+bash "$AZ" --doc "$ISUCC" --root "$ROOT" --acquire --lock-only >/dev/null 2>&1
+check "a late row an interrupted carry left only in the moved rows is carried by the next acquire" "1" "$(jq -r --arg d "$ROOT/DEMO-35-N35-worker.md" '[.workers[] | select(.doc == $d)] | length' "${ISUCC%.md}.fleet.json" 2>/dev/null)"
+check "the retried row stays in the moved rows" "1" "$(jq -r '.workers | length' "${IPRED%.md}.fleet.moved.json" 2>/dev/null)"
 check "a failed add leaves no carried record, so the next acquire retries" "no" "$([ -e "${FSUCC%.md}.fleet.json.carried" ] && echo yes || echo no)"
 check "a carried row removed later is not carried back" "0" "$(jq -r --arg d "$ROOT/DEMO-32-N32-worker.md" '[.workers[] | select(.doc == $d)] | length' "${CSUCC%.md}.fleet.json" 2>/dev/null)"
 
