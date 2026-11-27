@@ -27,11 +27,12 @@
 #       The TTL is per session: 3600s when the last cache write used the 1h
 #       tier (usage.cache_creation.ephemeral_1h_input_tokens), else 300s.
 #         exit 0 ttl-consistent | 1 ttl-inconsistent | 2 inconclusive
-#       Each in-TTL rewrite also prints a `rewrite-cause` line: entrypoint,
+#       Each counted warm_rewrote also prints a `rewrite-cause` line: entrypoint,
 #       restart=yes when a SessionStart:resume sits between the two turns, what
 #       the new request changed against the previous one (tools-removed/added/
-#       changed, system-changed, message-changed:<first index>, from the
-#       transcript's api-request rows; no-request-rows when it has none), and
+#       changed, system-changed, message-changed:<first index>,
+#       history-truncated:<new length>, from the transcript's api-request rows;
+#       no-request-rows when either turn has no request row of its own), and
 #       the thinking_drop as <reason>:<blocks>@<first message index>.
 #   cache-probe.sh first-turn <session.jsonl>...
 #       Does a session's first request read a warm shared prefix
@@ -48,7 +49,7 @@
 set -u
 
 usage() {
-  sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,47p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 64
 }
 die() { echo "cache-probe: $*" >&2; exit 64; }
@@ -125,8 +126,9 @@ def changes($a; $b; $shapes; $byid):
       end )
     + ( ($a | history($byid)) as $m | ($b | history($byid)) as $n
         | if $m == null or $n == null then ["history-unreadable"]
-          else [ first(range(0; [($m | length), ($n | length)] | min) | select($m[.] != $n[.])) ]
-               | map("message-changed:\(.)")
+          else ([ first(range(0; [($m | length), ($n | length)] | min) | select($m[.] != $n[.])) ]
+                | map("message-changed:\(.)"))
+               + (if ($n | length) < ($m | length) then ["history-truncated:\($n | length)"] else [] end)
           end )
     | if length == 0 then ["no-shape-or-message-change"] else . end
   end;
@@ -171,7 +173,7 @@ def changes($a; $b; $shapes; $byid):
         | ([ $between[] | select(.type == "attachment" and .attachment.type == "thinking_drop")
              | .attachment.newlyDropped | select(. != null)
              | "\(.reason):\(.blockCount)@\(.first.messageIndex)" ] | first // "none") as $drop
-        | [ "rewrite-cause", $sid, (.c.t | todateiso8601), "gap_s=\(.gap)",
+        | [ "/rewrite-cause", $sid,(.c.t | todateiso8601), "gap_s=\(.gap)",
             "entrypoint=\($raw[$j].entrypoint // "unknown")",
             "restart=" + (if any($between[]; .type == "attachment" and .attachment.hookName == "SessionStart:resume") then "yes" else "no" end),
             "cause=" + (changes(request($i); request($j); $shapes; $byid) | join(";")),
@@ -229,10 +231,10 @@ case "$MODE" in
   idle-gap)
     echo "cache-probe idle-gap (cold expected at gap >= session TTL, warm expected at 60s <= gap < TTL)"
     printf 'session\tttl_s\tcold_expected\tcold_rewrote\twarm_expected\twarm_rewrote\n'
-    printf '%s' "$ROWS" | awk -F'\t' 'NF && $1 != "rewrite-cause" { print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 }'
-    printf '%s' "$ROWS" | awk -F'\t' '$1 == "rewrite-cause"'
+    printf '%s' "$ROWS" | awk -F'\t' 'NF && $1 != "/rewrite-cause" { print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6 }'
+    printf '%s' "$ROWS" | awk -F'\t' '$1 == "/rewrite-cause" { print substr($0, 2) }'
     printf '%s' "$ROWS" | awk -F'\t' '
-      NF && $1 != "rewrite-cause" { ce += $3; cw += $4; we += $5; ww += $6; cr += $7; all += $8 }
+      NF && $1 != "/rewrite-cause" { ce += $3; cw += $4; we += $5; ww += $6; cr += $7; all += $8 }
       END {
         # consistent: >= 80% of expected-cold gaps rewrote and <= 20% of expected-warm did
         if (ce == 0) word = "inconclusive"

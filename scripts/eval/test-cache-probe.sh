@@ -91,6 +91,12 @@ has "idle-restart-cause: a removed tool is named" "$LAST_OUT" "rewrite-cause	too
 has "idle-restart-cause: a changed history message is named" "$LAST_OUT" "rewrite-cause	message	2026-01-01T00:06:05Z	gap_s=245	entrypoint=t3-code	restart=yes	cause=message-changed:1	drop=prefix_mismatch:26@3"
 has "idle-restart-cause: no request rows is said, not guessed" "$LAST_OUT" "rewrite-cause	norows	2026-01-01T00:06:05Z	gap_s=245	entrypoint=t3-code	restart=no	cause=no-request-rows	drop=none"
 has "idle-restart-cause: the cause lines are not counted as sessions" "$LAST_OUT" "warm-expected=6 warm-rewrote=3"
+mkdir "$TMP/odd"
+cp "$FIX/idle-restart-cause/tools.jsonl" "$TMP/odd/rewrite-cause.jsonl"
+sed 's/"tail":\["h0","h1","h2","h3"\]/"tail":["h0"]/' "$FIX/idle-restart-cause/tools.jsonl" > "$TMP/odd/short.jsonl"
+out=$(bash "$PROBE" idle-gap "$TMP/odd"/*.jsonl)
+has "idle-restart-cause: a shorter history is named" "$out" "cause=tools-removed:Artifact;history-truncated:1	"
+has "idle-restart-cause: a session id equal to the line label is still counted" "$out" "warm-expected=4 warm-rewrote=2"
 
 # --- first-turn: does a new session start warm ------------------------------
 scenario first-turn-warm warm-start 0 first-turn
