@@ -3663,7 +3663,7 @@ _readiness_reap_acquire() {
     while kill -0 "$pid" 2>/dev/null && [ "$i" -lt $((READINESS_REAP_SECS * 10)) ]; do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then
         # said on stdout and in the launch log: the EXIT trap that calls this discards its own stderr
-        echo "headed-arm-worker: WARN the queue acquire for $READINESS_DOC did not finish within ${READINESS_REAP_SECS}s and was stopped; a lease it had already created is released by its token next, else it ages out by its TTL" | tee -a "$LOG" 2>/dev/null
+        echo "headed-arm-worker: WARN the queue acquire for $READINESS_DOC did not finish within ${READINESS_REAP_SECS}s and was stopped; a lease it had already created, or was still publishing, is released by its token next" | tee -a "$LOG" 2>/dev/null
         kill -TERM "$pid" 2>/dev/null
         i=0
         while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done

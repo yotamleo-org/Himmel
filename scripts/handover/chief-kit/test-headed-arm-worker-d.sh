@@ -831,7 +831,7 @@ RS_SIGNAL_AFTER="$RS/slow-mark-bound" rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/s
 rs_elapsed=$SECONDS
 check "17s an acquire that outlives the cleanup bound: the wrapper still ends with 143" "$RS_RC" "143"
 check "17s an acquire that outlives the cleanup bound: the cleanup did not wait for the whole stretch" "$([ "$rs_elapsed" -lt 7 ] && echo bounded || echo "waited ${rs_elapsed}s")" "bounded"
-contains "17s an acquire that outlives the cleanup bound: the stop is said" "$(cat "$RS_D/out")" "did not finish within 1s and was stopped"
+contains "17s an acquire that outlives the cleanup bound: the stop and token release are said" "$(cat "$RS_D/out")" "did not finish within 1s and was stopped; a lease it had already created, or was still publishing, is released by its token next"
 sleep 8
 check "17s an acquire that outlives the cleanup bound: nothing was left behind" "$(rs_status):$(rs_attempts)" "free:0"
 # ... and one that ignores TERM is killed
