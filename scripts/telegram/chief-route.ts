@@ -12,7 +12,7 @@ import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId, type Access } from "./gate";
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { BASH_BIN } from "./run";
 
 // Operator Telegram message -> a named RUNNING chief.
@@ -2413,7 +2413,7 @@ export function readKindGroupKeys(configDir = process.env.HIMMEL_CONFIG_DIR || j
     let raw: string;
     try { raw = readFileSync(join(configDir, file), "utf8"); }
     catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if ((e as NodeJS.ErrnoException).code === "ENOENT" && !lstatSync(join(configDir, file), { throwIfNoEntry: false })) continue;
       console.error(`[chief-route] ${file} not read, so it and the layers under it set no kind group: ${e instanceof Error ? e.message : e}`);
       break;
     }
