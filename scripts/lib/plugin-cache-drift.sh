@@ -20,8 +20,9 @@
 _pcd_walk() {
     local nl='
 ' odd
+    local also="${3:-f}"
     ( cd "$1" && find . -type d \( -name node_modules -o -name __pycache__ -o -name .git -o -name .in_use \) -prune \
-        -o \( -type f -o -type l \) ! -name .orphaned_at -print ) > "$2.raw" 2>/dev/null || return 1
+        -o \( -type f -o -type "$also" \) ! -name .orphaned_at -print ) > "$2.raw" 2>/dev/null || return 1
     odd="$( cd "$1" && find . -type d \( -name node_modules -o -name __pycache__ -o -name .git -o -name .in_use \) -prune \
         -o -name "*$nl*" -print 2>/dev/null )" || return 1
     [ -z "$odd" ] || return 1
@@ -36,12 +37,12 @@ plugin_cache_drift() (
     # prim-ok: private scratch the function removes itself; its callers do not source prim.sh
     work="$(mktemp -d "${TMPDIR:-/tmp}/plugin-drift.XXXXXX")" || exit 1
     trap 'rm -rf "$work"' EXIT
-    _pcd_walk "$tree" "$work/tree" || exit 1
+    _pcd_walk "$tree" "$work/tree" l || exit 1
     _pcd_walk "$cache" "$work/cache" || exit 1
     in_git=0
     dir="$(cd "$tree" && pwd -P)" || exit 1
     while [ -n "$dir" ]; do
-        if [ -e "$dir/.git" ]; then in_git=1; break; fi
+        if [ -e "$dir/.git" ] || [ -L "$dir/.git" ]; then in_git=1; break; fi
         dir="${dir%/*}"
     done
     if [ "$in_git" -eq 1 ]; then

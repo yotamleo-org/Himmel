@@ -2142,6 +2142,22 @@ mkdir -p "$c79_tree/agents"
 ln -s ../hooks/hooks.json "$c79_tree/agents/link.json"
 c79_want_warn "(11344-e7) missing symlink -> WARN naming it" 'agents/link.json'
 
+echo "== C79 (11344-e8): a cache-only symlink is not drift, since the repair never removes a link =="
+c79_setup "$c79_main"; c79_paths
+ln -s hooks/hooks.json "$c79_cachedir/runtime-link.json"
+out="$(c79_run)"
+if grepq "$out" 'OK   C79-plugin-cache-drift' && ! grepq "$out" 'WARN C79-plugin-cache-drift'; then
+    pass "(11344-e8) cache-only symlink -> OK"
+else
+    fail "(11344-e8) -> $(printf '%s' "$out" | grep -A1 C79)"
+fi
+rm -rf "$c79_t"
+
+echo "== C79 (11344-e9): a dangling .git link is still a git checkout -> WARN cannot compare =="
+c79_setup "$c79_main"; c79_paths
+ln -s "$c79_t/nonexistent" "$c79_t/repo/.git"
+c79_want_warn "(11344-e9) dangling .git link -> WARN cannot compare" 'cannot compare'
+
 # --- C40: qmd vector-search health ------------------------------
 # Seam: HIMMEL_DOCTOR_QMD_CURL (the curl binary C40 uses, default `curl`). The
 # stub answers by C40_MODE and logs each call's -m bound + JSON-RPC method, so a

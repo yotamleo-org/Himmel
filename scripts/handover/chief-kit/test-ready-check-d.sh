@@ -185,7 +185,11 @@ p1() {
     git -C "$c" worktree add -q --detach "$wt" "$2"
     ck=$(cd "$wt" && bash "$REPO_ROOT/scripts/check-plugin-drift.sh" --bump-required refs/remotes/origin/main 2>&1) || crc=$?
     git -C "$c" worktree remove --force "$wt"
-    contains "(11344-p1) $1: the checker gave a verdict" "$ck" "check-plugin-drift --bump-required:"
+    if [ "$3" = fail ]; then
+        contains "(11344-p1) $1: the checker refused on the version" "$ck" "is not above"
+    else
+        contains "(11344-p1) $1: the checker accepted the equal version" "$ck" "equals the base tip"
+    fi
     check "(11344-p1) $1: checker rc agrees" "$crc" "$want"
 }
 
