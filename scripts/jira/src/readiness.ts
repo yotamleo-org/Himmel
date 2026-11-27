@@ -106,12 +106,13 @@ export async function runReadiness(
   target: { key: string; bodyFile?: string }, project: string, signal?: AbortSignal, fixture?: ReadinessFixture,
 ): Promise<Readiness> {
   const unanswered = (exit: number | null, lines: string[], warning: string): Readiness => ({ exit, gates: [], lines, warning });
-  const script = process.env.JIRA_READINESS_CHECK || CHECK;
+  const seams: NodeJS.ProcessEnv = underTest() ? process.env : {};
+  const script = seams.JIRA_READINESS_CHECK || CHECK;
   if (!existsSync(script)) return unanswered(null, [], `no check script at ${script}`);
   if (signal?.aborted) return unanswered(null, [], 'the caller stopped it');
   const mirror = fixture?.mirror ?? (process.env.HIMMEL_JIRA_MIRROR || defaultRoot(project));
   const args = [script, '--why-ticket', target.key, ...(target.bodyFile ? ['--body-file', target.bodyFile] : []), '--mirror', mirror];
-  const ms = Number(process.env.JIRA_READINESS_TIMEOUT_MS) || TIMEOUT_MS;
+  const ms = Number(seams.JIRA_READINESS_TIMEOUT_MS) || TIMEOUT_MS;
   const ran = await runGroup(args, checkEnv(project, fixture), ms, signal);
   const lines = ran.stdout.split('\n').filter((l) => l !== '');
   if (ran.failure !== undefined) return unanswered(ran.exit, lines, ran.failure);

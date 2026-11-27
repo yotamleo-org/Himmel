@@ -58,7 +58,7 @@ export function makeNdStub(o: { lines?: string[]; exit?: number; sleepMs?: numbe
     `c=${quote(calls)}/$n`,
     `echo $$ > ${quote(pidFile)}`,
     'printf \'%s\\0\' "$@" > "$c/argv"',
-    'env -0 > "$c/env"',
+    'for v in ${!NEXT_DISPATCH_@} JIRA_PROJECT_KEY; do printf \'%s=%s\\0\' "$v" "${!v}"; done > "$c/env"',
     'prev=; for a in "$@"; do [ "$prev" != --body-file ] || cp "$a" "$c/body"; prev="$a"; done',
     ...(o.lockPath !== undefined ? [`[ ! -e ${quote(o.lockPath)} ] || : > "$c/lock"`] : []),
     ': > "$c/ready"',

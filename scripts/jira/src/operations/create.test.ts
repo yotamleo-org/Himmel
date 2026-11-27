@@ -194,8 +194,9 @@ describe('10944 runCreate asks the dispatcher before it files', () => {
 
   it('10944 R3c a check that never answers is killed at the deadline and the ticket is filed with a warning', async () => {
     const stub = stubNd({ sleepMs: 20_000 });
-    vi.stubEnv('JIRA_READINESS_TIMEOUT_MS', '200');
+    vi.stubEnv('JIRA_READINESS_TIMEOUT_MS', '1000');
     await runCreate(task());
+    expect(stub.calls()).toHaveLength(1);
     expect(posts()).toHaveLength(1);
     expect(errors()).toMatch(/jira: warning: readiness check not run \(timed out.*\); filed without it/);
     await vi.waitFor(() => expect(stub.alive()).toBe(false));
@@ -264,8 +265,7 @@ describe('10944 runCreate asks the dispatcher before it files', () => {
     const stub = stubNd();
     await runCreate(task());
     const [call] = stub.calls();
-    expect(Object.keys(call!.env).filter((k) => k.startsWith('NEXT_DISPATCH_'))).toEqual(['NEXT_DISPATCH_DEADLINE']);
-    expect(call!.env).toMatchObject({ NEXT_DISPATCH_DEADLINE: '25', JIRA_PROJECT_KEY: 'HIMMEL' });
+    expect(call!.env).toEqual({ NEXT_DISPATCH_DEADLINE: '25', JIRA_PROJECT_KEY: 'HIMMEL' });
     expect(argAfter(call!.argv, '--mirror')).toBe(defaultRoot('HIMMEL'));
   });
 
@@ -294,6 +294,18 @@ describe('10944 R8 the dispatcher of this checkout reads the filed text', () => 
     return runReadiness({ key: 'HIMMEL-0', bodyFile }, 'HIMMEL', undefined, fixture);
   }
   const names = (r: { gates: Array<{ name: string }> }) => r.gates.map((g) => g.name);
+
+  it('10944 R9 outside a test run the environment cannot swap the check script', async () => {
+    const passes = makeNdStub();
+    const bodyFile = join(root, 'HIMMEL-0.md');
+    writeFileSync(bodyFile, renderIssue(readinessIssue('Task', markdownToAdf(agentBody('no path')), { summary: 's' }, [], 'HIMMEL'), []));
+    vi.stubEnv('JIRA_READINESS_CHECK', passes.path);
+    vi.stubEnv('VITEST', '');
+    vi.stubEnv('NODE_ENV', 'production');
+    const got = await runReadiness({ key: 'HIMMEL-0', bodyFile }, 'HIMMEL', undefined, fixture);
+    expect(passes.calls()).toEqual([]);
+    expect(names(got)).toContain('no-scope');
+  });
 
   it('10944 R8 a Writes line that markdown joined to the line above is read, and without it the ticket is scopeless', async () => {
     const [scoped, bare] = await Promise.all([judge('Follow-up of X\nWrites: specs/audits/x.md'), judge('Follow-up of X')]);

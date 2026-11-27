@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -413,6 +413,21 @@ describe('10944 apply asks the dispatcher about a ticket admitted into current',
     expect(call!.argv.slice(0, 2)).toEqual(['--why-ticket', KEY]);
     expect(call!.argv).not.toContain('--body-file');
     expect(call!.lockHeld).toBe(false);
+  });
+
+  it('10944 A8 the comment is looked up and posted under the release lock, so two applies cannot both post it', async () => {
+    const held: string[] = [];
+    const note = (step: string, text: string) => {
+      if (text.startsWith('readiness-check:')) held.push(`${step}:${existsSync(join(ctx().dir, '.lock'))}`);
+    };
+    const find = jira.findComment.bind(jira);
+    const add = jira.addComment.bind(jira);
+    jira.findComment = async (key, marker) => { note('find', marker); return find(key, marker); };
+    jira.addComment = async (key, body) => { note('add', body); return add(key, body); };
+    gated('no-proof');
+    const r = await ruled();
+    await apply(ctx(rmEnv), r.id);
+    expect(held).toEqual(['find:true', 'add:true']);
   });
 
   it('10944 A2 a second apply adds no comment, whatever the gates are by then', async () => {

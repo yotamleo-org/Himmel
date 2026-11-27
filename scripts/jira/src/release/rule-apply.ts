@@ -509,7 +509,9 @@ async function readinessAtAdmission(ctx: Ctx, key: string): Promise<string | und
     if (jira.addLabels) await jira.addLabels(key, [label]);
     else notes.push(`the ${label} label on ${key}: this Jira port cannot add labels`);
     step = 'the readiness comment';
-    if ((await jira.findComment(key, READINESS_COMMENT)) === null) await jira.addComment(key, `${READINESS_COMMENT} needs ${names.join(', ')}`);
+    await withLockAsync(ctx.dir, async () => {
+      if ((await jira.findComment(key, READINESS_COMMENT)) === null) await jira.addComment(key, `${READINESS_COMMENT} needs ${names.join(', ')}`);
+    });
   } catch (e) {
     notes.push(`readiness on ${key}: ${step} failed: ${(e as Error).message}`);
   }
