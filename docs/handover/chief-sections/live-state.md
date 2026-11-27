@@ -40,7 +40,9 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > so a worker can stay on the predecessor's nonce for good and be fully
 > authenticated; the tick tells that apart from a worker that never accepted
 > (`nonces=RELAYED:<worker>` needs the worker's own `SUCCESSION accepted` bullet,
-> else `UNCONFIRMED:<worker>`).
+> else `UNCONFIRMED:<worker>`). `chief.sh next` gives a live worker with no span, or a well-formed
+> `NONCE-UNKNOWN` span, its brief's RETASK token (only a worker whose doc records no `SUCCESSION accepted`);
+> any other span is never replaced.
 >
 > **A held PR names a trigger and a resume doc.** A HELD entry is a `|` segment of the `queue:`
 > line, before any `||`, that holds the word `HELD` or `HOLD`, its PR (`#<n>`) or ticket key, one

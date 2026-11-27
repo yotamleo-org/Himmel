@@ -1923,13 +1923,10 @@ check_direction_companions() {
     return 1
 }
 
-# Refuse a handover whose `workers:` Live-state line carries no worker span while
-# the outgoing fleet manifest holds a non-lockless worker that holds a queue lock:
-# seeding it would hand the successor `workers: none` and relay-batch.sh no entries.
-# Every such worker is named with the live-state.sh command that fills the line (the
-# nonces are the chief's: never read from a worker doc or the manifest). A `<...>`
-# placeholder, an absent `workers:` line, an absent, unreadable or empty manifest, and
-# rows without a held lock (status other than 11/12) pass.
+# Refuse a handover whose `workers:` line has no worker span while a non-lockless manifest worker holds a queue lock,
+# so the successor never gets `workers: none`; each is named with the live-state.sh command the chief fills it with
+# (this check fills no nonce; carry_live_workers seeds a live worker that has no span or a well-formed NONCE-UNKNOWN span).
+# A `<...>` placeholder, an absent line, an absent, unreadable or empty manifest, and rows with no held lock (not 11/12) pass.
 # Args: outgoing doc, outgoing Live state.
 check_workers_listed() {
     local doc="$1" live="$2" key=workers value rows label ldoc rc named="" cmd="" NL=$'\n'
@@ -2360,6 +2357,9 @@ seeded_live_field() {
     '
 }
 
+# shellcheck disable=SC2016  # the backticks in the span pattern are literal
+entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
+
 # The `workers:` block `next` seeds: the worker spans whose label or doc stem the
 # successor's fleet manifest still lists (a wrapped worker is off it), plus each
 # `pool-disposition:` line, which the tick reads. The shift prose and the spans of
@@ -2370,8 +2370,6 @@ seeded_live_field() {
 # Args: workers block (as seeded_live_field prints it), manifest.
 open_legs_block() {
     local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
-    # shellcheck disable=SC2016  # the backticks in the span patterns are literal
-    local entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
     # a row with no label cannot be matched to its span: the open set is unknown, so the block stays whole
     names="$(jq -r "$JQ_W"'if any(W[]; (.label // "") == "") then error("row without a label") else W[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; "")) end' "$manifest" 2>/dev/null)" \
@@ -2448,20 +2446,83 @@ EOF
     printf '%s' "$rows"
 }
 
+worker_ever_relayed() {
+    local rc=0
+    awk '/^## Results/ { r = 1 } r && /SUCCESSION accepted/ { f = 1; exit } END { exit !f }' "$1" 2>/dev/null || rc=$?
+    [ "$rc" -ne 1 ]
+}
+
+label_spans() {
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -- "\`$2:" || :  # swallow-ok: no span is empty output
+}
+
+brief_seed_tokens() (
+    letter="$1"; shift
+    # shellcheck source=scripts/handover/chief-kit/go-deliver.sh
+    # shellcheck disable=SC1091
+    . "$repo/scripts/handover/chief-kit/go-deliver.sh" || exit 1
+    t="$(mktemp "${TMPDIR:-/tmp}/chief-seed.XXXXXX")" || exit 1
+    trap 'rm -f "$t"' EXIT
+    for doc in "$@"; do
+        gd_brief_token "$doc" >"$t" || continue
+        token="$(cat "$t")"
+        gd_token_usable "$token" || continue
+        case "$token" in "$letter"-*) continue ;; esac
+        printf '%s\t%s\n' "$doc" "$token"
+    done
+    echo '#end'
+)
+
+# The nonces are the chief's: written by the chief, never read from the manifest; a live worker with no span, or a
+# well-formed NONCE-UNKNOWN span, gets the RETASK token of its brief, which the chief wrote, when its doc records no
+# SUCCESSION accepted.
 carry_live_workers() {
-    local block="$1" rows="$2" whole="$3" label ldoc sess pid span add="" first rest
+    local block="$1" rows="$2" whole="$3" letter="$4" label ldoc sess pid span spans where add="" first rest out="" token i
+    local p_label=() p_doc=() p_span=() p_where=() p_seed=() seed_docs=()
     while IFS=$'\t' read -r label ldoc sess pid; do
         [ -n "$label" ] || continue
         case " ${CHIEF_SEED_TEST_DROP:-} " in *" $label "*) continue ;; esac
-        # shellcheck disable=SC2016  # the backticks are literal span delimiters
-        case "$block" in *'`'"$label:"*) continue ;; esac
-        # shellcheck disable=SC2016  # the backticks are literal span delimiters
-        span="$(printf '%s\n' "$whole" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -m 1 -- "\`$label:")" || span=""
-        [ -n "$span" ] || span="\`$label:NONCE-UNKNOWN:$sess:$pid\`"
-        add="$add$span "
+        case "$block" in
+            *"\`$label:"*) where=block; spans="$(label_spans "$block" "$label")" ;;
+            *)
+                where=add; spans="$(label_spans "$whole" "$label")"
+                [ -n "$spans" ] || { where=new; spans="\`$label:NONCE-UNKNOWN:$sess:$pid\`"; } ;;
+        esac
+        span="${spans%%$'\n'*}"
+        i=${#p_label[@]}
+        p_label[i]="$label"; p_doc[i]="$ldoc"; p_span[i]="$span"; p_where[i]="$where"; p_seed[i]=0
+        [ "$spans" = "$span" ] && [[ "$span" =~ $entry_re ]] && [[ "$span" == "\`$label:NONCE-UNKNOWN:"* ]] || continue
+        [ "$where" = new ] || [ "$(printf '%s\n' "$rows" | cut -f1 | grep -cxF -- "$label")" -eq 1 ] || continue
+        [ "$(worker_lock_state "$ldoc")" = held ] || continue
+        if [ ! -r "$ldoc" ]; then
+            printf 'next: %s kept NONCE-UNKNOWN: its doc could not be read\n' "$label" >&2
+        elif worker_ever_relayed "$ldoc"; then
+            printf 'next: %s kept NONCE-UNKNOWN: its doc records a SUCCESSION accepted\n' "$label" >&2
+        else
+            p_seed[i]=1; seed_docs+=("$ldoc")
+        fi
     done <<EOF
 $rows
 EOF
+    if [ "${#seed_docs[@]}" -gt 0 ]; then
+        if ! out="$(brief_seed_tokens "$letter" "${seed_docs[@]}" </dev/null 2>/dev/null)" || [ "${out##*$'\n'}" != "#end" ]; then  # swallow-ok: library stderr could name a token; the failure is warned below
+            out=""
+            printf 'next: warning: go-deliver.sh failed; workers without a usable span are carried as NONCE-UNKNOWN\n' >&2
+        fi
+    fi
+    for ((i = 0; i < ${#p_label[@]}; i++)); do
+        label="${p_label[i]}"; span="${p_span[i]}"; token=""
+        if [ "${p_seed[i]}" -eq 1 ]; then
+            token="$(printf '%s\n' "$out" | SEED_DOC="${p_doc[i]}" awk -F'\t' '$1 == ENVIRON["SEED_DOC"] { print $2; exit }')"
+        fi
+        if [ -n "$token" ]; then
+            span="\`$label:$token:${span#"\`$label:NONCE-UNKNOWN:"}"
+            [ "${p_where[i]}" != block ] || block="${block%%"${p_span[i]}"*}$span${block#*"${p_span[i]}"}"
+            printf "next: seeded %s from its brief's RETASK line\n" "$label" >&2
+        fi
+        [ "${p_where[i]}" = block ] || add="$add$span "
+    done
     [ -n "$add" ] || { printf '%s\n' "$block"; return 0; }
     add="${add% }"
     first="$(printf '%s\n' "$block" | sed -n 1p)"
@@ -2803,7 +2864,7 @@ superseded_direction_paras() {
         END { flush() }'
 }
 
-# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc>]: replace each
+# seed_live_fields <doc> <predecessor live state> <predecessor stem> [<predecessor doc> [<manifest> [<successor letter>]]]: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `workers:` seeds only the open workers
@@ -2839,7 +2900,7 @@ seed_live_fields() {
     LIVE_WORKER_ROWS=""
     if [ -n "${4:-}" ]; then
         LIVE_WORKER_ROWS="$(live_worker_rows "$4" "$(dirname "$4")")"
-        new_legs="$(carry_live_workers "$new_legs" "$LIVE_WORKER_ROWS" "$workers")"
+        new_legs="$(carry_live_workers "$new_legs" "$LIVE_WORKER_ROWS" "$workers" "${6:-}")"
     fi
     # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
@@ -3230,7 +3291,7 @@ cmd_next() {
         PROJECT "$project_doc_value"
     local seed_manifest="" read_manifest="$successor_manifest"
     if [ -f "$staged_manifest" ]; then seed_manifest="$staged_manifest"; read_manifest="$predecessor_manifest"; fi
-    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc" "$seed_manifest"
+    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc" "$seed_manifest" "$successor_letter"
     check_workers_carried "$doc" "$LIVE_WORKER_ROWS" || exit 1
     local dead_rows
     dead_rows="$(dead_manifest_rows "$predecessor_manifest")"

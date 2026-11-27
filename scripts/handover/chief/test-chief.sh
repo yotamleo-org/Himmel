@@ -4649,4 +4649,239 @@ check "10728 two nexts: both finish with exit 0 (control)" "$rct10728 $(cat "$tm
 check "10728 two nexts: no worker is listed in both successor manifests" "$(printf '%s\n' "$both10728" | jq -rs '[.[].workers[].label] | sort | join(",")')" "N1,N2,N3,N4,N5,N70"
 rel10877
 mv "$fm10728.real" "$fm10728"
+
+tok11277=CJ-N9-0a1b2c3d
+mk11277() {
+    local w="$root/tester/$1" rows
+    D11277="$w"; T11277=()
+    A11277="$w/DEMO-nextleg-${today}A-chief.md"
+    TA11277="$(token_of "$(chief new --bucket "$1")")"
+    N9doc11277="$w/DEMO-9-N9-worker.md"
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$w/DEMO-1-N1-worker.md"
+    {
+        printf '%s\n' '# worker'
+        # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+        [ -z "$3" ] || printf '> **RETASK:** your nonce is `%s`.\n' "$3"
+        printf '%s\n' '## Results' '- 10:00 LIVE — fixture'
+        [ -z "${5:-}" ] || printf '%s\n' "$5"
+    } > "$N9doc11277"
+    lock11277 "$w/DEMO-1-N1-worker.md"; lock11277 "$N9doc11277"
+    rows="{\"label\":\"N1\",\"doc\":\"$w/DEMO-1-N1-worker.md\"}"
+    [ "$2" = off ] || rows="$rows,{\"label\":\"N9\",\"doc\":\"$N9doc11277\"}"
+    printf '{"schema":1,"workers":[%s]}\n' "$rows" > "${A11277%.md}.fleet.json"
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    W11277='workers: `N1:nonce-1:lock-1:11`'"${4:+ $4}" awk '/^workers:/ { print ENVIRON["W11277"]; next } { print }' "$A11277" > "$A11277.new" && mv "$A11277.new" "$A11277"
+}
+lock11277() {
+    T11277+=("$1=$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$1" 2>/dev/null)")")
+}
+add11277() {
+    # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+    printf '%s\n' '# worker' "> **RETASK:** your nonce is \`$3\`." '## Results' '- 10:00 LIVE — fixture' > "$D11277/$1"
+    lock11277 "$D11277/$1"
+    jq --arg d "$D11277/$1" --arg l "$2" '.workers += [{label: $l, doc: $d}]' "${A11277%.md}.fleet.json" > "$tmp/add.fleet11277" \
+        && cp "$tmp/add.fleet11277" "${A11277%.md}.fleet.json"
+}
+nx11277() {
+    OUT11277="$tmp/$1.out"; ERR11277="$tmp/$1.err"; RC11277=0
+    chief next --bucket "$3" --doc "$2" >"$OUT11277" 2>"$ERR11277" || RC11277=$?
+    S11277="$root/tester/$3/DEMO-nextleg-${today}${4:-B}-chief.md"
+}
+live11277() { awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$1" 2>/dev/null; }
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+spans11277() { live11277 "$1" | grep -oE '`'"$2"':[^`]*`' | tr '\n' ' ' | sed 's/ $//'; }
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+shape11277() { spans11277 "$1" "$2" | sed -E 's/`([^:`]*:[^:`]*):[^`]*`/\1/g'; }
+rel11277() {
+    local pair
+    for pair in "${T11277[@]}"; do HANDOVER_DIR="$root" bash "$QL" release "${pair%%=*}" "${pair#*=}" >/dev/null 2>&1; done
+    HANDOVER_DIR="$root" bash "$QL" release "$A11277" "$TA11277" >/dev/null 2>&1
+}
+tokgrep11277() {
+    local tok="$1" dirs=() f
+    shift
+    while [ "$1" != -- ]; do dirs+=("$1"); shift; done
+    shift
+    { find "${dirs[@]}" -type f ! -name 'DEMO-*-N*-worker*.md' 2>/dev/null; printf '%s\n' "$@"; } | while IFS= read -r f; do
+        awk -v f="$f" '
+            /^workers:/ { b = 1; next }
+            b && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { b = 0 }
+            !b { print f ": " $0 }
+        ' "$f" | grep -F -- "$tok"
+    done
+}
+clean11277() { check "11277 $1 no token outside a workers: block" "$(tokgrep11277 "${2:-$tok11277}" "$D11277" "$(dirname "$S11277")" -- "$OUT11277" "$ERR11277")" ""; }
+warn11277='next: warning: go-deliver.sh failed; workers without a usable span are carried as NONCE-UNKNOWN'
+seeded11277="next: seeded N9 from its brief's RETASK line"
+relayed11277='next: N9 kept NONCE-UNKNOWN: its doc records a SUCCESSION accepted'
+
+mkdir -p "$tmp/self11277"
+printf 'a note naming %s\n' "$tok11277" > "$tmp/self11277/note.md"
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+printf 'workers: `N9:%s:a:1`\n  `N8:x-%s:a:1`\n\nafter\n' "$tok11277" "$tok11277" > "$tmp/self11277/doc.md"
+check "11277 the token grep prints a planted note and skips a whole workers: block" "$(tokgrep11277 "$tok11277" "$tmp/self11277" -- /dev/null)" "$tmp/self11277/note.md: a note naming $tok11277"
+
+mk11277 cn1-11277 on "$tok11277" ""
+nx11277 cn1-11277 "$A11277" cn1dst-11277
+check "11277 CN1 next exits 0" "$RC11277" "0"
+check "11277 CN1 a never-relayed worker with no span is seeded with its brief token" "$(shape11277 "$S11277" N9)" "N9:$tok11277"
+check "11277 CN1 the seed note names the worker" "$(grep -cxF "$seeded11277" "$ERR11277")" "1"
+clean11277 CN1
+first11277="$(spans11277 "$S11277" N9)"
+nx11277 cn1b-11277 "$S11277" cn1bdst-11277 C
+check "11277 CN1b the next hand-over keeps the seeded span byte for byte" "$RC11277 $(shape11277 "$S11277" N9) $([ "$(spans11277 "$S11277" N9)" = "$first11277" ] && echo same)" "0 N9:$tok11277 same"
+clean11277 CN1b
+rel11277
+
+mk11277 cn1c-11277 on "" ""
+nx11277 cn1c-11277 "$A11277" cn1cdst-11277
+check "11277 CN1c no RETASK line: NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
+mk11277 cn1d-11277 on '<nonce>' ""
+nx11277 cn1d-11277 "$A11277" cn1ddst-11277
+check "11277 CN1d a placeholder RETASK value: NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+mk11277 cn2-11277 off "$tok11277" '`N9:NONCE-UNKNOWN:sessA:77`'
+nx11277 cn2-11277 "$A11277" cn2dst-11277
+check "11277 CN2 a predecessor-only NONCE-UNKNOWN span has only its token replaced" "$(spans11277 "$S11277" N9)" "\`N9:$tok11277:sessA:77\`"
+clean11277 CN2
+rel11277
+
+for p11277 in off on; do
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    mk11277 "cn2c$p11277-11277" "$p11277" "$tok11277" '`N9:CJ-N9-feedbeef:sessA:77`'
+    nx11277 "cn2c$p11277" "$A11277" "cn2c${p11277}dst-11277"
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    check "11277 CN2c a usable span is kept byte for byte (N9 $p11277 the manifest)" "$(spans11277 "$S11277" N9)" '`N9:CJ-N9-feedbeef:sessA:77`'
+    clean11277 "CN2c $p11277"
+    rel11277
+done
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+mk11277 cn3-11277 on "$tok11277" '`N9:NONCE-UNKNOWN:lock-9:99`'
+nx11277 cn3-11277 "$A11277" cn3dst-11277
+check "11277 CN3 a seeded-block NONCE-UNKNOWN span changes only its token field" "$(live11277 "$S11277" | grep '^workers:')" "workers: \`N1:nonce-1:lock-1:11\` \`N9:$tok11277:lock-9:99\`"
+clean11277 CN3
+rel11277
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+for c11277 in 'three|on|`N9:NONCE-UNKNOWN:lock-9`|`N9:NONCE-UNKNOWN:lock-9`' \
+    'placeholder|on|`N9:<nonce>:lock-9:99`|`N9:<nonce>:lock-9:99`' \
+    'longer|on|`N9:NONCE-UNKNOWNX:lock-9:99`|`N9:NONCE-UNKNOWNX:lock-9:99`' \
+    'two|on|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`' \
+    'usablefirst|off|`N9:CJ-N9-feedbeef:lock-9:99` `N9:NONCE-UNKNOWN:lock-8:88`|`N9:CJ-N9-feedbeef:lock-9:99`' \
+    'unknownfirst|off|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`|`N9:NONCE-UNKNOWN:lock-9:99`'; do
+    IFS='|' read -r n11277 p11277 s11277 e11277 <<< "$c11277"
+    mk11277 "cn3c$n11277-11277" "$p11277" "$tok11277" "$s11277"
+    nx11277 "cn3c$n11277" "$A11277" "cn3c${n11277}dst-11277"
+    check "11277 CN3c nothing is seeded over this: $n11277" "$RC11277 $(spans11277 "$S11277" N9)" "0 $e11277"
+    clean11277 "CN3c $n11277"
+    rel11277
+done
+
+mk11277 cn4-11277 on "$tok11277" "" '- 10:05 SUCCESSION accepted: X-chief replaces W-chief'
+nx11277 cn4-11277 "$A11277" cn4dst-11277
+check "11277 CN4c a relayed worker keeps NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+check "11277 CN4 the note says why the relayed worker kept NONCE-UNKNOWN" "$(grep -cxF "$relayed11277" "$ERR11277")" "1"
+clean11277 CN4
+rel11277
+
+mk11277 cn5-11277 on "$tok11277" ""
+awk '$0 == "## Results" { print "> The worker writes SUCCESSION accepted: X replaces W." } { print }' "$N9doc11277" > "$tmp/cn5.doc11277" && cp "$tmp/cn5.doc11277" "$N9doc11277"
+nx11277 cn5-11277 "$A11277" cn5dst-11277
+check "11277 CN5 a quote of the bullet above ## Results is not a relay" "$(shape11277 "$S11277" N9)" "N9:$tok11277"
+clean11277 CN5
+rel11277
+i11277=0
+for l11277 in '- 10:05 SUCCESSION accepted — relay from W-chief, new console X-chief' '- 10:05 LIVE — SUCCESSION accepted: X-chief replaces W-chief'; do
+    i11277=$((i11277 + 1))
+    mk11277 "cn5c$i11277-11277" on "$tok11277" "" "$l11277"
+    nx11277 "cn5c$i11277" "$A11277" "cn5c${i11277}dst-11277"
+    check "11277 CN5c every acceptance form counts as a relay ($i11277)" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+    rel11277
+done
+
+d11277="$tmp/relayed11277"; mkdir -p "$d11277"
+printf '%s\n' '# worker' '## Results' '- 10:05 SUCCESSION accepted: X-chief replaces W-chief' > "$d11277/cn4.md"
+printf '%s\n' '# worker' '> SUCCESSION accepted: X replaces W.' '## Results' '- 10:00 LIVE — fixture' > "$d11277/cn5.md"
+cp "$d11277/cn5.md" "$d11277/locked.md"; chmod 000 "$d11277/locked.md"
+relayed_rc11277() (
+    eval "$(sed -n '/^worker_ever_relayed() {/,/^}/p' "$C")"
+    rc=0; worker_ever_relayed "$1" || rc=$?; echo "$rc"
+)
+check "11277 CN5d worker_ever_relayed on a relayed doc" "$(relayed_rc11277 "$d11277/cn4.md")" "0"
+check "11277 CN5d worker_ever_relayed on a quote above ## Results" "$(relayed_rc11277 "$d11277/cn5.md")" "1"
+if [ -r "$d11277/locked.md" ]; then
+    echo "SKIP - 11277 CN5d unreadable doc: chmod 000 does not deny reads here"
+else
+    check "11277 CN5d an unreadable doc counts as relayed" "$(relayed_rc11277 "$d11277/locked.md")" "0"
+fi
+chmod 600 "$d11277/locked.md"
+
+gdl11277="$fixture_repo/scripts/handover/chief-kit/go-deliver.sh"
+cp "$gdl11277" "$tmp/go-deliver.saved11277"
+unset UNSET_11277
+for v11277 in unsetvar exit3 removed exit0; do
+    mk11277 "cn6$v11277-11277" on "$tok11277" ""
+    # shellcheck disable=SC2016  # the unset variable is expanded by the library copy
+    case "$v11277" in
+        unsetvar) { printf ': "$UNSET_11277"\n'; cat "$tmp/go-deliver.saved11277"; } > "$gdl11277" ;;
+        exit3) printf 'gd_brief_token() { exit 3; }\n' >> "$gdl11277" ;;
+        removed) rm -f "$gdl11277" ;;
+        exit0) { printf 'exit 0\n'; cat "$tmp/go-deliver.saved11277"; } > "$gdl11277" ;;
+    esac
+    nx11277 "cn6$v11277" "$A11277" "cn6${v11277}dst-11277"
+    check "11277 CN6 library $v11277: next exits 0 with NONCE-UNKNOWN and one warning" "$RC11277 $(shape11277 "$S11277" N9) $(grep -cxF "$warn11277" "$ERR11277")" "0 N9:NONCE-UNKNOWN 1"
+    clean11277 "CN6 $v11277"
+    cp "$tmp/go-deliver.saved11277" "$gdl11277"
+    rel11277
+done
+
+mk11277 cn8-11277 on "$tok11277" ""
+add11277 DEMO-8-N8-worker.md N8 CJ-N8-1a2b3c4d
+cat >> "$gdl11277" <<'LIB11277'
+gd_brief_token() { case "$1" in *-N9-*) echo SN-N9-5e5e5e5e ;; *-N8-*) echo CJ-N8-1a2b3c4d ;; *) return 1 ;; esac; }
+gd_token_usable() { [ "$1" != CJ-N8-1a2b3c4d ]; }
+LIB11277
+nx11277 cn8 "$A11277" cn8dst-11277
+check "11277 CN8 the seeded token and its usability come from the library" "$(shape11277 "$S11277" N9) $(shape11277 "$S11277" N8)" "N9:SN-N9-5e5e5e5e N8:NONCE-UNKNOWN"
+clean11277 CN8 SN-N9-5e5e5e5e
+cp "$tmp/go-deliver.saved11277" "$gdl11277"
+rel11277
+
+mk11277 cn9-11277 on B-N9-0a1b2c3d ""
+nx11277 cn9 "$A11277" cn9dst-11277
+check "11277 CN9 a token carrying the successor's letter is not seeded" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+clean11277 CN9 B-N9-0a1b2c3d
+rel11277
+
+mk11277 cn10-11277 off "$tok11277" ""
+printf '%s\n' '- 10:30 WRAPPED — done' >> "$N9doc11277"
+for pair11277 in "${T11277[@]}"; do
+    [ "${pair11277%%=*}" != "$N9doc11277" ] || HANDOVER_DIR="$root" bash "$QL" release "$N9doc11277" "${pair11277#*=}" >/dev/null 2>&1
+done
+nx11277 cn10 "$A11277" cn10dst-11277
+check "11277 CN10 a worker that holds no lock gets no span" "$RC11277 [$(spans11277 "$S11277" N9)]" "0 []"
+rel11277
+
+mk11277 cn11-11277 on "" ""
+add11277 DEMO-8-N8-worker.md N8 CJ-N8-1a2b3c4d
+nx11277 cn11 "$A11277" cn11dst-11277
+check "11277 CN11 a worker with no token costs another no seed and is no failure" "$(shape11277 "$S11277" N8) $(shape11277 "$S11277" N9) $(grep -cF 'next: warning: go-deliver.sh' "$ERR11277")" "N8:CJ-N8-1a2b3c4d N9:NONCE-UNKNOWN 0"
+rel11277
+
+mk11277 cn12-11277 on "$tok11277" ""
+CHIEF_LOCK_STATE_TEST_UNKNOWN="$N9doc11277" nx11277 cn12 "$A11277" cn12dst-11277
+check "11277 CN12 an unknown lock state is not seeded" "$RC11277 $(shape11277 "$S11277" N9) $(grep -cF 'next: seeded' "$ERR11277")" "0 N9:NONCE-UNKNOWN 0"
+rel11277
+
+mk11277 cn13-11277 on "$tok11277" ""
+add11277 DEMO-10-N9-worker.md N9 CJ-N9-0f0f0f0f
+nx11277 cn13 "$A11277" cn13dst-11277
+check "11277 CN13 two docs with one label each carry their own token" "$(spans11277 "$S11277" N9 | grep -oE 'N9:[^:]*' | LC_ALL=C sort | tr '\n' ' ')" "N9:$tok11277 N9:CJ-N9-0f0f0f0f "
+clean11277 CN13
+clean11277 "CN13 second" CJ-N9-0f0f0f0f
+rel11277
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
