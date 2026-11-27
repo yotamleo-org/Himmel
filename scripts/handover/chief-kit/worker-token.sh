@@ -22,7 +22,8 @@
 # current) rotation whose chief a strict handshake bullet in the doc names
 # (lib/succession-bullet.sh succession_names). One flock covers each read and append.
 # State: ok, none (no rows), keymismatch (minted under another key, or no key; only
-# mint ever creates one), bad (the record or the tools cannot be read).
+# mint ever creates one), bad (the record, the key, the worker doc or the tools cannot
+# be read; only a provably absent directory, key or doc reads as absent).
 #
 # Exit: 0 ok; 1 none or keymismatch; 2 usage; 3 refused in a worker or relay;
 # 4 refused transition; 6 bad; 96 the chokepoint seam guard refused or is missing.
@@ -64,6 +65,12 @@ usage() {
     exit 2
 }
 safe_name() { case "$1" in ''|-*|*[!A-Za-z0-9_.-]*) return 1 ;; esac; return 0; }
+absent() {
+    local e
+    e="$(LC_ALL=C ls -d -- "$1" 2>&1)" && return 1
+    case "$e" in *"No such file or directory"*) return 0 ;; esac
+    return 1
+}
 
 sub="${1:-}"; doc="${2:-}"
 [ -n "$doc" ] || usage
@@ -84,7 +91,7 @@ stem="${doc##*/}"; stem="${stem%.md}"
 case "$doc" in */*) docdir="${doc%/*}" ;; *) docdir=. ;; esac
 bucket="$(cd "${docdir:-/}" 2>/dev/null && pwd -P)" || bucket=""  # swallow-ok: an empty bucket is handled just below, per subcommand
 if [ -z "$bucket" ]; then
-    [ ! -d "${docdir:-/}" ] || die 6 "cannot enter the doc's directory: $docdir"
+    absent "${docdir:-/}" || die 6 "cannot enter the doc's directory: $docdir"
     case "$sub" in
         mint) die 6 "the doc's directory does not exist: $docdir" ;;
         rotate|set) die 4 "no record for $stem (its directory does not exist)" ;;
@@ -178,7 +185,7 @@ EOF
 if [ "$bad" -eq 1 ]; then state=bad
 elif [ "$nrows" -eq 0 ]; then state=none
 elif [ -z "$cur" ] || [ -z "$dprefix" ]; then state=bad
-elif [ -z "$kid" ] && grep -qxE '[0-9a-f]{64}' "$(go_key_file)" 2>/dev/null; then state=bad
+elif [ -z "$kid" ] && ! absent "$(go_key_file)"; then state=bad
 elif [ -z "$kid" ] || [ "$mkid" != "$kid" ]; then state=keymismatch
 else state=ok
 fi
@@ -210,6 +217,7 @@ if [ "$sub" = mint ]; then
     die 4 "$stem already has a history; a minted stem is never minted again"
 fi
 
+[ -r "$doc" ] || absent "$doc" || die 6 "the worker doc is unreadable: $doc"
 if [ "$state" = ok ] && [ -f "$doc" ]; then
     pick=""
     while read -r g rto rkid; do

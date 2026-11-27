@@ -190,6 +190,20 @@ bucket; mkdoc "$D"; chmod 000 "$B"
 wt current "$D" >/dev/null; rc=$?
 eq "WT9d: a record directory that cannot be entered is bad (rc 6), not a fallback" "$rc" 6
 chmod 700 "$B"
+bucket; mkdir -p "$B/deeper"; chmod 000 "$B"
+wt current "$B/deeper/HIMMEL-1-N1-demo-2026-01-01.md" >/dev/null; rc=$?
+eq "WT9d: a directory under one that denies traversal is bad (rc 6), not absent" "$rc" 6
+chmod 700 "$B"
+wt current "$B/never-made/HIMMEL-1-N1-demo-2026-01-01.md" >/dev/null; rc=$?
+eq "WT9d: a directory that does not exist is still no record (rc 1)" "$rc" 1
+bucket; wt mint "$D" Y-N1 >/dev/null; mkdoc "$D"; chmod 000 "$KEYF"
+wt current "$D" >/dev/null; rc=$?
+eq "WT8b: an unreadable key is bad (rc 6), not a keymismatch" "$rc" 6
+chmod 600 "$KEYF"
+chmod 000 "$D"
+wt current "$D" >/dev/null; rc=$?
+eq "WT9e: an unreadable worker doc is bad (rc 6), never read as no quote-back" "$rc" 6
+chmod 600 "$D"
 bucket; mkdoc "$D"
 out="$(wt gen "$D")"; rc=$?
 eq "a stem with no rows reads none" "$out" "current=- pending=-:- state=none"

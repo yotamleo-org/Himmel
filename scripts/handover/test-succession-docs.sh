@@ -527,10 +527,12 @@ contains 'successor-start: fresh tokens come from --fresh <label>' "$succ_start"
 contains 'successor-start: the current token comes from the record' "$succ_start" 'worker-token.sh current'
 contains 'successor-start: the chain rotates to the successor itself' "$succ_start" 'rotate <doc> --to <itself>'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'running-a-chief: a worker with no record keeps the hand-minted chain' "$r12" 'A worker with no record (`current` exits 1) is outside it: take the current token from its span or brief and mint the fresh one by hand'
+contains 'running-a-chief: a worker with no record keeps the hand-minted chain' "$r12" 'A worker with no record (`worker-token.sh gen <doc>` reads `state=none`) is outside it: take the current token from its span or brief and mint the fresh one by hand'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-chief: a keymismatch warns that the span or brief can be stale' "$r12" '`state=keymismatch` (the GO key changed) is chained the same way, but the span or brief can be stale for a rotated worker'
 contains 'chief-template step 9: a worker with no record keeps the hand-minted chain' "$s9" 'no record: mint by hand'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'successor-start: a worker with no record keeps the hand-minted chain' "$succ_start" 'a worker with no record (`current` exits 1)'
+contains 'successor-start: a worker with no record keeps the hand-minted chain' "$succ_start" 'a worker with no record (`gen` reads `state=none`, or `keymismatch` after a key change)'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'preface: a probe quoting the current token is answered, any other ignored' "$(flat "$(cat "$PREFACE")")" 'A `PROBE <g>` quoting your token: bullet `LIVE — PROBE <g> ok`; else ignore.'
 

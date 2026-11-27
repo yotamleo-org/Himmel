@@ -1201,7 +1201,7 @@ The quote-backs are the successor's to tally; you do not wait for them.
 successor, relay by SendMessage or inbox quoting `current` and the pending token
 (`worker-token.sh rotate <doc> --to <successor>` prints it again), never by bus record.
 Take the current token from `worker-token.sh current <doc>`, never from the span (the
-span only when `current` exits 1: no record).
+span only when `current` exits 1: no usable record).
 
 **A refused quote.** The chief learns of it from the worker's silence after a quoted
 message; for a GO that is `WAKE silent-go` with its `SILENT-WORKER-MERGE`,
@@ -1213,9 +1213,11 @@ generation answered.
 
 A successor that arrives after you have left can prove itself only with the
 two-token chain form (the current token from `worker-token.sh current <doc>`, the fresh
-one from `worker-token.sh rotate <doc> --to <itself>`). A worker with no record (`current`
-exits 1) is outside it: take the current token from its span or brief and mint the fresh
-one by hand. A worker that cannot verify the chain is stranded (it keeps
+one from `worker-token.sh rotate <doc> --to <itself>`). A worker with no record
+(`worker-token.sh gen <doc>` reads `state=none`) is outside it: take the current token from
+its span or brief and mint the fresh one by hand. `state=keymismatch` (the GO key changed)
+is chained the same way, but the span or brief can be stale for a rotated worker. A worker
+that cannot verify the chain is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
 tick reads `nonces=UNCONFIRMED:<worker>` until each worker's own `SUCCESSION
 accepted` bullet names the successor (`RELAYED:<worker>`, a relay that kept the

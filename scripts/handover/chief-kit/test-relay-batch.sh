@@ -438,6 +438,7 @@ check "--fresh: no bus record carries a token" "0" "$(grep -c 'A-N1-' "$WORK/bus
 check "--fresh: the claudex bus notice says the inbox relay carries a fresh token to read first" "1" "$(grep -c 'fresh token: read it before you write your quote-back' "$WORK/bus.body")"
 rbfix claudex tok-stale; recmint >/dev/null
 o="$(rbrun "$RBC")"
+check "--fresh: the plain claudex notice was delivered" "1" "$(grep -c '^SUCCESSION bus record from ' "$WORK/bus.body")"
 check "--fresh: a claudex notice with no fresh token says nothing about one" "0" "$(grep -c 'fresh token' "$WORK/bus.body")"
 rbfix native tok-span; t1="$(recmint)"
 printf '# chief\n\n## Live state\n\nworkers: none\nqueue: none\n\n## Results\n' > "$RDOC"
