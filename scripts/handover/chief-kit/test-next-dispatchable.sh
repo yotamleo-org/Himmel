@@ -5603,6 +5603,21 @@ for n in 4401 4407 4410 4412 4413 4414; do
     lacks "10944 N7: --why-ticket $KP-$n raises no no-scope gate" "$(w44 $n)" " no-scope:"
     has "10944 N7: the listing lists $KP-$n" "$(row44 $n)" "$KP-$n"
 done
+B44="$WORK/b10944"; mkdir -p "$B44" "$WORK/st10944/workers"
+mkfleet "$B44/fleet.json"
+M="$M44"
+mk "$KP-4415" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "remainder names a basename" "Writes: scripts/lib/rem44.sh"
+mk "$KP-4416" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "owed step names a basename" "Writes: scripts/lib/owed44.sh"
+M="$WORK/jira-mirror/HIMMEL"
+printf 'Slice one.\n\nRemaining: compare the numbers with zz-arm-worker.sh\n' > "$PR_BODY_DIR/5944"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"5944","contract":"no","result":"noop"}\n' "$KP-4415" > "$WORK/st10944/status-events.jsonl"
+v44="$(bash "$HERE/owe.sh" add --bucket "$B44" --chief fixture --kind proof --key "$KP-4416" --text validate --metadata '{"actor":"chief","action":"validate-proof"}')" \
+    && bash "$HERE/owe.sh" add --bucket "$B44" --chief fixture --kind step --key "$KP-4416" --text 'Fix what zz-arm-worker.sh reports' --metadata "{\"actor\":\"worker\",\"action\":\"next-step\",\"source_id\":\"$v44\",\"capability\":\"code worker\",\"due\":\"2026-11-20\",\"wake\":\"worker free\"}" >/dev/null \
+    && bash "$HERE/owe.sh" close --bucket "$B44" --id "$v44" --key KEEP >/dev/null \
+    || fail "10944: could not seed the owed next step"
+r44="$(s44 --why --top 100 --workers-dir "$WORK/st10944/workers" --workers-from "$B44/fleet.json")"
+has "10944 N9: a basename in a merged PR's Remaining: text does not replace the ticket's scope" "$(printf '%s\n' "$r44" | grep -F "# scope $KP-4415 ")" "Writes: line: scripts/lib/rem44.sh"
+has "10944 N10: a basename in an owed next step is not read as its file" "$(note44 4416 "$r44")" "$KP-4416"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

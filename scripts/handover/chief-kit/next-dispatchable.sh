@@ -82,7 +82,8 @@
 # outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
 # chief-run, state repo). Else a `Writes:` or `Files:` line of the description (the marker at the line start, or a capitalised one
 # after any space; a `Writes:` line naming only a specs/ path is a state-repo write), else the description's paths, comments left
-# out. A path is a repo path under a known root, or a file name or partial path that ends exactly one path on main.
+# out. A path is a repo path under a known root, or, outside `Remaining:` and owed-step text, a file name or partial path that
+# ends exactly one path on main.
 # A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
 # is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
 # and `(from <source>)` on an `# overlap` line. A ticket whose next step is stated to write nothing (a `Writes:` line with no path and
@@ -432,11 +433,11 @@ def suffix_index():
             index.setdefault('/'.join(parts[n:]), []).append(path)
     return index
 
-def path_tokens(text):
-    # (start, end, path): every FILE_RE match, then every other file name that ends exactly one path on main
+def path_tokens(text, names=True):
+    # (start, end, path): every FILE_RE match, then, with names, every other file name that ends exactly one path on main
     found = [(m.start(), m.end(), m.group(1)) for m in FILE_RE.finditer(text)]
     spans = [(start, end) for start, end, _ in found]
-    for m in PATH_TOKEN_RE.finditer(text):
+    for m in PATH_TOKEN_RE.finditer(text) if names else ():
         if any(m.start() < end and m.end() > start for start, end in spans):
             continue
         hits = suffix_index().get(m.group(1), [])
@@ -444,9 +445,9 @@ def path_tokens(text):
             found.append((m.start(), m.end(), hits[0]))
     return found
 
-def files_in(text):
+def files_in(text, names=True):
     out = []
-    for _, _, path in path_tokens(text):
+    for _, _, path in path_tokens(text, names):
         f = re.sub(r'[.,;:)\]-]+$', '', path)
         if f and not f.endswith('/') and os.path.isdir(os.path.join(repo, f)):
             f += '/'  # a directory keeps its slash, whatever punctuation followed it in the text
@@ -469,16 +470,16 @@ try:
 except Exception as e:
     load_failure('pr_remainder.py unreadable (%s)' % e)
 
-def split_reads(text):
+def split_reads(text, names=True):
     # (paths it writes, paths it only runs)
     run, written = set(), set()
     for line in text.splitlines():
-        for start, end, _ in path_tokens(line):
+        for start, end, _ in path_tokens(line, names):
             if RUN_BEFORE_RE.search(line[:start]):
-                run.update(files_in(line[start:end]))
+                run.update(files_in(line[start:end], names))
         if WRITTEN_RE.search(line):
-            written.update(files_in(line))
-    named = files_in(text)
+            written.update(files_in(line, names))
+    named = files_in(text, names)
     reads = [f for f in named if f in run and f not in written]
     return [f for f in named if f not in reads], reads
 
@@ -1833,7 +1834,7 @@ def override_from_parts(i, parts):
         i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
                  proof_only=True, proof_due=proof_parts[-1]['handed'][1])
     if latest:
-        files, reads = split_reads(latest[0]['text'])
+        files, reads = split_reads(latest[0]['text'], names=False)  # PR prose cites inputs and other tickets' files by bare name
         nowrite = not files and latest[0]['nowrite']
         if files or nowrite:
             i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
@@ -1863,7 +1864,7 @@ def apply_owed_scope(issues, actions, worker_keys, pr_keys):
             continue
         steps = runnable
         code = [s for s in steps if s['actor'] == 'worker']
-        files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
+        files, reads = split_reads('; '.join(s['text'] for s in code), names=False) if code else ([], [])
         i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
                  no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
 
