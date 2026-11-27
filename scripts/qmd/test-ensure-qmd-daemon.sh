@@ -1320,19 +1320,46 @@ kill -0 "$dflt_pid" 2>/dev/null || fail "(z14) named healthy: the default index'
 reap_two
 echo "ok (z14): a healthy named index reads its own pidfile and leaves the default index's over-ceiling server alone"
 
-two_procs "$default_argv" 1048576 "$gmail_argv" 7340032
-run_idx QMD_INDEX_NAME=gmail
+two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
+kill "$gm_pid" 2>/dev/null; wait "$gm_pid" 2>/dev/null || true
+rm -f "$state/alive" "$state/qmd-argv.log"
+UNWIND=0 QMD_MOCK_STATE="$state" bash "$fake_daemon" &
+gm_pid=$!
+STUB_PIDS+=("$gm_pid")
+echo "$gm_pid" > "$xdg3/qmd/mcp-gmail.pid"
+set_proc "$gm_pid" 7340032 "$gmail_argv"
+i=0; while [ ! -f "$state/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
+mkdir -p "$ps3/bin5"
+cat > "$ps3/bin5/qmd" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
+case " $* " in
+  *" --index gmail "*)
+    UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
+    p=$!
+    echo "$p" > "$XDG_CACHE_HOME/qmd/mcp-gmail.pid"
+    echo 1048576 > "$QMD_MOCK_STATE/ps3-rss-$p"
+    echo "bun /x/dist/cli/qmd.js $*" > "$QMD_MOCK_STATE/ps3-args-$p"
+    disown
+    i=0; while [ ! -f "$QMD_MOCK_STATE/alive" ] && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done ;;
+esac
+exit 0
+EOF
+chmod +x "$ps3/bin5/qmd"
+run_idx QMD_INDEX_NAME=gmail QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_FAKE="$fake_daemon" PATH="$ps3/bin5:$bin:$safe"
 [ "$rc" -eq 0 ] || fail "(z14b) named over ceiling: expected rc 0, got $rc ($out)"
 case "$out" in *"log: $xdg3/qmd/recycle-gmail.log"*) ;; *) fail "(z14b) named over ceiling: no recycle-gmail.log line ($out)" ;; esac
 [ -f "$xdg3/qmd/recycle-gmail.stamp" ] || fail "(z14b) named over ceiling: no recycle-gmail.stamp"
 [ ! -e "$xdg3/qmd/recycle.stamp" ] || fail "(z14b) named over ceiling: the default recycle stamp was written"
 i=0
-while [ "$i" -lt 40 ] && ! grep -q 'recycle: restart rc=' "$xdg3/qmd/recycle-gmail.log" 2>/dev/null; do i=$((i + 1)); sleep 0.5; done
-grep -q 'recycle: restart rc=' "$xdg3/qmd/recycle-gmail.log" 2>/dev/null || fail "(z14b) named over ceiling: the recycler never finished"
+while [ "$i" -lt 60 ] && ! grep -q 'recycle: restart rc=' "$xdg3/qmd/recycle-gmail.log" 2>/dev/null; do i=$((i + 1)); sleep 0.5; done
+grep -q 'recycle: restart rc=0' "$xdg3/qmd/recycle-gmail.log" 2>/dev/null || fail "(z14b) named over ceiling: the detached restart did not succeed ($(cat "$xdg3/qmd/recycle-gmail.log" 2>/dev/null))"
+grep -qx -- "--index gmail --port $test_port mcp --http --daemon" "$state/qmd-argv.log" || fail "(z14b) named over ceiling: the restart did not start the gmail index ($(cat "$state/qmd-argv.log" 2>/dev/null))"
 kill -0 "$gm_pid" 2>/dev/null && fail "(z14b) named over ceiling: its own server was not stopped"
 kill -0 "$dflt_pid" 2>/dev/null || fail "(z14b) named over ceiling: the default index's server was stopped"
+kill "$(cat "$xdg3/qmd/mcp-gmail.pid")" 2>/dev/null || true
 reap_two
-echo "ok (z14b): a named recycle uses its own lock, stamp and log, stops only its own server"
+echo "ok (z14b): a named recycle uses its own lock, stamp and log, stops only its own server, and restarts it"
 
 two_procs "$gmail_argv" 7340032 "$default_argv" 7340032
 run_idx QMD_INDEX_NAME=gmail
@@ -1373,6 +1400,12 @@ touch_ago "$xdg3/qmd/mcp-gmail.pid" 60
 run_idx QMD_INDEX_NAME=gmail -- --recycle-if-stale "$idx_stamp"
 [ "$rc" -eq 0 ] || fail "(z16) named stale check on its own server: expected rc 0, got $rc ($out)"
 reap_two
+two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
+touch_ago "$xdg3/qmd/mcp-gmail.pid" 60
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:9/mcp -- --recycle-if-stale "$idx_stamp"
+[ "$rc" -ne 0 ] || fail "(z16b) a named stale check whose URL is answered on another port than the pidfile's must not succeed ($out)"
+kill -0 "$gm_pid" 2>/dev/null || fail "(z16b) the gmail server was stopped"
+reap_two
 echo "ok (z16): --recycle-if-stale names the pidfile and the argv of its own index"
 
 run_idx QMD_INDEX_NAME=../x
@@ -1380,37 +1413,72 @@ run_idx QMD_INDEX_NAME=../x
 case "$out" in *"QMD_INDEX_NAME must match"*) ;; *) fail "(z17) bad index name: no refusal line ($out)" ;; esac
 echo "ok (z17): the index name is validated before any state path is built, even when the server is healthy"
 
+cat > "$bin/curl-count" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in *'%{http_code}'*) exit 7 ;; esac
+n=$(( $(cat "$QMD_MOCK_STATE/probe-count" 2>/dev/null || echo 0) + 1 ))
+echo "$n" > "$QMD_MOCK_STATE/probe-count"
+if [ "$n" -ge "${QMD_PROBE_ANSWER_AT:-1}" ]; then
+  printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"qmd","version":"2.5.2"}}}'
+  exit 0
+fi
+exit 7
+EOF
+chmod +x "$bin/curl-count"
 wait_run() {
-  rm -f "$state/alive" "$state/qmd-argv.log"
+  local answer_at="$1" lock_idx="${WAIT_LOCK_INDEX:-}" lock="$home/.cache/qmd/embed-swap.lock" holder="" releaser=""
+  shift
+  rm -f "$state/qmd-argv.log" "$state/probe-count"
   export XDG_CACHE_HOME="$home/.cache"
   mkdir -p "$home/.cache/qmd"
+  rm -rf "$lock"
   sleep 300 & wait_srv=$!
   STUB_PIDS+=("$wait_srv")
   set_proc "$wait_srv" 1048576 "$gmail_argv"
   echo "$wait_srv" > "$home/.cache/qmd/mcp-gmail.pid"
-  ( sleep "$1"; touch "$state/alive" ) &
-  wait_bg=$!
-  shift
+  if [ -n "$lock_idx" ]; then
+    sleep 300 & holder=$!
+    STUB_PIDS+=("$holder")
+    mkdir "$lock"
+    echo "$lock_idx" > "$lock/index"
+    echo ensure > "$lock/role"
+    echo "$holder" > "$lock/pid"
+    if [ -z "${WAIT_LOCK_KEEP:-}" ]; then ( sleep 2; rm -rf "$lock" ) & releaser=$!; fi
+  fi
   set +e
-  out="$(env QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_STATE="$state" QMD_MCP_URL="$test_url" \
+  out="$(env QMD_CURL="$bin/curl-count" QMD_PROBE_ANSWER_AT="$answer_at" QMD_MOCK_STATE="$state" QMD_MCP_URL="$test_url" \
     QMD_INDEX_NAME=gmail QMD_PS="$ps3/ps" HOME="$home" PATH="$bin:$safe" "$@" bash "$script" 2>&1)"
   rc=$?
   set -e
-  wait "$wait_bg"
-  kill "$wait_srv" 2>/dev/null || true
+  [ -z "$releaser" ] || wait "$releaser"
+  kill "$wait_srv" ${holder:+"$holder"} 2>/dev/null || true
+  rm -rf "$lock"
   unset XDG_CACHE_HOME
-  rm -f "$state/alive"
 }
-wait_run 6 QMD_WAIT_TRIES=abc
+wait_run 7 QMD_WAIT_TRIES=abc
 [ "$rc" -eq 1 ] || fail "(z18) a non-numeric QMD_WAIT_TRIES must fall back to 5 probes: expected rc 1, got $rc ($out)"
 case "$out" in *"nothing came alive"*) ;; *) fail "(z18) no 'nothing came alive' line ($out)" ;; esac
 case "$out" in *"mcp-gmail.log"*) ;; *) fail "(z18) the failure does not point at mcp-gmail.log ($out)" ;; esac
 grep -qx -- "--index gmail --port $test_port mcp --http --daemon" "$state/qmd-argv.log" || fail "(z18) the named start did not run qmd --index gmail on the URL's port ($(cat "$state/qmd-argv.log"))"
 [ -f "$home/.cache/qmd/starting-gmail" ] || fail "(z18) the named start marker is not starting-gmail"
-wait_run 5 QMD_WAIT_TRIES=12
+wait_run 6 QMD_WAIT_TRIES=abc
+[ "$rc" -eq 0 ] || fail "(z18) the default is exactly 5 probes after the start: a server answering on the 5th must be seen, got rc $rc ($out)"
+wait_run 7 QMD_WAIT_TRIES=12
 [ "$rc" -eq 0 ] || fail "(z18) QMD_WAIT_TRIES=12 must wait for the late server: expected rc 0, got $rc ($out)"
 [ ! -e "$home/.cache/qmd/starting-gmail" ] || fail "(z18) the start marker was left behind after a successful start"
-echo "ok (z18): QMD_WAIT_TRIES is honoured (digits only) and a named start logs to its own mcp-<name>.log"
+echo "ok (z18): QMD_WAIT_TRIES is honoured (digits only, default 5) and a named start logs to its own mcp-<name>.log"
+
+WAIT_LOCK_INDEX=index wait_run 2
+[ "$rc" -eq 0 ] || fail "(z23) a gmail start behind a default-index start must wait and then run: got rc $rc ($out)"
+grep -qx -- "--index gmail --port $test_port mcp --http --daemon" "$state/qmd-argv.log" || fail "(z23) the gmail start exited without starting gmail ($(cat "$state/qmd-argv.log" 2>/dev/null))"
+WAIT_LOCK_INDEX=gmail wait_run 2
+[ "$rc" -eq 0 ] || fail "(z23) a concurrent start of the same index must exit 0: got rc $rc ($out)"
+[ ! -e "$state/qmd-argv.log" ] || fail "(z23) a concurrent start of the same index started a second server"
+WAIT_LOCK_INDEX=index WAIT_LOCK_KEEP=1 wait_run 2 QMD_SWAP_WAIT=2
+[ "$rc" -eq 1 ] || fail "(z23) a lock that never frees must end in an error, not a silent exit 0: got rc $rc ($out)"
+case "$out" in *"another index"*) ;; *) fail "(z23) no refusal line naming the other index's start ($out)" ;; esac
+[ ! -e "$state/qmd-argv.log" ] || fail "(z23) qmd was started without the lock"
+echo "ok (z23): a start for another index waits for the shared lock and runs; the same index's concurrent start exits quietly; a stuck lock is an error"
 
 run_unit() {
   set +e

@@ -45,6 +45,8 @@
 #   QMD_RECYCLE_COOLDOWN_MIN  minimum minutes between recycles (default 30)
 #   QMD_WAIT_TRIES            one-second probes after a start before giving up
 #                              (default 5; digits only)
+#   QMD_SWAP_WAIT             seconds a start waits for another index's start to free the
+#                              shared embed-swap lock before it gives up (default 30)
 #   QMD_INDEX_NAME            a named index (qmd --index <name>): its own pidfile
 #                              mcp-<name>.pid, recycle-<name>.{lock,stamp,log},
 #                              starting-<name> and boot unit qmd-daemon-<name>.service,
@@ -250,6 +252,9 @@ case "$WAIT_TRIES" in ''|*[!0-9]*) WAIT_TRIES=5 ;; esac
 WAIT_TRIES=$((10#$WAIT_TRIES))
 [ "$WAIT_TRIES" -gt 0 ] || WAIT_TRIES=5
 PORT_WAIT_TRIES=15
+swap_wait="${QMD_SWAP_WAIT:-30}"
+case "$swap_wait" in ''|*[!0-9]*) swap_wait=30 ;; esac
+swap_wait=$((10#$swap_wait))
 
 INIT_PAYLOAD='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ensure-qmd-daemon","version":"1"}}}'
 
@@ -570,7 +575,7 @@ stale_recycle() {
   read_pidfile || { echo "$who: no usable pidfile ($pidfile) - cannot tell which process is the qmd server; not signalling anything" >&2; return 1; }
   if [ "$pf_m" -ge "$stamp_m" ]; then
     if pid_is_ours "$pid" "$pf_m"; then
-      answers_mcp && return 0
+      answers_mcp && index_serves && return 0
       unserved_reason "$who"
       return 1
     fi
@@ -623,7 +628,7 @@ stale_recycle() {
   bash "$0" || echo "$who: the start path failed" >&2
   w=0
   while [ "$w" -lt 10 ]; do
-    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp; then verdict=0; break; fi
+    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp && index_serves; then verdict=0; break; fi
     w=$((w + 1))
     sleep 1
   done
@@ -745,31 +750,42 @@ swap_lock_reclaim() {
   return 0
 }
 mkdir -p "$qmd_state_dir" 2>/dev/null
-# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended ensure or off start exits at once, a swap start retries it for up to 8 x 0.25 s
+# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended start of the same index or an off start exits at once, any other start retries it
 if ! mkdir "$swap_lock" 2>/dev/null; then
   swap_pid="$(cat "$swap_lock/pid" 2>/dev/null)"
   if swap_lock_stale "$swap_lock"; then
     swap_lock_reclaim
   fi
-  # Contended. WHO holds it decides: role=ensure is another session's start already
-  # on it (sessions launch together), so this one exits quietly; role=swap refuses.
-  # The role file is written before the pid, so a holder with neither is brand new:
-  # poll briefly (SessionStart must stay fast); one that never names a role is
-  # treated as a swap.
+  # Contended. WHO holds it decides: role=ensure for this index is another session's start already on
+  # it, so this one exits quietly; for another index it is waited out (swap_wait s); role=swap refuses.
+  # The index and role files are written before the pid, so a holder with neither is brand new:
+  # poll briefly (SessionStart must stay fast); one that never names a role is treated as a swap.
   swap_role=""
   swap_i=0
+  swap_max=8
+  swap_step=0.25
   while :; do
     swap_role="$(cat "$swap_lock/role" 2>/dev/null)"
     case "$swap_role" in
-      ensure|off) exit 0 ;;
+      ensure)
+        swap_holder="$(cat "$swap_lock/index" 2>/dev/null)"
+        [ "${swap_holder:-index}" != "$QMD_INDEX_NAME" ] || exit 0
+        swap_max="$swap_wait"
+        swap_step=1 ;;
+      off) exit 0 ;;
       swap) break ;;
     esac
-    # prim-ok: the plugin installs without scripts/lib; a bounded retry (8 x 0.25 s) of the same swap lock above
+    if swap_lock_stale "$swap_lock"; then swap_lock_reclaim; fi
+    # prim-ok: the plugin installs without scripts/lib; a bounded retry of the same swap lock above
     if mkdir "$swap_lock" 2>/dev/null; then swap_role=mine; break; fi
     swap_i=$((swap_i + 1))
-    if [ "$swap_i" -ge 8 ]; then break; fi
-    sleep 0.25
+    if [ "$swap_i" -ge "$swap_max" ]; then break; fi
+    sleep "$swap_step"
   done
+  if [ "$swap_role" = ensure ]; then
+    echo "ensure-qmd-daemon: ERROR - another index's start has held $swap_lock for ${swap_wait}s; NOT starting the '$QMD_INDEX_NAME' index." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  fi
   if [ "$swap_role" != mine ]; then
     echo "ensure-qmd-daemon: an embed-model swap is in progress (pid ${swap_pid:-unknown}, $swap_lock) - NOT starting the qmd daemon." >&2 # t13b-ok: refusal message text, starts nothing
     echo "  Starting it now would serve queries against a half-swapped index. Retry once the swap finishes;" >&2
@@ -777,6 +793,7 @@ if ! mkdir "$swap_lock" 2>/dev/null; then
     exit 1
   fi
 fi
+echo "$QMD_INDEX_NAME" > "$swap_lock/index"
 echo ensure > "$swap_lock/role"
 echo "$$" > "$swap_lock/pid"
 # shellcheck disable=SC2064 # expand now: the lock path is fixed for this run
