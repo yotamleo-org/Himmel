@@ -22,7 +22,7 @@ FORK_LIST="$HERE/fixtures/himmel-adapters/yotamleo-org-forks.json"
 FIRST_PARTY_LIST="$HERE/fixtures/himmel-adapters/yotamleo-org-first-party.json"
 
 registry_checks() { # registry file
-  local REG=$1 ADOPTED=$2
+  local REG=$1 ADOPTED=$2 UP=${3:-$HERE/../upstreams.json}
 check "registry parses as a JSON array" "$(jq -r 'type' "$REG" 2>/dev/null)" "array"
 check "every fork row is yotamleo-org/<a fork in the recorded gh repo list>" "$(jq -n -r --slurpfile reg "$REG" --slurpfile forks "$FORK_LIST" '[$reg[0][] | select(.upstream != null) | .nwo | select((split("/")[0] != "yotamleo-org") or ((split("/")[1]) as $n | any($forks[0][]; .name == $n) | not))] | length' 2>/dev/null)" "0"
 check "every first-party row is yotamleo-org/<a non-fork in the recorded gh repo list>" "$(jq -n -r --slurpfile reg "$REG" --slurpfile own "$FIRST_PARTY_LIST" '[$reg[0][] | select(.upstream == null) | .nwo | select((split("/")[0] != "yotamleo-org") or ((split("/")[1]) as $n | any($own[0][]; .name == $n and .isFork == false) | not))] | length' 2>/dev/null)" "0"
@@ -39,9 +39,9 @@ check "every upstream is an owner/name, or null for a first-party repo" "$(jq -r
 check "pin_site is null or a non-empty string" "$(jq -r '[.[] | select(.pin_site != null and ((.pin_site | type) != "string" or .pin_site == ""))] | length' "$REG" 2>/dev/null)" "0"
 check "merge_allowed true only for the repos we merge into" "$(jq -r '[.[] | select(.merge_allowed) | .nwo] | sort | join(" ")' "$REG" 2>/dev/null)" "$MERGE_TRUE"
 # a fork block in upstreams.json drives /fork-resync and the drift check's fork-behind probe
-check "every upstreams.json fork block names its registry row's himmel_branch" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$HERE/../upstreams.json" '[$up[0].entries[] | select(.fork) | .name as $n | (.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) as $r | ([$reg[0][] | select((.nwo | split("/")[1]) == $r) | .himmel_branch] | first) as $b | select($b == null or $b != .fork.branch) | "\($n):\(.fork.branch)"] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
-check "every pin_branch row has a fork block in upstreams.json" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$HERE/../upstreams.json" '[$reg[0][] | select(has("pin_branch")) | (.nwo | split("/")[1]) as $r | select(any($up[0].entries[]; .fork and ((.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) == $r)) | not) | .nwo] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
-check "every pin_branch is himmel-main-upstream-<synced_base> of its fork block" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$HERE/../upstreams.json" '[$reg[0][] | select(has("pin_branch")) | .pin_branch as $p | (.nwo | split("/")[1]) as $r | ([$up[0].entries[] | select(.fork and ((.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) == $r))] | first) as $e | select($e != null) | (if ($e.synced_base | type) == "string" and $e.synced_base != "" then "himmel-main-upstream-" + $e.synced_base else null end) as $want | select($p != $want) | .nwo] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
+check "every upstreams.json fork block names its registry row's himmel_branch" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$UP" '[$up[0].entries[] | select(.fork) | .name as $n | (.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) as $r | ([$reg[0][] | select((.nwo | split("/")[1]) == $r) | .himmel_branch] | first) as $b | select($b == null or $b != .fork.branch) | "\($n):\(.fork.branch)"] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
+check "every pin_branch row has a fork block in upstreams.json" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$UP" '[$reg[0][] | select(has("pin_branch")) | (.nwo | split("/")[1]) as $r | select(any($up[0].entries[]; .fork and ((.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) == $r)) | not) | .nwo] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
+check "every pin_branch is himmel-main-upstream-<synced_base> of its fork block" "$(jq -n -r --slurpfile reg "$REG" --slurpfile up "$UP" '[$reg[0][] | select(has("pin_branch")) | .pin_branch as $p | (.nwo | split("/")[1]) as $r | ([$up[0].entries[] | select(.fork and ((.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) == $r))] | first) as $e | select($e != null) | (if ($e.synced_base | type) == "string" and $e.synced_base != "" then "himmel-main-upstream-" + $e.synced_base else null end) as $want | select(($p | type) != "string" or $p != $want) | .nwo] | if length == 0 then "none" else join(" ") end' 2>/dev/null)" "none"
 check "no nwo is in both himmel-adapters.json and himmel-adopted.json" "$(jq -n -r --slurpfile reg "$REG" --slurpfile ad "$ADOPTED" '[$reg[0][].nwo] as $r | [$ad[0][]? | .nwo | select(. as $n | $r | index($n))] | length' 2>/dev/null)" "0"
 }
 
@@ -50,11 +50,11 @@ printf '%s\n' "$out"
 fails=$(printf '%s\n' "$out" | grep -c '^FAIL')
 
 refused() {
-  local name=$1 filter=$2 check_name=$3 adopted=${4:-$HERE/himmel-adopted.json}
+  local name=$1 filter=$2 check_name=$3 adopted=${4:-$HERE/himmel-adopted.json} up=${5:-}
   if ! jq "$filter" "$HERE/himmel-adapters.json" > "$TMP/reg.json"; then
     echo "FAIL $name: jq could not build the broken copy"; fails=$((fails + 1)); return
   fi
-  case "$(registry_checks "$TMP/reg.json" "$adopted")" in
+  case "$(registry_checks "$TMP/reg.json" "$adopted" "$up")" in
     *"FAIL $check_name:"*) hit=1 ;;
     *) hit=0 ;;
   esac
@@ -71,6 +71,8 @@ refused "a row with an unknown tier is refused" 'map(if .nwo == "yotamleo-org/tw
 refused "a pin_branch that is not himmel-main-upstream-<synced_base> is refused" 'map(if .nwo == "yotamleo-org/qmd" then .pin_branch = "himmel-main-upstream-0.0.0" else . end)' "every pin_branch is himmel-main-upstream-<synced_base> of its fork block"
 refused "a pin_branch on a row with no fork block is refused" 'map(if .nwo == "yotamleo-org/obsidian-skills" then .pin_branch = "himmel-main-upstream-1.0.0" else . end)' "every pin_branch row has a fork block in upstreams.json"
 refused "an unknown extra key is refused" 'map(if .nwo == "yotamleo-org/qmd" then .pin_banch = "x" else . end)' "every row has the seven fields"
+jq '.entries |= map(if .fork and (.fork.fork_repo | sub("\\.git$"; "") | split("/") | last) == "qmd" then del(.synced_base) else . end)' "$HERE/../upstreams.json" > "$TMP/up-no-base.json" || exit 1
+refused "a null pin_branch on a fork block with no usable synced_base is refused" 'map(if .nwo == "yotamleo-org/qmd" then .pin_branch = null else . end)' "every pin_branch is himmel-main-upstream-<synced_base> of its fork block" "" "$TMP/up-no-base.json"
 printf '[{"nwo":"yotamleo-org/qmd"}]\n' > "$TMP/adopted-overlap.json"
 refused "a repo in both allowlists is refused" '.' "no nwo is in both himmel-adapters.json and himmel-adopted.json" "$TMP/adopted-overlap.json"
 
