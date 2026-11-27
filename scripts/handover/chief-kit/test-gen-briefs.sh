@@ -1951,7 +1951,7 @@ cgo="$(cgrun r13fail)"; rc=$?
 
 T13='HIMMEL-9434 has had its writer rounds'
 cg_mirror HIMMEL-9434 Task Medium '[]'
-printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"spec round 4: HIMMEL-9434 spec round 4 needs a blocking finding in round 3 of either kind; plan round 4: HIMMEL-9434 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+printf '{"key":"HIMMEL-9434","spec":5,"plan":5,"writer":5,"next":"none","why":"spec round 6: HIMMEL-9434 spec round 6 needs a blocking finding in round 5 of either kind; plan round 6: HIMMEL-9434 plan round 6 needs a blocking finding in round 5 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cg_workers r14 HIMMEL-9434 "$WS/designs/HIMMEL-9434-x.md" ''
 : > "$ROUTE_LOG"; cgo="$(cgrun r14)"; rc=$?
 [ "$rc" = 1 ] && has "R14: a writer leg at next=none is refused with T13" "$cgo" "$T13" || fail "R14 rc=$rc: $cgo"
@@ -1960,11 +1960,11 @@ for hint in 'normal signing' '--spec' 'canonical spec' '--plan' 'distinct canoni
 done
 [ -z "$(cg_brief r14)" ] && [ ! -e "$CG/b-r14/launch-N941.sh" ] && pass "R14: the refused writer leg gets no brief and no launcher" || fail "R14: a brief was written for a key with no rounds left"
 has "R14: round-status is asked for the key over the path's specs root" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9434 --specs $WS --json"
-printf '{"key":"HIMMEL-9434","spec":4,"plan":4,"writer":4,"next":"none","why":"spec round 5: HIMMEL-9434 writer round 5 needs a round-critical record with the operator'\''s words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+printf '{"key":"HIMMEL-9434","spec":6,"plan":6,"writer":6,"next":"none","why":"spec round 7: HIMMEL-9434 writer round 7 needs a round-critical record with the operator'\''s words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cgo="$(cgrun r14)"; rc=$?
 [ "$rc" = 1 ] && has "exhausted blocking writer keeps its actual authority route" "$cgo" "needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)" || fail "R14 blocking rc=$rc: $cgo"
 lacks "exhausted blocking writer does not suggest verified carry" "$cgo" "verified carry"
-printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"no round opens","critical_open":[{"id":"O1","class":"spend-grant"}]}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+printf '{"key":"HIMMEL-9434","spec":5,"plan":5,"writer":5,"next":"none","why":"no round opens","critical_open":[{"id":"O1","class":"spend-grant"}]}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cgo="$(cgrun r14)"; rc=$?
 [ "$rc" = 1 ] && has "exhausted critical writer needs the operator ruling" "$cgo" "operator rules on open operator-critical findings first (round-critical)" || fail "R14 critical rc=$rc: $cgo"
 lacks "exhausted critical writer does not suggest verified carry" "$cgo" "verified carry"
@@ -1974,10 +1974,10 @@ cgo="$(cgrun r14full)"; rc=$?
 [ "$rc" = 0 ] && [ -n "$(cg_brief r14full)" ] && pass "R14 sibling: a writer leg at next=full gets its brief" || fail "R14 sibling rc=$rc: $cgo"
 lacks "R14 sibling: next=full adds no Round line" "$(cat "$(cg_brief r14full)" 2>/dev/null)" "> **Round:**"
 cg_mirror HIMMEL-9437 Task Medium '[]'
-printf '{"key":"HIMMEL-9437","spec":3,"plan":3,"writer":3,"next":"closure","why":"spec round 4: closure; plan round 4: HIMMEL-9437 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9437.json"
+printf '{"key":"HIMMEL-9437","spec":5,"plan":5,"writer":5,"next":"closure","why":"spec round 6: closure; plan round 6: HIMMEL-9437 plan round 6 needs a blocking finding in round 5 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9437.json"
 cg_workers r14closure HIMMEL-9437 "$WS/designs/HIMMEL-9437-x.md" ''
 cgo="$(cgrun r14closure)"; rc=$?
-[ "$rc" = 0 ] && has "R14: next=closure adds the Round line" "$(cat "$(cg_brief r14closure)" 2>/dev/null)" "> **Round:** HIMMEL-9437 writer round 4 is a closure check: dispatch the critic with chief-route.ts closure-pack" || fail "R14 closure rc=$rc: $cgo"
+[ "$rc" = 0 ] && has "R14: next=closure adds the Round line" "$(cat "$(cg_brief r14closure)" 2>/dev/null)" "> **Round:** HIMMEL-9437 writer round 6 is a closure check: dispatch the critic with chief-route.ts closure-pack" || fail "R14 closure rc=$rc: $cgo"
 
 cg_mirror HIMMEL-9687 Task Medium '[]'
 cg_workers r14b HIMMEL-9687 "$WS/designs/HIMMEL-96870-x.md" ''

@@ -125,7 +125,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     label and state. `Waiting on you` is derived, never hand-kept: the open tickets of the version
     carrying an operator label (`operator-decision`, `operator`, `operator-present`,
     `operator-gated`), plus the operator-owed records (`--owed-dir <handover bucket>`, `--chief-doc <chief doc>`; `focus-refresh.sh` passes
-    both): a spec of an open ticket whose latest critic verdict is `SPEC CLEAN` or past the third round with no `spec` row in
+    both): a spec of an open ticket whose latest critic verdict is `SPEC CLEAN` or past the fifth round with no `spec` row in
     `release/<version>/operator.jsonl`, when that spec is operator-critical or `release signer-check` names the operator for its key (any other such unsigned spec is chief-owed; the signer routing is in [running-a-chief.md](../running-a-chief.md)); a `queue:` segment or `pool-disposition:` line of the chief doc's `## Live state` that names the
     operator; and the lines of the newest `*HANDOFF.md`'s `## Open operator items`. With no readable record the header says
     `no operator-owed source read` beside the count. A hand dependency chain named `Waiting on you` is not printed. The header names
