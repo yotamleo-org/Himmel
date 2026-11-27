@@ -3102,7 +3102,7 @@ drop_created_local_settings() {
       fail_step "[7/8] ledger: skipped $path — it fails the real-home check"
     elif [ "$DRY_RUN" -eq 1 ]; then
       echo "DRY: would remove the now-empty $path"
-    elif rm -f -- "$path"; then
+    elif guarded run rm -f -- "$path"; then
       echo "  removed the now-empty $path"
       prov_read_outcome removed "$u" "ours"
     else
@@ -3478,8 +3478,15 @@ else
       fi
     fi
   fi
-  if [ "$HALTED" -eq 0 ] && class_removes "$_ix_pset" && ! project_is_himmel_checkout; then
-    unwire_local_settings "$_project_settings"
+  if [ "$HALTED" -eq 0 ] && class_removes "$_ix_pset"; then
+    _local_identity=0
+    project_is_himmel_checkout || _local_identity=$?
+    if [ "$_local_identity" -eq 1 ]; then
+      unwire_local_settings "$_project_settings"
+    elif [ "$_local_identity" -eq 2 ]; then
+      echo "  project settings: cannot resolve checkout identity — refusing to unwire the local file" >&2
+      fail_step "[6/8] project settings: checkout identity unresolved"
+    fi
   fi
   # S8: the other projects the ledger recorded, same guards.
   if [ "$HALTED" -eq 0 ] && [ "$LEDGER_OK" -eq 1 ] && class_removes "$_ix_pset"; then
