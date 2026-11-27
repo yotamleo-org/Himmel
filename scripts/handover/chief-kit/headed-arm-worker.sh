@@ -313,9 +313,9 @@ _lr_json() {
 # attempt-started row once a real launch's arguments are parsed, then one terminal row from the EXIT trap, both
 # carrying one attempt_id. outcome: refused | launched | already-running | indeterminate | postlaunch-error; a killed
 # launcher leaves only attempt-started, which a reader counts as unknown. phase says where the attempt ended.
-# Exit 0 is launched OR already running, so the headed-arm.sh child writes its typed result to
-# HEADED_ARM_OUTCOME_FILE; exit 7 is indeterminate (konsole up, claude unseen); exit 9 a refusal before launch
-# (the dedup scan was indeterminate). A recorder failure is silent and never changes the launch's exit.
+# Exit 0 writes launched or already-running to HEADED_ARM_OUTCOME_FILE. Exit 7 means konsole is up but claude is unseen.
+# Exit 9 records refused unless signalled. Only the three pre-spawn session scans write scan-indeterminate. The post-launch
+# scan, headless service checks before launch and headless census after launch leave exit 9 wordless.
 # shellcheck disable=SC2329  # called by the EXIT trap and the attempt start
 _lr_phase() {
     case "$1" in
@@ -3630,8 +3630,8 @@ fi
 # (nothing registered for this launcher: no token file, .doc sidecar or liveness marker) and the token's private
 # transport file. Every refusal before (4) acquires nothing and leaves nothing behind. The launcher keeps only its OWN
 # captured token: every exit between the acquire and the child's start (a refusal, the managed fleet hand-off refusal,
-# a fatal or remembered signal) and a definite hand-off failure release exactly that token (a successor's lock refuses
-# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both unless the child confirms an existing session.
+# a fatal or remembered signal) and a definite hand-off failure release exactly that token and remove the attempt.
+# A successor's lock refuses the token. Statuses 0, 7 and 9 keep both except on an existing session or a typed pre-spawn refusal without a forwarded signal.
 # A trappable exit first reaps the acquire child (bounded), so the lease it was about to create is released too.
 # The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
 READINESS_TOKEN="" READINESS_PRE_HANDOFF=0 READINESS_ACQ_PID="" READINESS_ACQ_STATE="" READINESS_ACQ_OUT="" READINESS_REAP_SECS=20
@@ -3663,7 +3663,7 @@ _readiness_reap_acquire() {
     while kill -0 "$pid" 2>/dev/null && [ "$i" -lt $((READINESS_REAP_SECS * 10)) ]; do sleep 0.1; i=$((i + 1)); done
     if kill -0 "$pid" 2>/dev/null; then
         # said on stdout and in the launch log: the EXIT trap that calls this discards its own stderr
-        echo "headed-arm-worker: WARN the queue acquire for $READINESS_DOC did not finish within ${READINESS_REAP_SECS}s and was stopped; a lease it had already created is released by its token next, else it ages out by its TTL" | tee -a "$LOG" 2>/dev/null
+        echo "headed-arm-worker: WARN the queue acquire for $READINESS_DOC did not finish within ${READINESS_REAP_SECS}s and was stopped; a lease it had already created, or was still publishing, is released by its token next" | tee -a "$LOG" 2>/dev/null
         kill -TERM "$pid" 2>/dev/null
         i=0
         while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
@@ -3804,14 +3804,14 @@ fi
 if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
     fleet_launch_op handoff >/dev/null || { _launch_refusal_note fleet-paused; exit 10; }
 fi
-# a signal that landed before the child exists ends a readiness launch HERE, never starting the child: forwarding it afterwards
-# is not reliable (headed-arm.sh traps TERM), and a started child would run the launch on. The EXIT trap releases the lease.
+# A signal that landed before the child exists ends a readiness launch here, before the child starts.
+# The EXIT trap releases the lease.
 if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _launch_refusal_note signal; exit 143; fi
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
 _ha_child=$!
-# the child exists: the status and outcome rule below decides from here on; a signal that landed in the
-# instant between the check above and the start is forwarded like any other
+# The child's status and typed word now govern lease cleanup. A signal that landed between the
+# check above and the start is forwarded and marks the outcome indeterminate.
 READINESS_PRE_HANDOFF=0
 if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _ha_forward; fi
 while :; do
@@ -3829,15 +3829,16 @@ elif [ "$launch_rc" -eq 7 ]; then _LAUNCH_OUTCOME=indeterminate; _launch_refusal
 elif [ "$launch_rc" -eq 9 ]; then _LAUNCH_OUTCOME=refused; _launch_refusal_note dedup-indeterminate
 else _launch_refusal_note headed-arm
 fi
-unset -v _ha_word
 case "$launch_rc" in 0|7|9) ;; *) _release_fleet_reservation ;; esac
-# A readiness lease is only for this attempt. An existing session leaves it unused.
-# Other 0, 7 and 9 outcomes keep it for adoption, including an indeterminate outcome after a forwarded signal.
+# An existing session or a typed pre-spawn refusal leaves the readiness lease unused.
+# Other 0, 7 and 9 outcomes keep it for adoption, including after a forwarded signal.
 [ "$READINESS" -eq 0 ] || case "$launch_rc:$_LAUNCH_OUTCOME" in
     0:already-running) _readiness_release ;;
+    9:refused) [ "$_ha_word" != scan-indeterminate ] || _readiness_release ;;
     0:*|7:*|9:*) ;;
     *) _readiness_release ;;
 esac
+unset -v _ha_word
 if [ -n "$FLEET_MANIFEST" ]; then
     [ "$launch_rc" -eq 0 ] || exit "$launch_rc"
     _fm_arm=()

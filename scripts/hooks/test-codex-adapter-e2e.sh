@@ -144,7 +144,7 @@ echo "== (g) lane grants through the adapter (HIMMEL-11204) =="
 FIX="$(cd "$TMP" && pwd -P)/fix"; FIXWT="$FIX-wt"
 mkdir -p "$FIX/scripts"
 cp -R "$REPO/.codex" "$FIX/.codex"
-cp -R "$REPO/scripts/hooks" "$REPO/scripts/guardrails" "$REPO/scripts/lib" "$FIX/scripts/"
+cp -R "$REPO/scripts/hooks" "$REPO/scripts/guardrails" "$REPO/scripts/lib" "$REPO/scripts/harnesses" "$FIX/scripts/"
 git init -q -b main "$FIX"
 git -C "$FIX" add -A >/dev/null 2>&1
 git -C "$FIX" -c user.name=t -c user.email=t@example.invalid commit -q --no-verify -m fixture

@@ -46,9 +46,15 @@ try {
   if(fs.existsSync(marker)&&fs.statSync(marker).isDirectory())fail("vault corpus");
   if(path.dirname(p)===p)break;
  }
+ let phiListPaths;
+ // Anchored at the module: a plain require reads package.json from an unsearchable cwd and fails.
+ const lib=path.join(process.argv[2],"scripts/guardrails/phi-list-paths.cjs");
+ try { ({phiListPaths}=require("module").createRequire(lib)(lib)); }
+ catch(_) { fail("invalid guard config"); }
  for(const name of ["phi-roots","egress-denylist"]) {
-  const p=path.join(process.env.HOME,".config/claude-glm",name);
-  if(fs.existsSync(p)) {
+  const list=phiListPaths(name,process.env);
+  if(list.rc===2)fail("invalid guard config (unprovable: "+list.unprovable+")");
+  for(const p of list.paths) {
    if(!fs.statSync(p).isFile())fail("invalid guard config");
    for(const r of fs.readFileSync(p,"utf8").split(/\r?\n/).filter(Boolean))if(under(r))fail("guarded workspace");
   }

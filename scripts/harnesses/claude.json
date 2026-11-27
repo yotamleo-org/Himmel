@@ -1,0 +1,29 @@
+{
+  "id": "claude",
+  "complete": true,
+  "t3": { "driver": "claudeAgent", "instance_ids": ["claudeAgent"] },
+  "hook_config": ".claude/settings.json",
+  "tool_map": {
+    "mcp_prefix": "mcp__<server>__<tool>",
+    "tools": {
+      "Bash": { "claude": "Bash" },
+      "Read": { "claude": "Read" },
+      "Edit": { "claude": "Edit" },
+      "Write": { "claude": "Write" }
+    }
+  },
+  "event_map": {
+    "PreToolUse": "PreToolUse",
+    "PostToolUse": "PostToolUse",
+    "UserPromptSubmit": "UserPromptSubmit",
+    "SessionStart": "SessionStart",
+    "Stop": "Stop",
+    "SessionEnd": "SessionEnd"
+  },
+  "deny_dialect": "exit-2",
+  "adapter": "scripts/hooks/run-hook-with-bash.js",
+  "token_paths": ["~/.claude/.credentials.json"],
+  "egress_provider": "anthropic",
+  "lane": "native",
+  "quota_source": "pending"
+}

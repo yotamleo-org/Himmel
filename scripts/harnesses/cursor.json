@@ -1,0 +1,26 @@
+{
+  "id": "cursor",
+  "complete": false,
+  "t3": { "driver": "cursor", "instance_ids": ["cursor"] },
+  "hook_config": null,
+  "tool_map": {
+    "mcp_prefix": null,
+    "tools": {
+      "Shell": { "claude": "Bash" },
+      "Read": { "claude": "Read" },
+      "Write": { "claude": "Write" }
+    }
+  },
+  "event_map": { "PreToolUse": "preToolUse" },
+  "deny_dialect": null,
+  "adapter": "scripts/hooks/lib/harness-tool-translate.js",
+  "token_paths": [
+    "~/.cursor/auth.json",
+    "~/.cursor/sdk/auth.json",
+    "~/.config/cursor/auth.json",
+    "*/userdata/provider-auth/*/cursor.json"
+  ],
+  "egress_provider": null,
+  "lane": null,
+  "quota_source": null
+}

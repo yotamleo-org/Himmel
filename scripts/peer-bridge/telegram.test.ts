@@ -69,12 +69,24 @@ test("getUpdates, getChat and getChatMember send the documented bodies and retur
   const { f, calls } = stub((url) => ({ json: { ok: true, result: url.endsWith("getUpdates") ? [{ update_id: 1 }] : { id: 5 } } }));
   const tg = new PeerTelegram(TOKEN, f);
   expect(await tg.getUpdates(10, 30)).toEqual([{ update_id: 1 }]);
-  expect(calls[0].body).toEqual({ offset: 10, timeout: 30 });
+  expect(calls[0].body).toMatchObject({ offset: 10, timeout: 30 });
   expect(await tg.getChat(-100)).toEqual({ id: 5 });
   expect(calls[1].body).toEqual({ chat_id: -100 });
   await tg.getChatMember(-100, 9);
   expect(calls[2].body).toEqual({ chat_id: -100, user_id: 9 });
   expect(calls.map(c => c.url.split("/").pop())).toEqual(["getUpdates", "getChat", "getChatMember"]);
+});
+
+test("every getUpdates names the update types the poller reads, so a stored filter cannot drop a button tap", async () => {
+  const { f, calls } = stub(() => ({ json: { ok: true, result: [] } }));
+  await new PeerTelegram(TOKEN, f).getUpdates(1, 0);
+  expect(calls[0].body.allowed_updates).toEqual(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query", "my_chat_member"]);
+});
+
+test("every getUpdates keeps my_chat_member, which remote-setup's group discovery reads on the same token", async () => {
+  const { f, calls } = stub(() => ({ json: { ok: true, result: [] } }));
+  await new PeerTelegram(TOKEN, f).getUpdates(1, 0);
+  expect(calls[0].body.allowed_updates).toContain("my_chat_member");
 });
 
 test("the Bot API sendMessage method is named only in telegram.ts", () => {

@@ -1528,6 +1528,57 @@ else echo "ok - pgrep scan failure: konsole never invoked"; fi
 log30="$(cat "$d30/log" 2>/dev/null || true)"
 contains "pgrep scan failure: log names it INDETERMINATE" "$log30" "INDETERMINATE"
 
+mk_count_pgrep() {
+  local dir="$1" call="$2" result="$3"
+  cat > "$dir/pgrep" <<PGREP_EOF
+#!/usr/bin/env bash
+echo scan >> "$dir/pgrep-calls"
+if [ -e "$dir/confirmable" ]; then echo 9001; exit 0; fi
+if [ "\$(wc -l < "$dir/pgrep-calls")" -eq "$call" ]; then
+  if [ "$result" = fail ]; then exit 2; fi
+  echo 9001
+  exit 0
+fi
+exit 1
+PGREP_EOF
+  chmod 755 "$dir/pgrep"
+}
+
+run_scan_case() {
+  local row="$1" call="$2" result="$3" expected="$4" log_text="$5"
+  local dir="$tmp/$row" name="scan-$row" rc=0 outcome
+  mk_stub "$dir" 1 alive "$name"
+  mk_count_pgrep "$dir" "$call" "$result"
+  HEADED_ARM_OUTCOME_FILE="$dir/outcome" run_headed_arm "$dir" "$REPO" "$name" "doc30.md" "$dir/signal-never" "$PAST" >/dev/null 2>&1 || rc=$?
+  outcome="$(cat "$dir/outcome" 2>/dev/null || true)"
+  check "11271 $row: status, outcome word and pgrep calls" "$rc|$outcome|$(wc -l < "$dir/pgrep-calls")" "$expected|$call"
+  contains "11271 $row: log names the scan result" "$(cat "$dir/log")" "$log_text"
+  check "11271 $row: konsole never invoked" "$([ ! -e "$dir/record" ] && echo yes)" "yes"
+  if [ "$call" -eq 3 ]; then
+    check "11271 $row: the name lock is gone" "$([ ! -e "$dir/locks/$name.lock" ] && echo yes)" "yes"
+  fi
+}
+run_scan_case W1 1 fail '9|scan-indeterminate' 'INDETERMINATE: pgrep scan failed checking for'
+run_scan_case W2 2 fail '9|scan-indeterminate' 'INDETERMINATE: pgrep scan failed checking for'
+run_scan_case W2c 2 match '0|already-running' 'a session named scan-W2c is already running'
+run_scan_case W3 3 fail '9|scan-indeterminate' 'INDETERMINATE: pgrep scan failed re-checking for'
+run_scan_case W3c 3 match '0|already-running' 'a session named scan-W3c appeared after this arm claimed the lock'
+
+d30w4="$tmp/W4"
+mk_stub "$d30w4" 1 alive scan-W4
+cat > "$d30w4/pgrep" <<'PGREP_EOF'
+#!/usr/bin/env bash
+if [ -e "$(dirname "$0")/confirmable" ]; then exit 2; fi
+exit 1
+PGREP_EOF
+chmod 755 "$d30w4/pgrep"
+rc30w4=0
+HEADED_ARM_OUTCOME_FILE="$d30w4/outcome" run_headed_arm "$d30w4" "$REPO" scan-W4 "doc30.md" "$d30w4/signal-never" "$PAST" > "$d30w4/out" 2>&1 || rc30w4=$?
+check "11271 W4: exit 9 with no outcome word" "$rc30w4|$(cat "$d30w4/outcome" 2>/dev/null || true)" "9|"
+contains "11271 W4: stderr names the post-launch scan" "$(cat "$d30w4/out")" "pgrep scan failed confirming the post-launch session"
+contains "11271 W4: log names the post-launch scan" "$(cat "$d30w4/log")" "INDETERMINATE: pgrep scan failed confirming scan-W4 after launch"
+check "11271 W4: konsole invoked" "$([ -s "$d30w4/record" ] && echo yes)" "yes"
+
 # mk_positional_pgrep <dir> <cmdline-fields...> - test infra: a
 # pgrep stub that reports pid 9001 as a candidate once <dir>/confirmable
 # exists, with 9001's REAL /proc cmdline set to the given fields (each
