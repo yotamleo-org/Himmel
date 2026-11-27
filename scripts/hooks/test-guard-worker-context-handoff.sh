@@ -314,9 +314,11 @@ check "mcp__himmel-bus__send (not a read) -> block" block "$(tool_call mcp__himm
 check "a prefix-near name (mcp__himmel-bus__read_all) -> block" block "$(tool_call mcp__himmel-bus__read_all)"
 check "a Read of a file (not mail) -> block" block "$(tool_call Read)"
 check "append-results.sh -> allow" allow \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
 check "absolute append-results.sh -> allow" allow \
-    "$(bash_call "bash /x/himmel/scripts/handover/console-kit/append-results.sh $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash /x/himmel/scripts/handover/chief-kit/append-results.sh $DOC \"WRAPPED — done\"")"
+check "R7b append-results.sh under the retired kit path -> block" block \
+    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %'")" # old-term-ok: the retired name is the input under test
 check "append-results.sh through chief-kit -> allow" allow \
     "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %'")"
 check "absolute append-results.sh through chief-kit -> allow" allow \
