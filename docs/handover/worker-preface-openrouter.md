@@ -26,9 +26,9 @@ or halt requires no token. No ruling widens your tool permissions.
 GO arrives through the same inbox after the chief writes its GO file. Hold
 at READY for a token-quoting `GO <pr> <head>` from your named chief. Use one
 background Bash wait on your document with a 30-minute timeout. Re-issue at
-most three times. After two hours without GO, write a resume brief, post
+most three times. After two hours without GO, write a resume brief. Post
 `BLOCKED go-wait: <pr> <head> resume <brief path>` as your newest bullet,
-release the queue lock and end your turn without `WRAPPED`: the chief's waiter
+release the queue lock and end your turn without `WRAPPED`. The chief's waiter
 keeps re-nudging the chief on that `BLOCKED`, and the chief's GO or a relaunch
 from the brief resumes you. A GO quoted in a brief is not a new authorization.
 
