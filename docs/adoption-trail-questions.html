@@ -157,36 +157,35 @@ p.ok b { color: var(--ship); font-weight: 600; }
 .rail { position: sticky; top: var(--s4); font-size: var(--fs-sm); }
 .rail ol { list-style: none; padding: 0; margin: 0; }
 .rail .band { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: var(--s3) 0 var(--s2) 34px; }
-.rail .band.camp { color: var(--camp); }
-.rail .band.climb { color: var(--accent); }
+.rail .band { color: var(--accent); }
+.rail .band.trk-core { color: var(--camp); }
 .rail a { display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: center; padding: 5px 0; color: var(--ink); text-decoration: none; position: relative; }
 .rail a::before { content: ""; position: absolute; left: 11px; top: 0; bottom: 0; border-left: 1px solid var(--rule-strong); }
 .rail .knot { position: relative; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--rule-strong); background: var(--surface); display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; transition: background .2s, color .2s; }
-.rail .camp-l .knot { border-color: var(--camp); color: var(--camp); }
+.rail .trk-core .knot { border-color: var(--camp); color: var(--camp); }
 .rail a:hover .knot { background: var(--accent-soft); }
 .rail a[aria-current="true"] .knot { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .rail a[aria-current="true"] { font-weight: 600; }
 .stepper { display: none; }
-.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.stepper ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
 .stepper a { display: grid; place-items: center; min-height: 44px; border: 1px solid var(--rule-strong); border-radius: 4px; text-decoration: none; font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--ink); background: var(--surface); font-variant-numeric: tabular-nums; }
-.stepper .camp-l a { border-color: var(--camp); color: var(--camp); }
+.stepper .trk-core a { border-color: var(--camp); color: var(--camp); }
 .stepper a[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.stepper .bands { display: grid; grid-template-columns: 2fr 6fr; gap: 4px; margin-top: 4px; }
-.stepper .bands i { display: block; height: 3px; border-radius: 2px; background: var(--accent); }
-.stepper .bands i:first-child { background: var(--camp); }
 .cards { display: grid; gap: var(--s3); min-width: 0; }
 .bandhead { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: baseline; margin-top: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--rule); }
 .bandhead h3 { font-size: var(--fs-md); font-weight: 600; }
 .bandhead .bn { font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; }
-.bandhead.camp .bn { color: var(--camp); }
-.bandhead.climb .bn { color: var(--accent); }
+.bandhead .bn { color: var(--accent); }
+.bandhead.trk-core .bn { color: var(--camp); }
 .bandhead p { font-size: var(--fs-sm); color: var(--muted); flex-basis: 100%; }
+.bandhead .needs { color: var(--ink); font-weight: 600; }
 .lvl { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); scroll-margin-top: 72px; }
-.lvl > summary { cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
+.lvl > summary { position: relative; cursor: pointer; list-style: none; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: var(--s3); padding: var(--s3) var(--s4); align-items: center; }
 .lvl > summary::-webkit-details-marker { display: none; }
+.lvl .alias { position: absolute; top: 0; left: 0; scroll-margin-top: 72px; }
 .lvl .lk { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--rule-strong); display: grid; place-items: center; font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lvl.camp .lk { border-color: var(--camp); color: var(--camp); background: var(--camp-soft); }
-.lvl.climb .lk { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.lvl.trk-core .lk { border-color: var(--camp); color: var(--camp); background: var(--camp-soft); }
+.lvl:not(.trk-core) .lk { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .lvl .lt { display: grid; gap: 2px; min-width: 0; }
 .lvl .lt strong { font-size: var(--fs-md); font-weight: 600; }
 .lvl .lt span { font-size: var(--fs-sm); color: var(--muted); }
@@ -289,7 +288,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
     <p class="sec-lede">The questions people ask before they install himmel, then every word the trail uses that you may not know. What himmel is, what it installs and how to undo it are on <a href="adoption-trail.html">Start here</a>.</p>
     <div class="faq">
       <h2 id="q-claude-code">I have never used Claude Code. What is it?</h2>
-      <p>Claude Code is Anthropic's coding assistant. You start it with <code>claude</code> in a terminal, inside a project; it reads the code, edits files and runs commands, and asks your permission before it does. It needs a Claude account. himmel works only on top of it, so install Claude Code and sign in first: steps 1 and 2 of the <a href="adoption-trail-levels.html#trial">practice climb</a> do both.</p>
+      <p>Claude Code is Anthropic's coding assistant. You start it with <code>claude</code> in a terminal, inside a project; it reads the code, edits files and runs commands, and asks your permission before it does. It needs a Claude account. himmel works only on top of it, so install Claude Code and sign in first: steps 1 and 2 of the <a href="adoption-trail-levels.html#trial">practice run</a> do both.</p>
 
       <h2 id="q-control">Who is in control?</h2>
       <ul>
@@ -307,7 +306,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
       <p>Not until you start it. A scheduled job runs only once you arm it, and <code>disarm</code> stops it again. A shift while you are away starts only when you type <code>/afk-shift</code>, and <code>/stop</code> ends it. The guardrails apply to every session, the unattended ones too.</p>
 
       <h2 id="q-cost">What does it cost?</h2>
-      <p>himmel is open source. The work it runs uses your Claude plan's usage, like any Claude Code session; heavy work checks how much you have left before it starts (<a href="adoption-trail-levels.html#lvl-5">Level 5</a>). A second reviewer from another model family uses that provider's subscription (<a href="adoption-trail-levels.html#lvl-4">Level 4</a>).</p>
+      <p>himmel is open source. The work it runs uses your Claude plan's usage, like any Claude Code session; heavy work checks how much you have left before it starts (<a href="adoption-trail-levels.html#m-spend">Spend &amp; context</a>). A second reviewer from another model family uses that provider's subscription (<a href="adoption-trail-levels.html#t-review">Cross-model review</a>).</p>
 
       <h2 id="q-platforms">Which systems does it run on?</h2>
       <p>Linux and macOS. Where the steps differ, such as installing the tools, the trail shows a Linux and a macOS block.</p>
@@ -343,7 +342,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
       <dt id="g-cr">CR (code review)</dt>
       <dd>The review a change gets before it merges. <code>/pr-check</code> runs it: reviewer models read the change, and each point they raise is fixed or answered before the merge.</dd>
       <dt id="g-panel">Panel</dt>
-      <dd>The reviewers that read one change together. The starter panel is Claude; adding a second model family at <a href="adoption-trail-levels.html#lvl-4">Level 4</a> widens it.</dd>
+      <dd>The reviewers that read one change together. The starter panel is Claude; adding a second model family with the <a href="adoption-trail-levels.html#t-review">Cross-model review</a> track widens it.</dd>
       <dt id="g-critic">Critic</dt>
       <dd>One reviewer model on the panel.</dd>
       <dt id="g-attestation">Attestation</dt>
@@ -351,7 +350,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
       <dt id="g-handover">Handover</dt>
       <dd>A short written note a session leaves so the next one can pick up where it stopped. A Claude Code session forgets everything when it ends; the note does not.</dd>
       <dt id="g-vault">Vault</dt>
-      <dd>A folder of markdown notes, the kind Obsidian opens. himmel can fill it, link it and search it: your second brain, <a href="adoption-trail-levels.html#lvl-2">Level 2</a>.</dd>
+      <dd>A folder of markdown notes, the kind Obsidian opens. himmel can fill it, link it and search it: your second brain, in the <a href="adoption-trail-levels.html#t-brain">Second brain &amp; mobile</a> track.</dd>
       <dt id="g-cadence">Cadence</dt>
       <dd>A job that runs on a schedule, such as re-indexing your notes every night. None runs until you arm it.</dd>
       <dt id="g-lane">Lane</dt>

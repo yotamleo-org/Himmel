@@ -1,17 +1,22 @@
 {
-  "$comment": "The adoption trail's content. node site/src/trail/render.mjs builds docs/adoption-trail.html from this file, page.html, trail.css, trail.js and site/src/styles/tokens.css; scripts/docs/test-adoption-trail.sh pins it to the cadence registry, the plugin catalog and the install manifest. Component status: shipped (no badge), beta (shown as preview), roadmap (shown as planned). Example blocks: cmd (lines starting '$ ' get a prompt), out, say (typed to Claude), p (HTML). setup_time null renders as not measured yet.",
-  "bands": [
-    { "id": "camp", "name": "Base camp", "title": "Guardrails for any project", "lede": "Levels 0 and 1. You can stop here, and that is a complete result." },
-    { "id": "climb", "name": "The climb", "title": "The full stack", "lede": "Levels 2 to 7. Each card says what you can turn on, what it costs you, and how you turn it off." }
+  "$comment": "The adoption trail's content. node site/src/trail/render.mjs builds the three docs/adoption-trail*.html pages from this file, the templates beside it, trail.css, trail.js and site/src/styles/tokens.css; tracks are in page order, and modules in their order inside a track. A module's requires lists the module ids it needs, and a track's Needs line is derived from them, never typed; prereqs holds only what is not a module. legacy_n keeps the old #lvl-N anchor working and is never shown; scripts/docs/test-adoption-trail.sh pins it to the cadence registry, the plugin catalog and the install manifest. Component status: shipped (no badge), beta (shown as preview), roadmap (shown as planned). Example blocks: cmd (lines starting '$ ' get a prompt), out, say (typed to Claude), p (HTML). setup_time null renders as not measured yet.",
+  "tracks": [
+    { "id": "core", "name": "Guarded Core", "short": "Core", "title": "Guardrails for any project", "lede": "Install and guardrails. You can stop here, and that is a complete result." },
+    { "id": "review", "name": "Cross-model review", "short": "Review", "title": "A second model family reads every diff", "lede": "Needs a ChatGPT or Codex login, and no notes vault or chat bot." },
+    { "id": "shifts", "name": "Autonomous shifts & spend protection", "short": "Shifts", "title": "Work that runs while you are away, within your usage", "lede": "Needs a place for handover notes, and no notes vault or chat bot." },
+    { "id": "fleet", "name": "Parallel fleet", "short": "Fleet", "title": "Many workers under one chief", "lede": "For many tickets at once. Needs a ticket tracker, and no notes vault or chat bot." },
+    { "id": "brain", "name": "Second brain & mobile", "short": "Brain", "title": "A notes vault, and your phone", "lede": "Needs a notes vault, and a Telegram bot for mobile. Nothing else on this page needs this track." }
   ],
-  "levels": [
+  "modules": [
     {
-      "n": 0,
-      "band": "camp",
+      "id": "install",
+      "legacy_n": 0,
+      "track": "core",
+      "requires": [],
       "title": "Install & stay current",
       "summary": "<code>himmelctl status</code> reads what is installed, armed and working on your machine.",
       "audience": "Anyone who installs himmel.",
-      "turn_on": "<code>node ~/himmel/scripts/himmelctl/bin.js install</code> and press Enter for the starter answers. The <a href=\"#trial\">practice climb</a> walks it end to end; <a href=\"setup/profiles/\">install profiles</a> explains the other answers.",
+      "turn_on": "<code>node ~/himmel/scripts/himmelctl/bin.js install</code> and press Enter for the starter answers. The <a href=\"#trial\">practice run</a> walks it end to end; <a href=\"setup/profiles/\">install profiles</a> explains the other answers.",
       "outcome": "You know exactly what himmel put on your machine, and one command reports whether each part is still there.",
       "components": [
         { "name": "himmelctl install and status", "status": "shipped", "detail": "<p>The installer previews every file, setting and plugin it would touch, asks before it writes, and records what it changed. <code>status</code> prints one row per item, worst first, then a count.</p>" },
@@ -37,8 +42,10 @@
       ]
     },
     {
-      "n": 1,
-      "band": "camp",
+      "id": "guardrails",
+      "legacy_n": 1,
+      "track": "core",
+      "requires": ["install"],
       "title": "Ship with guardrails",
       "summary": "Edits and commits on your main branch, direct pushes to main and reads of secret files are refused. A guard against destructive shell commands is on by default.",
       "audience": "Anyone who installs himmel.",
@@ -49,7 +56,7 @@
         { "name": "Secret-file protection", "status": "shipped", "detail": "<p>Reads of <code>.env</code> files, keys and similar secret files are refused. To read one on purpose, start Claude Code with <code>READ_SECRETS_OK=1</code> for that session.</p>" },
         { "name": "Git gates: commit, message, push to main", "status": "shipped", "detail": "<p>If your project has no <code>.pre-commit-config.yaml</code>, the install places himmel's own git hooks. They refuse a commit on main, a direct push to main, and a commit message without a conventional type and a ticket reference such as <code>#1</code>. No tracker? Put <code>TICKET_ID_REQUIRED=0</code> in <code>~/.himmel/himmel.conf</code>.</p>" },
         { "name": "Destructive-command guard", "status": "shipped", "plugin": "himmel-guard@himmel", "detail": "<p>On by default. It refuses <code>rm -rf</code>, <code>git reset --hard</code>, <code>git clean -f</code>, force pushes and similar before the command runs. To run one on purpose, start Claude Code with <code>DESTRUCTIVE_OK=1</code> for that session.</p>" },
-        { "name": "<code>/pr-check</code> review panel", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you add one at Level 4), you rule on each finding, and a round repeats until nothing blocking is left.</p>" }
+        { "name": "<code>/pr-check</code> review panel", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Reviews a branch before its pull request opens: Claude reads the diff (and a second model family too, once you turn on the <a href=\"#t-review\">Cross-model review</a> track), you rule on each finding, and a round repeats until nothing blocking is left.</p>" }
       ],
       "example": {
         "title": "Three refusals you will meet",
@@ -63,7 +70,7 @@
           { "kind": "p", "html": "Each of Claude's refusals names a one-session bypass, which you set when you start Claude (for example <code>READ_SECRETS_OK=1 claude</code>), never per command. The push-to-main gate has no bypass: changes reach main through a pull request." }
         ]
       },
-      "prereqs": ["Level 0.", "A git repository with a <code>main</code> branch."],
+      "prereqs": ["A git repository with a <code>main</code> branch."],
       "setup_time": null,
       "cost": ["No model usage for the guards and gates.", "<code>/pr-check</code> uses your Claude usage for each review round."],
       "turn_off": "For one session: start Claude Code as <code>EDIT_ON_MAIN_OK=1 claude</code>, or with <code>READ_SECRETS_OK=1</code> or <code>DESTRUCTIVE_OK=1</code> in the same place. For good: <code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code>.",
@@ -74,73 +81,10 @@
       ]
     },
     {
-      "n": 2,
-      "band": "climb",
-      "title": "Second brain",
-      "summary": "Your notes vault fills and links itself on a schedule, and Claude's lessons land in it.",
-      "audience": "Anyone with an Obsidian vault, or ready to start one.",
-      "turn_on": "run the installer again and pick the <code>luna</code> profile; it scaffolds a vault (or uses yours) and offers the scheduled jobs below.",
-      "outcome": "A link you drop into your vault at midnight is a connected, summarized note by morning, and search over it stays fresh.",
-      "components": [
-        { "name": "Your vault, from the template", "status": "shipped", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
-        { "name": "Scheduled jobs", "status": "shipped", "cadences": true, "detail": "<p>Recurring jobs on your system's scheduler (cron). You see a row only when its condition holds, and anything you decline is recorded as declined.</p>" },
-        { "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
-        { "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },
-        { "name": "Obsidian skills (claude-obsidian)", "status": "shipped", "plugin": "claude-obsidian@himmel", "detail": "<p>Comes from upstream, pinned to a release tag; not a himmel fork.</p>" },
-        { "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p>" },
-        { "name": "Memory compounding: <code>/memory-compound</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Claude Code keeps a memory index for each project and loads it into every session, within a fixed budget. When the index nears that budget, run <code>/memory-compound</code> in a session of its own. It moves the lasting lessons into vault notes, checks that qmd search finds them, and only then trims the index. The vault notes land on a branch for you to review and merge. It runs when you ask; there is no schedule.</p>" }
-      ],
-      "example": {
-        "title": "Check a scheduled job",
-        "blocks": [
-          { "kind": "cmd", "label": "Run", "text": "$ bash ~/himmel/scripts/luna/qmd-cadence.sh status" },
-          { "kind": "p", "html": "You see whether the job is armed, its schedule and its last run. <code>arm</code> refuses to arm it twice, and <code>disarm</code> removes exactly what <code>arm</code> added." }
-        ]
-      },
-      "prereqs": ["Levels 0 and 1.", "A vault made from <code>templates/luna-second-brain/</code>.", "bun, for qmd search (about 2.1 GB of models).", "cron on Linux or macOS."],
-      "setup_time": null,
-      "cost": ["Disk: about 2.1 GB for search models.", "Search re-indexing and the graph's structural refresh: no model usage.", "The pipeline's summaries and the graph's semantic pass: your Claude usage, per run."],
-      "turn_off": "One command per job; every job script takes <code>arm</code>, <code>status</code> and <code>disarm</code>, for example <code>bash ~/himmel/scripts/luna/pipeline-cadence.sh disarm</code>.",
-      "docs": [
-        { "label": "Second brain (luna)", "href": "luna/" },
-        { "label": "Cadences (scheduled jobs)", "href": "cadences/" },
-        { "label": "The compounding loop", "href": "luna/compounding/" }
-      ]
-    },
-    {
-      "n": 3,
-      "band": "climb",
-      "title": "Reach",
-      "summary": "Your phone joins: capture to the vault from chat, and alerts reach you.",
-      "audience": "Anyone who wants Claude and the vault from a phone.",
-      "turn_on": "with a vault, the installer asks whether to configure the Telegram bridge; you create a bot token and the two files below.",
-      "outcome": "You send your bot a message or a link, and Claude answers in the chat or files it into the vault.",
-      "components": [
-        { "name": "Telegram bridge", "status": "shipped", "plugin": "telegram-himmel@himmel", "detail": "<p>A small supervisor on your machine relays your messages to Claude Code and the replies back. Only the Telegram user ids in <code>access.json</code> are answered.</p>" },
-        { "name": "Bridge health checks", "status": "shipped", "detail": "<p>The supervisor restarts the bridge when it stops answering, and <code>himmelctl status</code> reports whether it runs.</p>" },
-        { "name": "Capture from chat", "status": "shipped", "detail": "<p>Send a link or a note; it lands in the vault for the pipeline to summarize and link.</p>" },
-        { "name": "Alerts", "status": "shipped", "detail": "<p>Scheduled jobs and health checks send their alerts to the same chat.</p>" },
-        { "name": "Voice notes", "status": "beta", "detail": "<p>Speak a message instead of typing it; the reply can be read aloud. Works, still changing.</p>" }
-      ],
-      "example": {
-        "title": "Talk to Claude from your phone",
-        "blocks": [
-          { "kind": "out", "label": "Two files you create once", "text": "~/.claude/channels/telegram/.env          TELEGRAM_BOT_TOKEN=<your bot token>\n~/.claude/channels/telegram/access.json   {\"allowFrom\":[\"<your Telegram user id>\"]}" },
-          { "kind": "cmd", "label": "Start the bridge", "text": "$ cd ~/himmel/scripts/telegram\n$ bun supervisor.ts" },
-          { "kind": "p", "html": "Then message your bot. Each message starts one short Claude run, and the reply comes back to the chat." }
-        ]
-      },
-      "prereqs": ["Level 2 for capture to the vault.", "bun.", "A Telegram bot token from BotFather, and your own Telegram user id."],
-      "setup_time": null,
-      "cost": ["Each message is one short Claude run on your usage."],
-      "turn_off": "<code>cd ~/himmel/scripts/telegram &amp;&amp; bun supervisor.ts --kill</code> stops the bridge.",
-      "docs": [
-        { "label": "Telegram bridge", "href": "telegram-bridge/" }
-      ]
-    },
-    {
-      "n": 4,
-      "band": "climb",
+      "id": "review",
+      "legacy_n": 4,
+      "track": "review",
+      "requires": ["guardrails"],
       "title": "Review depth",
       "summary": "A second model family (OpenAI GPT, on your ChatGPT/Codex subscription) reviews every diff alongside Claude, and its track record tunes the review.",
       "audience": "Anyone with a ChatGPT or Codex subscription.",
@@ -161,7 +105,7 @@
           { "kind": "p", "html": "Once reviews have run, it shows one row per critic: how many of its findings held up, and how often it was available." }
         ]
       },
-      "prereqs": ["Level 1 (<code>/pr-check</code>).", "hermes installed.", "A signed-in ChatGPT/Codex subscription (<code>codex login</code>)."],
+      "prereqs": ["hermes installed.", "A signed-in ChatGPT/Codex subscription (<code>codex login</code>)."],
       "setup_time": null,
       "cost": ["The GPT critic draws on your ChatGPT/Codex subscription, one call per review round.", "The scorecard and tuning commands use your Claude usage when you run them."],
       "turn_off": "Run the installer again and leave <code>codex</code> out of the lanes answer; <code>/pr-check</code> then reviews with Claude alone.",
@@ -171,8 +115,10 @@
       ]
     },
     {
-      "n": 5,
-      "band": "climb",
+      "id": "spend",
+      "legacy_n": 5,
+      "track": "shifts",
+      "requires": ["install"],
       "title": "Spend & context",
       "summary": "Heavy work checks your remaining usage first, and each session can read its own context fill.",
       "audience": "Anyone who runs Claude Code for long or unattended.",
@@ -193,7 +139,7 @@
           { "kind": "p", "html": "Or <code>SKIPPED-BANK</code> when your 5-hour or weekly Claude usage is too high, <code>SKIPPED-FLEET</code> when too many sessions already run, and <code>BANK-STALE</code> or <code>BANK-UNKNOWN</code> when the usage reading is old or missing." }
         ]
       },
-      "prereqs": ["Level 0."],
+      "prereqs": [],
       "setup_time": null,
       "cost": ["No model usage: these read numbers Claude Code already reports."],
       "turn_off": "<code>node ~/himmel/scripts/himmelctl/bin.js uninstall --yes</code> restores your old status line; the preflight only ever answers, it never runs anything.",
@@ -203,8 +149,10 @@
       ]
     },
     {
-      "n": 6,
-      "band": "climb",
+      "id": "always-on",
+      "legacy_n": 6,
+      "track": "shifts",
+      "requires": ["guardrails", "spend"],
       "title": "Always-on",
       "summary": "Work continues while you are away, and you read one morning report.",
       "audience": "Anyone who leaves work running overnight.",
@@ -226,7 +174,7 @@
           { "kind": "p", "html": "It saves what you did and where you left off, and confirms the saved note. A fresh session resumes from it." }
         ]
       },
-      "prereqs": ["Levels 1 and 5.", "A place for the notes: a folder in the repo or a separate git repo."],
+      "prereqs": ["A place for the notes: a folder in the repo or a separate git repo."],
       "setup_time": null,
       "cost": ["A shift uses your Claude usage while you are away; the preflight stops it before your own budget runs out."],
       "turn_off": "Nothing runs until you start a shift; <code>/stop</code> ends one.",
@@ -236,11 +184,13 @@
       ]
     },
     {
-      "n": 7,
-      "band": "climb",
+      "id": "fleet",
+      "legacy_n": 7,
+      "track": "fleet",
+      "requires": ["guardrails", "spend", "always-on"],
       "title": "Command a fleet",
       "summary": "Many workers ship tickets in parallel under one chief, and you watch them live.",
-      "audience": "Anyone running many tickets at once; most adopters stop below this level.",
+      "audience": "Anyone running many tickets at once; most adopters never turn this track on.",
       "turn_on": "<code>/chief new</code> starts a chief; <code>himmelctl ui</code> opens the fleet view.",
       "outcome": "You hand the chief a list of tickets, and workers ship them in parallel, each through the same review and merge gate as your own changes.",
       "components": [
@@ -262,7 +212,7 @@
           { "kind": "p", "html": "Open it in your browser. The port and the key after <code>#t=</code> change each launch, and the page only answers on your own machine. It stops after 30 idle minutes or on Ctrl-C." }
         ]
       },
-      "prereqs": ["Levels 1, 5 and 6.", "bun; the first launch builds the fleet page.", "A ticket tracker the chief can read."],
+      "prereqs": ["bun; the first launch builds the fleet page.", "A ticket tracker the chief can read."],
       "setup_time": null,
       "cost": ["Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low."],
       "turn_off": "Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.",
@@ -271,10 +221,78 @@
         { "label": "Running a chief", "href": "handover/running-a-chief/" },
         { "label": "Orchestration patterns", "href": "orchestration-patterns/" }
       ]
+    },
+    {
+      "id": "second-brain",
+      "legacy_n": 2,
+      "track": "brain",
+      "requires": ["install", "guardrails"],
+      "title": "Second brain",
+      "summary": "Your notes vault fills and links itself on a schedule, and Claude's lessons land in it.",
+      "audience": "Anyone with an Obsidian vault, or ready to start one.",
+      "turn_on": "run the installer again and pick the <code>luna</code> profile; it scaffolds a vault (or uses yours) and offers the scheduled jobs below.",
+      "outcome": "A link you drop into your vault at midnight is a connected, summarized note by morning, and search over it stays fresh.",
+      "components": [
+        { "name": "Your vault, from the template", "status": "shipped", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
+        { "name": "Scheduled jobs", "status": "shipped", "cadences": true, "detail": "<p>Recurring jobs on your system's scheduler (cron). You see a row only when its condition holds, and anything you decline is recorded as declined.</p>" },
+        { "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
+        { "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },
+        { "name": "Obsidian skills (claude-obsidian)", "status": "shipped", "plugin": "claude-obsidian@himmel", "detail": "<p>Comes from upstream, pinned to a release tag; not a himmel fork.</p>" },
+        { "name": "Note graph (graphify)", "status": "shipped", "plugin": "graphify@himmel", "detail": "<p>A map of how your notes link to each other, kept current once you arm the vault graph with <code>graphmap-cadence.sh arm --luna-only</code>.</p>" },
+        { "name": "Memory compounding: <code>/memory-compound</code>", "status": "shipped", "plugin": "himmel-ops@himmel", "detail": "<p>Claude Code keeps a memory index for each project and loads it into every session, within a fixed budget. When the index nears that budget, run <code>/memory-compound</code> in a session of its own. It moves the lasting lessons into vault notes, checks that qmd search finds them, and only then trims the index. The vault notes land on a branch for you to review and merge. It runs when you ask; there is no schedule.</p>" }
+      ],
+      "example": {
+        "title": "Check a scheduled job",
+        "blocks": [
+          { "kind": "cmd", "label": "Run", "text": "$ bash ~/himmel/scripts/luna/qmd-cadence.sh status" },
+          { "kind": "p", "html": "You see whether the job is armed, its schedule and its last run. <code>arm</code> refuses to arm it twice, and <code>disarm</code> removes exactly what <code>arm</code> added." }
+        ]
+      },
+      "prereqs": ["A vault made from <code>templates/luna-second-brain/</code>.", "bun, for qmd search (about 2.1 GB of models).", "cron on Linux or macOS."],
+      "setup_time": null,
+      "cost": ["Disk: about 2.1 GB for search models.", "Search re-indexing and the graph's structural refresh: no model usage.", "The pipeline's summaries and the graph's semantic pass: your Claude usage, per run."],
+      "turn_off": "One command per job; every job script takes <code>arm</code>, <code>status</code> and <code>disarm</code>, for example <code>bash ~/himmel/scripts/luna/pipeline-cadence.sh disarm</code>.",
+      "docs": [
+        { "label": "Second brain (luna)", "href": "luna/" },
+        { "label": "Cadences (scheduled jobs)", "href": "cadences/" },
+        { "label": "The compounding loop", "href": "luna/compounding/" }
+      ]
+    },
+    {
+      "id": "reach",
+      "legacy_n": 3,
+      "track": "brain",
+      "requires": ["install", "second-brain"],
+      "title": "Reach",
+      "summary": "Your phone joins: capture to the vault from chat, and alerts reach you.",
+      "audience": "Anyone who wants Claude and the vault from a phone.",
+      "turn_on": "with a vault, the installer asks whether to configure the Telegram bridge; you create a bot token and the two files below.",
+      "outcome": "You send your bot a message or a link, and Claude answers in the chat or files it into the vault.",
+      "components": [
+        { "name": "Telegram bridge", "status": "shipped", "plugin": "telegram-himmel@himmel", "detail": "<p>A small supervisor on your machine relays your messages to Claude Code and the replies back. Only the Telegram user ids in <code>access.json</code> are answered.</p>" },
+        { "name": "Bridge health checks", "status": "shipped", "detail": "<p>The supervisor restarts the bridge when it stops answering, and <code>himmelctl status</code> reports whether it runs.</p>" },
+        { "name": "Capture from chat", "status": "shipped", "detail": "<p>Send a link or a note; it lands in the vault for the pipeline to summarize and link.</p>" },
+        { "name": "Alerts", "status": "shipped", "detail": "<p>Scheduled jobs and health checks send their alerts to the same chat.</p>" },
+        { "name": "Voice notes", "status": "beta", "detail": "<p>Speak a message instead of typing it; the reply can be read aloud. Works, still changing.</p>" }
+      ],
+      "example": {
+        "title": "Talk to Claude from your phone",
+        "blocks": [
+          { "kind": "out", "label": "Two files you create once", "text": "~/.claude/channels/telegram/.env          TELEGRAM_BOT_TOKEN=<your bot token>\n~/.claude/channels/telegram/access.json   {\"allowFrom\":[\"<your Telegram user id>\"]}" },
+          { "kind": "cmd", "label": "Start the bridge", "text": "$ cd ~/himmel/scripts/telegram\n$ bun supervisor.ts" },
+          { "kind": "p", "html": "Then message your bot. Each message starts one short Claude run, and the reply comes back to the chat." }
+        ]
+      },
+      "prereqs": ["bun.", "A Telegram bot token from BotFather, and your own Telegram user id."],
+      "setup_time": null,
+      "cost": ["Each message is one short Claude run on your usage."],
+      "turn_off": "<code>cd ~/himmel/scripts/telegram &amp;&amp; bun supervisor.ts --kill</code> stops the bridge.",
+      "docs": [
+        { "label": "Telegram bridge", "href": "telegram-bridge/" }
+      ]
     }
   ],
   "cadences": {
-    "level": 2,
     "shown": [
       { "id": "pipeline", "what": "Daily: pulls in what you clipped and writes summaries into the vault. Uses your Claude usage.", "offered_when": "a vault exists" },
       { "id": "qmd", "what": "Daily: re-indexes the vault for search. No model usage.", "offered_when": "a vault exists" },

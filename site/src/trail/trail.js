@@ -1,27 +1,36 @@
-// Enhancement only: with this script removed every level and component is
-// still a native <details> with its full text. It opens the level a rail link
-// points at, highlights the level in view, remembers the last level opened,
-// and on wide screens shows a component's detail in a side panel.
+// Enhancement only: with this script removed every module and component is
+// still a native <details> with its full text. It opens the module a rail link
+// or an old #lvl-N link points at, highlights the module and its track in
+// view, remembers the last module opened, and on wide screens shows a
+// component's detail in a side panel.
 (function () {
   var KEY = 'himmel-trail-level';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var wide = window.matchMedia('(min-width: 1100px)');
-  var levels = Array.prototype.slice.call(document.querySelectorAll('details.lvl'));
-  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a[href^="#lvl-"], .stepper a[href^="#lvl-"]'));
+  var mods = Array.prototype.slice.call(document.querySelectorAll('details.lvl'));
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a[href^="#m-"]'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.stepper a[href^="#t-"]'));
 
-  function store(n) { try { localStorage.setItem(KEY, n); } catch (e) { /* storage off */ } }
+  function store(id) { try { localStorage.setItem(KEY, id); } catch (e) { /* storage off */ } }
   function stored() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
 
-  function current(id) {
-    links.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + id ? 'true' : 'false'); });
+  function card(id) {
+    var el = document.getElementById(id);
+    if (el && /^lvl-[0-9]+$/.test(id)) el = el.closest('details.lvl');
+    return el && el.classList.contains('lvl') ? el : null;
   }
 
-  function openLevel(id, scroll) {
-    var d = document.getElementById(id);
-    if (!d || !d.classList.contains('lvl')) return;
+  function current(d) {
+    links.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#' + d.id ? 'true' : 'false'); });
+    chips.forEach(function (a) { a.setAttribute('aria-current', a.getAttribute('href') === '#t-' + d.dataset.track ? 'true' : 'false'); });
+  }
+
+  function openModule(id, scroll) {
+    var d = card(id);
+    if (!d) return;
     d.open = true;
-    store(d.id.slice(4));
-    current(id);
+    store(d.id.slice(2));
+    current(d);
     if (scroll) d.scrollIntoView({ behavior: reduce.matches ? 'auto' : 'smooth', block: 'start' });
   }
 
@@ -29,36 +38,38 @@
     a.addEventListener('click', function (e) {
       e.preventDefault();
       var id = a.getAttribute('href').slice(1);
-      openLevel(id, true);
+      openModule(id, true);
       history.replaceState(null, '', '#' + id);
     });
   });
 
-  levels.forEach(function (d) {
+  mods.forEach(function (d) {
     d.addEventListener('toggle', function () {
-      if (d.open) { store(d.id.slice(4)); current(d.id); }
+      if (d.open) { store(d.id.slice(2)); current(d); }
     });
   });
 
+  var ANCHOR = /^(m-[a-z-]+|lvl-[0-9]+)$/;
   window.addEventListener('hashchange', function () {
     var h = location.hash.slice(1);
-    if (/^lvl-[0-9]+$/.test(h)) openLevel(h, true);
+    if (ANCHOR.test(h)) openModule(h, true);
   });
 
   var hash = location.hash.slice(1);
-  if (/^lvl-[0-9]+$/.test(hash)) {
-    openLevel(hash, true);
+  if (ANCHOR.test(hash)) {
+    openModule(hash, true);
   } else {
-    var n = stored();
-    var d = n === null ? null : document.getElementById('lvl-' + n);
+    var v = stored();
+    var d = v === null ? null : card(/^[0-9]+$/.test(v) ? 'lvl-' + v : 'm-' + v);
     var note = document.getElementById('resume');
     if (d && note) {
       d.open = true;
-      current(d.id);
+      current(d);
+      var head = document.getElementById('t-' + d.dataset.track);
       var a = document.createElement('a');
       a.href = '#' + d.id;
-      a.textContent = 'Level ' + n + ', ' + d.querySelector('.lt strong').textContent;
-      a.addEventListener('click', function (e) { e.preventDefault(); openLevel(d.id, true); });
+      a.textContent = d.querySelector('.lt strong').textContent + (head ? ', in ' + head.querySelector('.bn').textContent : '');
+      a.addEventListener('click', function (e) { e.preventDefault(); openModule(d.id, true); });
       note.textContent = 'Welcome back. You were on ';
       note.appendChild(a);
       note.appendChild(document.createTextNode('.'));
@@ -68,9 +79,9 @@
 
   if ('IntersectionObserver' in window) {
     var seen = new IntersectionObserver(function (entries) {
-      entries.forEach(function (en) { if (en.isIntersecting) current(en.target.id); });
+      entries.forEach(function (en) { if (en.isIntersecting) current(en.target); });
     }, { rootMargin: '-35% 0px -60% 0px' });
-    levels.forEach(function (d) { seen.observe(d); });
+    mods.forEach(function (d) { seen.observe(d); });
   }
 
   var panel = document.createElement('aside');
