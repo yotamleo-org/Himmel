@@ -48,6 +48,11 @@ vi.mock('../release/engine.js', async (orig) => {
     operatorFence: ((c) => m.operatorFence(fenceTree.at ? { ...c, ...fenceTree.at } : c)) as typeof m.operatorFence,
   };
 });
+const goSeen = vi.hoisted(() => ({ out: null as unknown, args: null as unknown }));
+vi.mock('../release/go-answer.js', async (orig) => {
+  const m = await orig<typeof import('../release/go-answer.js')>();
+  return { ...m, goAnswer: ((a, d) => { goSeen.args = a; return (goSeen.out ?? m.goAnswer(a, d)) as ReturnType<typeof m.goAnswer>; }) as typeof m.goAnswer };
+});
 // The run options the repair command hands to the repair, as the last call saw them.
 const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
 vi.mock('../release/repair-run.js', async (orig) => {
@@ -118,6 +123,40 @@ describe('jira release operator go-answer wiring', () => {
     }
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     await expect(run('operator', 'go-answer', '--request', 'r', '--request-sha256', 's', '--nope')).rejects.toThrow(/unknown option '--nope'/);
+  });
+
+  const lookup = () => run('operator', 'go-answer', '--request', 'r', '--request-sha256', 's', '--lookup', '--update', '900000200');
+
+  it.skipIf(process.platform !== 'linux')('a refusal exits 2 with its reason on stderr', async () => {
+    const said: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((s: string) => { said.push(s); });
+    vi.stubEnv('CLAUDECODE', '1');
+    try {
+      await lookup();
+      expect(process.exitCode).toBe(2);
+      expect(said).toEqual([expect.stringMatching(/agent session/)]);
+    } finally {
+      process.exitCode = 0;
+    }
+  });
+
+  it('prints the check as two lines and a record as one JSON line, exits 3 with none, and reads the numbers as digits only', async () => {
+    try {
+      goSeen.out = { mode: 'check', key: 'K-1', from: 'v1', ask: 'the ask' };
+      await run('operator', 'go-answer', '--request', 'r', '--request-sha256', 's', '--check', '--code', 'K7P2QX');
+      goSeen.out = { mode: 'record', record: { o: 'O-v1-0001', key: 'K-1', from: 'v1', words: 'a\nb' } };
+      await run('operator', 'go-answer', '--request', 'r', '--request-sha256', 's', '--update', '900000200', '--code', 'K7P2QX', '--asked', '1e3', '--ttl', '60');
+      expect(out).toEqual(['ok key=K-1 from=v1\nask=the ask', '{"o":"O-v1-0001","key":"K-1","from":"v1","words":"a\\nb"}']);
+      expect(goSeen.args).toMatchObject({ request: 'r', requestSha256: 's', update: 900000200, asked: Number.NaN, ttl: 60 });
+      expect(process.exitCode ?? 0).toBe(0);
+      goSeen.out = { mode: 'none' };
+      await lookup();
+      expect(process.exitCode).toBe(3);
+      expect(out).toHaveLength(2);
+    } finally {
+      goSeen.out = null;
+      process.exitCode = 0;
+    }
   });
 
   it('G17 (pin): the desk verb takes no --go flag', async () => {

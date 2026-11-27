@@ -163,6 +163,36 @@ describe('V1: the real verifier through verifyUpdate', () => {
   });
 });
 
+describe('the verifier spawn', () => {
+  const line = reply();
+  const answer = (stdout: string, status: number | null = 0, stderr = '', error?: Error) => () => ({ status, stdout, stderr, error });
+
+  it('spawns bun on the verifier by absolute path, with only PATH, HOME, LANG and TZ and a 15 s timeout', () => {
+    const seen: unknown[] = [];
+    verifyUpdate(UPDATE, {
+      env: { PATH: '/p', HOME: '/h', LANG: 'C', TZ: 'UTC', BRIDGE_ROOT: '/forged', TELEGRAM_ACCESS_PATH: '/forged', NODE_OPTIONS: '--require x' },
+      spawn: (cmd, args, o) => {
+        seen.push(cmd, args, o);
+        return answer(`${JSON.stringify(line)}\n`)();
+      },
+    });
+    expect(seen).toEqual(['bun', [join(repo, 'scripts', 'telegram', 'operator-words.ts'), '--update', String(UPDATE)],
+      { cwd: repo, env: { PATH: '/p', HOME: '/h', LANG: 'C', TZ: 'UTC' }, timeout: 15_000 }]);
+  });
+
+  it('refuses a failed spawn, quoting the verifier or the spawn error', () => {
+    expect(() => verifyUpdate(UPDATE, { spawn: answer('', 1, 'update is forwarded\nmore\n') })).toThrow(/the words verifier refused: update is forwarded$/);
+    expect(() => verifyUpdate(UPDATE, { spawn: answer('', null, '', new Error('spawnSync bun ETIMEDOUT')) })).toThrow(/ETIMEDOUT/);
+  });
+
+  it('refuses any output but one JSON line for this update', () => {
+    const one = JSON.stringify(line);
+    for (const stdout of ['', one, `${one}\n${one}\n`, 'not json\n', 'null\n', `${JSON.stringify({ ...line, update_id: UPDATE + 1 })}\n`, `${JSON.stringify({ ...line, ts: '1' })}\n`]) {
+      expect(() => verifyUpdate(UPDATE, { spawn: answer(stdout) }), JSON.stringify(stdout)).toThrow(/exactly one JSON line/);
+    }
+  });
+});
+
 describe('go-answer: the record', () => {
   it('G0: a go-confirmed reply with no agent ancestor writes one decision row and returns its record', () => {
     const args = writeArgs();
