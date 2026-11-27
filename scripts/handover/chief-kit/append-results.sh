@@ -47,7 +47,7 @@
 #   8  a PROOF / LIVE-PROOF bullet is not `<KEY> <row-id> PASS|FAIL <date> <artifact>` - nothing written
 #   9  its PROOF line could not be put on the ticket - nothing written
 #  10  a worker bullet holding READY-TO-SIGN lacks a field or names one twice, has a
-#      relative path or a route= other than spec or spec-review, sign-check refuses its
+#      relative path or a non-empty route= that is not spec or spec-review, sign-check refuses its
 #      files, or its two shas are not the ones sign-check printed - nothing written.
 #      The bullet carries spec= plan= spec-return= plan-return= (absolute paths with
 #      no spaces) keys=<K[,K]> spec-sha= plan-sha=, and route=spec-review when that

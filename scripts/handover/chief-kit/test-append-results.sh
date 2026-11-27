@@ -312,6 +312,12 @@ printf '# worker\n\nYour RETASK token is X-15.\n\n## Results (newest at the bott
 WORKER_SESSION_JIRA_STATUS=0 bash "$SCRIPT" "$d14b" "LIVE fixture" >/dev/null 2>&1
 check "14: with a Chief Rulings section after Results the bullet lands at its end, in doc order" "$(sed -n '9,10p' "$d14b" | sed 's/^- [0-9:]* //' | tr '\n' '|')" "ruling|LIVE fixture|"
 
+mkdir -p "$tmp/sep/co/scripts/lib" "$tmp/sep/meta"
+cp "$HERE/../../lib/git-clean.sh" "$HERE/../../lib/jira-cli-path.sh" "$tmp/sep/co/scripts/lib/"
+git init -q --separate-git-dir "$tmp/sep/meta/gitdir" "$tmp/sep/co"
+# shellcheck disable=SC2016  # $1 expands in the child shell
+check "14: a separate git dir names no primary root, never its parent" "$(bash -c '. "$1"; himmel_primary_root; echo "rc=$?"' _ "$tmp/sep/co/scripts/lib/jira-cli-path.sh")" "rc=1"
+
 K1=HIMMEL-1; K2=HIMMEL-2
 JIRA15="$tmp/jira15"
 cat > "$JIRA15" <<'STUB'
@@ -413,7 +419,8 @@ check "16: a chief doc takes the token unchecked, rc 0" "$rc" 0
 check "16: a chief doc calls nothing" "$(calls16)" ""
 
 jira_src="$(cd "$HERE/../../jira" && pwd)"
-if command -v bun >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
+sha16() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
+if command -v bun >/dev/null 2>&1 && [ -d "$jira_src/node_modules/commander" ]; then
     printf '#!/bin/sh\nexec bun "%s/src/index.ts" "$@"\n' "$jira_src" > "$tmp/jira-real"
     chmod +x "$tmp/jira-real"
     export OWE_JIRA_CLI="$tmp/jira-real"
@@ -423,7 +430,7 @@ if command -v bun >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 && [ -
     printf '# plan\n' > "$fx/plan.md"
     printf 'SPEC CLEAN\n' > "$fx/spec.md.critic-spec-r1.md"
     printf 'PLAN CLEAN\n' > "$fx/spec.md.critic-plan-r1.md"
-    spec_sha="$(sha256sum "$fx/spec.md" | cut -d' ' -f1)"; plan_sha="$(sha256sum "$fx/plan.md" | cut -d' ' -f1)"
+    spec_sha="$(sha16 "$fx/spec.md")"; plan_sha="$(sha16 "$fx/plan.md")"
     real16="LIVE — READY-TO-SIGN spec=$fx/spec.md plan=$fx/plan.md spec-return=$fx/spec.md.critic-spec-r1.md plan-return=$fx/spec.md.critic-plan-r1.md keys=$K1 spec-sha=$spec_sha plan-sha=$plan_sha"
     cp "$d16" "$tmp/d16.before"
     run16 unused "$d16" "$real16"
@@ -436,7 +443,7 @@ if command -v bun >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 && [ -
     contains "16: the real refusal is printed" "$err" "SIGN-CHECK REFUSED: "
     contains "16: the real refusal names the spec gate" "$err" "minerva-spec-gate"
 else
-    echo "ok - 16: real-verb rows skipped (no bun, sha256sum or scripts/jira/node_modules)"
+    echo "ok - 16: real-verb rows skipped (no bun, or no scripts/jira/node_modules)"
 fi
 unset OWE_JIRA_CLI STUB_DIR
 

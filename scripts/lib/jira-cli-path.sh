@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/jira-cli-path.sh - sourced: the primary checkout and its Jira CLI.
-#   himmel_primary_root      prints the parent of this tree's --git-common-dir; 1 when unknown
+#   himmel_primary_root      prints the parent of this tree's --git-common-dir when that dir
+#                            is a .git; 1 otherwise (a separate git dir's parent is no checkout)
 #   jira_cli_path            prints the CLI: OWE_JIRA_CLI (tests), else the primary checkout's
 #                            scripts/jira/dist/index.js; 1 when there is none
 #   jira_cli_run <key> ...   runs it with JIRA_PROJECT_KEY set to the key's project
@@ -15,8 +16,8 @@ himmel_primary_root() {
     # shellcheck source=scripts/lib/git-clean.sh
     . "$kit/git-clean.sh" 2>/dev/null || return 1
     common="$(git_clean -C "$kit" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1  # swallow-ok: no git, or an old git, is "unknown"
-    [ -n "$common" ] || return 1
-    dirname -- "$common"
+    [ "${common##*/}" = ".git" ] || return 1
+    printf '%s\n' "${common%/.git}"
 }
 
 jira_cli_path() {
