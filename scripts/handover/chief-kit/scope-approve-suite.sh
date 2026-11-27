@@ -6,8 +6,8 @@
 #
 # Real pieces: `release core-check` (rows A3.b, A3.b.ctl) and the real ADF renderer: the stub post re-renders the fixture
 # issue file through the exported renderIssue of dist/commands/mirror.js, so a comment lands in the mirror text exactly as a
-# mirror run would write it (rows A1.b, A1.b.ctl, which builds the same lines through markdownToAdf, the route
-# `--comment-file` takes: it joins them, and the joined mid-line Writes: still reads). The real next-dispatchable.sh judges every ticket. A checkout without the build fails by name
+# mirror run would write it (rows A1.b, A1.b.ctl, whose control builds the same lines through markdownToAdf, the route
+# `--comment-file` takes). The real next-dispatchable.sh judges every ticket. A checkout without the build fails by name
 # (PREREQUISITE-ABSENT): this is not a test-*.sh suite, which the shell runner would also run where there is no build.
 # CI runs it in the node-suites (jira) job, after the build. SCOPE_APPROVE_SUITE_CLI names another build.
 set -uo pipefail
