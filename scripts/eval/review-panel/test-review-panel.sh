@@ -8,7 +8,7 @@ set -u
 # shellcheck source=test_review_panel_lib.sh
 . "$(cd "$(dirname "$0")" && pwd)/test_review_panel_lib.sh"
 export CRITICS_LOCAL_JSON="$TMP/no-overlay.json"
-unset CRITICS_JSON CRITICS_BASE_JSON CRITIC_PARALLEL
+unset CRITICS_JSON CRITICS_BASE_JSON CRITIC_PARALLEL STUB_PAR_LOG
 
 # --- fixture + key integrity ------------------------------------------------------
 eq "fixtures: 24 frozen diffs" "$(find "$FIX" -name 'case-*.patch' | wc -l | tr -d ' ')" "24"
@@ -470,9 +470,10 @@ eq "run: the tier set reaches the panel" "$(cat "$TMP/stublog/tiers" 2>/dev/null
 eq "run: triviality override on, known-findings off" "$(cat "$TMP/stublog/env" 2>/dev/null)" "full 0"
 eq "run: CRITIC_PARALLEL unset hands the panel 1" "$(cat "$TMP/stublog/parallel" 2>/dev/null)" "1"
 eq "manifest: the default parallel setting is recorded in the protocol" "$(mget "$TMP/run1" protocol/overrides/CRITIC_PARALLEL)" "1"
-CRITIC_PARALLEL=0 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
+mkdir -p "$TMP/stublog0"
+CRITIC_PARALLEL=0 STUB_LOG_DIR="$TMP/stublog0" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   bash "$RUN" --out "$TMP/run0" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex --tiers paid >/dev/null 2>&1; rc=$?
-eq "run: an explicit CRITIC_PARALLEL=0 wins" "$rc:$(cat "$TMP/stublog/parallel" 2>/dev/null):$(mget "$TMP/run0" protocol/overrides/CRITIC_PARALLEL)" "0:0:0"
+eq "run: an explicit CRITIC_PARALLEL=0 wins" "$rc:$(cat "$TMP/stublog0/parallel" 2>/dev/null):$(mget "$TMP/run0" protocol/overrides/CRITIC_PARALLEL)" "0:0:0"
 cj="$(cat "$TMP/stublog/critics_json" 2>/dev/null)"
 slugs() { python3 -c 'import json,sys; print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"]))' "$1" 2>&1; }
 codexrow() { python3 -c 'import json,sys; print([r for r in json.load(open(sys.argv[1]))["panel"] if r["slug"]=="codex"])' "$1" 2>&1; }
