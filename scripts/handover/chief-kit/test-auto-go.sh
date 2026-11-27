@@ -1147,7 +1147,7 @@ check    "11407 AG2 nothing sent" "$(bust)" "none"
 recworker ag3; bash "$WT" mint "$WORKER" CJ-N1 >/dev/null 2>&1; REC3=$(recrows ag3)
 gofresh; write_fixtures native "" "$STALE_LINE"; chief_token NONCE-UNKNOWN
 OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
-check    "11407 AG3 HIMMEL_CONSOLE_LEG=1 with a record: exit 3 as today, the record untouched" "$RC $(recrows ag3)" "3 $REC3"
+check    "11407 AG3 HIMMEL_CONSOLE_LEG=1 with a record: exit 3 as today, the record untouched" "$RC $(recrows ag3)|$([ -n "$REC3" ] && echo minted)" "3 $REC3|minted"
 WORKER="$WORKER_KEEP"
 gofresh
 

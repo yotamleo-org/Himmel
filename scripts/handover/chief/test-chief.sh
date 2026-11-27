@@ -4946,7 +4946,7 @@ ROT11407="$(wt11407 rotate "$D11277/DEMO-101-N101-worker.md" --to Y-chief)"
 printf '%s\n' '- 11:00 SUCCESSION accepted: Y-chief replaces X-chief' >> "$D11277/DEMO-101-N101-worker.md"
 gd11407() ( HANDOVER_DIR="$root"; export HANDOVER_DIR; . "$fixture_repo/scripts/handover/chief-kit/go-deliver.sh" || exit 9; gd_worker_token "$S11277" "$1" "$D11277/DEMO-${1#N}-$1-worker.md" )
 check "11407 TR2 a rotated and confirmed worker: the successor's GO reader quotes its gen-2 token" "$(gd11407 N101)|$([ -n "$ROT11407" ] && [ "$ROT11407" != "${R11407[101]}" ] && echo fresh)" "$ROT11407|fresh"
-check "11407 TR2c an unrotated worker: its gen-1 token" "$(gd11407 N102)" "${R11407[102]}"
+check "11407 TR2c an unrotated worker: its gen-1 token" "$(gd11407 N102)|$([ -n "${R11407[102]}" ] && echo minted)" "${R11407[102]}|minted"
 rel11277
 
 mk11277 tr3km-11407 on "$tok11277" "" "$relayed11407"

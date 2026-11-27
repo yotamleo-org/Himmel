@@ -2479,7 +2479,10 @@ brief_seed_tokens() (
 # derives. A live worker with no span, or a well-formed NONCE-UNKNOWN span, gets @record when worker-token.sh gen reads
 # state=ok, else its brief's RETASK token, which the chief wrote, when its doc records no SUCCESSION accepted.
 record_usable() {
-    HANDOVER_DIR="$root" bash "$HERE/../chief-kit/worker-token.sh" gen "$1" >/dev/null 2>&1
+    local out
+    out="$(HANDOVER_DIR="$root" bash "$HERE/../chief-kit/worker-token.sh" gen "$1" 2>/dev/null)" || return 1  # swallow-ok: any state but ok keeps today's NONCE-UNKNOWN or brief seed
+    case "$out" in *" state=ok") return 0 ;; esac
+    return 1
 }
 carry_live_workers() {
     local block="$1" rows="$2" whole="$3" letter="$4" label ldoc sess pid span spans where add="" first rest out="" token i
