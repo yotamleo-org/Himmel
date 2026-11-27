@@ -1407,7 +1407,7 @@ mkTargetZ untracked 0
 runEnsureZ untracked --yes
 [ "$rcZ" -eq 0 ] || fail "case z: an untracked settings file should be written (got rc=$rcZ): $outZ"
 [ "$(cat "$work/log-z-untracked.txt")" = "red-item" ] || fail "case z: the writer should run once for an untracked file (log: $(cat "$work/log-z-untracked.txt"))"
-grepq "$(cat "$work/target-z-untracked/.claude/settings.json")" -F 'wired' || fail "case z: the untracked settings file should be written"
+grepq "$(cat "$work/target-z-untracked/.claude/settings.local.json")" -F 'wired' || fail "case z: the local settings file should be written (a project statusLine goes there)"
 ! grepq "$outZ" -F 'tracked settings file' || fail "case z: no tracked-file warning for an untracked file (got: $outZ)"
 echo "ok: case z2 — an untracked settings file is written as before"
 
@@ -1415,10 +1415,9 @@ mkTargetZ flag 1
 runEnsureZ flag --yes --write-tracked
 [ "$rcZ" -eq 0 ] || fail "case z: --write-tracked should allow the write (got rc=$rcZ): $outZ"
 [ "$(cat "$work/log-z-flag.txt")" = "red-item" ] || fail "case z: the writer should run with --write-tracked (log: $(cat "$work/log-z-flag.txt"))"
-grepq "$outZ" -F 'WARNING' || fail "case z: a written tracked file must be reported (got: $outZ)"
-grepq "$outZ" -F '.claude/settings.json' || fail "case z: the warning should name the file (got: $outZ)"
-[ -n "$(zgit "$work/target-z-flag" status --porcelain -- .claude/settings.json)" ] || fail "case z: the tracked file should now show as modified"
-echo "ok: case z3 — --write-tracked writes the tracked file and warns that it is now modified"
+! grepq "$outZ" -F 'WARNING' || fail "case z: a project statusLine goes to the local file, so no tracked-file warning (got: $outZ)"
+[ -z "$(zgit "$work/target-z-flag" status --porcelain -- .claude/settings.json)" ] || fail "case z: the tracked shared file must stay clean when only the local file is written"
+echo "ok: case z3 — --write-tracked lets the run through and a project statusLine leaves the tracked file clean"
 
 mkTargetZ dry 1
 runEnsureZ dry --dry-run
