@@ -1,0 +1,27 @@
+{
+ "_provenance": {
+  "command": "chief-route.ts round-status --all --specs <the bucket's specs> --json",
+  "input_sha256": "a5f793f23bc904436f45960a50d4aa1f743b1662e279ffd10d66c9df6a0b810e",
+  "trim": "two keys (one next none, one next full), each cut to key, spec, plan, writer, next and why; the live data held no error entry, so that form is in rounds-error-handmade.json",
+  "what": "recorded real owner output, read-only, 2026-11-27"
+ },
+ "cap": 3,
+ "keys": {
+  "HIMMEL-10012": {
+   "key": "HIMMEL-10012",
+   "next": "none",
+   "plan": 6,
+   "spec": 6,
+   "why": "spec round 7: HIMMEL-10012 writer round 7 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason); plan round 7: HIMMEL-10012 writer round 7 needs a round-critical record with the operator's words (--decision and --quote; under decision 1418 a chief decision file quotes them and gives its reason)",
+   "writer": 6
+  },
+  "HIMMEL-10216": {
+   "key": "HIMMEL-10216",
+   "next": "full",
+   "plan": 1,
+   "spec": 2,
+   "why": "spec round 3: full; plan round 2: full",
+   "writer": 2
+  }
+ }
+}
