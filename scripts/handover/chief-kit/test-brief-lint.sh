@@ -28,6 +28,7 @@
 set -u
 export JIRA_PROJECTS=HIMMEL,QQQ,ZZZ JIRA_PROJECT_KEY=HIMMEL
 export UNGUARDED_LAUNCH_OK=1
+unset BRIEF_LINT_TEST_ENVLOG
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
@@ -340,13 +341,13 @@ mk core_gpt_unknown '# HIMMEL-9499 — adopt the GPT-6.2 models' "$PA" '> **Cont
 rc=0; err="$(bash "$LINT" "$tmp/core_gpt_unknown.md" 2>&1 >/dev/null)" || rc=$?
 { [ "$rc" -eq 3 ] && grep -Fq 'core brief HIMMEL-9499 is not in the Jira mirror' <<< "$err"; } \
     && ok "8x3 an unknown key of a configured project is still refused" || bad "8x3 rc=$rc: $err"
-git init -q "$tmp/fb-home"; mkdir -p "$tmp/fb-home/no-config" "$tmp/fb-home/.himmel"
+git init -q "$tmp/fb-home" || exit 1; mkdir -p "$tmp/fb-home/no-config" "$tmp/fb-home/.himmel"
 fb_lint() {
     local a=(); while [ "$1" != -- ]; do a+=("$1"); shift; done; shift
     rc=0; err="$(cd "$tmp/fb-home" && env -u HIMMEL_PROFILE "${a[@]}" HOME="$tmp/fb-home" HIMMEL_CONFIG_DIR="$tmp/fb-home/no-config" HIMMELCTL_CACHE_DIR="$tmp/fb-home/no-cache" bash "$LINT" "$@" 2>&1 >/dev/null)" || rc=$?
 }
 fb_gpt6() { [ "$rc" -eq 3 ] && grep -Fq 'core brief GPT-6 is not in the Jira mirror' <<< "$err"; }
-fb_unleaked() { [ -s "$1" ] && ! grep -Fvxq 'JIRA_PROJECTS= JIRA_PROJECT_KEY=' "$1"; }
+fb_unleaked() { local g=0; [ -s "$1" ] || return 1; grep -Fvxq 'JIRA_PROJECTS= JIRA_PROJECT_KEY=' "$1" || g=$?; [ "$g" -eq 1 ]; }
 fb_lint -u JIRA_PROJECTS -u JIRA_PROJECT_KEY -- "$tmp/core_gpt.md"
 fb_gpt6 && ok "8x4 with no configured project any prefix is still read" || bad "8x4 rc=$rc: $err"
 : > "$tmp/fb-home/README"
@@ -354,6 +355,8 @@ fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=*' -- "$tmp/core_gpt.md"
 fb_gpt6 && ok "8x4b only malformed entries fall back to any prefix and nothing is globbed" || bad "8x4b rc=$rc: $err"
 fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA' -- "$tmp/core_gpt.md"
 fb_gpt6 && ok "8x4c a space-separated list is malformed and falls back to any prefix" || bad "8x4c rc=$rc: $err"
+fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS=HIMMEL LUNA,QQQ' -- "$tmp/core_gpt.md"
+[ "$rc" -eq 0 ] && ok "8x4d a malformed entry is dropped and a valid one beside it is kept" || bad "8x4d rc=$rc: $err"
 fb_lint -u JIRA_PROJECTS JIRA_PROJECT_KEY=HIMMEL -- "$tmp/core_gpt.md"
 [ "$rc" -eq 0 ] && ok "8x5 the default project alone is a configured prefix" || bad "8x5 rc=$rc: $err"
 fb_lint -u JIRA_PROJECT_KEY 'JIRA_PROJECTS= himmel , ' -- "$tmp/core_gpt.md"
