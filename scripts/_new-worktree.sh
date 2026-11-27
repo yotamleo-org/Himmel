@@ -234,7 +234,7 @@ if [ "$RESUME" -eq 1 ]; then
         esac
     done < <(git -C "$PRIMARY_WORKTREE" worktree list --porcelain)
     if [ -e "$WORKTREE_PATH" ]; then
-        if [ -n "$_reg_path" ] && [ "$_reg_path" -ef "$WORKTREE_PATH" ] &&
+        if [ ! -L "$WORKTREE_PATH" ] && [ -n "$_reg_path" ] && [ "$_reg_path" -ef "$WORKTREE_PATH" ] &&
             [ "$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel 2>/dev/null)" -ef "$WORKTREE_PATH" ] &&
             [ "$(git -C "$WORKTREE_PATH" symbolic-ref -q HEAD)" = "refs/heads/$BRANCH" ] &&
             [ "$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-common-dir)" && pwd)" -ef "$COMMON_DIR_ABS" ]; then

@@ -195,6 +195,10 @@ g branch -q "$B5" main
 git -C "$REPO" worktree add -q "$TMPBASE/elsewhere" "$B5" >/dev/null 2>&1
 run bash "$WT" resume "$B5" --no-install
 refused "checked-out: a live registration elsewhere" "checked-out"
+ln -s "$TMPBASE/elsewhere" "$(wt_dir $B5)"
+run bash "$WT" resume "$B5" --no-install
+refused "symlink at the path to a registration elsewhere: path-exists" "path-exists"
+rm "$(wt_dir $B5)"
 g worktree remove --force "$TMPBASE/elsewhere"
 
 B6=fix/r-merged
