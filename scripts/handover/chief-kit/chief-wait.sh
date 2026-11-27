@@ -429,10 +429,10 @@
 # Chief duties (needs --doc and --workers-from): after each successful sample's tick the waiter runs
 # chief-duty-sweep.sh under `timeout -k 2 <bound>` with CHIEF_DUTY_AUTORUN=0, so it sends no rerun
 # unless CHIEF_WAIT_DUTY_AUTORUN=1. Only an exit 0 replaces the list and state; a hang, crash or exit 2
-# never fails the sample. Every wake ends with
+# never fails the sample. When the last list holds a DUTY or DUTY-RAN line, or a source unread for 15
+# minutes, a wake ends with that list under
 #   chief-duty <n> as of <time>Z[ stale]:   (stale: a list older than 900 s)
-# and the last list, when it holds a DUTY or DUTY-RAN line or a source unread for 15 minutes; with
-# `chief-duty sweep failing rc=<rc> since <time>Z` while the sweep fails; with
+# A wake also carries `chief-duty sweep failing rc=<rc> since <time>Z` while the sweep fails, and
 # `chief-duty off: <reason>` when an input a named sweep needs is missing. The owed-stale lines are
 # folded into one `DUTY owed-stale x<n> (not listed; run the sweep by hand)`; every other line printed
 # is marked shown. A sample that no earlier rule woke on prints

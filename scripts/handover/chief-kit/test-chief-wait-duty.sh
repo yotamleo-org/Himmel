@@ -88,7 +88,9 @@ finish() {
     while [ "$n" -lt "$1" ] && kill -0 "$wp" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
     if kill -0 "$wp" 2>/dev/null; then kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null; OUT=$(cat "$WORK/out"); return 1; fi
     wait "$wp" 2>/dev/null
+    local rc=$?
     OUT=$(cat "$WORK/out")
+    return "$rc"
 }
 after() {
     local i=0
