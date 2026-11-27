@@ -74,7 +74,9 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   closure check, for the kinds whose next round it is (`--round` names the one refused target to open, and is required when
   the targets sit at different rounds; refused when that round needs no record, and once per decision: a decision any record already used is refused); and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
   start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
-  and hold the quote. **Never pick `<d>` by hand** (a chief and a T3 thread did, on one station, and gave two rulings one
+  and hold the quote. A quote under 20 characters counts only as the operator's answer to a Question block, written with
+  `bun <himmel>/scripts/handover/chief-kit/ask-question.ts ask` and answered with `bun <himmel>/scripts/handover/chief-kit/ask-question.ts answer`.
+  In such a file only the answer paragraph is the operator's words. **Never pick `<d>` by hand** (a chief and a T3 thread did, on one station, and gave two rulings one
   number): take it with `bash <himmel>/scripts/handover/chief-kit/rulings-in-force.sh next-id --bucket <bucket>`, which
   reserves the next free number under a lock and prints it, then write the file with that number and `record` it;
   `record` refuses a number whose file or ledger row sits at another path. A `round-critical ... --restores` record, for a reverses-ruling finding whose fix restores a
