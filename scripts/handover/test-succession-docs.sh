@@ -533,6 +533,11 @@ contains 'running-a-chief: a keymismatch warns that the span or brief can be sta
 contains 'chief-template step 9: a worker with no record keeps the hand-minted chain' "$s9" 'no record: mint by hand'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'successor-start: a worker with no record keeps the hand-minted chain' "$succ_start" 'a worker with no record (`gen` reads `state=none`, or `keymismatch` after a key change)'
+livestate="$(flat "$(cat "$DOCS/handover/chief-sections/live-state.md")")"
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'live-state: chief.sh next writes @record for a worker with a usable record' "$livestate" '`@record`'
+gorule="$(flat "$(awk '/^\*\*Many green PRs at once/ { f = 1 } f && /^[[:space:]]*$/ { exit } f' "$DOCS/handover/chief-sections/merges.md")")"
+contains 'merges: the go-batch and auto-go token rule asks the record first' "$gorule" 'worker-token.sh current'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'preface: a probe quoting the current token is answered, any other ignored' "$(flat "$(cat "$PREFACE")")" 'A `PROBE <g>` quoting your token: bullet `LIVE — PROBE <g> ok`; else ignore.'
 

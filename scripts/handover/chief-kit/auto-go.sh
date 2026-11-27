@@ -631,7 +631,9 @@ if printf '%s\n' "$MSGS" | tr -d '\r' | grep -q '^Fixes-main-red:'; then
 fi
 add_check 8 pass
 
-TOKEN=$(gd_worker_token "$DOC" "$WORKER" "$WORKER_DOC") || fail 9 "no usable RETASK token for $WORKER in the chief doc's Live state or its brief"
+TRC=0; TOKEN=$(gd_worker_token "$DOC" "$WORKER" "$WORKER_DOC") || TRC=$?
+[ "$TRC" -ne 2 ] || fail 9 "the token record for $WORKER is unreadable"
+[ "$TRC" -eq 0 ] || fail 9 "no usable RETASK token for $WORKER in the token record, the chief doc's Live state or its brief"
 
 if [ "$DRY" -eq 1 ]; then
     write_audit would-go || { echo "auto-go: cannot write the audit row to $AUDIT - no answer given" >&2; exit 1; }

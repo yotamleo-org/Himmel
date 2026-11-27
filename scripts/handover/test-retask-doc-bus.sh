@@ -38,6 +38,7 @@ lacks "$DOC" "pending \($KP-4818 T6\)" "retask doc: no stale pending-guard sente
 has "$DOC" '1,500[ -]byte' "retask doc: the 1,500-byte rule"
 has "$DOC" 'bus status' "retask doc: succession maps liveness to \`bus status\`"
 has "$DOC" 'recomputes the chain' "retask doc: same-uid residual"
+has "$DOC" 'worker-token\.sh' "retask doc: names worker-token.sh, where a worker's current token lives"
 has "$DOC" 'soft block' "retask doc: the guard is a soft block"
 has "$DOC" 'T1.*T4.*T6|T1, T4' "retask doc: T1/T4/T6 residuals named"
 has "$GLOSS" '\*\*himmel-bus\*\*' "glossary: himmel-bus entry"

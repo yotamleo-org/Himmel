@@ -273,6 +273,17 @@ icebox project included, for RETASK plaintext token), the recorded disposition
 of the panel finding that raised it (`deferred`, not `disproved` — the finding
 is correct).
 
+**Where a worker's current token lives.** For a worker whose brief `gen-briefs.py` or `drift-brief.py`
+wrote, `chief-kit/worker-token.sh` is the one owner. Its record (`worker-tokens.jsonl` in the worker
+doc's bucket) holds generations only, never a token or a digest of one: each token is derived from the
+chief's GO key per worker doc and generation, so the GO key is the secret to guard. A rotation becomes
+current only through the worker's own `SUCCESSION accepted` bullet naming its chief, or the chief's
+`set` after a quote-back it saw. `relay-batch.sh`, `go-batch.sh` and `auto-go.sh` ask
+`worker-token.sh current` first and fall back to the `## Live state` span and the brief only when the
+worker has no usable record; `chief.sh next` carries such a worker as `@record`, no token. The script
+refuses inside a chief-spawned worker or relay. A same-uid process that can read the GO key can derive
+any generation, the same class as forging a GO mac (a ceilings-ledger row).
+
 **Unchanged:** the EXPANSION/REDIRECT/narrowing semantics
 themselves, and every rule in §1–§3; this adds a succession path, it does not
 renegotiate the threat model.

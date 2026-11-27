@@ -100,10 +100,12 @@ head (delta no-op records included) and retries a plain GO that `go.sh` refuses
 for a trust path (exit 8) once with it; fast-forwards the primary checkout once
 before any `go.sh` runs (a checkout that cannot is exit 1, no GO written); runs each
 `go.sh` with `--no-deliver` and sends each worker its GO line itself, through `go-deliver.sh`,
-with its token: the one in your `workers:` span when it is usable
-(dash-joined parts such as `CJ-N1-b07851f7`, never `NONCE-UNKNOWN`), else the first backticked value of
-the last `> **RETASK:**` line of its brief above `## Results`. `auto-go.sh` follows the same two rules: it
-escalates at check 9 when neither source is usable, and its GO carries `--jira-transition` only for a
+with its token: first the token record's (`worker-token.sh current <doc>`); only when the worker has
+no usable record, the one in your `workers:` span when it is usable
+(dash-joined parts such as `CJ-N1-b07851f7`, never `NONCE-UNKNOWN` or `@record`), else the first backticked value of
+the last `> **RETASK:**` line of its brief above `## Results`. A record that cannot be read prints
+`NO-TOKEN <pr> <label> (token record unreadable)` and never falls back. `auto-go.sh` follows the same rules: it
+escalates at check 9 when no source is usable or the record cannot be read, and its GO carries `--jira-transition` only for a
 contract-yes merge (a PR body that owes proof or lists `Remaining:` is contract no, and the GO message
 says `contract no: <why>`). It never writes a
 GO file itself: `go.sh` does, and re-runs `ready-check.sh` and every gate. Each PR

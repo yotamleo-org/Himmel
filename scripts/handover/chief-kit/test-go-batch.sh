@@ -424,5 +424,36 @@ OUT=$(PATH="$tmp/rbin:$tmp/ghbin:$PATH" READY_STUB_HEAD="$RSHA" HIMMEL_REPO="$RR
 contains "GB1c the real go.sh writes the GO and go-batch sends it" "$OUT" "GO-SENT 140 ${RSHA:0:8} to N40"
 check "GB1c exactly one bus record for the PR" "$(grep -c 'send wk-9140-' "$FIX/sends.log" 2>/dev/null)" "1"
 
+WT="$HERE/worker-token.sh"
+rworker N41 41 yes "CJ-N41-stale" 241; rworker N42 42 yes "CJ-N42-b0" 242
+mkdir -p "$tmp/docs-bad" "$tmp/docs-km"
+printf '# t\n\n> **Completes ticket:** yes\n\n> %s\n\n## Results\n- 10:00 READY 243 %s GREEN\n' "$(RETASK CJ-N43-b0)" "$(printf '%040d' 243)" > "$tmp/docs-bad/wk-9243-N43-record-2026-11-25.md"
+printf '# t\n\n> **Completes ticket:** yes\n\n> %s\n\n## Results\n- 10:00 READY 244 %s GREEN\n' "$(RETASK CJ-N44-b0)" "$(printf '%040d' 244)" > "$tmp/docs-km/wk-9244-N44-record-2026-11-25.md"
+D41="$tmp/docs/wk-9241-N41-remainder-2026-11-25.md"; D42="$tmp/docs/wk-9242-N42-remainder-2026-11-25.md"
+D43="$tmp/docs-bad/wk-9243-N43-record-2026-11-25.md"; D44="$tmp/docs-km/wk-9244-N44-record-2026-11-25.md"
+REC41=$(bash "$WT" mint "$D41" CJ-N41 2>/dev/null)
+bash "$WT" mint "$D43" CJ-N43 >/dev/null 2>&1
+BADREC=$(find "$tmp/docs-bad" -name '*.jsonl'); rm -f "$BADREC"; mkdir "$BADREC"
+mkdir -p "$tmp/home2"; HOME="$tmp/home2" bash "$WT" mint "$D44" CJ-N44 >/dev/null 2>&1
+check "11407 fixture: the record token is the record's current" "$(bash "$WT" current "$D41" 2>/dev/null)|$([ -n "$REC41" ] && echo minted)" "$REC41|minted"
+check "11407 fixture: the replaced record is unreadable (exit 6)" "$(bash "$WT" current "$D43" >/dev/null 2>&1; echo $?)" "6"
+check "11407 fixture: the other-key record reads keymismatch" "$(bash "$WT" gen "$D44" 2>/dev/null)" "current=1 pending=-:- state=keymismatch"
+printf '{"workers":[{"label":"N41","doc":"%s","lane":"native"},{"label":"N42","doc":"%s","lane":"native"},{"label":"N43","doc":"%s","lane":"native"},{"label":"N44","doc":"%s","lane":"native"}]}\n' \
+    "$D41" "$D42" "$D43" "$D44" > "$tmp/fleet-rec.json"
+printf '# chief\n\n## Live state\n\nworkers: `N41:NONCE-UNKNOWN:lock-N41:1` `N42:NONCE-UNKNOWN:lock-N42:1` `N43:NONCE-UNKNOWN:lock-N43:1` `N44:NONCE-UNKNOWN:lock-N44:1`\nqueue: none\n\n## Results\n' > "$tmp/chief-rec.md"
+jq -n --arg clean "$CLEAN_BODY" '
+    def pr($n): {number:$n, title:("fix(x): [HIMMEL-9" + ($n|tostring) + "] t"), headRefOid:("0" * 37 + ($n|tostring)), baseRefName:"main", isDraft:false, body:$clean, files:[{path:"scripts/r.sh"}]};
+    [pr(241), pr(242), pr(243), pr(244)]' > "$FIX/prs.json"
+reset
+OUT=$(bash "$SCRIPT" --doc "$tmp/chief-rec.md" --fleet "$tmp/fleet-rec.json" 2>&1); RC=$?
+contains "11407 GB1 span NONCE-UNKNOWN, a stale brief token, record current: the GO quotes the record token" "$(msg_of 41)" "Your token \`$REC41\`."
+contains "11407 GB1c no record row: the brief token as today" "$(msg_of 42)" 'Your token `CJ-N42-b0`.'
+contains "11407 GB2 an unreadable record: NO-TOKEN naming the record" "$OUT" "NO-TOKEN 243 N43 (token record unreadable)"
+check "11407 GB2 no GO file for the unreadable record's PR" "$(find "$HANDOVER_DIR/.locks/go" -name '243.*' | wc -l | tr -d ' ')" "0"
+contains "11407 GB2c keymismatch: the brief token" "$OUT" 'Your token `CJ-N44-b0`.'
+GB3=$( HIMMEL_CONSOLE_LEG=1; export HIMMEL_CONSOLE_LEG; . "$HERE/go-deliver.sh" || exit 9; gd_worker_token "$tmp/chief-rec.md" N41 "$D41"; echo "rc=$?" )
+check "11407 GB3 HIMMEL_CONSOLE_LEG=1: the record is refused and the brief token is used as today" "$GB3" "CJ-N41-stale
+rc=0"
+
 echo "passed=$PASS failed=$FAIL"
 [ "$FAIL" -eq 0 ]
