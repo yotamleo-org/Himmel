@@ -86,7 +86,7 @@ it does not leave out the whole-file rows of `scripts/lint/ticket-ref-allow.tsv`
 `--write-baseline` does:
 
 ```bash
-git ls-files -z '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1' '*.py' '*.js' '*.mjs' '*.cjs' '*.ts' '*.tsx' '*.mts' '*.cts' | xargs -0 awk -f scripts/lint/comment-count.awk -v mode=tree | sort -t "$(printf '\t')" -k2,2nr
+git ls-files -z --format='./%(path)' '*.sh' '*.bash' '*.zsh' '*.ps1' '*.psm1' '*.py' '*.js' '*.mjs' '*.cjs' '*.ts' '*.tsx' '*.mts' '*.cts' | xargs -0 awk -f scripts/lint/comment-count.awk -v mode=tree | sort -t "$(printf '\t')" -k2,2nr
 ```
 
 ### The history-comment gate

@@ -55,7 +55,7 @@ stage() {
     if git -C "$R" add -A && git -C "$R" diff --quiet && left="$(git -C "$R" ls-files --others --exclude-standard)" && [ -z "$left" ]; then
         gate --staged
     else
-        OUT="git add did not stage the fixture in $R"; RC=125
+        OUT="the fixture in $R is not staged, or git could not check it"; RC=125
     fi
 }
 want() {
