@@ -213,7 +213,7 @@ fi
 # directly, with no chain, pipe, substitution or newline anywhere. Anything else (-k, nohup,
 # a chain before or after, N > 90 or 0) stays denied.
 case "$hit:$cmd" in
-    chief-wait.sh:*|console-wait.sh:*|run-suite.sh:*) ;;
+    chief-wait.sh:*|run-suite.sh:*) ;;
     *[\;\&\|\`\$\(]*|*"
 "*) ;;
     *)

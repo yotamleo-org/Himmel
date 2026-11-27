@@ -136,7 +136,7 @@ fi
 [ -z "$sel" ] && exit 0   # cannot resolve target: fail open
 
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/cr-merge-gate.sh" 2>/dev/null || exit 0
+. "$SCRIPT_DIR/../lib/review-merge-gate.sh" 2>/dev/null || exit 0
 
 reason=""
 rc=0

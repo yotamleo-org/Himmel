@@ -11,7 +11,7 @@
 #      This repo has NO branch protection, so GitHub will not otherwise block a
 #      merge over red/pending CI (operator rule: "ready to merge" requires green).
 #   3. Console-GO gate (HIMMEL-2919/HIMMEL-3142): when this is a console-spawned
-#      leg (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-leg.sh), the PR's
+#      worker (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-worker.sh), the PR's # old-term-ok
 #      head SHA must have a matching GO file under the handover root's
 #      `.locks/go/` (chief-kit/go.sh writes it — "the file IS the GO"). Before
 #      this gate existed, a leg merging via `gh pr merge` directly (instead of
@@ -149,7 +149,7 @@ fi
 [ -z "$sel" ] && exit 0   # cannot resolve target: fail open
 
 # shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/cr-merge-gate.sh" 2>/dev/null || exit 0
+. "$SCRIPT_DIR/../lib/review-merge-gate.sh" 2>/dev/null || exit 0
 
 reason=""
 rc=0
@@ -220,14 +220,14 @@ if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
     # or an inherited `export -f` would otherwise survive the source below
     # undetected) so only the file's own definitions can satisfy the
     # declare -F checks below.
-    unset -f go_gate console_leg 2>/dev/null || true
+    unset -f go_gate chief_worker 2>/dev/null || true
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
-    if ! . "$SCRIPT_DIR/../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1; then
+    if ! . "$SCRIPT_DIR/../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
         echo "block-unresolved-cr-merge: cannot load scripts/lib/go-gate.sh — refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
         exit 2
     fi
-    console_leg || is_leg=0
+    chief_worker || is_leg=0 # old-term-ok
 else
     is_leg=0
 fi
@@ -271,7 +271,7 @@ if [ "$is_leg" -eq 1 ]; then
     fi
     go_reason=""
     go_rc=0
-    go_reason=$(go_gate "$go_num" "$go_sha" "$go_root") || go_rc=$?
+    go_reason=$(go_gate "$go_num" "$go_sha" "$go_root" "${GH_STUB_NWO:-o/r}") || go_rc=$?
     if [ "$go_rc" -ne 0 ]; then
         if [ -z "$go_reason" ]; then
             go_reason="go_gate for PR #$go_num at $go_sha returned an unexpected exit code ($go_rc) — this is a console-spawned leg; send READY to your console and wait for GO"
