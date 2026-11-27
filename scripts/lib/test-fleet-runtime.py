@@ -180,7 +180,7 @@ class Runtime(unittest.TestCase):
         p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"; bash %s control set %s --mode paused --expect-gen 2 >/dev/null'
                              % (shlex.quote(str(WRITER)), shlex.quote(str(self.m))))
         self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
-        self.assertIn('fleet-paused', p.stderr)
+        self.assertIn('fleet-paused or reservation generation changed', p.stderr)
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
 
     def test_missing_locator_is_derived_and_conflicting_locator_refuses(self):
