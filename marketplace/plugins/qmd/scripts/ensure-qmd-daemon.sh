@@ -108,6 +108,16 @@ else
   boot_unit="qmd-daemon-$QMD_INDEX_NAME.service"  # t13b-ok: the boot unit's name only, starts nothing
 fi
 mcp_stem="mcp$idx_sfx"
+if [ "$QMD_INDEX_NAME" != index ]; then
+  case "$unit_url" in
+    '')
+      echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
+      exit 1 ;;
+    *://*:8181|*://*:8181/*)
+      echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port 8181, the shared server's; set QMD_MCP_URL to the index's own port." >&2
+      exit 1 ;;
+  esac
+fi
 boot_before="himmel-recover.service"
 
 unit_env_line() {

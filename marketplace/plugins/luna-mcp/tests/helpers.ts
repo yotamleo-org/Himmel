@@ -19,6 +19,7 @@ export const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.ur
 export const PHI = "PHI-MARKER-7f3a91";
 export const LEAK = "LEAK-MARKER-b41c07";
 export const QMD_TOKEN = "fake-qmd-token-5d2e";
+export const GMAIL_QMD_TOKEN = "fake-gmail-qmd-token-91c4";
 
 export interface Clock {
   now(): number;
@@ -315,7 +316,9 @@ export async function makeWorld(t: TestContext, opts: WorldOptions = {}): Promis
     await put(gmailRoot, ".hidden/x.md", `${LEAK}\n`);
     await symlink(join(fx.outside, "secret.md"), join(gmailRoot, "link-out.md"));
     roots.set("gmail", gmailRoot);
-    isolated.set("gmail", createQmdProxy({ url: gmailQmd.url, tokenFile, timeoutMs: 5000 }));
+    const gmailTokenFile = join(fx.base, "qmd-http-token-gmail");
+    await writeFile(gmailTokenFile, GMAIL_QMD_TOKEN, { mode: 0o600 });
+    isolated.set("gmail", createQmdProxy({ url: gmailQmd.url, tokenFile: gmailTokenFile, timeoutMs: 5000 }));
   }
   const deps: AppDeps & { isolated: ReadonlyMap<string, QmdProxy> } = {
     publicUrl: new URL(PUBLIC_URL),

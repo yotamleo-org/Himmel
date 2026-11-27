@@ -1336,9 +1336,14 @@ echo "ok (z14b): a named recycle uses its own lock, stamp and log, stops only it
 
 two_procs "$gmail_argv" 7340032 "$default_argv" 7340032
 run_idx QMD_INDEX_NAME=gmail
+[ "$rc" -eq 0 ] || fail "(z15) named run, default argv: expected rc 0, got $rc ($out)"
+grep -qx "$gm_pid" "$state/ps3-pids.log" || fail "(z15) named run, default argv: mcp-gmail.pid's pid was never inspected"
 case "$out" in *recycling*) fail "(z15) named run, default argv: a recycle started on a pid that is not the gmail server ($out)" ;; esac
 kill -0 "$gm_pid" 2>/dev/null || fail "(z15) named run, default argv: a process was stopped"
+rm -f "$state/ps3-pids.log"
 run_idx
+[ "$rc" -eq 0 ] || fail "(z15) default run, gmail argv: expected rc 0, got $rc ($out)"
+grep -qx "$dflt_pid" "$state/ps3-pids.log" || fail "(z15) default run, gmail argv: mcp.pid's pid was never inspected"
 case "$out" in *recycling*) fail "(z15) default run, gmail argv: a recycle started on a pid that is not the default server ($out)" ;; esac
 kill -0 "$dflt_pid" 2>/dev/null || fail "(z15) default run, gmail argv: a process was stopped"
 reap_two
@@ -1350,13 +1355,17 @@ touch_ago "$idx_stamp" 3600
 two_procs "$default_argv" 1048576 "$default_argv" 1048576
 touch_ago "$xdg3/qmd/mcp-gmail.pid" 60
 run_idx QMD_INDEX_NAME=gmail -- --recycle-if-stale "$idx_stamp"
-[ "$rc" -eq 0 ] && fail "(z16) named stale check on a default-argv pid: expected non-zero, got 0 ($out)"
+[ "$rc" -eq 1 ] || fail "(z16) named stale check on a default-argv pid: expected rc 1, got $rc ($out)"
+case "$out" in *"not the qmd HTTP server that wrote it"*) ;; *) fail "(z16) named stale check on a default-argv pid: no identity refusal ($out)" ;; esac
+grep -qx "$gm_pid" "$state/ps3-pids.log" || fail "(z16) named stale check on a default-argv pid: its own pid was never inspected"
 kill -0 "$gm_pid" 2>/dev/null || fail "(z16) named stale check on a default-argv pid: it was stopped"
 reap_two
 two_procs "$gmail_argv" 1048576 "$gmail_argv" 1048576
 touch_ago "$xdg3/qmd/mcp.pid" 60
 run_idx -- --recycle-if-stale "$idx_stamp"
-[ "$rc" -eq 0 ] && fail "(z16) default stale check on a gmail-argv pid: expected non-zero, got 0 ($out)"
+[ "$rc" -eq 1 ] || fail "(z16) default stale check on a gmail-argv pid: expected rc 1, got $rc ($out)"
+case "$out" in *"not the qmd HTTP server that wrote it"*) ;; *) fail "(z16) default stale check on a gmail-argv pid: no identity refusal ($out)" ;; esac
+grep -qx "$dflt_pid" "$state/ps3-pids.log" || fail "(z16) default stale check on a gmail-argv pid: its own pid was never inspected"
 kill -0 "$dflt_pid" 2>/dev/null || fail "(z16) default stale check on a gmail-argv pid: it was stopped"
 reap_two
 two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
@@ -1420,14 +1429,34 @@ grep -qxF -- '--user enable qmd-daemon-gmail.service' "$state/systemctl.log" || 
 run_unit
 [ "$(cat "$units/qmd-daemon.service")" = "$before_default" ] || fail "(z19) the default unit changed with no environment set"
 grep -q '^Environment="' "$units/qmd-daemon.service" && fail "(z19) the default unit gained Environment lines with nothing set"
-run_unit QMD_INDEX_NAME=gmail QMD_HTTP_TOKEN_FILE=/tok/50%/tok
+run_unit QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8183/mcp QMD_HTTP_TOKEN_FILE=/tok/50%/tok
 grep -qxF -- 'Environment="QMD_HTTP_TOKEN_FILE=/tok/50%%/tok"' "$gunit" || fail "(z19) a % in a value was not escaped: $(cat "$gunit")"
 rm -f "$gunit"
 for bad in "QMD_HTTP_TOKEN_FILE=relative/tok" "QMD_WAIT_TRIES=4x" "QMD_MCP_URL=$(printf 'http://x\nExecStart=/bin/evil')" "QMD_INDEX_NAME=a/b"; do
-  run_unit QMD_INDEX_NAME=gmail "$bad"
+  run_unit QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8183/mcp "$bad"
   [ "$rc" -ne 0 ] || fail "(z19) a bad value was baked into the unit: $bad ($out)"
   [ ! -e "$gunit" ] || fail "(z19) a unit was written for a bad value: $bad"
 done
 echo "ok (z19): a named --install-boot-unit writes qmd-daemon-<name>.service with the settings baked in, escaped, and refuses bad values"
+
+set +e
+out="$(env -u QMD_MCP_URL QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE=alive QMD_MOCK_STATE="$state" QMD_INDEX_NAME=gmail \
+  HOME="$home" PATH="$bin:$safe" bash "$script" 2>&1)"
+rc=$?
+set -e
+[ "$rc" -eq 1 ] || fail "(z20) a named index with no QMD_MCP_URL must be refused, not reported healthy through the shared server: got rc $rc ($out)"
+case "$out" in *"needs its own QMD_MCP_URL"*) ;; *) fail "(z20) no refusal line naming QMD_MCP_URL ($out)" ;; esac
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8181/mcp
+[ "$rc" -eq 1 ] || fail "(z20) a named index on port 8181 must be refused: got rc $rc ($out)"
+case "$out" in *"cannot use port 8181"*) ;; *) fail "(z20) no refusal line naming port 8181 ($out)" ;; esac
+rm -f "$units/qmd-daemon-gmail.service"
+set +e
+out="$(env -u QMD_MCP_URL QMD_SYSTEMCTL="$bin/systemctl" QMD_UNIT_DIR="$units" QMD_MOCK_STATE="$state" QMD_INDEX_NAME=gmail \
+  HOME="$home" PATH="$bin:$safe" bash "$script" --install-boot-unit 2>&1)"
+rc=$?
+set -e
+[ "$rc" -eq 1 ] || fail "(z20) --install-boot-unit for a named index with no QMD_MCP_URL must be refused: got rc $rc ($out)"
+[ ! -e "$units/qmd-daemon-gmail.service" ] || fail "(z20) a unit was written without the index's own URL"
+echo "ok (z20): a named index without its own QMD_MCP_URL, or on the shared port, is refused on start and on install"
 
 echo "PASS: all ensure-qmd-daemon cases"
