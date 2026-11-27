@@ -1368,7 +1368,7 @@ stuck_bound_secs=86400
 stuck_now() {
     local filenow=""
     if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ -n "${CHIEF_WAIT_NOW_FILE:-}" ] && [ -r "$CHIEF_WAIT_NOW_FILE" ]; then
-        read -r filenow < "$CHIEF_WAIT_NOW_FILE"  # swallow-ok: an empty or torn file falls through to the next clock
+        read -r filenow < "$CHIEF_WAIT_NOW_FILE"
         case "$filenow" in ''|*[!0-9]*) ;; *) printf '%s' "$filenow"; return 0 ;; esac
     fi
     case "${CHIEF_WAIT_NOW:-}" in ''|*[!0-9]*) ;; *) [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && { printf '%s' "$CHIEF_WAIT_NOW"; return 0; } ;; esac
@@ -3290,7 +3290,7 @@ $rows
 EOF
 }
 renudge_write() {
-    printf 'anchor %s %s\n%s\n' "$1" "$2" "$3" | atomic_write "$renudge_file" 2>/dev/null ||  # swallow-ok: the next line names the failure
+    printf 'anchor %s %s\n%s\n' "$1" "$2" "$3" | atomic_write "$renudge_file" 2>/dev/null ||
         { echo "renudge: state write failed" >&2; return 1; }
 }
 renudge_step() {
@@ -3298,7 +3298,7 @@ renudge_step() {
     now="$(stuck_now)"
     items="$(renudge_items)" || return 1
     if [ -f "$renudge_file" ]; then
-        read -r _ anchor last < "$renudge_file"  # swallow-ok: a torn first line is reset below
+        read -r _ anchor last < "$renudge_file"
         rows="$(sed 1d "$renudge_file")"
     fi
     case "$anchor:$last" in *[!0-9:]*|:*|*:) anchor=""; last="" ;; esac

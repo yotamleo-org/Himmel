@@ -127,7 +127,7 @@ pr_field() {
 
 go_root="${CHIEF_DUTY_SWEEP_GO_ROOT:-}"
 if [ -z "$go_root" ]; then
-    go_root="$(chief_owed_go_root "$REPO")" || go_root=""  # swallow-ok: an unresolved GO root is reported as unread below, and go-owed and merge-owed are left out
+    go_root="$(chief_owed_go_root "$REPO")" || go_root=""
 fi
 [ -n "$go_root" ] || unread "go-root"
 

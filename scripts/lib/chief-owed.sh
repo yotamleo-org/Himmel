@@ -24,8 +24,8 @@ case "${BASH_SOURCE[0]}" in */*) _co_d="${BASH_SOURCE[0]%/*}" ;; *) _co_d=. ;; e
 chief_owed_state() {
     local doc="$1" want_gen="${2:-}" body rec m line rest parsed id sha
     local ready_id="" ready_sha="" ready_line="" ask="" ask_line="" out
-    body=$(sed -n '/^## Results/,$p' "$doc" 2>/dev/null) || return 1  # swallow-ok: rc 1 tells the caller the doc was not read
-    [ -n "$body" ] || body=$(sed -n 'p' "$doc" 2>/dev/null) || return 1  # swallow-ok: a doc with no Results heading is scanned whole, rc 1 when that read fails
+    body=$(sed -n '/^## Results/,$p' "$doc" 2>/dev/null) || return 1
+    [ -n "$body" ] || body=$(sed -n 'p' "$doc" 2>/dev/null) || return 1
     while IFS= read -r rec; do
         [ -n "$rec" ] || continue
         m="${rec%% *}"; line="${rec#* }"
@@ -35,7 +35,7 @@ chief_owed_state() {
                     rest="READY${line#*READY}"
                     ask=""; ask_line=""
                 elif [[ $line =~ holding\ at\ READY ]]; then
-                    if printf '%s\n' "$line" | grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without|cannot)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY"; then  # pipefail-ok: one extracted line
+                    if grep -qiE "((^|[^[:alnum:]_])(no longer|not|never|without|cannot)([^[:alnum:]_]|$)|n't)[^;.]{0,30}READY" <<<"$line"; then
                         ready_id=""; ready_sha=""; ready_line=""; continue
                     fi
                     rest="READY${line#*holding at READY}"
@@ -80,7 +80,7 @@ chief_owed_go_root() {
     if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ "${CHIEF_OWED_GO_ROOT+set}" = set ]; then
         root="$CHIEF_OWED_GO_ROOT"
     else
-        root="$(go_resolve_root "$1" 2>/dev/null)" || root=""  # swallow-ok: an unresolved root is the caller's rc 1
+        root="$(go_resolve_root "$1" 2>/dev/null)" || root=""
     fi
     [ -n "$root" ] || return 1
     printf '%s\n' "$root"
