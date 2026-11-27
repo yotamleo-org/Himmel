@@ -171,10 +171,12 @@ if [ "${CODEX_EXTERNAL_WRITES_OK:-0}" != "1" ]; then
     grant=''
     if [ "$LIB_OK" = 1 ]; then
         grant_libs=1
-        for lib in load-dotenv.sh nwo.sh lane-grants.sh; do
-            # shellcheck disable=SC1090
-            { [ -r "$SCRIPT_DIR/../lib/$lib" ] && . "$SCRIPT_DIR/../lib/$lib"; } 2>/dev/null || grant_libs=0
-        done
+        # shellcheck disable=SC1091
+        { [ -r "$SCRIPT_DIR/../lib/load-dotenv.sh" ] && . "$SCRIPT_DIR/../lib/load-dotenv.sh"; } 2>/dev/null || grant_libs=0
+        # shellcheck disable=SC1091
+        { [ -r "$SCRIPT_DIR/../lib/nwo.sh" ] && . "$SCRIPT_DIR/../lib/nwo.sh"; } 2>/dev/null || grant_libs=0
+        # shellcheck disable=SC1091
+        { [ -r "$SCRIPT_DIR/../lib/lane-grants.sh" ] && . "$SCRIPT_DIR/../lib/lane-grants.sh"; } 2>/dev/null || grant_libs=0
         if [ "$grant_libs" = 1 ]; then
             grant=$(lane_grant_shape "$input") || grant=''
         fi
