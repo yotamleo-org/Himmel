@@ -281,7 +281,10 @@ class Remainders(unittest.TestCase):
         self.assertFalse(coverage_done('- HIMMEL-5 ask: done\n\n## Ticket coverage\n- other: done\n', 'HIMMEL-5'))
         self.assertFalse(coverage_done(head + '- x: done\n## Notes\n- HIMMEL-5 ask: done\n', 'HIMMEL-5'))
         self.assertFalse(coverage_done(head + '- HIMMEL-123 ask: done\n', 'HIMMEL-12'))
-        self.assertFalse(coverage_done(head + '- himmel-5 ask: done\n', 'HIMMEL-5'))
+        for left in ('Remaining: the himmel-5 rest\n\n', ''):
+            tail = '- HIMMEL-5 ask: done\n' + ('' if left else '- himmel-5 rest: deferred -> HIMMEL-9\n')
+            with self.subTest(left=left):
+                self.assertFalse(coverage_done(left + head + tail, 'HIMMEL-5'))
 
 
 if __name__ == '__main__':

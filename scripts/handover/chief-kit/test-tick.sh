@@ -1961,13 +1961,12 @@ git -C "$hh/repo" update-ref refs/remotes/origin/main HEAD
 mkdir -p "$hh/shim"
 printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) echo x >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh/gitlog" "$(command -v git)" > "$hh/shim/git"
 chmod +x "$hh/shim/git"
-out="$(PATH="$hh/shim:$PATH" hh_tick c1 "$hh/c.rows")"
-contains '(10944 C1) a done-but-open blocker is listed with its dependants' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
-hh_same '(10944 C1) the tick line lists it; an In Progress blocker and a longer key are not' "$(printf '%s\n' "$out" | tr ' ' '\n' | grep '^close-cand=')" 'close-cand=HIMMEL-102'
-hh_same '(10944 C1) exactly one candidate' "$(printf '%s\n' "$out" | grep -c '^# close-candidate ')" '1'
+PATH="$hh/shim:$PATH" hh_tick c1 "$hh/c.rows" > /dev/null
 hh_calls="$(grep -c . "$hh/gitlog" 2>/dev/null)"  # swallow-ok: no log yet counts nothing
 out="$(PATH="$hh/shim:$PATH" TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
-contains '(10944 C4) a tick that does not rebuild prints the cached line' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
+contains '(10944 C1) a done-but-open blocker is listed with its dependants, by a tick that does not rebuild' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
+hh_same '(10944 C1) the tick line lists it; an In Progress blocker and a longer key are not' "$(printf '%s\n' "$out" | tr ' ' '\n' | grep '^close-cand=')" 'close-cand=HIMMEL-102'
+hh_same '(10944 C1) exactly one candidate' "$(printf '%s\n' "$out" | grep -c '^# close-candidate ')" '1'
 hh_same '(10944 C4) the rebuild ran git log and the second tick ran none' "$([ "${hh_calls:-0}" -gt 0 ] && echo ran):$(grep -c . "$hh/gitlog" 2>/dev/null)" "ran:${hh_calls:-0}"
 mkdir -p "$hh/shim-order" "$hh/shim-dead"
 printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c6/tick-pool-*.rows" > /dev/null; then echo published; else echo held-back; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/order" "$(command -v git)" > "$hh/shim-order/git"
@@ -1981,15 +1980,17 @@ printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c1/
 chmod +x "$hh/shim-old/git"
 PATH="$hh/shim-old:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows" > /dev/null
 hh_same '(10944 C8) no older cache is readable beside new rows while the scan runs' "$(LC_ALL=C sort -u "$hh/during" 2>/dev/null)" 'no-cache'
-out="$(PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows")"
+PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows" > /dev/null
+out="$(TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
 not_contains '(10944 C7) a scan that dies leaves no older candidate beside the new rows' "$out" 'close-cand'
 contains '(10944 C7) control: the rows were still published' "$out" ' pool=3/'
 hh_same '(10944 C7) control: the killed scan really ran' "$([ -s "$hh/killed" ] && echo ran)" 'ran'
 GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/repo" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m "$(printf 'feat: y\n\n## Ticket coverage\n- APP2-10 the thing: done\n')"
 git -C "$hh/repo" update-ref refs/remotes/origin/main HEAD
-printf '# disposition %s-106 blocker APP2-10 (To Do)\n' "$KP" > "$hh/c9.rows"
-out="$(hh_tick c9 "$hh/c9.rows")"
-contains '(10944 C9) a blocker of a project key holding a digit is listed' "$out" ' close-cand=APP2-10'
+printf '# disposition APP2-11 blocker APP2-10 (To Do)\n' > "$hh/c9.rows"
+hh_tick c9 "$hh/c9.rows" > /dev/null
+out="$(TICK_POOL_MIN_SECS=999999 hh_tick c9 "$hh/c9.rows")"
+contains '(10944 C9) a blocker of a project key holding a digit is listed with its dependant' "$out" '# close-candidate APP2-10 blocks APP2-11 done-in '
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
