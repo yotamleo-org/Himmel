@@ -501,7 +501,7 @@ r_once() {
     newcase; snap "$(d "$P-8020" 'listed DESIGN')" "$(d "$P-9432" 'listed LOCAL')" "$(design_row "$P-8020" NO-SPEC)"
     keys HIMMEL-8020 HIMMEL-9432
     cp "$FX/chains-handmade.json" "$C/focus-chains.json"
-    manifest() { (cd "$C" && find . -type f ! -name calls.log ! -name err -exec sha256sum {} + -exec stat -c '%n %s' {} + | sort); }  # gnu-ok: Linux-only suite
+    manifest() { (cd "$C" && find . -type f ! -name calls.log ! -name err -exec sha256sum {} + -exec stat -c '%n %s %y' {} + | sort); }  # gnu-ok: Linux-only suite
     : > "$C/err"
     local before after; before="$(manifest)"
     run_case
