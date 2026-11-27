@@ -70,6 +70,7 @@ T3CODE_UNWATCH_OK	grant	registry	-
 T3_THREAD_TOOLS_OK	floor	registry	lets an agent move a thread onto a T3 instance that carries bypass flags, or name itself a chief
 TEMPLATE_VERSION_OK	grant	registry	-
 UNCHECKED_MKTEMP_OK	grant	registry	-
+WEB_TOKEN_QUERY_OK	floor	marketplace/plugins/himmel-ops/hooks/block-token-shaped-web-query.sh:16	lets a token-shaped string leave the station in a web query; not registered
 WORKER_SESSION_CONTEXT_HANDOFF_OK	grant	registry	-
 WRITE_HOLD_OK	decision	registry	breaks the single-writer barrier against a live worker or open PR
 HIMMEL_BILLED_OK	decision	eval	paid run

@@ -2546,32 +2546,80 @@ $2
 EOF
 }
 
+open_notes_age_text() {
+    local at="$1" t now secs
+    t="$(date -u -d "$at" +%s 2>/dev/null)" || t="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$at" +%s 2>/dev/null)" || t=""  # swallow-ok: an unparseable date reads as an unknown age, said below
+    [ -n "$t" ] || { printf 'age unknown'; return 0; }
+    now="$(date +%s)"; secs=$((now - t)); [ "$secs" -ge 0 ] || secs=0
+    if [ "$secs" -lt 3600 ]; then printf '%s min' "$((secs / 60))"
+    elif [ "$secs" -lt 172800 ]; then printf '%s h' "$((secs / 3600))"
+    else printf '%s d' "$((secs / 86400))"; fi
+}
+
+# shellcheck disable=SC2016  # the backticks are literal markdown code spans
+must_open_notes_rows() {
+    local pdir="$1" mirror="$2" cap="$3" on_out="" last ntr nrows urows verdict="" reasons="" hidden=0 clause cmd tag key path at st orig rest label marker total=0 tab tb
+    local trailer_re='^# open-notes: (complete|incomplete [^ ]+) n=([0-9]+) unverified=([0-9]+) merge_hidden=([0-9]+) mirror_cursor_age_min=([0-9]+|-)$'
+    tab="$(printf '\t')"
+    cmd="bash $(printf '%q' "$kit/open-resume-notes.sh") --bucket $(printf '%q' "$pdir") --mirror $(printf '%q' "$mirror")"
+    if [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && [ -n "${CHIEF_OPEN_NOTES:-}" ]; then
+        on_out="$(bash "$CHIEF_OPEN_NOTES" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
+    else
+        tb="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$HERE/../../lib/timeout-bin.sh" 2>/dev/null)" || tb=""  # swallow-ok: no timeout binary = an unbounded run
+        on_out="$(${tb:+"$tb" -k 3 90} bash "$kit/open-resume-notes.sh" --bucket "$pdir" --mirror "$mirror" 2>/dev/null)" || :  # swallow-ok: a failed read is judged by its trailer below
+    fi
+    last="${on_out##*$'\n'}"
+    ntr="$(printf '%s\n' "$on_out" | grep -c '^# open-notes:')" || ntr=0  # swallow-ok: grep -c exits 1 on a count of 0
+    nrows="$(printf '%s\n' "$on_out" | grep -c "^NOTE$tab")" || nrows=0  # swallow-ok: grep -c exits 1 on a count of 0
+    urows="$(printf '%s\n' "$on_out" | grep -c "^UNVERIFIED$tab")" || urows=0  # swallow-ok: grep -c exits 1 on a count of 0
+    if [ "$ntr" -eq 0 ]; then
+        verdict="no-trailer"
+    elif [ "$ntr" -ne 1 ] || ! [[ "$last" =~ $trailer_re ]] || [ "${BASH_REMATCH[2]}" != "$nrows" ] || [ "${BASH_REMATCH[3]}" != "$urows" ]; then
+        verdict="bad-trailer"
+    else
+        hidden="${BASH_REMATCH[4]}"
+        case "${BASH_REMATCH[1]}" in incomplete\ *) reasons="${BASH_REMATCH[1]#incomplete }" ;; esac
+    fi
+    [ -z "$verdict" ] || reasons="$verdict"
+    if [ -n "$reasons" ]; then
+        clause=""
+        case ",$reasons," in
+            *,locks-unknown,*|*,events-unreadable,*|*,merges-partial,*|*,deadline,*|*,mirror-stale,*|*,internal-error,*|*,no-trailer,*|*,bad-trailer,*)
+                clause=" and listed notes may be held or superseded: do not relaunch until a complete read" ;;
+        esac
+        printf -- '- RESUME docs incomplete (%s): some open notes may be missing%s; re-run: %s%s\n' "$reasons" "$clause" "$cmd" "$([ "$hidden" -le 0 ] || printf ' (merge_hidden=%s)' "$hidden")"
+    fi
+    while IFS=$'\t' read -r tag key path at rest; do
+        [ "$tag" = UNVERIFIED ] || continue
+        printf -- '- RESUME doc `%s`: ticket %s not checked (%s), check before relaunch\n' "$path" "$key" "${rest#reason=}"
+    done <<EOF_UNV
+$on_out
+EOF_UNV
+    while IFS=$'\t' read -r tag key path at st orig; do
+        [ "$tag" = NOTE ] || continue
+        total=$((total + 1))
+        [ "$total" -le "$cap" ] || continue
+        label="$(worker_label "$path")"
+        orig="${orig#orig=}"
+        if [ -n "$orig" ] && [ "$orig" != - ]; then marker="$(worker_tail_status "$orig")"; else marker="$(worker_tail_status "$path")"; fi
+        printf -- '- RESUME doc `%s`: %s, last marker %s, open %s\n' "$path" "$label" "${marker:-none}" "$(open_notes_age_text "$at")"
+    done <<EOF_NOTES
+$on_out
+EOF_NOTES
+    [ "$total" -le "$cap" ] || printf -- '- +%s more open RESUME docs: list them with %s%s\n' "$((total - cap))" "$cmd" "$([ "$hidden" -le 0 ] || printf ' (merge_hidden=%s)' "$hidden")"
+}
+
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
-    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" r sib label prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 nrd=0 npr=0 nop=0
-    local mirror f fm fv st created ver rest_ pstem pdate prio ttl marker fresh resume_rc lock_r lock_s days="${CHIEF_MUST_RESUME_DAYS:-2}"
+    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 npr=0 nop=0
+    local mirror f fm fv st created ver rest_ pstem pdate prio ttl fresh resume_rc
     printf '## Must disposition\n\n'
     printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
+    mirror="${NEXT_DISPATCH_MIRROR:-}"
+    [ -n "$mirror" ] || mirror="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bash -c '. "$1" && jira_mirror_dir' _ "$HERE/../../lib/jira-project.sh" 2>/dev/null)" || mirror=""  # swallow-ok: no mirror lists no operator-directed row
     # shellcheck disable=SC2016  # the backticks are literal markdown code spans
     {
-        while IFS= read -r r; do
-            [ -f "$r" ] || continue
-            sib="${r%-RESUME.md}.md"
-            lock_r="$(worker_lock_state "$r")"; lock_s="$(worker_lock_state "$sib")"
-            [ "$lock_r" != held ] && [ "$lock_s" != held ] || continue
-            if [ "$lock_r" = unknown ] || [ "$lock_s" = unknown ]; then
-                nrd=$((nrd + 1))
-                [ "$nrd" -gt "$cap" ] || printf -- '- RESUME doc `%s`: lock state unknown, check before relaunch\n' "$r"
-                continue
-            fi
-            if [ -f "$sib" ] && [ "$sib" -nt "$r" ] && [ -z "$(worker_tail_status "$r")" ] && [ -n "$(worker_tail_status "$sib")" ]; then continue; fi
-            label="$(worker_label "$r")"
-            marker="$(worker_tail_status "$sib")"
-            nrd=$((nrd + 1))
-            [ "$nrd" -le "$cap" ] || continue
-            printf -- '- RESUME doc `%s`: %s, last marker %s\n' "$r" "$label" "${marker:-none}"
-        done < <(find "$pdir" -maxdepth 1 -type f -name '*-RESUME.md' -mtime "-$days" 2>/dev/null | sort)
-        [ "$nrd" -le "$cap" ] || printf -- '- +%s more RESUME docs in the bucket: list them with ls\n' "$((nrd - cap))"
+        must_open_notes_rows "$pdir" "$mirror" "$cap"
         prs="$(bash "$HERE/../chief-kit/handoff-facts.sh" prs "$pdoc" --repo "$repo" 2>/dev/null)" || prs=""  # swallow-ok: an unreadable PR list names no row; the orphan-PR gate already ran
         while IFS= read -r line; do
             [[ "$line" =~ ^#([0-9]+)[[:space:]] ]] || continue
@@ -2614,8 +2662,6 @@ EOF_ROWS
         [ "$total" -le "$cap" ] || printf -- '- +%s more RESUME rows: list them with next-dispatchable.sh --resume-only\n' "$((total - cap))"
     }
     OPERATOR_DIRECTED_KEYS=""
-    mirror="${NEXT_DISPATCH_MIRROR:-}"
-    [ -n "$mirror" ] || mirror="$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bash -c '. "$1" && jira_mirror_dir' _ "$HERE/../../lib/jira-project.sh" 2>/dev/null)" || mirror=""  # swallow-ok: no mirror lists no operator-directed row
     pstem="${pdoc##*/}"; pdate="$(printf '%s' "$pstem" | sed -n 's/.*-nextleg-\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p')"
     fv="$(awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && index($0, "focus-version:") == 1 { sub(/^[^:]*:[[:space:]]*/, ""); print; exit }' "$pdoc" | sed -n 's/^\(v[0-9][0-9.]*\).*/\1/p')"
     fresh=""

@@ -234,7 +234,20 @@ does, the command waits for the operator.
 
 ## Starting and stopping it
 
-The operator starts it from their own shell, never from a session:
+The normal route is the service (see "Run it as a service"): `himmelctl bypass on` and `himmelctl bypass off`, from the
+operator's own shell. The chief never starts it and a session cannot (`CLAUDECODE` is refused). On a Linux chief
+station the station sync that runs after each handled merge asks himmel-update's `bypass_daemon` step
+(`bypass-service.sh restart-if-changed`) to restart the unit onto the new code, so a merge that changes the daemon
+needs no operator step. The sync calls no `systemctl` or `launchctl` itself. Where no sync runs (a merge the chief's
+waiter never handled, a macOS station), run `bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon`;
+a session may run it, and a worktree's copy does nothing. A request that is waiting for your go when the restart
+lands is asked again with a new code, and the old code no longer works.
+
+What still needs the operator: a unit that is enabled but not running (`himmelctl bypass restart`; the sync reads
+`BEHIND:bypass_daemon-inactive` on every run until it is up), a unit that is off or has a stop file, or whose unit file
+differs from its template (`himmelctl bypass on`), and lingering that is off (`loginctl enable-linger <user>`).
+
+Without the unit, the operator starts it from their own shell, never from a session:
 
 ```bash
 nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket> --until <YYYY-MM-DD> >/dev/null 2>&1 &
@@ -257,6 +270,17 @@ remove stop, start it again." Each waiting request gets one more card. Until you
 restart it, no queued request is read or launched; the new instance removes
 `.hold` at start and asks each waiting request. A hold that begins while the
 daemon waits on a go is written and told when that wait ends, at most 6 h later.
+
+On a Linux chief station that card can still fire, within the daemon's poll interval of the pull, because the daemon
+cannot know the station sync is about to restart it, and the card's text says to restart by hand. When the merge was
+one the chief's waiter handled you can ignore it: the sync restarts the daemon, and a hand `himmelctl bypass restart`
+before it spends one of the unit's start-limit slots (five starts within 600 s use up the allowance, and the next start
+is refused). A merge the waiter never handled (the GitHub UI, Dependabot, by hand) runs no sync, so run
+`bash <primary checkout>/scripts/himmel-update.sh --only bypass_daemon` instead. Do not ignore the card when the tick's
+`station=BEHIND:` list (comma-separated, other components may sit beside it) names `bypass_daemon-failed` or
+`bypass_daemon-inactive`, or `himmelctl bypass status` shows `active: no`. `-inactive` means the unit is enabled but not
+running. `-failed` means the step itself returned an error, so read its line in `~/.himmel/state/station-sync.out` and
+run `himmelctl bypass status` before choosing; when the unit is not running, `himmelctl bypass restart` is the way back.
 
 `bypass-launchd.sh --check --bucket <bucket> [--request <file>]` reports without
 starting anything. It runs the start checks (not the Claude-session refusal, the
@@ -311,6 +335,9 @@ safe from a Claude-run update, and the manager starts the process with the unit'
 `CLAUDECODE` refusal in the script is untouched. An off or stopped unit is left alone and the update names the
 command to run (`himmelctl bypass on` or `himmelctl bypass restart`). A request that was waiting for your go when the
 daemon restarts is asked again with a new code; one that already carried your go is moved to `.failed` and not re-run.
+On a Linux chief station the station sync runs the same step after each handled merge, and marks a unit that is enabled
+but not running `bypass_daemon-inactive` in the station state until it is up. An unchanged launcher costs one
+`is-enabled`, one `is-active`, three `git rev-parse` and one file read per sync.
 
 **The manager's environment is not trusted.** Any process of your user can change the user manager's environment
 (`systemctl --user set-environment`, `launchctl setenv`) and a restart makes it live. So the unit starts bash as

@@ -103,6 +103,10 @@ for (const p of providers) {
       assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === "google-antigravity" &&
         rule.purpose === "inference" && rule.hard === undefined,
         `salus x ${p} x ${u} must be allow via its OWN google-antigravity row (Decision 1259), got ${effective}`);
+    } else if (["anthropic", "cursor", "grok-harness", "copilot-cli"].includes(p) && u === "inference") {
+      assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === p &&
+        rule.purpose === "inference" && rule.hard === undefined,
+        `salus x ${p} x ${u} must be allow via its OWN ${p} row (decision 1375 R2), got ${effective}`);
     } else if (p === "openrouter") {
       assert(effective === "deny", `salus x ${p} x ${u} must stay deny by default (configurable ≠ open), got ${effective}`);
       // embedding, rerank and query-expansion are HARD (pinned in blocks 6e and 6f); every other purpose stays configurable.
@@ -650,6 +654,53 @@ assert(providers.includes("google-antigravity"), "google-antigravity provider mu
         `${c} x google-antigravity x ${u} must deny`);
     }
   }
+}
+
+{
+  const salusHarnesses = {
+    gemini: "google-antigravity", cursor: "cursor", x: "grok-harness",
+    copilot: "copilot-cli", anthropic: "anthropic", openai: "openai-codex",
+  };
+  const salusSix = Object.values(salusHarnesses);
+  for (const p of salusSix) {
+    assert(providers.includes(p), `provider ${p} must be declared`);
+    const { effective, rule } = evaluate("salus", p, "inference");
+    assert(effective === "allow" && rule && rule.corpus === "salus" && rule.provider === p &&
+      rule.purpose === "inference" && rule.verdict === "allow" && rule.hard === undefined &&
+      typeof rule.why === "string" && rule.why.length > 0,
+      `salus x ${p} x inference must be a non-hard allow via its OWN row with a why, got ${effective}/${rule ? `${rule.corpus} x ${rule.provider} x ${rule.purpose}` : "default"}`);
+    for (const u of purposes.filter(x => x !== "inference")) {
+      const res = evaluate("salus", p, u);
+      assert(res.effective === "deny" && res.rule && res.rule.hard === true,
+        `salus x ${p} x ${u} must stay HARD deny (inference only)`);
+    }
+  }
+  const salusAllowProviders = m.rules.filter(r => r.corpus === "salus" && (r.verdict === "allow" || r.verdict === "allow+log")).map(r => r.provider).sort();
+  assert(JSON.stringify(salusAllowProviders) === JSON.stringify([...salusSix].sort()),
+    `salus allow rows must name exactly the six ruled providers, got ${JSON.stringify(salusAllowProviders)}`);
+  for (const p of providers.filter(x => !salusSix.includes(x) && x !== "local-ollama" && x !== "ollama-cloud").concat(["brand-new-provider", "xai", "grok", "github-copilot"])) {
+    for (const u of purposes) {
+      assert(evaluate("salus", p, u).effective === "deny", `salus x ${p} x ${u} must deny (not one of the six ruled harnesses)`);
+    }
+  }
+  assert(evaluate("salus", "brand-new-provider", "inference").rule?.hard === true,
+    "an unlisted provider must be refused by the HARD salus wildcard");
+  for (const p of ["google-gemini", "xai-grokbot", "openai-chatgpt"]) {
+    assert(evaluate("salus", p, "inference").effective === "deny" && evaluate("salus", p, "inference").rule?.hard === true,
+      `salus x ${p} x inference must stay HARD deny`);
+  }
+  for (const u of ["embedding", "rerank", "query-expansion"]) {
+    const { effective, rule } = evaluate("salus", "openrouter", u);
+    assert(effective === "deny" && rule && rule.provider === "openrouter" && rule.purpose === u && rule.hard === true,
+      `salus x openrouter x ${u} must stay its OWN HARD deny row`);
+  }
+  const wildIdx = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*");
+  for (const p of ["cursor", "grok-harness", "copilot-cli", "anthropic"]) {
+    const idx = m.rules.findIndex(r => r.corpus === "salus" && r.provider === p && r.purpose === "inference");
+    assert(idx >= 0 && idx < wildIdx, `the salus x ${p} allow row must precede the salus hard wildcard`);
+  }
+  for (const p of ["cursor", "grok-harness", "copilot-cli"])
+    assert(typeof m.providers[p]?.region === "string" && m.providers[p].region.length > 0, `provider ${p} must declare a region`);
 }
 
 const mcpReadProviders = ["openai-chatgpt", "xai-grokbot"];

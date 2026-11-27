@@ -86,6 +86,10 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/steer-t3-tool-calls.sh"';
       continue;
     }
+    if (command.includes('/hooks/block-token-shaped-web-query.sh')) {
+      commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-token-shaped-web-query.sh"';
+      continue;
+    }
     const peer = command.match(/\/hooks\/(peer-taint-(?:gate|mark|resume)\.sh|phi-read-mark\.sh|suggest-missing-path\.sh)"$/);
     if (peer) {
       commandHook.command = `bash "\${CLAUDE_PLUGIN_ROOT}/hooks/${peer[1]}"`;
