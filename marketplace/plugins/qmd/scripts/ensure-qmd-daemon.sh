@@ -43,6 +43,14 @@
 #   QMD_RSS_CEILING_MB        recycle the daemon above this RSS (default 4096;
 #                              0 disables)
 #   QMD_RECYCLE_COOLDOWN_MIN  minimum minutes between recycles (default 30)
+#   QMD_WAIT_TRIES            one-second probes after a start before giving up
+#                              (default 5; digits only)
+#   QMD_SWAP_WAIT             seconds a start waits for another index's start to free the
+#                              shared embed-swap lock before it gives up (default 30)
+#   QMD_INDEX_NAME            a named index (qmd --index <name>): its own pidfile
+#                              mcp-<name>.pid, recycle-<name>.{lock,stamp,log},
+#                              starting-<name> and boot unit qmd-daemon-<name>.service,
+#                              and a pid whose argv does not name that index is never ours
 #
 # --recycle-if-stale <stamp>: himmel-update runs this, in the foreground, after it
 # installs a new qmd build (<stamp> is the build-success file). The running server
@@ -71,6 +79,7 @@ set -u
 # which resolves to ::1 (IPv6-only) on Windows - an IPv4 probe gets
 # connection-refused against a healthy daemon (round-3 CR, reproduced live).
 # .mcp.json + the ps1 twin use the same URL; keep all three aligned.
+unit_url="${QMD_MCP_URL:-}"
 QMD_MCP_URL="${QMD_MCP_URL:-http://localhost:8181/mcp}"
 QMD_CURL="${QMD_CURL:-curl}"
 QMD_START_TIMEOUT="${QMD_START_TIMEOUT:-20}"
@@ -86,25 +95,95 @@ QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 
 QMD_SYSTEMCTL="${QMD_SYSTEMCTL:-systemctl}"
 QMD_UNIT_DIR="${QMD_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"
-boot_unit="qmd-daemon.service"  # t13b-ok: the boot unit's name only, starts nothing
+
+QMD_INDEX_NAME="${QMD_INDEX_NAME:-index}"
+case "$QMD_INDEX_NAME" in
+  *[!A-Za-z0-9._-]*|'')
+    echo "ensure-qmd-daemon: ERROR - QMD_INDEX_NAME must match [A-Za-z0-9._-]+, got '$QMD_INDEX_NAME'." >&2 # t13b-ok: message text only, starts nothing
+    exit 1 ;;
+esac
+if [ "$QMD_INDEX_NAME" = index ]; then
+  idx_sfx=""
+  boot_unit="qmd-daemon.service"  # t13b-ok: the boot unit's name only, starts nothing
+else
+  idx_sfx="-$QMD_INDEX_NAME"
+  boot_unit="qmd-daemon-$QMD_INDEX_NAME.service"  # t13b-ok: the boot unit's name only, starts nothing
+fi
+mcp_stem="mcp$idx_sfx"
+shared_port=8181
+url_port() {
+  local h="${1#*://}" p
+  h="${h%%[/?#]*}"
+  h="${h##*@}"
+  case "$h" in \[*) h="${h#*]}" ;; esac
+  case "$h" in *:*) p="${h##*:}" ;; *) return 1 ;; esac
+  case "$p" in ''|*[!0-9]*) return 1 ;; esac
+  p="${p#"${p%%[!0]*}"}"
+  [ -n "$p" ] && [ "${#p}" -le 5 ] && [ "$p" -le 65535 ] || return 1
+  echo "$p"
+}
+url_port_n=""
+if [ "$QMD_INDEX_NAME" != index ]; then
+  if [ -z "$unit_url" ]; then
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  fi
+  url_port_n="$(url_port "$QMD_MCP_URL")" || {
+    echo "ensure-qmd-daemon: ERROR - QMD_MCP_URL '$QMD_MCP_URL' must name a numeric port 1-65535 for the named index '$QMD_INDEX_NAME'." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  }
+  if [ "$url_port_n" -eq "$shared_port" ]; then
+    echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port $shared_port, the shared server's; set QMD_MCP_URL to the index's own port." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  fi
+fi
 boot_before="himmel-recover.service"
 
+unit_env_line() {
+  local v="$2"
+  case "$v" in *[[:cntrl:]]*) echo "ensure-qmd-daemon: $1 holds a control character; not writing the boot unit" >&2; return 1 ;; esac  # t13b-ok: message text only, starts nothing
+  v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; v="${v//%/%%}"
+  printf 'Environment="%s=%s"\n' "$1" "$v"
+}
+
+unit_env_lines() {
+  local f
+  [ "$QMD_INDEX_NAME" = index ] || unit_env_line QMD_INDEX_NAME "$QMD_INDEX_NAME" || return 1
+  [ -z "$unit_url" ] || unit_env_line QMD_MCP_URL "$unit_url" || return 1
+  for f in QMD_HTTP_TOKEN_FILE QMD_HTTP_AUTH_FILE; do
+    [ -n "${!f:-}" ] || continue
+    case "${!f}" in
+      /*) ;;
+      *) echo "ensure-qmd-daemon: $f must be an absolute path to go into the boot unit" >&2; return 1 ;;  # t13b-ok: message text only, starts nothing
+    esac
+    unit_env_line "$f" "${!f}" || return 1
+  done
+  [ -z "${QMD_WAIT_TRIES:-}" ] || case "$QMD_WAIT_TRIES" in
+    *[!0-9]*) echo "ensure-qmd-daemon: QMD_WAIT_TRIES must be digits to go into the boot unit" >&2; return 1 ;;  # t13b-ok: message text only, starts nothing
+    *) unit_env_line QMD_WAIT_TRIES "$QMD_WAIT_TRIES" ;;
+  esac
+}
+
 install_boot_unit() {
-  local self unit
+  local self unit env_lines desc
   self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/ensure-qmd-daemon.sh" || return 1  # t13b-ok: this script's own path, starts nothing
   unit="$QMD_UNIT_DIR/$boot_unit"
+  env_lines="$(unit_env_lines)" || return 1
+  desc="Himmel qmd search server (starts before the chief and workers)"
+  [ "$QMD_INDEX_NAME" = index ] || desc="Himmel qmd search server, $QMD_INDEX_NAME index"
   mkdir -p "$QMD_UNIT_DIR" || return 1
   # PATH names the bun root: a user manager's default PATH has no ~/.bun/bin, and
   # without bun the start would fall to the node-shebang shim (see resolve_qmd).
   {
     printf '[Unit]\n'
-    printf 'Description=Himmel qmd search server (starts before the chief and workers)\n'
-    printf 'Before=%s\n' "$boot_before"
+    printf 'Description=%s\n' "$desc"
+    [ "$QMD_INDEX_NAME" != index ] || printf 'Before=%s\n' "$boot_before"
     printf '\n[Service]\n'
     printf 'Type=oneshot\n'
     printf 'RemainAfterExit=yes\n'
     printf 'TimeoutStartSec=120\n'
     printf 'Environment=PATH=%%h/.bun/bin:/usr/local/bin:/usr/bin:/bin\n'
+    [ -z "$env_lines" ] || printf '%s\n' "$env_lines"
     printf 'ExecStart=/usr/bin/env bash "%s"\n' "${self//%/%%}"
     printf '\n[Install]\n'
     printf 'WantedBy=default.target\n'
@@ -112,7 +191,7 @@ install_boot_unit() {
   mv "$unit.tmp" "$unit" || { echo "ensure-qmd-daemon: cannot write $unit" >&2; return 1; }  # t13b-ok: message text only, starts nothing
   "$QMD_SYSTEMCTL" --user daemon-reload || { echo "ensure-qmd-daemon: systemctl --user daemon-reload failed" >&2; return 1; }  # t13b-ok: reloads unit files, starts nothing
   "$QMD_SYSTEMCTL" --user enable "$boot_unit" || { echo "ensure-qmd-daemon: systemctl --user enable $boot_unit failed" >&2; return 1; }  # t13b-ok: enables the boot unit this mode exists to install
-  echo "ensure-qmd-daemon: installed and enabled $unit (runs $self at login, before $boot_before); re-run after the plugin path changes"  # t13b-ok: message text only, starts nothing
+  echo "ensure-qmd-daemon: installed and enabled $unit (runs $self at login$([ "$QMD_INDEX_NAME" = index ] && echo ", before $boot_before")); re-run after the plugin path changes"  # t13b-ok: message text only, starts nothing
 }
 
 boot_show() { "$QMD_SYSTEMCTL" --user show -p "$1" --value "$2" 2>/dev/null; }
@@ -168,8 +247,14 @@ if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
 fi
 
 PROBE_TIMEOUT=2
-WAIT_TRIES=5
+WAIT_TRIES="${QMD_WAIT_TRIES:-5}"
+case "$WAIT_TRIES" in ''|*[!0-9]*) WAIT_TRIES=5 ;; esac
+WAIT_TRIES=$((10#$WAIT_TRIES))
+[ "$WAIT_TRIES" -gt 0 ] || WAIT_TRIES=5
 PORT_WAIT_TRIES=15
+swap_wait="${QMD_SWAP_WAIT:-30}"
+case "$swap_wait" in ''|*[!0-9]*) swap_wait=30 ;; esac
+swap_wait=$((10#$swap_wait))
 
 INIT_PAYLOAD='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ensure-qmd-daemon","version":"1"}}}'
 
@@ -281,21 +366,60 @@ resolve_qmd() {
 # budget. Fleets start many sessions at once, so a mkdir lock admits one
 # recycler and a stamp holds off another for QMD_RECYCLE_COOLDOWN_MIN.
 qmd_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/qmd"
-pidfile="$qmd_state_dir/mcp.pid"
-recycle_lock="$qmd_state_dir/recycle.lock"
-recycle_stamp="$qmd_state_dir/recycle.stamp"
-recycle_log="$qmd_state_dir/recycle.log"
+pidfile="$qmd_state_dir/$mcp_stem.pid"
+recycle_lock="$qmd_state_dir/recycle$idx_sfx.lock"
+recycle_stamp="$qmd_state_dir/recycle$idx_sfx.stamp"
+recycle_log="$qmd_state_dir/recycle$idx_sfx.log"
 
-# Echo "<rss_kb> <etime>" for a live qmd mcp pid, else fail.
+args_name_index() {
+  local -a words
+  local w prev="" got=index
+  read -r -a words <<EOF
+$1
+EOF
+  for w in "${words[@]:-}"; do
+    [ "$prev" != --index ] || got="$w"
+    case "$w" in --index=*) got="${w#--index=}" ;; esac
+    prev="$w"
+  done
+  [ "$got" = "$QMD_INDEX_NAME" ]
+}
+
 qmd_rss() {
-  local row rss etime
+  local row rss etime args
   row="$("$QMD_PS" -o rss= -o etime= -o args= -p "$1" 2>/dev/null)" || return 1
   case "$row" in *qmd*mcp*) ;; *) return 1 ;; esac
-  read -r rss etime _ <<EOF
+  read -r rss etime args <<EOF
 $row
 EOF
   case "$rss" in ''|*[!0-9]*) return 1 ;; esac
+  args_name_index "$args" || return 1
+  last_args="$args"
   echo "$rss $etime"
+}
+
+args_port() {
+  local -a words
+  local w prev="" got=""
+  read -r -a words <<EOF
+$1
+EOF
+  for w in "${words[@]:-}"; do
+    [ "$prev" != --port ] || got="$w"
+    case "$w" in --port=*) got="${w#--port=}" ;; esac
+    prev="$w"
+  done
+  case "$got" in ''|*[!0-9]*) return 1 ;; esac
+  [ "${#got}" -le 9 ] && echo "$((10#$got))"
+}
+
+index_serves() {
+  local pid
+  [ "$QMD_INDEX_NAME" = index ] && return 0
+  pid="$(head -n1 "$pidfile" 2>/dev/null)"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  qmd_rss "$pid" >/dev/null || return 1
+  [ "$(args_port "$last_args")" = "$url_port_n" ]
 }
 
 check_ceiling() {
@@ -403,6 +527,7 @@ pid_is_ours() {
 $row
 EOF
   case "$args" in *qmd*mcp*--http*) ;; *) return 1 ;; esac
+  args_name_index "$args" || return 1
   secs="$(etime_secs "$etime")" || return 1
   [ $(( $(date +%s) - secs )) -le $(($2 + 2)) ]
 }
@@ -450,7 +575,7 @@ stale_recycle() {
   read_pidfile || { echo "$who: no usable pidfile ($pidfile) - cannot tell which process is the qmd server; not signalling anything" >&2; return 1; }
   if [ "$pf_m" -ge "$stamp_m" ]; then
     if pid_is_ours "$pid" "$pf_m"; then
-      answers_mcp && return 0
+      answers_mcp && index_serves && return 0
       unserved_reason "$who"
       return 1
     fi
@@ -503,7 +628,7 @@ stale_recycle() {
   bash "$0" || echo "$who: the start path failed" >&2
   w=0
   while [ "$w" -lt 10 ]; do
-    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp; then verdict=0; break; fi
+    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp && index_serves; then verdict=0; break; fi
     w=$((w + 1))
     sleep 1
   done
@@ -522,6 +647,10 @@ fi
 # ---- Healthy path: something already answers -------------------------------
 body="$(probe_body)"
 if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+  if ! index_serves; then
+    echo "ensure-qmd-daemon: ERROR - $QMD_MCP_URL answers, but it is not the '$QMD_INDEX_NAME' index's server (no live $pidfile naming --index $QMD_INDEX_NAME); set QMD_MCP_URL to that index's own port." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  fi
   check_ceiling
   exit 0
 fi
@@ -539,12 +668,6 @@ fi
 # model, scripts/qmd/qmd-jina-gate.mjs must allow every collection in it via the
 # egress matrix; a missing gate script or node fails closed. A local-only config
 # never needs the gate, so the plugin still works outside a himmel checkout.
-QMD_INDEX_NAME="${QMD_INDEX_NAME:-index}"
-case "$QMD_INDEX_NAME" in
-  *[!A-Za-z0-9._-]*|'')
-    echo "ensure-qmd-daemon: ERROR - QMD_INDEX_NAME must match [A-Za-z0-9._-]+, got '$QMD_INDEX_NAME'." >&2 # t13b-ok: message text only, starts nothing
-    exit 1 ;;
-esac
 qmd_cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/$QMD_INDEX_NAME.yml"
 remote_models=0
 # The provider key is the DAEMON's, never a session's: drop whatever the launching session carries, and
@@ -627,31 +750,42 @@ swap_lock_reclaim() {
   return 0
 }
 mkdir -p "$qmd_state_dir" 2>/dev/null
-# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended ensure or off start exits at once, a swap start retries it for up to 8 x 0.25 s
+# prim-ok: the plugin installs without scripts/lib; the swap lock is held across processes with a role file; a contended start of the same index or an off start exits at once, any other start retries it
 if ! mkdir "$swap_lock" 2>/dev/null; then
   swap_pid="$(cat "$swap_lock/pid" 2>/dev/null)"
   if swap_lock_stale "$swap_lock"; then
     swap_lock_reclaim
   fi
-  # Contended. WHO holds it decides: role=ensure is another session's start already
-  # on it (sessions launch together), so this one exits quietly; role=swap refuses.
-  # The role file is written before the pid, so a holder with neither is brand new:
-  # poll briefly (SessionStart must stay fast); one that never names a role is
-  # treated as a swap.
+  # Contended. WHO holds it decides: role=ensure for this index is another session's start already on
+  # it, so this one exits quietly; for another index it is waited out (swap_wait s); role=swap refuses.
+  # The index and role files are written before the pid, so a holder with neither is brand new:
+  # poll briefly (SessionStart must stay fast); one that never names a role is treated as a swap.
   swap_role=""
   swap_i=0
+  swap_max=8
+  swap_step=0.25
   while :; do
     swap_role="$(cat "$swap_lock/role" 2>/dev/null)"
     case "$swap_role" in
-      ensure|off) exit 0 ;;
+      ensure)
+        swap_holder="$(cat "$swap_lock/index" 2>/dev/null)"
+        [ "${swap_holder:-index}" != "$QMD_INDEX_NAME" ] || exit 0
+        swap_max="$swap_wait"
+        swap_step=1 ;;
+      off) exit 0 ;;
       swap) break ;;
     esac
-    # prim-ok: the plugin installs without scripts/lib; a bounded retry (8 x 0.25 s) of the same swap lock above
+    if swap_lock_stale "$swap_lock"; then swap_lock_reclaim; fi
+    # prim-ok: the plugin installs without scripts/lib; a bounded retry of the same swap lock above
     if mkdir "$swap_lock" 2>/dev/null; then swap_role=mine; break; fi
     swap_i=$((swap_i + 1))
-    if [ "$swap_i" -ge 8 ]; then break; fi
-    sleep 0.25
+    if [ "$swap_i" -ge "$swap_max" ]; then break; fi
+    sleep "$swap_step"
   done
+  if [ "$swap_role" = ensure ]; then
+    echo "ensure-qmd-daemon: ERROR - another index's start has held $swap_lock for ${swap_wait}s; NOT starting the '$QMD_INDEX_NAME' index." >&2 # t13b-ok: message text only, starts nothing
+    exit 1
+  fi
   if [ "$swap_role" != mine ]; then
     echo "ensure-qmd-daemon: an embed-model swap is in progress (pid ${swap_pid:-unknown}, $swap_lock) - NOT starting the qmd daemon." >&2 # t13b-ok: refusal message text, starts nothing
     echo "  Starting it now would serve queries against a half-swapped index. Retry once the swap finishes;" >&2
@@ -659,6 +793,7 @@ if ! mkdir "$swap_lock" 2>/dev/null; then
     exit 1
   fi
 fi
+echo "$QMD_INDEX_NAME" > "$swap_lock/index"
 echo ensure > "$swap_lock/role"
 echo "$$" > "$swap_lock/pid"
 # shellcheck disable=SC2064 # expand now: the lock path is fixed for this run
@@ -693,6 +828,7 @@ port_host="${QMD_MCP_URL#*://}"
 port_host="${port_host%%/*}"
 port_num="${port_host##*:}"
 port_host="${port_host%%:*}"
+[ -z "$url_port_n" ] || port_num="$url_port_n"
 port_held() {
   if command -v timeout >/dev/null 2>&1; then
     # shellcheck disable=SC2016 # $1/$2 are the inner bash -c's OWN positional
@@ -727,7 +863,7 @@ case "$tune_batch" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_BATCH_SIZE="
 case "$tune_conc" in ''|*[!0-9]*|0*) ;; *) export QMD_OPENAI_EMBED_CONCURRENCY="$tune_conc" ;; esac
 case "$tune_queue" in ''|*[!0-9]*|0*) ;; *) export QMD_QUERY_MAX_QUEUED="$tune_queue" ;; esac
 start_rc=0
-start_marker="$qmd_state_dir/starting"
+start_marker="$qmd_state_dir/starting$idx_sfx"
 # Recheck the opt-out under the held lock, right before the launch: an `off` that
 # landed after the early check has set the flag by now, and an `off` after this
 # point waits on the lock (qmd-daemon-switch.sh) and then stops what was started.
@@ -747,7 +883,7 @@ fi
 if [ "$start_rc" -eq 124 ] || [ "$start_rc" -eq 137 ]; then
   echo "ensure-qmd-daemon: ERROR - 'qmd mcp --http --daemon' timed out after ${QMD_START_TIMEOUT}s (killed)." >&2
   echo "  A hung start would stall every new session, so it was bounded and aborted." >&2
-  echo "  Check the daemon log: ~/.cache/qmd/mcp.log" >&2
+  echo "  Check the daemon log: ~/.cache/qmd/$mcp_stem.log" >&2  # t13b-ok: message text only, starts nothing
   rm -f "$start_marker"
   exit 1
 fi
@@ -755,7 +891,7 @@ fi
 i=0
 while [ "$i" -lt "$WAIT_TRIES" ]; do
   body="$(probe_body)"
-  if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+  if { { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; } && index_serves; then
     rm -f "$start_marker"
     exit 0
   fi
@@ -776,5 +912,5 @@ if [ -z "${QMD_BIN_ARG1:-}" ]; then
   echo "  better-sqlite3 binding is missing, fix with:" >&2
   echo "  bash <himmel-repo>/scripts/lib/qmd-bin.sh install)" >&2
 fi
-echo "  Check the daemon log: ~/.cache/qmd/mcp.log" >&2
+echo "  Check the daemon log: ~/.cache/qmd/$mcp_stem.log" >&2  # t13b-ok: message text only, starts nothing
 exit 1

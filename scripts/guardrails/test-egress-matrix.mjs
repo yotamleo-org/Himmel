@@ -726,8 +726,8 @@ assert(!purposes.includes("luna-mcp-write"), "purpose luna-mcp-write must not be
 assert(!m.rules.some(r => r.purpose === "luna-mcp-write"), "no rule may name luna-mcp-write yet");
 {
   const readRules = m.rules.filter(r => r.purpose === "luna-mcp-read");
-  assert(readRules.length === 14, `exactly 14 rules may name luna-mcp-read, got ${readRules.length}`);
-  for (const r of readRules)
+  assert(readRules.length === 15, `exactly 15 rules may name luna-mcp-read, got ${readRules.length}`);
+  for (const r of readRules.filter(x => x.corpus !== "gmail"))
     assert(mcpReadProviders.includes(r.provider) && mcpReadCorpora.includes(r.corpus) && r.verdict === "allow+log" && r.hard === undefined,
       `luna-mcp-read rule ${r.corpus} x ${r.provider} must be a non-hard allow+log over a listed corpus and provider`);
   for (const p of mcpReadProviders) {
@@ -747,7 +747,7 @@ assert(!m.rules.some(r => r.purpose === "luna-mcp-write"), "no rule may name lun
             `himmel-code x ${p} x ${u} must deny via the EXPLICIT himmel-code x ${p} x * deny row, not the himmel-code wildcard allow, got ${rule ? `${rule.corpus} x ${rule.provider} x ${rule.purpose} = ${rule.verdict}` : "default"}`);
       }
     }
-    for (const c of corpora.filter(x => !mcpReadCorpora.includes(x))) {
+    for (const c of corpora.filter(x => !mcpReadCorpora.includes(x) && x !== "gmail")) {
       for (const u of purposes) {
         assert(evaluate(c, p, u).effective === "deny", `${c} x ${p} x ${u} must deny (not a qmd read corpus)`);
       }
@@ -784,6 +784,27 @@ assert(!m.rules.some(r => r.purpose === "luna-mcp-write"), "no rule may name lun
   }
   assert(m.rules.filter(r => r.provider === "openai-codex").every(r => r.purpose !== "luna-mcp-read"),
     "no openai-codex row may name luna-mcp-read");
+}
+
+assert(corpora.includes("gmail"), "corpus gmail must be declared");
+assert(m.rules.filter(r => r.corpus === "gmail").length === 3, "gmail must have exactly the grokbot read row, the anthropic inference row and the wildcard deny");
+for (const p of providers) {
+  for (const u of purposes) {
+    const open = (p === "xai-grokbot" && u === "luna-mcp-read") || (p === "anthropic" && u === "inference");
+    const { effective, rule } = evaluate("gmail", p, u);
+    assert(effective === (open ? "allow" : "deny"), `gmail x ${p} x ${u} must ${open ? "allow" : "deny"}, got ${effective}`);
+    if (open) assert(rule && rule.corpus === "gmail" && rule.provider === p && rule.purpose === u && rule.hard === undefined,
+      `gmail x ${p} x ${u} must be open via its OWN literal row`);
+  }
+}
+{
+  assert(evaluate("gmail", "xai-grokbot", "luna-mcp-read").rule?.verdict === "allow+log", "gmail x xai-grokbot x luna-mcp-read must be allow+log (a ledger line per call)");
+  assert(evaluate("gmail", "anthropic", "inference").rule?.verdict === "allow", "gmail x anthropic x inference must be allow");
+  assert(evaluate("gmail", "openai-chatgpt", "luna-mcp-read").effective === "deny", "gmail x openai-chatgpt x luna-mcp-read must deny: only Grokbot reads the mail");
+  const wild = m.rules.findIndex(r => r.corpus === "gmail" && r.provider === "*" && r.purpose === "*");
+  const firstStar = m.rules.findIndex(r => r.corpus === "*" && r.provider !== "google-gemini");
+  assert(wild >= 0 && m.rules[wild].verdict === "deny", "the gmail wildcard row must be a deny");
+  assert(firstStar > wild, "the gmail wildcard deny must precede every wildcard-corpus row except the hard gemini deny");
 }
 
 if (failures > 0) {

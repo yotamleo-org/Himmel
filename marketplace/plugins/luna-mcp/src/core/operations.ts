@@ -22,6 +22,7 @@ export interface OpDeps {
   roots: ReadonlyMap<string, string>;
   egress: Egress;
   qmd: QmdProxy;
+  isolated: ReadonlyMap<string, QmdProxy>;
   limiter: RateLimiter;
 }
 
@@ -179,7 +180,11 @@ const qmdSearch = defineOp({
   }),
   run: async (deps, principal, args, signal) => {
     const usable = usableOf(principal);
-    const requested = unique(args.collections ?? usable);
+    const requested = unique(args.collections ?? usable.filter((c) => !deps.isolated.has(c)));
+    const aloneOnly = usable.find((c) => deps.isolated.has(c));
+    if (requested.length === 0 && aloneOnly !== undefined) {
+      throw new OpError(400, "isolated_collection", `${aloneOnly} is searched on its own: send collections: ["${aloneOnly}"]`, { collection: aloneOnly, reason: "isolated-default" });
+    }
     const skipped = requested.filter((c) => !usable.includes(c));
     const effective: Authorized[] = [];
     let firstReason: string | null = null;
@@ -202,12 +207,16 @@ const qmdSearch = defineOp({
     const names = effective.map((a) => a.collection);
     const corpus = unique(effective.flatMap((a) => a.corpora)).join(",");
     const denyAccess = { collection: names.join(","), corpus };
+    const isolatedName = names.find((c) => deps.isolated.has(c));
+    if (isolatedName !== undefined && names.length > 1) {
+      throw new OpError(400, "isolated_collection", `${isolatedName} is searched on its own: send collections: ["${isolatedName}"]`, { ...denyAccess, reason: "isolated-mixed" });
+    }
     if (!deps.limiter.take(principal.keyId)) {
       throw new OpError(429, "rate_limited", "search rate limit reached", { ...denyAccess, reason: "rate-limit" });
     }
     let raw;
     try {
-      raw = await deps.qmd.search(
+      raw = await (deps.isolated.get(names[0] as string) ?? deps.qmd).search(
         { searches: args.searches, collections: names, limit: Math.min(args.limit * 2, SEARCH_OVERFETCH_CAP), minScore: args.minScore },
         signal,
       );

@@ -464,9 +464,23 @@ cat > "$work/bun/bin/qmd" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$work/qmd-calls"
 touch "$work/started"
+case " \$* " in
+  *" --index "*)
+    name=""; prev=""; for a in "\$@"; do [ "\$prev" = --index ] && name="\$a"; prev="\$a"; done
+    mkdir -p "$work/cache/qmd"
+    sleep 20 </dev/null >/dev/null 2>&1 &
+    echo \$! > "$work/cache/qmd/mcp-\$name.pid"
+    printf '1024 00:01 bun /x/qmd.js %s\n' "\$*" > "$work/ps-row" ;;
+esac
 exit 0
 EOF
 chmod +x "$work/bun/bin/qmd"
+cat > "$work/ps" <<EOF
+#!/usr/bin/env bash
+kill -0 "\${!#}" 2>/dev/null || exit 1
+cat "$work/ps-row"
+EOF
+chmod +x "$work/ps"
 cat > "$work/curl" <<EOF
 #!/usr/bin/env bash
 if [ -f "$work/started" ]; then
@@ -480,7 +494,7 @@ launch() { # launch <index name|-> ; QMD_JINA_GATE inherited from the caller
   rm -f "$work/started" "$work/qmd-calls"
   local idx="${1:-index}"
   env -i PATH="$PATH" HOME="$work/home" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
-    XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
+    XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_PS="$work/ps" QMD_MCP_URL=http://localhost:1/mcp \
     QMD_DAEMON_ENV_FILE="$work/daemon0.env" QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
     bash "$ensure" >"$work/out" 2>"$work/err"
 }
