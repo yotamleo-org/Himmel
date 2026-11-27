@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, consoleInboxPath, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, withOwedOutboxLock, makeChiefTap, kindChat, readKindGroupKeys, loadClassTable, type KindGroup, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -1118,6 +1118,13 @@ async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath:
   }
 }
 
+async function queueGroupFallback(root: string, out: { text?: string; fallback_chat?: unknown; fallback_group?: unknown; fallback_console?: unknown }, messageId: unknown): Promise<void> {
+  const dm = out.fallback_chat;
+  if (typeof messageId === "number" || typeof dm !== "number" || !Number.isSafeInteger(dm) || dm <= 0) return;
+  const text = `(the ${out.fallback_group === "status" ? "status" : "alerts"} group did not take this) ${out.text ?? ""}`;
+  await replyViaOutbox(root, dm, text, typeof out.fallback_console === "string" ? out.fallback_console : undefined, undefined, undefined, undefined, undefined, true);
+}
+
 export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
   try { names = await readdir(join(root, "sessions")); } catch { return; }
@@ -1149,7 +1156,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         const rowStart = pos;
         if (ln.trim()) {
-          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; format?: boolean; document_path?: string; caption?: string; via?: unknown; sha256?: unknown } | null = null;
+          let out: { text?: string; console?: string; request_id?: string; request_hash?: string; reply_to_message_id?: number; markup?: object; format?: boolean; document_path?: string; caption?: string; via?: unknown; sha256?: unknown; fallback_chat?: unknown; fallback_group?: unknown; fallback_console?: unknown } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out && (out.request_id !== undefined || out.request_hash !== undefined)) {
             if (!(typeof out.console === "string" && consoleInboxPath(root, out.console) && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id)
@@ -1190,6 +1197,7 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup, out.format === true); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
+            await queueGroupFallback(root, out, messageId);
           }
           if (blocked) await atomicWrite(sentPath, sentHash);
           }
@@ -2321,8 +2329,30 @@ async function sessionsList(root: string): Promise<string[]> {
   try { return await readdir(join(root, "sessions")); } catch { return []; }
 }
 
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string, format?: boolean): Promise<void> {
-  await appendOutboxLine(root, chat_id, { text, ...(format ? { format: true } : {}),...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+export type NoticeFallback = { chat: number; group: KindGroup; console?: string };
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object, requestId?: string, requestHash?: string, format?: boolean, fallback?: NoticeFallback): Promise<void> {
+  await appendOutboxLine(root, chat_id, { text, ...(format ? { format: true } : {}),...(consoleName ? { console: consoleName } : {}), ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}), ...(fallback ? { fallback_chat: fallback.chat, fallback_group: fallback.group, ...(fallback.console ? { fallback_console: fallback.console } : {}) } : {}) });
+}
+
+const noticeDeps = async () => ({ table: await loadClassTable(), access: await loadAccess(), keys: readKindGroupKeys() });
+const queueNotice = (root: string, dm: number, to: ReturnType<typeof kindChat>, text: string): Promise<void> =>
+  replyViaOutbox(root, to.chat, text, undefined, undefined, undefined, undefined, undefined, undefined, to.group ? { chat: dm, group: to.group } : undefined);
+
+export function makeHeartbeatAlert(root: string, dm: () => number | null, route: typeof kindChat): AlertFn {
+  return async (name, ageSec) => {
+    const chat = dm(), kindChat = route;
+    if (chat === null) { console.error(`[poller] console ${name}'s wait heartbeat is stale (${ageSec}s) but there is no operator chat to alert`); return; }
+    const text = `⚠️ chief "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed. Check it.`;
+    await queueNotice(root, chat, kindChat("chief-heartbeat-stale", chat, text, await noticeDeps()), text);
+  };
+}
+export function makeRepeatedFailureAlert(root: string, dm: () => number | null, route: typeof kindChat): RepeatedFailureAlert {
+  return async (session, error, count) => {
+    const chat = dm(), kindChat = route;
+    if (chat === null) { logRedacted(`[poller] ${session} failed ${count}x with the same error but there is no operator chat to alert`); return; }
+    const text = `⚠️ bridge: every dispatch for ${session} has failed ${count} times in a row with the same error, and it keeps retrying:\n${error.slice(0, 500)}\nIf this names plugin-profiles or another module, restart-bridge.sh may clear it; check the poller log.`;
+    await queueNotice(root, chat, kindChat("bridge-dispatch-failed", chat, text, await noticeDeps()), text);
+  };
 }
 
 export type MonitorSendFn = (text: string) => Promise<boolean>;
@@ -2388,7 +2418,10 @@ async function noteMonitorDown(root: string, dir: string, nowMs: number, chat: n
   if (last && nowMs - last < MONITOR_NOTICE_GAP_MS) return;
   monitorLastNoticeAt.set(root, nowMs);
   await atomicWrite(marker, `${Math.floor(nowMs / 1000)}\n`).catch(() => {});
-  try { await replyViaOutbox(root, chat, monitorChatDownText(reason, pending)); }
+  try {
+    const text = monitorChatDownText(reason, pending);
+    await queueNotice(root, chat, kindChat("monitor-chat-down", chat, text, await noticeDeps()), text);
+  }
   catch (e) { monitorLastNoticeAt.delete(root); await unlink(marker).catch(() => {}); throw e; }
 }
 
@@ -2572,11 +2605,7 @@ export async function main(): Promise<void> {
   // a session failing the same way DISPATCH_FAIL_ALERT_AFTER times
   // in a row tells the operator's DM once (outbox-routed, like the heartbeat
   // alert below), instead of retrying silently forever.
-  const repeatedFailureAlert: RepeatedFailureAlert = async (session, error, count) => {
-    const chat = operatorChatId(access);
-    if (chat === null) { logRedacted(`[poller] ${session} failed ${count}x with the same error but there is no operator chat to alert`); return; }
-    await replyViaOutbox(root, chat, `⚠️ bridge: every dispatch for ${session} has failed ${count} times in a row with the same error, and it keeps retrying:\n${error.slice(0, 500)}\nIf this names plugin-profiles or another module, restart-bridge.sh may clear it; check the poller log.`);
-  };
+  const repeatedFailureAlert = makeRepeatedFailureAlert(root, () => operatorChatId(access), kindChat);
   const dispatch = makeDispatcher(runFn, undefined, repeatedFailureAlert);
   await reconcile(root, isAlive);
   // photo downloads land in a shared root-level attachments/ (named by update_id,
@@ -2756,10 +2785,7 @@ export async function main(): Promise<void> {
   const HEARTBEAT_STALE_MS = intervalEnvMs(process.env.TELEGRAM_HEARTBEAT_STALE_MS, DEFAULT_STALE_MS);
   const HEARTBEAT_CHECK_MS = intervalEnvMs(process.env.TELEGRAM_HEARTBEAT_CHECK_MS, 60_000);
   const heartbeatAlerted: AlertedState = new Map();
-  const heartbeatAlert: AlertFn = async (name, ageSec) => {
-    if (operatorChat === null) { console.error(`[poller] console ${name}'s wait heartbeat is stale (${ageSec}s) but there is no operator chat to alert`); return; }
-    await replyViaOutbox(root, operatorChat, `⚠️ chief "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed. Check it.`);
-  };
+  const heartbeatAlert = makeHeartbeatAlert(root, () => operatorChat, kindChat);
   const heartbeatTimer = setInterval(guarded(() => checkStaleHeartbeats(root, Date.now(), HEARTBEAT_STALE_MS, heartbeatAlerted, censusSessionAlive, heartbeatAlert)), HEARTBEAT_CHECK_MS); // t13b-ok: unref'd periodic check in the existing poller process, no new service
   if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
   // The station config watcher: a deleted, truncated or key-losing config

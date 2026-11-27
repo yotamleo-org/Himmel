@@ -235,7 +235,11 @@ the operator's `/chief <session> <text>` from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
-`bun scripts/telegram/chief-route.ts reply --kind chief-reply <chat_id> <text>`. A line tagged
+`bun scripts/telegram/chief-route.ts reply --kind chief-reply <chat_id> <text>`. A
+status summary or a merge report that needs no answer is sent with
+`bun scripts/telegram/chief-route.ts reply --kind chief-status operator <text>`, which goes
+to the status group when one is set; an ask, a question or anything that needs an
+answer keeps `chief-reply`. A line tagged
 `[voice satellite=<id> UNVERIFIED-SPEAKER]` carries no operator authority: the
 chief acts directly only on status asks and narrowings, and turns anything
 wider into a Telegram `voice asked: <X> — reply yes` that acts on a later

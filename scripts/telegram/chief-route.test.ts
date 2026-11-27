@@ -9240,6 +9240,121 @@ test("short answer: an older block file is refused as not newer", async () => {
   await refusedWith(critical(true, t.specs, "C1", 1442, "a1"), t.specs, "is not newer than the latest round");
 });
 
+import { routeReply, queueFile, kindChat, readKindGroupKeys } from "./chief-route";
+
+const KG_DM = 7;
+const KG_ALERTS = -1001111;
+const KG_STATUS = -1002222;
+const KG_LISTED = -1007;
+
+type KgOpts = { conf?: string; local?: string; env?: Record<string, string> };
+async function kindGroups<T>(o: KgOpts, run: (r: string, dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(join(tmpdir(), "kg-conf-"));
+  if (o.conf !== undefined) writeFileSync(join(dir, "himmel.conf"), o.conf);
+  if (o.local !== undefined) writeFileSync(join(dir, "himmel.conf.local"), o.local);
+  const access = join(dir, "access.json");
+  writeFileSync(access, JSON.stringify({ allowFrom: [String(KG_DM)], groups: { [String(KG_LISTED)]: {} } }));
+  const vars: Record<string, string> = { HIMMEL_CONFIG_DIR: dir, TELEGRAM_ACCESS_PATH: access, ...o.env };
+  const saved = Object.entries(vars).map(([k]) => [k, process.env[k]] as const);
+  Object.assign(process.env, vars);
+  try { return await run(root(), dir); }
+  finally { for (const [k, v] of saved) { if (v === undefined) Reflect.deleteProperty(process.env, k); else process.env[k] = v; } }
+}
+const KG_BOTH = `TELEGRAM_ALERTS_CHAT_ID=${KG_ALERTS}\nTELEGRAM_STATUS_CHAT_ID=${KG_STATUS}\n`;
+type KgRow = { text?: string; console?: string; fallback_chat?: number; fallback_group?: string; fallback_console?: string; document_path?: string; request_id?: string };
+const chatRows = (r: string, session: string): KgRow[] => lines(join(r, "sessions", session, "outbox.jsonl")).map((l) => JSON.parse(l));
+const kgSend = (r: string, kind: string, text = `${kind} line`, chat = KG_DM) => routeReply(r, chat, text, { kind, consoleName: NAME, dest: "operator" });
+
+test("kind groups K3: with both groups set, an ask, an alert and a status line land in three chats", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "chief-reply"); await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "__chat__").map((x) => x.text)).toEqual(["chief-reply line"]);
+  expect(chatRows(r, `group_${KG_ALERTS}`).map((x) => x.text)).toEqual(["token-in-output line"]);
+  expect(chatRows(r, `group_${KG_STATUS}`).map((x) => x.text)).toEqual(["chief-status line"]);
+  const log = routeLog(r);
+  expect(log[1]).toContain(" group:alerts ");
+  expect(log[2]).toContain(" group:status ");
+}));
+
+test("kind groups K3: himmel.conf.local wins over himmel.conf and an empty local value falls through", () => kindGroups({ conf: KG_BOTH, local: "TELEGRAM_ALERTS_CHAT_ID=-1003333\nTELEGRAM_STATUS_CHAT_ID=\n" }, async (r) => {
+  await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "group_-1003333")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_STATUS}`)).toHaveLength(1);
+}));
+
+test("kind groups K5: an override that cannot be read sets no group, so the base file never routes in its place", () => kindGroups({ conf: KG_BOTH }, async (r, dir) => {
+  mkdirSync(join(dir, "himmel.conf.local"));
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K5: an override that is a dangling link sets no group either", () => kindGroups({ conf: KG_BOTH }, async (r, dir) => {
+  symlinkSync(join(dir, "gone"), join(dir, "himmel.conf.local"));
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K4: with no groups set, the same three land in the DM", () => kindGroups({}, async (r) => {
+  await kgSend(r, "chief-reply"); await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
+  expect(chatRows(r, "__chat__")).toHaveLength(3);
+}));
+
+test("kind groups K5: a positive, non-numeric or access-listed id falls back to the DM, logged and shown invalid", async () => {
+  for (const bad of ["12345", "abc", String(KG_LISTED), "-0", "-99999999999999999999"]) {
+    await kindGroups({ conf: `TELEGRAM_ALERTS_CHAT_ID=${bad}\n` }, async (r) => {
+      await kgSend(r, "token-in-output");
+      expect(chatRows(r, "__chat__"), bad).toHaveLength(1);
+      expect(routeLog(r)[0]).toContain(" operator-fallback:alerts ");
+      const p = Bun.spawn(["bun", CLI, "kind-groups", "--json"], { env: { ...process.env }, stdout: "pipe" });
+      const rows = JSON.parse(await new Response(p.stdout).text());
+      expect(rows.map((x: { group: string }) => x.group)).toEqual(["asks", "alerts", "status"]);
+      expect(rows[0]).toMatchObject({ key: null, state: "fixed", chat: KG_DM });
+      expect(rows[1]).toMatchObject({ key: "TELEGRAM_ALERTS_CHAT_ID", value: bad, state: "invalid", chat: KG_DM });
+      expect(rows[2]).toMatchObject({ state: "unset", chat: KG_DM });
+    });
+  }
+});
+
+test("kind groups K6: a line addressed to another chat stays there", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output", "x line", -999);
+  expect(chatRows(r, "group_-999")).toHaveLength(1);
+}));
+
+test("kind groups K7: a salus line never re-routes", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output", "a Salus record leaked");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K8: owed sends, the ask record and send-file stay in the DM", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await routeReply(r, KG_DM, "status owed", { kind: "chief-status", consoleName: NAME, dest: "operator", owedIdentity: "doc k" });
+  const owed = chatRows(r, "__chat__");
+  expect(owed).toHaveLength(1);
+  expect(owed[0].request_id).toBeTruthy();
+  await kgSend(r, "chief-reply", "Needs you: pick one");
+  expect(lines(join(r, "consoles", "asks.ndjson")).map((l) => JSON.parse(l).chat)).toEqual([KG_DM]);
+  const doc = join(r, "note.txt"); writeFileSync(doc, "hello\n");
+  await queueFile(r, KG_DM, doc);
+  expect(chatRows(r, "__chat__").some((x) => x.document_path)).toBe(true);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
+test("kind groups K9: a re-routed row carries no chief binding; the DM row keeps it", () => kindGroups({ conf: KG_BOTH }, async (r) => {
+  await kgSend(r, "token-in-output"); await kgSend(r, "chief-reply");
+  const [alert] = chatRows(r, `group_${KG_ALERTS}`);
+  expect(alert).not.toHaveProperty("console");
+  expect(alert).toMatchObject({ fallback_chat: KG_DM, fallback_group: "alerts", fallback_console: NAME });
+  expect(chatRows(r, "__chat__")[0].console).toBe(NAME);
+}));
+
+test("kind groups K10: the process environment never sets a group chat", () => kindGroups({ env: { TELEGRAM_ALERTS_CHAT_ID: String(KG_ALERTS) } }, async (r) => {
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(readKindGroupKeys(mkdtempSync(join(tmpdir(), "kg-empty-")))).toEqual({});
+  expect(kindChat("token-in-output", KG_DM, "x", { table: null, access: { allowFrom: [String(KG_DM)] }, keys: {} }).chat).toBe(KG_DM);
+}));
+
 const LINT_REFUSAL = "reads bytes the signer's trace lint refuses";
 const LINT_ESTIMATE = '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n';
 const lintSpecText = (o: { cite?: string; inv?: string; plan?: boolean } = {}) =>
