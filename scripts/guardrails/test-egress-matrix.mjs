@@ -613,6 +613,21 @@ for (const p of providers) for (const u of purposes) {
   const own = m.rules.filter(r => r.corpus === "chief-tell");
   assert(own.length === 2, `chief-tell must have exactly two rows of its own, got ${own.length}`);
 }
+assert(corpora.includes("peer-pairing"), "corpus peer-pairing must be declared");
+assert(evaluate("peer-pairing", "peer-telegram", "peer-message").effective === "allow", "peer-pairing x peer-telegram x peer-message must allow");
+assert(evaluate("peer-pairing", "peer-telegram", "peer-message").rule?.corpus === "peer-pairing", "peer-pairing x peer-telegram x peer-message must come from its own row");
+assert(evaluate("peer-pairing", "ollama-cloud", "extraction").effective === "deny", "peer-pairing x ollama-cloud x extraction must deny");
+for (const p of providers) for (const u of purposes) {
+  if (p === "peer-telegram" && u === "peer-message") continue;
+  assert(evaluate("peer-pairing", p, u).effective === "deny", `peer-pairing x ${p} x ${u} must deny`);
+}
+{
+  const own = m.rules.filter(r => r.corpus === "peer-pairing");
+  assert(own.length === 2, `peer-pairing must have exactly two rows of its own, got ${own.length}`);
+  const open = m.rules.findIndex(r => r.corpus === "*" && r.provider === "ollama-cloud" && r.purpose === "extraction");
+  assert(own.every(r => m.rules.indexOf(r) < open), "both peer-pairing rows must come before the * x ollama-cloud x extraction row");
+}
+
 assert(!corpora.includes("unknown-source") && !m.rules.some(r => r.corpus === "unknown-source"), "unknown-source must name no corpus and no row");
 assert(evaluate("unknown-source", "peer-telegram", "peer-message").effective === "deny", "unknown-source x peer-telegram x peer-message must deny");
 

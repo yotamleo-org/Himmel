@@ -970,4 +970,80 @@ contains "20f a sweep close bullet naming the stem still runs wrap-merged: the m
 contains "20f it is handled by wrap-merged" "$out" "HANDLED wrap-merged N6020"
 : > "$W/doc"
 
+D21="$W/d21"; mkdir -p "$D21"
+chief21="$D21/chief-ZZ.md"
+w21="$D21/HIMMEL-21-N6021-next-step-2026-11-27.md"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "$w21" > "$W/list21"
+chmod +x "$W/list21"
+doc21() {
+    local flag=$1; shift
+    rm -f "$D21/owed.jsonl"
+    printf '# chief\n\n## Results\n' > "$chief21"
+    { printf '# worker\n\n> **Completes ticket:** %s\n\n## Results (newest at the bottom)\n' "$flag"; printf '%s\n' "$@"; } > "$w21"
+}
+run21() { : > "$LE_CALLS"; : > "$LE_LIVE_CALLS"; printf '%s\n' "$1" > "$W/msg"; out="$(LE_LIST="$W/list21" bash "$SCRIPT" --doc "$chief21" --fleet "$D21/chief.fleet.json" "$W/msg" 2>/dev/null)"; rc=$?; }
+owed21() {
+    if [ -f "$D21/owed.jsonl" ]; then jq -rs "[.[] | select(.op == \"add\")] | $1" "$D21/owed.jsonl"; else echo none; fi
+}
+step21='map(select(.kind == "step")) | .[0]'
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 2 sha256 260e1fdf724eae75e28fbf75b472c0f4 and a plan' '- 10:10 WRAPPED — design leg, no PR'
+run21 "WRAPPED N6021"
+check "21a design wrap: still handled" "$rc/${out%% *}" "0/HANDLED"
+check "21a design wrap: one owed step row for the ticket, a chief sign" "$(owed21 "$step21 | .key + \"/\" + .actor + \"/\" + .chief")" "HIMMEL-21/chief/chief-ZZ"
+contains "21a the row names the sign step and the spec" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 260e1fdf724e) if it is not signed yet"
+check "21a the row carries a due date" "$(owed21 "$step21 | .due | test(\"^[0-9]{4}-[0-9]{2}-[0-9]{2}\$\")")" true
+check "21a one chief notification row points at it (the wake)" "$(owed21 'map(select(.kind == "ruling")) | length')/$(owed21 'map(select(.kind == "ruling")) | .[0] | .action + "/" + .event + "/" + .source_id')" "1/notify/step-due/o1"
+run21 "WRAPPED N6021"
+check "21b a replayed wrap adds no second row" "$(owed21 'length')" 2
+
+doc21 no '- 10:00 LIVE — READY 77 abc' '- 10:10 WRAPPED — PR #77 partial merge, ticket stays open'
+run21 "WRAPPED N6021"
+contains "21c partial merge wrap: the owed row names the next slice" "$(owed21 "$step21 | .text")" "launch the next slice"
+lacks "21c and asks for no signature" "$(owed21 "$step21 | .text")" "sign the design"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789, the operator signs this one' '- 10:10 WRAPPED — design leg'
+run21 "WRAPPED N6021"
+check "21d an operator-signed design: the row is the operator's" "$(owed21 "$step21 | .actor")" operator
+contains "21d and names the operator ask" "$(owed21 "$step21 | .text")" "ask the operator to sign the design (last spec hash named: abcdef012345)"
+
+conditional='if it is not signed yet, then dispatch the build'
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec sha256 abcdef0123456789' '- 10:10 WRAPPED — design signed by chief DY; build legs in order'
+run21 "WRAPPED N6021"
+contains "21e a wrap that records a signature still owes the build, and asks to sign only if unsigned" "$(owed21 "$step21 | .text")" "$conditional"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: spec rev 1 sha256 1111111111111111' '- 10:02 LIVE — design signed by chief DY' '- 10:05 LIVE — READY-TO-SIGN sent: spec rev 2 sha256 2222222222222222' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+contains "21e2 an earlier revision's signature never drops the sign step, and the last hash named wins" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 222222222222) $conditional"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: the design is up' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+contains "21e3 a request with no hash names none" "$(owed21 "$step21 | .text")" "sign the design $conditional"
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: rev 1, the operator signs this one' '- 10:05 LIVE — READY-TO-SIGN sent: rev 2, the chief signs this one' '- 10:10 WRAPPED — READY-TO-SIGN sent, ticket left open'
+run21 "WRAPPED N6021"
+check "21e5 the last request that names a signer wins" "$(owed21 "$step21 | .actor")" chief
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: the operator signs this one; no chief sign-off needed' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+check "21e6 within the deciding line the operator wins over a later chief phrase" "$(owed21 "$step21 | .actor")" operator
+
+doc21 no '- 10:00 LIVE — READY-TO-SIGN sent: no operator sign-off needed; the chief signs this one' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021"
+check "21e7 a negated operator sign-off is not an operator request" "$(owed21 "$step21 | .actor")" chief
+
+doc21 no '- 10:00 LIVE — x' '- 10:10 WRAPPED — lock released'
+run21 "WRAPPED N6021 READY-TO-SIGN sent: spec sha256 3333333333333333"
+contains "21e4 a request only in the event message is a sign step" "$(owed21 "$step21 | .text")" "sign the design (last spec hash named: 333333333333)"
+
+doc21 yes '- 10:00 LIVE — x' '- 10:10 WRAPPED — done'
+run21 "WRAPPED N6021"
+check "21f control: Completes ticket yes writes no owed row" "$(owed21 'length')" none
+
+doc21 no '- 10:00 LIVE — x' '- 10:10 WRAPPED — design leg'
+printf 'not json\n' > "$D21/owed.jsonl"
+run21 "WRAPPED N6021"
+check "21g an owed row that cannot be written refuses the cleanup" "$rc/$(cat "$LE_CALLS")" "10/"
+contains "21g and says why" "$out" "ESCALATE next-step-owe-failed"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

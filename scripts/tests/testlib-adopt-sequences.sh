@@ -66,7 +66,7 @@ fi
 [ -s "$st/plugins.json" ] || echo '[]' > "$st/plugins.json"
 [ -s "$st/marketplaces.json" ] || echo '[]' > "$st/marketplaces.json"
 settings_for() { # scope -> settings.json path
-  case "$1" in user) echo "$HOME/.claude/settings.json" ;; *) echo "$PWD/.claude/settings.json" ;; esac
+  case "$1" in user) echo "$HOME/.claude/settings.json" ;; local) echo "$PWD/.claude/settings.local.json" ;; *) echo "$PWD/.claude/settings.json" ;; esac
 }
 scope_of() { # last --scope value among args
   local s=user a prev=""

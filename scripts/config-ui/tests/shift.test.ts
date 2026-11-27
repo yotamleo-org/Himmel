@@ -787,14 +787,14 @@ test("10947: a chief signature, a judge GO and a relaunch never reach Waiting on
   for (const w of v.waiting) expect(boardWaiting).toContain(w.ticket ?? w.title);
 });
 
-test("10947: the Shift list is the hand-built list: one row per HANDOFF ask with its indented lines, no none line, no checked or struck item, no row of a closed ticket, and the board's operator list agrees", async () => {
+test("10947: the Shift list is the hand-built list: one row per HANDOFF ask with its indented lines, no none line, no checked or struck item, no HANDOFF ask of a closed ticket, an open ledger row of a Done ticket stays, and the board's operator list agrees", async () => {
   const o = await owedStation("- approve the held spend\n  - detail of the spend\n  wrapped text of the spend\n\n- [x] approve the paid seat (answered)\n- ~~approve the old account~~ done\n- HIMMEL-4: approve the paid billing\n**None** other.", ["approve the account renewal"], true);
   const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [], owed: o });
   const boardWaiting = renderBoard(readRoadmap({ mirrorDir: o.mirror, workers: { state: "absent" } }), {}, { owed: o }).match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
-  expect(v.waiting.map((w) => w.ticket ?? w.title).sort()).toEqual(["HIMMEL-2", "approve the account renewal", "approve the held spend detail of the spend wrapped text of the spend", "loose ask"]);
+  expect(v.waiting.map((w) => w.ticket ?? w.title).sort()).toEqual(["HIMMEL-2", "HIMMEL-4", "approve the account renewal", "approve the held spend detail of the spend wrapped text of the spend", "loose ask"]);
   expect(v.waiting.length).toBe(boardWaiting.match(/<li>/g)?.length);
   const html = renderShift(v, {});
-  for (const gone of ["approve the paid seat", "old account", "paid billing", "None", "done ticket"]) {
+  for (const gone of ["approve the paid seat", "old account", "paid billing", "None"]) {
     expect(html).not.toContain(gone);
     expect(boardWaiting).not.toContain(gone);
   }

@@ -4747,7 +4747,9 @@ PreToolUse matchers must stay disjoint, as one `mcp__.*` chain
 `mcp-policy.sh+block-backend-tier.sh+guard-t3-thread-tools.sh+block-t3code-unwatch-open-pr.sh`
 (`mcp-policy.sh` first so denies still leave an audit line; backend-tier's
 fail-closed jq branches also cover non-Atlassian MCP calls, pinned in
-`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **always allows**. It classifies each
+`test-mcp-policy.sh` §8 and `test-codex-hook-parity.sh`). As shipped it **denies
+one thing**: a `destructive` call on a registered server that the server's
+`allow_destructive` does not name. It allows everything else. It classifies each
 call against the registry `scripts/guardrails/mcp-policy.json` and records what
 it *would* do:
 
@@ -4773,15 +4775,17 @@ argument is ever written. Past `audit.max_bytes` (1 MiB) the log rotates to
 
 **Mode — the gating seam.** The registry's top-level `mode` covers unknown
 servers and malformed calls; a server's own `mode` overrides it for that
-server. `observe` (the only mode shipped) records and allows. `enforce` applies
-the would-verdict: a deny exits 2 and names the registry entry to add. Enforce
-is tested (`test-mcp-policy.sh` §5) but off everywhere; switching a server on is
-an operator decision for a later PR, once the audit log shows its tools are
-fully listed.
+server. `observe` (the only `mode` shipped) records and allows. `enforce` applies
+the would-verdict: a deny exits 2 and names the registry entry to add. The
+registry's `enforce_classes` list (shipped: `["destructive"]`) applies it to
+calls of a listed class on a registered server whatever the mode, and the audit
+line records such a call as `enforce`. Unknown servers, unlisted tools and
+malformed calls stay in `observe`; switching a server to `enforce` waits until
+the audit log shows its tools are fully listed.
 
 **Fails open on every own error** — no `jq`, an unreadable or malformed
-registry, a jq error, the internal `timeout 2`, an unwritable audit dir. It is
-a tracker; it must never stall or refuse a call on its own bug. Measured p95
+registry, a jq error, the internal `timeout 2`, an unwritable audit dir. It
+must never stall or refuse a call on its own bug. Measured p95
 is recorded in the PR that added it; `test-mcp-policy.sh` §9 holds a latency
 budget (`MCP_POLICY_P95_BUDGET_MS`).
 

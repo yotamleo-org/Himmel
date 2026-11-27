@@ -194,6 +194,12 @@ was unknown or older than 3 h; stale=unknown when no drift file could be read). 
 sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose prints all three.
 Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
+unowned=<n>:<KEY>,... follows stale= and IS in chief-wait's action key: the stale= keys that no open owed.jsonl row
+of the console doc's directory (its key or its text) and no queue: line of the console doc names, so a started ticket
+with no worker, no open PR and no queued next step wakes the chief. A stale list cut at ,+<m> is read in full from
+focus-drift.txt. ABSENT when every stale key is queued or there is no stale feed; unowned=? when the feed, the full
+key list or the owed ledger cannot be read.
+
 rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run] follows leaks=. Empty open-and-claimed queues with no ruling
 to replay, no declaration, explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
 deadline cut the state read (unknown, read again next tick). replay=<n> counts the state's unfinished_rulings with status
@@ -3199,7 +3205,17 @@ fi
 # focus=<state>, sdrift=<n>:<sig8> and stale=<n>:<KEY>,... read the focus-state file beside the chief doc
 # (focus-refresh.sh writes it, --status reads it with no gh or Jira call). All are absent
 # with no state file or when --status reads focus=skip.
-focus_summary="" sdrift_summary="" stale_summary=""
+focus_summary="" sdrift_summary="" stale_summary="" stale_all=""
+drift_stale() {
+    timeout -k 2 "$(tick_bound 20)" node "$HERE/drift-summary.mjs" --json --drift "$1" --mirror-dir "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}" 2>/dev/null | python3 -I -c 'import json, re, sys
+d = json.load(sys.stdin)
+keys = d["unowned"]
+assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
+assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
+body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
+print(("partial:" if d["unknown"] or d["stale"] else "") + "%d:%s" % (len(keys), body))
+print(" ".join(keys))' 2>/dev/null
+}
 if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
     focus_summary="$(bash "$HERE/focus-refresh.sh" --doc "$console_doc" --status 2>/dev/null)" || focus_summary=""  # swallow-ok: an unreadable state leaves both advisory fields off the line
     focus_summary="${focus_summary#focus=}"
@@ -3210,16 +3226,49 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
         stale_summary="$(sed -n 's/^stale=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no stale line leaves stale= off the line
         stale_drift="${console_doc%/*}/focus-drift.txt"
         if [ -f "$stale_drift" ] && [ "$stale_drift" -nt "${console_doc%/*}/focus-state" ] && command -v node >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
-            stale_live="$(timeout -k 2 "$(tick_bound 20)" node "$HERE/drift-summary.mjs" --json --drift "$stale_drift" --mirror-dir "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}" 2>/dev/null | python3 -I -c 'import json, re, sys
-d = json.load(sys.stdin)
-keys = d["unowned"]
-assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
-assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
-body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
-print(("partial:" if d["unknown"] or d["stale"] else "") + "%d:%s" % (len(keys), body))' 2>/dev/null)" || stale_live=""
-            [ -z "$stale_live" ] || stale_summary="$stale_live"
+            stale_live="$(drift_stale "$stale_drift")" || stale_live=""
+            if [ -n "$stale_live" ]; then
+                stale_summary="${stale_live%%$'\n'*}"
+                case "$stale_live" in *$'\n'*) stale_all="${stale_live#*$'\n'}" ;; esac
+            fi
         fi
     fi
+fi
+
+unowned_summary=""
+if [ -n "$console_doc" ] && [ -n "$stale_summary" ]; then
+    unowned_keys="$stale_all"
+    if [ -z "$unowned_keys" ]; then
+        case "$stale_summary" in
+            *,+*) un_full="$(drift_stale "${console_doc%/*}/focus-drift.txt")" || un_full=""
+                  case "$un_full" in *$'\n'?*) unowned_keys="${un_full#*$'\n'}" ;; esac ;;
+            unknown) ;;
+            *) unowned_keys="$(printf '%s' "${stale_summary##*:}" | tr ',' ' ')" ;;
+        esac
+    fi
+    un_count="${stale_summary#partial:}"; un_count="${un_count%%:*}"
+    un_bad=""
+    for un_key in $unowned_keys; do
+        [[ $un_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || un_bad=1
+    done
+    case "$stale_summary" in
+        0:) ;;
+        *)
+            if [ -n "$un_bad" ] || [ -z "$unowned_keys" ] || [ "$(wc -w <<< "$unowned_keys")" -ne "$un_count" ]; then
+                unowned_summary='?'
+            elif ! unowned_queued="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}")"; then
+                unowned_summary='?'
+            else
+                unowned_queued="$(printf '%s\n' "$unowned_queued" | cut -f4,6; grep '^queue:' "$console_doc")"
+                unowned_list="" unowned_n=0
+                for un_key in $unowned_keys; do
+                    grep -qE "(^|[^A-Za-z0-9_-])$un_key([^A-Za-z0-9_-]|$)" <<< "$unowned_queued" && continue
+                    unowned_n=$((unowned_n + 1))
+                    unowned_list="${unowned_list:+$unowned_list,}$un_key"
+                done
+                [ "$unowned_n" -eq 0 ] || unowned_summary="$unowned_n:$unowned_list"
+            fi ;;
+    esac
 fi
 
 # cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
@@ -5339,6 +5388,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     [ -z "$stale_summary" ] || printf 'stale: %s\n' "$stale_summary"
+    [ -z "$unowned_summary" ] || printf 'unowned: %s\n' "$unowned_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci cadence: %s\n' "$cadence_summary"
     printf 'failure review: %s\n' "$review_summary"
@@ -5513,6 +5563,7 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
+    compact_field unowned "$unowned_summary"
     compact_field arrivals "$arrivals_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$wrapped_open_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail$drift_tail"
     if [ -n "$drift_wake" ]; then

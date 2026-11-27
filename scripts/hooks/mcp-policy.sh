@@ -18,17 +18,15 @@
 # egress-matrix provider has a corpus:* purpose:* deny row.
 #
 # Mode (registry `mode`, overridable per server):
-#   observe  ALWAYS exit 0. This is what ships: operator ruling 2026-10-06 —
-#            this hook must never break or stall a current MCP call.
-#   enforce  a deny verdict exits 2 with the registry entry to add. Tested,
-#            OFF everywhere in the shipped registry.
+#   observe  exit 0.
+#   enforce  a deny verdict exits 2 with the registry entry to add.
+# `enforce_classes` (shipped: destructive) puts a call of a listed class on a
+# registered server in enforce, whatever `mode` says.
 #
 # Fail direction: OPEN, deliberately, on every infrastructure error (no jq,
-# missing or malformed registry, jq timeout, unwritable audit log) — it is a
-# tracker until a server is switched to enforce, and a tracker that can deny
-# on its own bug is the over-deny the ruling forbids. Enforce-mode denials of
-# malformed input still fail closed, because they are policy, not
-# infrastructure. jq runs under a 2 s internal timeout.
+# missing or malformed registry, jq timeout, unwritable audit log).
+# Enforce-mode denials of malformed input still fail closed, because they are
+# policy, not infrastructure. jq runs under a 2 s internal timeout.
 #
 # The Atlassian MCP-to-CLI redirect stays its own hook
 # (block-backend-tier.sh, matcher mcp__plugin_atlassian_atlassian__.*) and
@@ -79,8 +77,6 @@ out=$(printf '%s' "$input" | $tmo jq -Rsr --arg host "${HOSTNAME:-}" --slurpfile
        else null end) as $p
     | (if $p == null then null else $servers[$p.server] end) as $s
     | ($s | if type == "object" then . else null end) as $s
-    | (if $s != null and ($s.mode | type) == "string" then $s.mode
-       else ($r.mode // "observe") end) as $mode
     | (if $p == null then "malformed"
        elif $s == null then "unknown-server"
        else ((($s.tools // {}) | if type == "object" then . else {} end)[$p.tool]) as $c
@@ -88,6 +84,10 @@ out=$(printf '%s' "$input" | $tmo jq -Rsr --arg host "${HOSTNAME:-}" --slurpfile
             elif ($c == "read" or $c == "write" or $c == "destructive") then $c
             else "invalid-class" end
        end) as $class
+    | (($r.enforce_classes // []) | if type == "array" then . else [] end) as $enforced
+    | (if $s != null and (($enforced | index([$class])) != null) then "enforce"
+       elif $s != null and ($s.mode | type) == "string" then $s.mode
+       else ($r.mode // "observe") end) as $mode
     | ($s.egress // null) as $egress
     | ($s.provider // null) as $prov
     | ([($mx[0].rules // [])[]
@@ -111,8 +111,7 @@ out=$(printf '%s' "$input" | $tmo jq -Rsr --arg host "${HOSTNAME:-}" --slurpfile
       (if $verdict == "deny" and $mode == "enforce" then
          "mcp-policy: refusing MCP call \"\(if $p == null then "<malformed>" else "mcp__\($p.server)__\($p.tool)" end)\" (class \($class), mode enforce).\n\n"
          + "Why: \($reason).\n\n"
-         + "The registry is scripts/guardrails/mcp-policy.json. Add the entry in a PR,\n"
-         + "or set this server back to \"mode\": \"observe\" there."
+         + "The registry is scripts/guardrails/mcp-policy.json; change it in a PR."
        else empty end)
 ' 2>/dev/null) || exit 0  # fail-open-ok: tracker — jq error or timeout (header)
 
