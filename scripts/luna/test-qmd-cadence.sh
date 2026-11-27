@@ -632,6 +632,7 @@ fire_named() {
     env -u QMD_CONFIG_DIR -u XDG_CONFIG_HOME HOME="$2" STUB_CALLS="$sal_dir/calls" \
         STUB_MAIN_RC="$3" STUB_SALUS_RC="$4" STUB_GMAIL_RC="$5" sh "$1" >/dev/null 2>&1
 }
+default_calls() { grep -v -- '--index' "$sal_dir/calls" | grep -c -- '--qmd-bin' || true; }
 build_probe_runner "$sal_dir/run-named.sh"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-gmail" 0 0 0 || got_rc=$?
 calls_out=$(cat "$sal_dir/calls")
@@ -639,18 +640,19 @@ assert_rc "gmail.yml present: runner exits 0" 0 "$got_rc"
 assert_contains "gmail.yml present: the gmail index is refreshed" "--index gmail" "$calls_out"
 assert_not_contains "gmail.yml alone: salus is not fired" "--index salus" "$calls_out"
 assert_rc "gmail.yml present: gmail is refreshed exactly once" 1 "$(grep -c -- '--index gmail' "$sal_dir/calls")"
-assert_contains "gmail.yml present: the default index is still refreshed" "--qmd-bin" "$(grep -v -- '--index' <<<"$calls_out" || true)"
+assert_rc "gmail.yml present: the default index is refreshed exactly once" 1 "$(default_calls)"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-salus" 0 0 0 || got_rc=$?
 assert_rc "no gmail.yml: runner exits 0" 0 "$got_rc"
-assert_contains "no gmail.yml: the runner still refreshed the default index" "--qmd-bin" "$(grep -v -- '--index' "$sal_dir/calls" || true)"
+assert_rc "no gmail.yml: the default index is refreshed exactly once" 1 "$(default_calls)"
 assert_not_contains "no gmail.yml: no --index gmail fire" "--index gmail" "$(cat "$sal_dir/calls")"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-plain" 0 0 0 || got_rc=$?
 assert_rc "neither yml: runner exits 0" 0 "$got_rc"
-assert_contains "neither yml: the runner still refreshed the default index" "--qmd-bin" "$(grep -v -- '--index' "$sal_dir/calls" || true)"
+assert_rc "neither yml: the default index is refreshed exactly once" 1 "$(default_calls)"
 assert_not_contains "neither yml: no named fire" "--index" "$(cat "$sal_dir/calls")"
 got_rc=0; fire_named "$sal_dir/run-named.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
 assert_rc "both ymls: runner exits 0" 0 "$got_rc"
 assert_rc "both ymls: gmail is refreshed exactly once" 1 "$(grep -c -- '--index gmail' "$sal_dir/calls")"
+assert_rc "both ymls: the default index is refreshed exactly once" 1 "$(default_calls)"
 salus_ln=$(grep -n -- '--index salus' "$sal_dir/calls" | head -1 | cut -d: -f1)
 gmail_ln=$(grep -n -- '--index gmail' "$sal_dir/calls" | head -1 | cut -d: -f1)
 if [ -n "$salus_ln" ] && [ -n "$gmail_ln" ] && [ "$salus_ln" -lt "$gmail_ln" ]; then
@@ -679,11 +681,13 @@ got_rc=0; fire_named "$sal_dir/run-anchor.sh" "$sal_dir/home-both" 0 0 0 || got_
 assert_rc "anchor hour: runner exits 0" 0 "$got_rc"
 assert_contains "anchor hour: gmail is refreshed" "--index gmail" "$(cat "$sal_dir/calls")"
 assert_rc "anchor hour: gmail is refreshed exactly once" 1 "$(grep -c -- '--index gmail' "$sal_dir/calls")"
+assert_rc "anchor hour: the default index is refreshed exactly once" 1 "$(default_calls)"
 assert_not_contains "anchor hour: gmail keeps its cleanup" "--no-cleanup" "$(cat "$sal_dir/calls")"
 got_rc=0; fire_named "$sal_dir/run-off.sh" "$sal_dir/home-both" 0 0 0 || got_rc=$?
 assert_rc "off the anchor hour: runner exits 0" 0 "$got_rc"
 assert_contains "off the anchor hour: gmail skips cleanup" "--index gmail --no-cleanup" "$(cat "$sal_dir/calls")"
 assert_rc "off the anchor hour: gmail is refreshed exactly once" 1 "$(grep -c -- '--index gmail' "$sal_dir/calls")"
+assert_rc "off the anchor hour: the default index is refreshed exactly once" 1 "$(default_calls)"
 assert_contains "off the anchor hour: salus skips cleanup" "--index salus --no-cleanup" "$(cat "$sal_dir/calls")"
 run_cron arm --force >/dev/null
 
