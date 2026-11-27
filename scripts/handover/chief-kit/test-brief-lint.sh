@@ -1578,6 +1578,11 @@ g22 g22a "$(gw_cmd 'scripts/hooks/guard-g.sh')"; g_err3 "G22a a relative member 
 g22 g22b "$(python3 -I -c 'import json; print(json.dumps("L=\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\"; node \"$L\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh\""))')"
 g_err3 "G22b a launcher path held in a variable (empty segment) is refused" 'cannot read hook command'
 g22 g22c "$(gw_cmd '--lifecycle "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22c a lone --lifecycle is refused" 'cannot read hook command'
+g22 g22e "$(gw_cmd '--bogus "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22e an unknown flag is refused" 'cannot read hook command'
+g22 g22f "$(gw_cmd '--optional --fail-closed-when X "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22f --fail-closed-when without NAME=VALUE is refused" 'cannot read hook command'
+g22 g22g "$(gw_cmd '--fail-closed-when A=1 "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22g --fail-closed-when without --optional is refused" 'cannot read hook command'
+g22 g22h "$(gw_cmd '--chain --optional "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_err3 "G22h --chain with --optional is refused" 'cannot read hook command'
+g22 g22i "$(gw_cmd '--optional --fail-closed-when "A=1" "$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh"')"; g_refused "G22i.ctl the plugin's quoted flag value is read, and the member after it" "$tmp/g22i.md" 'scripts/lib/g-lib.sh (run by scripts/hooks/guard-g.sh)'
 g22 g22d "$(gw_cmd '"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-g.sh" startup')"; g_refused "G22d an argument word after a single member is an argument" "$tmp/g22d.md" 'scripts/lib/g-lib.sh (run by scripts/hooks/guard-g.sh)'
 
 CW_G26="$tmp/cwd-g26"; mk_gw "$CW_G26" || exit 1
@@ -1591,6 +1596,8 @@ for t in bash sh python3 git dirname basename awk tr sed grep cat wc head tail s
 done
 lint_rc=0; err="$(PATH="$NONODE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK='' HANDOVER_DIR="$tmp" bash "$LINT" "$tmp/g1.md" 2>&1 >/dev/null)" || lint_rc=$?
 g_err3 "G25 with no node on PATH the rule refuses" 'cannot work out which files the pinned guards run'
+lint_rc=0; err="$(PATH="$NONODE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK='' HANDOVER_DIR="$tmp" bash "$LINT" "$tmp/g_ctl.md" 2>&1 >/dev/null)" || lint_rc=$?
+g_passed "G25.ctl on the same PATH a docs-only Writes line starts no node and passes"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
