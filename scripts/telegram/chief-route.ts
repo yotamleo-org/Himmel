@@ -2411,7 +2411,12 @@ export function readKindGroupKeys(configDir = process.env.HIMMEL_CONFIG_DIR || j
   const keys: KindGroupKeys = {};
   for (const file of ["himmel.conf.local", "himmel.conf"]) {
     let raw: string;
-    try { raw = readFileSync(join(configDir, file), "utf8"); } catch { continue; }
+    try { raw = readFileSync(join(configDir, file), "utf8"); }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+      console.error(`[chief-route] ${file} not read, so it and the layers under it set no kind group: ${e instanceof Error ? e.message : e}`);
+      break;
+    }
     const set: KindGroupKeys = {};
     for (const line of raw.split(/\r?\n/)) {
       const m = /^\s*(?:export\s+)?(TELEGRAM_(?:ALERTS|STATUS)_CHAT_ID)\s*=(.*)$/.exec(line);

@@ -9281,6 +9281,13 @@ test("kind groups K3: himmel.conf.local wins over himmel.conf and an empty local
   expect(chatRows(r, `group_${KG_STATUS}`)).toHaveLength(1);
 }));
 
+test("kind groups K5: an override that cannot be read sets no group, so the base file never routes in its place", () => kindGroups({ conf: KG_BOTH }, async (r, dir) => {
+  mkdirSync(join(dir, "himmel.conf.local"));
+  await kgSend(r, "token-in-output");
+  expect(chatRows(r, "__chat__")).toHaveLength(1);
+  expect(chatRows(r, `group_${KG_ALERTS}`)).toHaveLength(0);
+}));
+
 test("kind groups K4: with no groups set, the same three land in the DM", () => kindGroups({}, async (r) => {
   await kgSend(r, "chief-reply"); await kgSend(r, "token-in-output"); await kgSend(r, "chief-status");
   expect(chatRows(r, "__chat__")).toHaveLength(3);

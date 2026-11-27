@@ -126,9 +126,16 @@ if want("family"):
         if "*" in k and not (k.count("*") == 1 and k.endswith("*") and FAMILY.match(k)):
             err("family", "%s is not a family row of at least cadence:<word>-<word>-*" % k)
 
+def tracked(check, *paths):
+    p = subprocess.run(["git", "-C", repo, "ls-files", *paths], capture_output=True, text=True)
+    if p.returncode != 0 or not p.stdout.strip():
+        err(check, "git ls-files listed no file (exit %d)" % p.returncode)
+    return p.stdout.split("\n")
+
+
 known = []
 if want("workers1"):
-    files = subprocess.run(["git", "-C", repo, "ls-files"], capture_output=True, text=True).stdout.split("\n")
+    files = tracked("workers1")
     for rel in files:
         if not rel.endswith((".sh", ".py", ".ts", ".mjs", ".js", ".bash")):
             continue
@@ -270,7 +277,7 @@ def sent_kinds(rel, text):
 
 
 if want("kinds"):
-    rels = set(subprocess.run(["git", "-C", repo, "ls-files", "scripts", "marketplace"], capture_output=True, text=True).stdout.split("\n"))
+    rels = set(tracked("kinds", "scripts", "marketplace"))
     if opt["--overlay"]:
         for top, _, names in os.walk(opt["--overlay"]):
             rels.update(os.path.relpath(os.path.join(top, n), opt["--overlay"]) for n in names)
@@ -504,6 +511,9 @@ printf '#!/usr/bin/env bash\nbash "$OWE_SH" add --kind step\n' > "$T/ovk2/script
 lint_clean "K2: a --kind of another command is ignored" --table "$TABLE" --only kinds --overlay "$T/ovk2"
 printf 'import { kindChat } from "../telegram/chief-route";\nkindChat("no-such-kind", 1, "x", d);\n' > "$T/ovk3/scripts/x/sender.ts"
 lint_dirty "K2: a TypeScript kindChat call with an unknown kind fails the lint" "no-such-kind in scripts/x/sender.ts has no row" --table "$TABLE" --only kinds --overlay "$T/ovk3"
+mkdir -p "$T/not-a-repo"
+lint_dirty "K2: a file listing git cannot give fails the kinds scan" "LINT kinds: git ls-files listed no file" --table "$TABLE" --only kinds --repo "$T/not-a-repo"
+lint_dirty "a file listing git cannot give fails the cadence-worker scan" "LINT workers1: git ls-files listed no file" --table "$TABLE" --only workers1 --repo "$T/not-a-repo"
 
 missing=""
 for f in $CONTROL_SENDERS; do [ -f "$REPO/$f" ] || missing="$missing $f"; done
