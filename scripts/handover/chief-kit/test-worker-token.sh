@@ -1,12 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines
-# test-worker-token.sh - the record of each worker's current RETASK token generation
-# (worker-token.sh): mint, current, gen, rotate, the confirm step, tokens and set. Every
-# path is a fixture under a temp dir, HOME included: no real key, doc or bucket.
-# WORKER_TOKEN overrides the script under test (a missing script fails every row that
-# needs it). bash 3.2-safe; needs jq, openssl and flock.
-#
-# Run: bash scripts/handover/chief-kit/test-worker-token.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"

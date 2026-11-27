@@ -3,11 +3,8 @@
 # bullet, sourced by succession-tracker.sh and worker-token.sh. The grammar is one
 # whole `- ` line, so a prose line or a mirrored relay quoting it confirms nothing:
 #   - [HH:MM ][LIVE — ]SUCCESSION accepted: [`]<incoming>[`] replaces [`]<outgoing>[`]
-# with backticks as a balanced pair or not at all. It is read from `## Results` to the
-# end of the doc: append-results.sh writes at EOF, which on a claudex worker is inside
-# the `## Chief Rulings` section inbox-send.sh opened. bash 3.2-safe.
+# with backticks as a balanced pair or not at all. bash 3.2-safe.
 
-# _succession_handshakes <doc> - every line that starts the handshake, in file order.
 _succession_handshakes() {
     awk '/^## Results/ { s = 1; next } s && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted/ { print }' "$1"
 }
