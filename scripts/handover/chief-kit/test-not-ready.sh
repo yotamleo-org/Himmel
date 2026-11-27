@@ -413,9 +413,9 @@ r_order() {
 }
 
 r_negative() {
-    newcase; install_snap "$FX/capture-clean-2026-11-19.rows"; keys HIMMEL-9816
+    newcase; install_snap "$FX/capture-clean-2026-11-19.rows"; keys HIMMEL-9432
     cp "$FX/tick-reading-recorded.txt" "$C/NOT_READY_TICK_CMD.out"; run_case
-    expect HIMMEL-9816 ready; completeness partial; blind_is warn:HIMMEL-6546
+    expect HIMMEL-9432 ready; completeness partial; blind_is warn:HIMMEL-6546
 }
 
 r_detail() {
@@ -565,6 +565,26 @@ r_usage() {
     [ ! -e "$C/calls.log" ] || fail "a seam ran without the fixture flag: $(cat "$C/calls.log")"
     run_case
     expect HIMMEL-8020 ready
+    newcase; snap "$(d "$P-8020" 'listed LOCAL')"; keys HIMMEL-8020; touch "$SNAP.rows" "$SNAP.fp"
+    real_checkout
+    OUT="$(env HOME="$C/home" TMPDIR="$C/tmp" PATH="$C/bin:$PATH" FIXTURE="$C" HIMMEL_TEST_FIXTURE= TICK_STATE_DIR="$C/state" \
+        NOT_READY_STATE_DIR="$C/elsewhere" NOT_READY_PRIMARY="$C/primary" NOT_READY_TICK_CMD="$C/seam/NOT_READY_TICK_CMD" \
+        NOT_READY_JIRA_CLI="$C/seam/NOT_READY_JIRA_CLI" NOT_READY_ROUNDS_CMD="$C/seam/NOT_READY_ROUNDS_CMD" \
+        timeout 60 bash "$C/real/scripts/handover/chief-kit/not-ready.sh" --doc "$DOC" --keys "$C/keys" --version v1.1.3 \
+        --mirror "$C/mirror" --specs "$C/specs" 2>"$C/err")"
+    expect HIMMEL-8020 ready; completeness complete
+    [ ! -e "$C/calls.log" ] || fail "a seam ran on the real path: $(cat "$C/calls.log")"
+    [ "$(cat "$C/realpath.log" 2>/dev/null | tr '\n' ' ')" = 'tick jira ' ] || fail "the real children did not both run: $(cat "$C/realpath.log" 2>&1)"
+}
+
+real_checkout() {
+    local kit="$C/real/scripts/handover/chief-kit"
+    mkdir -p "$kit" "$C/real/scripts/jira/dist"
+    git init -q "$C/real"
+    cp "$SUT" "$kit/not-ready.sh"
+    ln -s "$HERE/../../lib" "$C/real/scripts/lib"
+    printf '#!/usr/bin/env bash\ncat >/dev/null\necho tick >> "%s/realpath.log"\necho "# pool-counts 1/0/1/0"\n' "$C" > "$kit/tick.sh"
+    printf "require('fs').appendFileSync('%s/realpath.log', 'jira\\\\n');\nfor (const k of process.argv.slice(6)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');\n" "$C" > "$C/real/scripts/jira/dist/index.js"
 }
 
 row R-version r_version
