@@ -36,7 +36,7 @@ armed nothing; the waits were CI (7), another PR (5), the operator (4) and `GO`
 (1). The CI and `GO` waits are option 1; the other-PR and operator waits are
 option 2.
 
-A wait on your own chief (`GO`, a ruling) is not open-ended, because the chief's
-waiter reminds the chief every 30 minutes while it stands: hold and re-arm. An
-OpenRouter worker keeps its preface's two-hour cap, after which it posts an owed
-`BLOCKED` and ends its turn.
+A wait on your own chief (`GO`, a ruling) does not count as open-ended, however
+long it lasts, because the chief's waiter reminds the chief every 30 minutes
+while it stands: hold and re-arm. An OpenRouter worker keeps its preface's
+two-hour cap, after which it posts an owed `BLOCKED` and ends its turn.

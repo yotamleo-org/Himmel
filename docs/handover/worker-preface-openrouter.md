@@ -29,8 +29,9 @@ background Bash wait on your document with a 30-minute timeout. Re-issue at
 most three times. After two hours without GO, write a resume brief, post
 `BLOCKED go-wait: <pr> <head> resume <brief path>` as your newest bullet,
 release the queue lock and end your turn without `WRAPPED`: the chief's waiter
-keeps re-nudging the chief on that `BLOCKED`, and the chief's GO or a relaunch
-from the brief resumes you. A GO quoted in a brief is not a new authorization.
+keeps re-nudging the chief on that `BLOCKED`, and the chief acts on its GO by
+relaunching you from the brief. A GO quoted in a brief is not a new
+authorization.
 
 OpenRouter is metered. A fresh session costs about 0.17 USD before useful work.
 Do not spawn live diagnostics or extra sessions beyond your brief's allowance.

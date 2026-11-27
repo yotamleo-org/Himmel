@@ -48,6 +48,7 @@ export CHIEF_WAIT_PAGE_CMD="$STUB/ok.sh" CHIEF_WAIT_PAGE_TIMEOUT=2
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks" HOLDS_QUEUE_LOCK="$STUB/ql.sh"
 export WAIT_SWEEP_CMD="$STUB/ok.sh" WAIT_FOCUS_CMD="$STUB/ok.sh"
 export HIMMEL_TEST_FIXTURE=1
+unset CHIEF_WAIT_NOW_FILE CHIEF_WAIT_RENUDGE_KILL_AT
 export TICK_STATE_DIR="$WORK/tick-state"
 
 tick_line() {
@@ -343,6 +344,15 @@ else
         fi
     done
 fi
+
+new_case rn26c; manifest N1; doc N1 "$READY1"; copy_state "$WORK/rn1/rn1-state"
+mkdir -p "$D/bin"
+# shellcheck disable=SC2016  # the stub body expands when the stub runs
+printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" != "%s" ] || exit 1; done\nexec %s "$@"\n' "$D/doc-N1.md" "$(command -v sed)" > "$D/bin/sed"
+chmod +x "$D/bin/sed"
+run 60 PATH="$D/bin:$PATH"; check "rn26c a failed read: none" "" "$RN"
+check "rn26c row kept at n=1" "1" "$(state_row N1 | cut -f5)"
+run 90; check "rn26c reads again: n=2" "$(wake_go N1 90 2 "$ID1" 5666 "$H1")" "$RN"
 
 new_case rn27; manifest N1; doc N1 "$READY1"; copy_state "$WORK/rn1/rn1-state"
 before="$(STATE)"
