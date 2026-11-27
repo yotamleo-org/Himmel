@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 C100 C101 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -6260,6 +6260,70 @@ plugin-authoring [runtime: built-in cc-plugin-plugin-authoring plugin of the Cla
     emit OK C82-mcp-sources "$n MCP server entries by source layer (runtime built-ins are the sources a server can come from; whether one is active depends on platform, feature flag and org policy): $(printf '%s\n' "$rows" | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
 }
 
+check_c101_guard_refusals() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C101-guard-refusals "jq not on PATH -- guard refusal rows not read"; return 0; }
+    local file="${HIMMEL_GUARD_REFUSALS_LOG:-}" rows classes mirror guard rule inst count found unowned=0 total=0
+    [ -n "$file" ] || file="$(ledger_registry_path guard-refusals)" \
+        || { emit INFO C101-guard-refusals "ledger registry unreadable -- guard-refusals path unknown"; return 0; }
+    if [ ! -e "$file" ]; then
+        emit OK C101-guard-refusals "no guard refusal rows ($file is not there)"
+        return 0
+    fi
+    if [ ! -f "$file" ] || ! rows="$(jq -rR '
+        def token: if type != "string" then "non-token" elif . == "" then "-" elif test("\\A[A-Za-z0-9_.,:-]{1,120}\\z") then . else "non-token" end;
+        fromjson? | objects | select(.kind == "refusal" and has("guard") and has("rule"))
+        | [(.guard | token), (.rule | token), (.instance // "" | token)] | @tsv' "$file" 2>/dev/null)"; then
+        emit INFO C101-guard-refusals "$file could not be read -- not judged"
+        return 0
+    fi
+    if [ -z "$rows" ]; then
+        emit OK C101-guard-refusals "no guard refusal rows in $file"
+        return 0
+    fi
+    mirror="$(. "$SELF_DIR/lib/jira-project.sh" 2>/dev/null && jira_mirror_dir 2>/dev/null)" || mirror=""
+    if [ -z "$mirror" ] || ! compgen -G "$mirror/*.md" >/dev/null; then
+        emit INFO C101-guard-refusals "no Jira mirror to look owners up in -- refusal classes not judged" \
+            "build the mirror (docs/internals/jira-plugin.md), then re-run"
+        return 0
+    fi
+    classes="$(printf '%s\n' "$rows" | LC_ALL=C sort | uniq -c | awk '{ n = $1; sub(/^ *[0-9]+ /, ""); print $0 "\t" n }')"
+    while IFS=$'\t' read -r guard rule inst count; do
+        total=$((total + 1))
+        _c101_owned "$mirror" "$guard" "$rule"; found=$?
+        if [ "$found" = 2 ]; then
+            emit INFO C101-guard-refusals "the Jira mirror $mirror could not be fully read -- refusal classes not judged"
+            return 0
+        fi
+        [ "$found" = 0 ] && continue
+        unowned=$((unowned + 1))
+        emit WARN C101-guard-refusals "guard refusal class with no owning open ticket: guard=$guard rule=$rule instance=$inst count=$count" \
+            "find the open ticket that owns it and name this guard and rule in its text, or file one"
+    done <<< "$classes"
+    [ "$unowned" -gt 0 ] || emit OK C101-guard-refusals "every guard refusal class ($total) is named by an open ticket"
+}
+
+_c101_word() {
+    printf '%s' "(^|[^A-Za-z0-9_.:-]|(^|[^A-Za-z0-9_-])[.:])${1//./\\.}(\$|[^A-Za-z0-9_.:-]|[.:](\$|[^A-Za-z0-9_-]))"
+}
+
+_c101_owned() {
+    local files f r rc all
+    case "$2" in -|non-token) return 1 ;; esac
+    case ",$3," in *,-,*|*,non-token,*|*,,*) return 1 ;; esac
+    files="$(grep -rlE --include='*.md' -- "$(_c101_word "$2")" "$1" 2>/dev/null)"; rc=$?
+    [ "$rc" -le 1 ] || return 2
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        grep -q '^statusCategory: "Done"' "$f" && continue
+        all=1
+        for r in ${3//,/ }; do
+            grep -qE -- "$(_c101_word "$r")" "$f" || { all=0; break; }
+        done
+        [ "$all" = 1 ] && return 0
+    done <<< "$files"
+    return 1
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -6429,6 +6493,7 @@ run_check C97 check_c97_codex_mcp_literal_key
 run_check C98 check_c98_wrapped_window
 run_check C99 check_c99_gemini_local
 run_check C100 check_c100_fleet
+run_check C101 check_c101_guard_refusals
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
