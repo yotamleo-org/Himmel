@@ -157,7 +157,10 @@ A ticket whose mirror row lacks a DoD or Proof is read again after one increment
 Every worker brief is run through brief-lint.sh (with HANDOVER_DIR set to --handover-root) right after it is written; a brief it refuses is
 removed, no launcher is written for it, and the run exits 1 with lint's reason.
 
-Exit: 0 ok; 1 a worker is invalid, a worktree failed or brief-lint refused a brief (nothing kept for it); 2 usage.
+Each worker's RETASK token is generation 1 of the token record (worker-token.sh mint, with HANDOVER_DIR set to --handover-root); where the
+record refuses (a worker or relay), the token is random and unrecorded.
+
+Exit: 0 ok; 1 a worker is invalid, a worktree or its token mint failed, or brief-lint refused a brief (nothing kept for it); 2 usage.
 """
 import argparse, contextlib, fcntl, hashlib, importlib.util, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime

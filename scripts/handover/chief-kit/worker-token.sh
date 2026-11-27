@@ -25,8 +25,8 @@
 # mint ever creates one), bad (the record or the tools cannot be read).
 #
 # Exit: 0 ok; 1 none or keymismatch; 2 usage; 3 refused in a worker or relay;
-# 4 refused transition; 6 bad. A reader falls back only on 1 or 3, so no internal
-# failure may exit with either.
+# 4 refused transition; 6 bad; 96 the chokepoint seam guard refused or is missing.
+# A reader falls back only on 1 or 3, so no internal failure may exit with either.
 # PLATFORM GUARD: the chief kit is Linux-only, as its siblings. Needs jq, openssl, flock.
 set -u
 case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac

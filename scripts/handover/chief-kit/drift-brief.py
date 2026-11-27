@@ -13,7 +13,8 @@ and the worker brief that lands them. No model call, no network: it reads the is
         --worker <label> --date <YYYY-MM-DD> [--key <ticket key>] [--body-file <file>]
       writes <bucket>/[<key>-]<worker>-drift-4470-<date>.md for exactly those rows, in the
       shape of a hand-written drift brief, and prints its path. With no actionable row it
-      writes nothing and exits 1.
+      writes nothing and exits 1; an existing brief or a failed token mint
+      (worker-token.sh) also exits 1.
 
 tick.sh runs `count` on a copy of the open issue's body it re-reads at most once an hour
 (no open issue counts 0); the chief runs `brief` when the wake names rows.
