@@ -239,6 +239,8 @@ for f in $(jq -r '.profiles[].fromProfiles[]' "$REAL_REGISTRY"); do
     expect_ok "14 shipped fromProfile '$f' exists in plugin-profiles.json" jq -e --arg f "$f" '.profiles | has($f)' "$REAL_PLUGIN_PROFILES"
 done
 expect_eq "14 shipped pin is a full commit sha" "$(jq -r '.profiles.design.pinnedSkills[0].commit | test("^[0-9a-f]{40}$")' "$REAL_REGISTRY")" true
+expect_eq "14 shipped HTTP servers use serverUrl, with no type or url key" "$(jq -c '[.profiles.design.mcpServers[] | select(has("serverUrl") or has("url") or has("type") or has("httpUrl")) | keys]' "$REAL_REGISTRY")" '[["serverUrl"]]'
+expect_eq "14 shipped context7 URL is the anonymous endpoint (a ?client= query makes it answer 401)" "$(jq -r '.profiles.design.mcpServers.context7.serverUrl' "$REAL_REGISTRY")" "https://mcp.context7.com/mcp"
 
 fresh
 bash "$GEN" --apply --profile 'des.gn' >/dev/null 2>&1; rc=$?

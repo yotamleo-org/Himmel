@@ -331,8 +331,8 @@ carry it. The other rows are read by people.
 | tool: file read | has: Read and Grep | has: Read and Grep matcher | has: read_file |
 | tool: file write | has: Edit, Write, MultiEdit, NotebookEdit | has: Edit, Write, MultiEdit, NotebookEdit, apply_patch | has: edit_file and write_file, with a self-protect check on the path |
 | tool: subagent | has: the Agent tool behind the dispatch guards | has: an Agent PostToolUse hook (auto-arm-on-subagent-cap) | has: invoke_subagent behind peer-taint-gate; swarm, run_workflow, define_subagent, manage_subagents and manage_task are denied |
-| mcp: allowlist | has: a per-profile mcpAllow, strict MCP config | has: servers in the user config behind the mcp__.* guard chain | has: the adapter admits graphify and t3-code only, every other server is denied |
-| mcp: qmd | has: the qmd MCP server | has: the shared qmd daemon, added by the codex installer | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the MCP allowlist (graphify, t3-code) refuses qmd; the run_command route scripts/lib/qmd-bounded.sh still works |
+| mcp: allowlist | has: a per-profile mcpAllow, strict MCP config | has: servers in the user config behind the mcp__.* guard chain | has: the adapter admits graphify, t3-code, context7, shadcn and playwright, by mcp_* name or call_mcp_tool; every other server, and playwright's browser_run_code_unsafe and browser_evaluate, are denied |
+| mcp: qmd | has: the qmd MCP server | has: the shared qmd daemon, added by the codex installer | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the MCP allowlist refuses qmd; the run_command route scripts/lib/qmd-bounded.sh still works |
 | web: search | has: WebSearch | has: hosted web_search, cached by default | has: search_web |
 | web: fetch a URL | has: WebFetch | structural: the Codex CLI reads the web through hosted web_search only | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: the read_url_content arm is open, its URL argument key is unread without a live thread |
 | skills | has: .claude/skills and the himmel-ops plugin skills | has: the himmel-ops plugin skills | has: the .agents/skills subset |
@@ -340,7 +340,7 @@ carry it. The other rows are read by people.
 | `guard:approval-grant-check.sh` | has | structural: allow-only helper for Claude's permission prompt, it denies nothing | structural: allow-only helper for Claude's permission prompt, it denies nothing |
 | `guard:auto-approve-safe-bash.sh` | has | has | structural: fail-open approver, not a deny-guard; the adapter allows a clean pass by default |
 | `guard:auto-arm-on-cap.sh` | has | has | structural: watchdog on the Claude subscription cap, fail-open by design, no Antigravity analog |
-| `guard:block-agent-native-egress.sh` | has | gap-ticketed: .codex/hooks.json: add block-agent-native-egress.sh to the mcp__.* chain | structural: MCP server agent-native is not on the adapter allowlist, which admits graphify and t3-code only |
+| `guard:block-agent-native-egress.sh` | has | gap-ticketed: .codex/hooks.json: add block-agent-native-egress.sh to the mcp__.* chain | structural: MCP server agent-native is not on the adapter allowlist |
 | `guard:block-antigravity-read-fence.sh` | structural: fences the Antigravity home and oauth token, a path Claude Code does not have | structural: fences the Antigravity home and oauth token, a path Codex does not have | has |
 | `guard:block-backend-tier.sh` | has | has | has |
 | `guard:block-bank-lift-writes.sh` | has | has | has |
