@@ -521,6 +521,8 @@ lib_rows() {
     check "lib2 seam off without the fixture flag" "$WORK/libhd" "$( ( unset HIMMEL_TEST_FIXTURE; export CHIEF_OWED_GO_ROOT=/x HANDOVER_DIR="$WORK/libhd"; . "$LIB" 2>/dev/null && chief_owed_go_root "$REPO_ROOT" ) )"
     out="$( ( unset HIMMEL_TEST_FIXTURE CHIEF_OWED_GO_ROOT; . "$LIB" 2>/dev/null || exit 9; go_resolve_root() { return 2; }; chief_owed_go_root "$REPO_ROOT" ) )"; lrc=$?
     check "lib3 a failed resolver: nothing, rc 1" ":1" "$out:$lrc"
+    out="$( ( . "$LIB" 2>/dev/null || exit 9; chief_owed_state "$WORK/no-such-doc" --gen ) )"; lrc=$?
+    check "lib4 a doc that cannot be read: nothing, rc 1" ":1" "$out:$lrc"
 }
 lib_rows
 

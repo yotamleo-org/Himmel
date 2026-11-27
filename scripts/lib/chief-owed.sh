@@ -5,7 +5,8 @@
 #
 #   chief_owed_state <doc> [--gen]
 #       prints at most `ready <id> <sha>[ <gen>]` and `ask <BLOCKED|FINDING>[ <gen>]`,
-#       rc 0. READY is read by parse_ready_line (go-gate.sh). A doc with no Results
+#       rc 0, or nothing and rc 1 when the doc cannot be read.
+#       READY is read by parse_ready_line (go-gate.sh). A doc with no Results
 #       heading is scanned whole. With --gen each line ends in the cksum of the
 #       bullet that opened the item: a repeat READY of the same id and sha keeps it,
 #       and a READY after a clear takes a new one.
@@ -23,8 +24,8 @@ case "${BASH_SOURCE[0]}" in */*) _co_d="${BASH_SOURCE[0]%/*}" ;; *) _co_d=. ;; e
 chief_owed_state() {
     local doc="$1" want_gen="${2:-}" body rec m line rest parsed id sha
     local ready_id="" ready_sha="" ready_line="" ask="" ask_line="" out
-    body=$(sed -n '/^## Results/,$p' "$doc" 2>/dev/null)  # swallow-ok: an unreadable doc is named by the caller before this runs
-    [ -n "$body" ] || body=$(sed -n 'p' "$doc" 2>/dev/null)  # swallow-ok: a doc with no Results heading is scanned whole
+    body=$(sed -n '/^## Results/,$p' "$doc" 2>/dev/null) || return 1  # swallow-ok: rc 1 tells the caller the doc was not read
+    [ -n "$body" ] || body=$(sed -n 'p' "$doc" 2>/dev/null) || return 1  # swallow-ok: a doc with no Results heading is scanned whole, rc 1 when that read fails
     while IFS= read -r rec; do
         [ -n "$rec" ] || continue
         m="${rec%% *}"; line="${rec#* }"

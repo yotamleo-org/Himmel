@@ -3266,11 +3266,11 @@ renudge_go_root="$(chief_owed_go_root "$REPO")" || renudge_go_root=""
 renudge_sampled=""
 renudge_items() {
     [ -n "$legs_from" ] || return 3
-    local rows label ldoc kind f1 f2 f3 f4 t3
+    local rows label ldoc kind f1 f2 f3 f4 t3 st
     rows="$(jq -r "$JQ_W"'if (W | type) == "array" then W[] | [(.label // "?"), (.doc // "?"), (.t3_kind // "-")] | @tsv else error("no workers array") end' "$legs_from" 2>/dev/null)" || return 2  # swallow-ok: an unreadable manifest is rc 2, which keeps the state
     while IFS=$'\t' read -r label ldoc kind; do
         [[ $label =~ ^[A-Za-z0-9._#+-]+$ ]] || continue
-        if ! { [ -f "$ldoc" ] && [ -r "$ldoc" ]; }; then printf 'KEEP\t%s\n' "$label"; continue; fi
+        if ! { [ -f "$ldoc" ] && [ -r "$ldoc" ] && st="$(chief_owed_state "$ldoc" --gen)"; }; then printf 'KEEP\t%s\n' "$label"; continue; fi
         t3=-; [ "$kind" != ask ] || t3=ask
         while read -r f1 f2 f3 f4; do
             case "$f1" in
@@ -3283,7 +3283,7 @@ renudge_items() {
                     printf '%s:ask:%s:%s\t%s\tanswer-owed\t-\t-\t%s\n' "$label" "$f2" "$f3" "$label" "$t3" ;;
             esac
         done <<EOF
-$(chief_owed_state "$ldoc" --gen)
+$st
 EOF
     done <<EOF
 $rows
