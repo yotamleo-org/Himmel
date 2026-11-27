@@ -2525,7 +2525,7 @@ strip_lib_pins() {
 }
 lib_v2_ok() {
   if jq -e '(.anchor_ref // "") != "" and (.git_dir // "") != ""' "$2" >/dev/null 2>&1; then return 0; fi
-  bad "$1 fixture: the recorder did not write a v2 record: $(cat "$2" 2>/dev/null)"
+  bad "$1 fixture: the recorder did not write a v2 record at $2"
   return 1
 }
 
