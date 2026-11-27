@@ -243,7 +243,7 @@ if [ -n "${HOME:-}" ]; then
     HOME_REAL="$(canon_path "$HOME")" || HOME_REAL="" # swallow-ok: empty HOME_REAL skips optional home-dir match while .agents and literal rules still run
 fi
 T3_HOME_1=""
-[ -n "$HOME_REAL" ] && { T3_HOME_1="$(canon_path "$HOME_REAL/.t3")" || T3_HOME_1=""; } # swallow-ok: empty T3_HOME_1 falls back to T3_HOME_2
+[ -n "$HOME_REAL" ] && { T3_HOME_1="$(canon_path "$HOME_REAL/.t3")" || T3_HOME_1=""; }
 T3_HOME_2=""
 if [ -n "${T3CODE_HOME:-}" ]; then
     T3_HOME_2="$(canon_path "$T3CODE_HOME")" || T3_HOME_2="" # swallow-ok: empty T3_HOME_2 falls back to T3_HOME_1 and literal checks
@@ -276,10 +276,10 @@ place_artifact() {
         /antigravity-acp/brain/?*) ;;
         *) return 0 ;;
     esac
-    pfx_real="$(canon_path "$pfx")" || return 0 # swallow-ok: an unplaced artifact gets no widening (fail-closed)
+    pfx_real="$(canon_path "$pfx")" || return 0
     for t3h in "$T3_HOME_1" "$T3_HOME_2"; do
         [ -n "$t3h" ] || continue
-        home_real="$(canon_path "$t3h/userdata/providers/antigravity")" || continue # swallow-ok: an unresolvable home matches nothing (fail-closed)
+        home_real="$(canon_path "$t3h/userdata/providers/antigravity")" || continue
         [ "$pfx_real" != "$home_real" ] || matched=1
     done
     [ -n "$matched" ] || return 0
@@ -288,7 +288,7 @@ place_artifact() {
         [ ! -L "$p" ] || return 0
         p="${p%/*}"
     done
-    real="$(canon_path "$raw")" || return 0 # swallow-ok: an unplaced artifact gets no widening (fail-closed)
+    real="$(canon_path "$raw")" || return 0
     case "$real" in
         "$pfx_real/$hex/antigravity-acp/brain/"*)
             ARTIFACT_REAL="$real"
@@ -428,7 +428,7 @@ build_claude_payload() {
 mcp_allowed_set() {
     LANE_SET="" DECLARED_SET="" SESSION_PROFILE=""
     local doc="" lane="" declared="" profiles="" prof="" p="" sum=""
-    doc="$(cat "$PRIMARY_ROOT/scripts/t3/antigravity-profiles.json" 2>/dev/null)" || return 1 # swallow-ok: an unreadable registry is denied by the caller
+    doc="$(cat "$PRIMARY_ROOT/scripts/t3/antigravity-profiles.json")" || return 1
     printf '%s' "$doc" | jq -se '
         def server_name: type == "string" and test("\\A[A-Za-z0-9.-]+\\z");
         length == 1 and (.[0]
@@ -439,7 +439,7 @@ mcp_allowed_set() {
                   and (.value
                       | (if has("mcpServers") then (.mcpServers | type == "object" and all(.[]; type == "object")) else true end)
                         and (if has("optionalMcpServers") then (.optionalMcpServers | type == "array" and all(.[]; type == "string")) else true end))))
-    ' >/dev/null 2>&1 || return 1 # swallow-ok: a malformed registry is denied by the caller
+    ' >/dev/null 2>&1 || return 1
     lane="$(printf '%s' "$doc" | jq -r '.laneMcpServers | join(" ")')" || return 1
     if [ -n "$ARTIFACT_HEX" ]; then
         profiles="$(printf '%s' "$doc" | jq -r '.profiles | keys[]')" || return 1
