@@ -1079,6 +1079,91 @@ else
   ok "rowR2 control: a list with an unpinned lib/x.json fails the comparison"
 fi
 
+PH="$(new_fixture rowH main)"
+mkdir -p "$PH/scripts/harnesses/fixtures" "$PH/scripts/himmelctl/lib"
+printf '{"name":"claude"}\n' > "$PH/scripts/harnesses/claude.json"
+printf '{"name":"codex"}\n' > "$PH/scripts/harnesses/codex.json"
+printf '.\n' > "$PH/scripts/harnesses/registry.jq"
+printf '#!/usr/bin/env bash\n' > "$PH/scripts/harnesses/test-harness-registry.sh"
+printf '{"name":"fake"}\n' > "$PH/scripts/harnesses/fixtures/fake.json"
+printf '{}\n' > "$PH/scripts/himmelctl/lib/bypass-flags.json"
+printf 'module.exports = {};\n' > "$PH/scripts/himmelctl/lib/config-feed.js"
+git -C "$PH" -c user.email=t@t -c user.name=t add -A
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -m registry
+git -C "$PH" push -q origin HEAD:refs/heads/main
+git -C "$PH" fetch -q origin
+OUTH="$T/rowH/out"
+run_recorder "$PH" "$OUTH" "sess-h"
+RECH="$OUTH/sess-h.json"
+h_pin() { jq -r --arg k "$1" '.pins[$k] // empty' "$RECH" 2>/dev/null; }
+h_pinned_at_head() { [ -n "$(h_pin "$1")" ] && [ "$(h_pin "$1")" = "$(git -C "$PH" rev-parse "HEAD:$1")" ]; }
+if [ -f "$RECH" ] \
+  && h_pinned_at_head scripts/harnesses/claude.json \
+  && h_pinned_at_head scripts/harnesses/codex.json \
+  && h_pinned_at_head scripts/harnesses/registry.jq \
+  && h_pinned_at_head scripts/himmelctl/lib/bypass-flags.json \
+  && [ -z "$(h_pin scripts/harnesses/fixtures/fake.json)" ] \
+  && [ -z "$(h_pin scripts/harnesses/test-harness-registry.sh)" ] \
+  && [ -z "$(h_pin scripts/himmelctl/lib/config-feed.js)" ]; then
+  ok "rowH1: the registry descriptors, registry.jq and bypass-flags.json are pinned to their HEAD blobs; fixtures and other files there are not"
+else
+  bad "rowH1: pins=$(jq -c '.pins' "$RECH" 2>/dev/null || echo '<no record>')"
+fi
+
+h_verify() {
+  env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK CLAUDE_PROJECT_DIR="$PH" HIMMEL_HOOK_INTEGRITY_DIR="$OUTH" \
+    node -e 'const r = require(process.argv[1]).verifyProjectHookIntegrity(process.argv[2], process.argv[3]);
+      process.stdout.write(r.ok ? "ok" : "deny " + r.relPath);' \
+    "$HOOKS_DIR/hook-integrity.js" "$PH/scripts/hooks/fake-guard.sh" sess-h 2>&1
+}
+h_restore() { git -C "$PH" checkout -q -- scripts/harnesses scripts/himmelctl; rm -f "$PH/scripts/harnesses/evil.json"; }
+
+hH2="$(h_verify)"
+if [ "$hH2" = "ok" ]; then
+  ok "rowH2 control: an unedited registry lets the hook run"
+else
+  bad "rowH2 control: unedited registry gave '$hH2' (want ok)"
+fi
+
+for rel in scripts/harnesses/claude.json scripts/harnesses/registry.jq scripts/himmelctl/lib/bypass-flags.json; do
+  printf ' ' >> "$PH/$rel"
+  got="$(h_verify)"
+  h_restore
+  if [ "$got" = "deny $rel" ]; then
+    ok "rowH3: an edit to $rel refuses the next hook call"
+  else
+    bad "rowH3: an edit to $rel gave '$got' (want 'deny $rel')"
+  fi
+done
+
+printf '{"name":"evil"}\n' > "$PH/scripts/harnesses/evil.json"
+hH4="$(h_verify)"
+h_restore
+if [ "$hH4" = "deny scripts/harnesses/evil.json" ]; then
+  ok "rowH4: a new descriptor no pin vouches for refuses the next hook call"
+else
+  bad "rowH4: a new scripts/harnesses/evil.json gave '$hH4' (want a deny naming it)"
+fi
+
+rm -f "$PH/scripts/harnesses/codex.json"
+hH5="$(h_verify)"
+h_restore
+if [ "$hH5" = "deny scripts/harnesses/codex.json" ]; then
+  ok "rowH5: a deleted pinned descriptor refuses the next hook call"
+else
+  bad "rowH5: deleting scripts/harnesses/codex.json gave '$hH5' (want a deny naming it)"
+fi
+
+printf ' ' >> "$PH/scripts/harnesses/fixtures/fake.json"
+printf ' ' >> "$PH/scripts/himmelctl/lib/config-feed.js"
+hH6="$(h_verify)"
+h_restore
+if [ "$hH6" = "ok" ]; then
+  ok "rowH6 control: an edit outside the pinned set (a fixture, another himmelctl lib) lets the hook run"
+else
+  bad "rowH6 control: an edit outside the pinned set gave '$hH6' (want ok)"
+fi
+
 # ---------------------------------------------------------------------------
 # Row 26: the recorder runs under bash 3.2. An apostrophe in a comment inside a
 # multi-line $( ) reads there as an open quote; `bash -n` can miss it when a
