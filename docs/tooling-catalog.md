@@ -1450,8 +1450,7 @@ view into the vault — the bridge between the derived graph and the KB.
   clone elsewhere has none until it refreshes there. Each job fires
   `scripts/graphify/ast-update.sh <abs-path>` — a thin
   wrapper that takes the semantic job's per-out-dir promote lock (skip-not-wait)
-  before running `graphify update <abs-path>` itself (incremental, with
-  `--force` once per 24 h; nice 15, idle I/O, at most 8 workers), so the free
+  before running `graphify update <abs-path> --force` itself, so the free
   structural AST re-parse can never race the weekly semantic refresh's write to
   the same `graphify-out` (both sides resolve `GRAPHIFY_OUT` identically —
   `refresh-graph-map.sh` honours the relative form and refuses an
