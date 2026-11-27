@@ -1062,15 +1062,18 @@ all_pinned() {
   done
   return 0
 }
-runner_libs="$(node -e 'process.stdout.write(require(process.argv[1]).RUNNER_LIBS.join("\n"))' "$HOOKS_DIR/hook-integrity.js" 2>/dev/null)"
-# shellcheck disable=SC2086  # one entry per word; RUNNER_LIBS entries hold no spaces
-if [ -n "$runner_libs" ] && all_pinned "$RECR1" $runner_libs; then
+runner_libs=()
+while IFS= read -r lib; do
+  [ -n "$lib" ] && runner_libs+=("$lib")
+done <<EOF_RUNNER_LIBS
+$(node -e 'process.stdout.write(require(process.argv[1]).RUNNER_LIBS.join("\n"))' "$HOOKS_DIR/hook-integrity.js" 2>/dev/null)
+EOF_RUNNER_LIBS
+if [ "${#runner_libs[@]}" -gt 0 ] && all_pinned "$RECR1" "${runner_libs[@]}"; then
   ok "rowR2: every RUNNER_LIBS entry is in the record"
 else
-  bad "rowR2: RUNNER_LIBS='$runner_libs' is not all pinned: $(jq -c '.pins' "$RECR1" 2>/dev/null)"
+  bad "rowR2: RUNNER_LIBS='${runner_libs[*]-}' is not all pinned: $(jq -c '.pins' "$RECR1" 2>/dev/null)"
 fi
-# shellcheck disable=SC2086
-if all_pinned "$RECR1" $runner_libs lib/x.json; then
+if all_pinned "$RECR1" ${runner_libs[@]+"${runner_libs[@]}"} lib/x.json; then
   bad "rowR2 control: a list with an unpinned lib/x.json must fail the comparison"
 else
   ok "rowR2 control: a list with an unpinned lib/x.json fails the comparison"

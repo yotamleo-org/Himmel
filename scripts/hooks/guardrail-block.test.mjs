@@ -1223,7 +1223,7 @@ test('wrapper libs: G2c — the same edit committed reads healthy (the HEAD limi
   dropMapEntry(ctx);
   commitHookCopies(ctx);
   const out = libStatus(ctx);
-  for (const hook of out.hooks) assert.equal(libEntry(hook, MAP_REL)?.verdict ?? 'healthy', 'healthy');
+  for (const hook of out.hooks) assert.equal(libEntry(hook, MAP_REL)?.verdict, 'healthy');
   assert.equal(out.contentIntegrityComplete, true);
 });
 
@@ -1270,7 +1270,10 @@ test('wrapper libs: G6 — a symlinked wrapper is attested by the libs beside it
   rmSync(wrapper);
   fs.symlinkSync(join(realHooks, 'guardrail-skip-in-himmel.js'), wrapper);
   const out = libStatus(ctx);
-  for (const hook of out.hooks) assert.equal(libEntry(hook, MAP_REL)?.verdict, 'degraded');
+  for (const hook of out.hooks) {
+    assert.equal(libEntry(hook, MAP_REL)?.verdict, 'degraded');
+    assert.equal(libEntry(hook, MAP_REL)?.reason, 'content-mismatch');
+  }
   assert.equal(out.contentIntegrityComplete, false);
 });
 

@@ -1441,7 +1441,6 @@ function sourcedClosure(file, root) {
   return { libs: [...libs], unresolved };
 }
 
-/** The files a runner loads before any guard runs, relative to the runner's directory. */
 const RUNNER_LIBS = ['lib/harness-tool-translate.js', 'lib/harness-tool-map.json'];
 
 function verifyRunnerLibs(runnerDir, sessionId) {
@@ -1501,7 +1500,6 @@ function verifyIntegrityUnbypassed(scriptPath, sessionId) {
   return { ok: true };
 }
 
-/** 'local' (resolves inside the project), 'foreign' (resolves and is spelled outside), 'escapes' (spelled inside, resolves outside). */
 function pathLocality(scriptPath, projectDir) {
   const resolvedScript = normalize(resolveReal(scriptPath));
   const resolvedProject = normalize(resolveReal(projectDir));
@@ -1518,11 +1516,6 @@ function verifyOneFile(scriptPath, sessionId, strict) {
   if (!projectDir) return { ok: true };
   const resolvedScript = normalize(resolveReal(scriptPath));
   const resolvedProject = normalize(resolveReal(projectDir));
-  // A path that never claimed to be inside the project is simply foreign (not
-  // this check's business); one that spelled itself `<project>/…` but leaves it
-  // via `..` or a link is neither project-local nor vouched for by any pin, so
-  // it is refused, and the bypass cannot rescue it (honourBypass wants the
-  // resolved script inside the worktree).
   switch (pathLocality(scriptPath, projectDir)) {
     case 'foreign':
       if (strict) return { ok: false, relPath: normalize(scriptPath), reason: `${SOURCED_DENY}a sourced lib outside the project` };

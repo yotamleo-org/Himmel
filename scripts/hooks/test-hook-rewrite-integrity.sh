@@ -2470,11 +2470,12 @@ P5P="$T/lib-p5b"
 mk_lib_project "$P5P" lib-s5b
 drop_map_entry "$P5P"
 P5BC="$T/cache-b/hooks"
-mkdir -p "$P5BC"
+mkdir -p "$P5BC/lib"
 cp "$HOOKS_DIR/run-hook-with-bash.js" "$HOOKS_DIR/hook-integrity.js" "$P5BC/"
-ln -s "$P5P/scripts/hooks/lib" "$P5BC/lib"
+cp "$HOOKS_DIR/lib/harness-tool-translate.js" "$P5BC/lib/"
+ln -s "$P5P/$MAP_REL" "$P5BC/lib/harness-tool-map.json"
 run_lib "$P5P" "$P5P" "$P5P.out" "$P5BC/run-hook-with-bash.js" "$(lib_payload lib-s5b run_terminal_command)" --optional "$P5P/scripts/hooks/probe-a.sh"
-expect_unloaded_deny "P5b: a cache runner whose lib/ links into the project is refused over an edited table" 'DENY run-hook-with-bash.js'
+expect_unloaded_deny "P5b: a cache runner whose table links into the project is refused over an edited table" 'DENY run-hook-with-bash.js' "$MAP_REL"
 
 P6P="$T/lib-p6"
 mk_lib_project "$P6P" lib-s6
