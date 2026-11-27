@@ -37,7 +37,9 @@ shape='type == "object"
     and (.events | type) == "object"
     and all(.events[]; type == "string")
     and all(.tools[]; type == "object" and (.claude | type) == "string"
-        and ((has("keys") | not) or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
+        and (.allow | type) == "array" and all(.allow[]; type == "string")
+        and ((has("empty") | not) or ((.empty | type) == "array" and all(.empty[]; type == "string")))
+        and ((has("keys") | not)or ((.keys | type) == "object" and all(.keys[]; type == "string"))))'
 if ! { tbl=$(cat "$table" 2>/dev/null) && printf '%s' "$tbl" | jq -se "length == 1 and (.[0] | $shape)" >/dev/null 2>&1; }; then
     echo "translate-tool-call: harness tool table $table is missing, unreadable or malformed; refusing the tool call" >&2
     exit 2
@@ -50,6 +52,16 @@ out=$(printf '%s' "$input" | jq -c --argjson t "$tbl" '
     .tool_name as $n
     | if ($t.tools | has($n)) then
         $t.tools[$n] as $e
+        | (if .hook_event_name == "PostToolUse" or .hook_event_name == "PostToolUseFailure" then .
+           elif (.tool_input | obj) | not then error("\($n): tool input is not an object")
+           else . as $p
+             | (($p.tool_input | keys_unsorted) - $e.allow) as $extra
+             | [($e.empty // [])[] | . as $k | select(($p.tool_input | has($k)) and $p.tool_input[$k] != "") | $k] as $filled
+             | if $extra != [] then error("\($n): tool input key \($extra[0] | tojson) is not allowed")
+               elif $filled != [] then error("\($n): tool input key \($filled[0] | tojson) must be empty")
+               elif any(.. | numbers; isinfinite or isnan or fabs > 9007199254740991) then error("\($n): payload holds an out-of-range number")
+               else . end
+           end)
         | .tool_name = $e.claude
         | if (.tool_input | obj) then
             reduce (($e.keys // {}) | to_entries[]) as $k (.;
