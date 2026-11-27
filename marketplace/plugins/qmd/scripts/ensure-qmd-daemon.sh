@@ -108,23 +108,9 @@ else
   boot_unit="qmd-daemon-$QMD_INDEX_NAME.service"  # t13b-ok: the boot unit's name only, starts nothing
 fi
 mcp_stem="mcp$idx_sfx"
-if [ "$QMD_INDEX_NAME" != index ]; then
-  case "$unit_url" in
-    '')
-      echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
-      exit 1 ;;
-  esac
-  unit_port="${unit_url#*://}"
-  unit_port="${unit_port%%/*}"
-  unit_port="${unit_port##*:}"
-  case "$unit_port" in
-    ''|*[!0-9]*) ;;
-    *)
-      if [ "${#unit_port}" -le 9 ] && [ "$((10#$unit_port))" -eq 8181 ]; then
-        echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' cannot use port 8181, the shared server's; set QMD_MCP_URL to the index's own port." >&2
-        exit 1
-      fi ;;
-  esac
+if [ "$QMD_INDEX_NAME" != index ] && [ -z "$unit_url" ]; then
+  echo "ensure-qmd-daemon: ERROR - the named index '$QMD_INDEX_NAME' needs its own QMD_MCP_URL (its own port, e.g. http://localhost:8183/mcp); the default URL is the shared server's." >&2
+  exit 1
 fi
 boot_before="himmel-recover.service"
 
@@ -380,6 +366,14 @@ EOF
   echo "$rss $etime"
 }
 
+index_serves() {
+  local pid
+  [ "$QMD_INDEX_NAME" = index ] && return 0
+  pid="$(head -n1 "$pidfile" 2>/dev/null)"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  qmd_rss "$pid" >/dev/null
+}
+
 check_ceiling() {
   local pid row rss_kb etime now last ceiling_kb
   [ "$QMD_RSS_CEILING_MB" -gt 0 ] || return 0
@@ -605,6 +599,10 @@ fi
 # ---- Healthy path: something already answers -------------------------------
 body="$(probe_body)"
 if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+  if ! index_serves; then
+    echo "ensure-qmd-daemon: ERROR - $QMD_MCP_URL answers, but it is not the '$QMD_INDEX_NAME' index's server (no live $pidfile naming --index $QMD_INDEX_NAME); set QMD_MCP_URL to that index's own port." >&2
+    exit 1
+  fi
   check_ceiling
   exit 0
 fi
@@ -832,7 +830,7 @@ fi
 i=0
 while [ "$i" -lt "$WAIT_TRIES" ]; do
   body="$(probe_body)"
-  if { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; then
+  if { { [ -n "$body" ] && is_qmd_shaped "$body"; } || alive_auth_required; } && index_serves; then
     rm -f "$start_marker"
     exit 0
   fi

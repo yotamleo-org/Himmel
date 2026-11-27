@@ -1336,7 +1336,7 @@ echo "ok (z14b): a named recycle uses its own lock, stamp and log, stops only it
 
 two_procs "$gmail_argv" 7340032 "$default_argv" 7340032
 run_idx QMD_INDEX_NAME=gmail
-[ "$rc" -eq 0 ] || fail "(z15) named run, default argv: expected rc 0, got $rc ($out)"
+[ "$rc" -eq 1 ] || fail "(z15) named run, default argv: expected rc 1, got $rc ($out)"
 grep -qx "$gm_pid" "$state/ps3-pids.log" || fail "(z15) named run, default argv: mcp-gmail.pid's pid was never inspected"
 case "$out" in *recycling*) fail "(z15) named run, default argv: a recycle started on a pid that is not the gmail server ($out)" ;; esac
 kill -0 "$gm_pid" 2>/dev/null || fail "(z15) named run, default argv: a process was stopped"
@@ -1382,15 +1382,21 @@ echo "ok (z17): the index name is validated before any state path is built, even
 
 wait_run() {
   rm -f "$state/alive" "$state/qmd-argv.log"
+  mkdir -p "$home/.cache/qmd"
+  sleep 300 & wait_srv=$!
+  STUB_PIDS+=("$wait_srv")
+  set_proc "$wait_srv" 1048576 "$gmail_argv"
+  echo "$wait_srv" > "$home/.cache/qmd/mcp-gmail.pid"
   ( sleep "$1"; touch "$state/alive" ) &
   wait_bg=$!
   shift
   set +e
   out="$(env QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_STATE="$state" QMD_MCP_URL="$test_url" \
-    QMD_INDEX_NAME=gmail HOME="$home" PATH="$bin:$safe" "$@" bash "$script" 2>&1)"
+    QMD_INDEX_NAME=gmail QMD_PS="$ps3/ps" HOME="$home" PATH="$bin:$safe" "$@" bash "$script" 2>&1)"
   rc=$?
   set -e
   wait "$wait_bg"
+  kill "$wait_srv" 2>/dev/null || true
   rm -f "$state/alive"
 }
 wait_run 6 QMD_WAIT_TRIES=abc
@@ -1446,12 +1452,6 @@ rc=$?
 set -e
 [ "$rc" -eq 1 ] || fail "(z20) a named index with no QMD_MCP_URL must be refused, not reported healthy through the shared server: got rc $rc ($out)"
 case "$out" in *"needs its own QMD_MCP_URL"*) ;; *) fail "(z20) no refusal line naming QMD_MCP_URL ($out)" ;; esac
-run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:8181/mcp
-[ "$rc" -eq 1 ] || fail "(z20) a named index on port 8181 must be refused: got rc $rc ($out)"
-case "$out" in *"cannot use port 8181"*) ;; *) fail "(z20) no refusal line naming port 8181 ($out)" ;; esac
-run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:08181/mcp
-[ "$rc" -eq 1 ] || fail "(z20) a named index on port 08181 (8181 to curl) must be refused: got rc $rc ($out)"
-case "$out" in *"cannot use port 8181"*) ;; *) fail "(z20) no refusal line for port 08181 ($out)" ;; esac
 rm -f "$units/qmd-daemon-gmail.service"
 set +e
 out="$(env -u QMD_MCP_URL QMD_SYSTEMCTL="$bin/systemctl" QMD_UNIT_DIR="$units" QMD_MOCK_STATE="$state" QMD_INDEX_NAME=gmail \
@@ -1460,6 +1460,24 @@ rc=$?
 set -e
 [ "$rc" -eq 1 ] || fail "(z20) --install-boot-unit for a named index with no QMD_MCP_URL must be refused: got rc $rc ($out)"
 [ ! -e "$units/qmd-daemon-gmail.service" ] || fail "(z20) a unit was written without the index's own URL"
-echo "ok (z20): a named index without its own QMD_MCP_URL, or on the shared port, is refused on start and on install"
+echo "ok (z20): a named index without its own QMD_MCP_URL is refused on start and on install"
+
+for url in http://localhost:0000008181/mcp "http://localhost:8181?probe=1" http://localhost:9/mcp; do
+  for shape in none default; do
+    two_procs "$default_argv" 1048576 "$default_argv" 1048576
+    [ "$shape" != none ] || rm -f "$xdg3/qmd/mcp-gmail.pid"
+    rm -f "$state/qmd-argv.log"
+    run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL="$url"
+    [ "$rc" -eq 1 ] || fail "(z21) $url, pidfile $shape: a probe answered by another index's server must exit 1, got $rc ($out)"
+    case "$out" in *"not the 'gmail' index's server"*) ;; *) fail "(z21) $url, pidfile $shape: no refusal line ($out)" ;; esac
+    [ ! -e "$state/qmd-argv.log" ] || fail "(z21) $url, pidfile $shape: qmd was started"
+    reap_two
+  done
+done
+two_procs "$default_argv" 1048576 "$gmail_argv" 1048576
+run_idx QMD_INDEX_NAME=gmail QMD_MCP_URL=http://localhost:0000008181/mcp
+[ "$rc" -eq 0 ] || fail "(z21) a pidfile naming --index gmail is healthy whatever the URL spelling: got rc $rc ($out)"
+reap_two
+echo "ok (z21): a named index counts as served only when its own pidfile names a live --index <name> server, whatever the URL"
 
 echo "PASS: all ensure-qmd-daemon cases"

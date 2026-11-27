@@ -188,7 +188,9 @@ A big index takes about 20 s to answer its first initialize, so raise `QMD_WAIT_
 probes after the start; default 5). Every named index keeps its own state under `~/.cache/qmd`:
 `mcp-<name>.pid`, `mcp-<name>.log`, `recycle-<name>.lock|stamp|log` and `starting-<name>`. A pid is
 recycled only when its argv names that index (`--index <name>`; the default index has none), so a
-recycle of gmail can never stop the shared daemon, nor the other way round.
+recycle of gmail can never stop the shared daemon, nor the other way round. A named index also
+counts as running only when `mcp-<name>.pid` names a live `--index <name>` process, so a
+`QMD_MCP_URL` that reaches another index's server is refused (exit 1), never reported healthy.
 
 To start it at login, run the same line with `--install-boot-unit` added after the script path. It
 writes `qmd-daemon-gmail.service` (the shared index keeps `qmd-daemon.service`) and bakes in
