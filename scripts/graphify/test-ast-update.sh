@@ -773,11 +773,37 @@ json.dump(g, open(p, "w"))
 PY
 STUB
 chmod +x "$BIN26/graphify"
+cp "$OUT26/graph.json" "$WS/graph26.orig"
 out26=$( PATH="$BIN26:$PATH" bash "$SCRIPT" "$CORPUS26" 2>&1 ); rc26=$?
 ids26=$(python3 -c 'import json,sys;g=json.load(open(sys.argv[1]));print(" ".join(sorted(n["id"] for n in g["nodes"])), len(g["links"]))' "$OUT26/graph.json")
 [ "$rc26" -eq 0 ] && pass "T26 the incremental run is not refused" || fail "T26 (rc=$rc26): $out26"
 [ "$ids26" = "a1 a2 s_kept s_restored s_restored2 1" ] \
   && pass "T26 the restored nodes and their edge are back after the rebuild" || fail "T26 graph: $ids26"
+grep -qF "set aside 2 restored semantic node(s)" <<<"$out26" \
+  && pass "T26 only the two nodes without a community are set aside" || fail "T26 set-aside count: $out26"
+
+echo "T26b: a rebuild that really loses a node graphify wrote is still refused"
+CORPUS26B="$WS/c26b"; OUT26B="$CORPUS26B/graphify-out"; BIN26B="$WS/bin26b"; mkdir -p "$OUT26B" "$BIN26B"
+touch "$CORPUS26B/a.sh" "$CORPUS26B/b.sh" "$CORPUS26B/doc.md"
+printf '%s\n' "$(date -u +%s)" > "$OUT26B/.ast-forced-at"
+cp "$WS/graph26.orig" "$OUT26B/graph.json"
+cat > "$BIN26B/graphify" <<'STUB'
+#!/usr/bin/env bash
+python3 - "$2" <<'PY'
+import json, os, sys
+g = json.load(open(os.path.join(sys.argv[1], "graphify-out", "graph.json")))
+cand = [n for n in g["nodes"] if "community" in n and n["id"] != "a1"]
+if len(cand) < len(g["nodes"]):
+    print(f"[graphify] WARNING: new graph has {len(cand)} nodes but existing graph.json has {len(g['nodes'])}. Refusing to overwrite", file=sys.stderr)
+    sys.exit(1)
+PY
+STUB
+chmod +x "$BIN26B/graphify"
+out26b=$( PATH="$BIN26B:$PATH" bash "$SCRIPT" "$CORPUS26B" 2>&1 ); rc26b=$?
+left26b=$(find "$OUT26B" -name '*pre-ast*')
+[ "$rc26b" -eq 5 ] && grep -q "Refusing to overwrite" <<<"$out26b" && cmp -s "$OUT26B/graph.json" "$WS/graph26.orig" && [ -z "$left26b" ] \
+  && pass "T26b the real loss is refused, graph.json is byte-equal and no snapshot is left" \
+  || fail "T26b (rc=$rc26b) left=$left26b: $out26b"
 
 echo "T27: a killed rebuild's leftover snapshot gives the set-aside nodes back on the next run"
 CORPUS27="$WS/c27"; OUT27="$CORPUS27/graphify-out"; mkdir -p "$OUT27"
