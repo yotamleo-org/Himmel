@@ -123,10 +123,18 @@ Run the audit and read its findings:
 
 ```bash
 "$HIMMEL/scripts/memory/audit-memory-capture.sh" --structure
+"$HIMMEL/scripts/memory/check-memory-truth.sh"
 ```
 
-It lists over-cap topic files, unreachable files, dead `[title](file.md)` links
-and dead `[[wikilinks]]`, and the load-limit and staleness warnings. Then read
+The audit lists over-cap topic files, unreachable files, dead `[title](file.md)` links
+and dead `[[wikilinks]]`, and the load-limit and staleness warnings. The truth
+check lists each note line naming a repo path missing on main (`dead-path`) and
+each "wait on" / "sync with" ticket the Jira mirror shows Done (`closed-wait`);
+it only reports. Hand each listed note to its reader batch: the synthesis
+corrects it against main, keeps the old fact as a line starting
+`Incident YYYY-MM-DD:` (the check skips those), and sets `verified:` in its
+front matter (docs/operator-conventions.md). The doctor shows the same count as
+`C104-memory-truth`. Then read
 `$MEMDIR/MEMORY.md` and list the topic files (`$MEMDIR/*.md`, excluding
 `MEMORY.md`). Each topic file is one fact with frontmatter (`type:` =
 `user|feedback|project|reference`). Group the files by theme — environment

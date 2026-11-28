@@ -6437,6 +6437,23 @@ check_c103_bypass_launcher() {
     fi
 }
 
+check_c104_memory_truth() {
+    local script="$SELF_DIR/memory/check-memory-truth.sh" out rc n
+    if [ ! -f "$script" ]; then
+        emit INFO C104-memory-truth "check not run: $script is missing"
+        return 0
+    fi
+    out="$(cd "$REPO_ROOT" && MEMORY_TRUTH_REPO="${MEMORY_TRUTH_REPO:-$REPO_ROOT}" bash "$script" 2>&1)"; rc=$?
+    case "$rc" in
+        0) emit OK C104-memory-truth "no memory note names a repo path missing on main or waits on a closed ticket" ;;
+        1)
+            n="$(printf '%s\n' "$out" | grep -cE '^(dead-path|closed-wait) ')"
+            emit WARN C104-memory-truth "$n memory note line(s) name a repo path missing on main or wait on a ticket the Jira mirror shows Done" \
+                "bash $script lists them; correct each note against main and set its verified: date (docs/operator-conventions.md, Memory & CLAUDE.md hygiene)" ;;
+        *) emit INFO C104-memory-truth "check not run: ${out%%$'\n'*}" ;;
+    esac
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -6609,6 +6626,7 @@ run_check C100 check_c100_fleet
 run_check C101 check_c101_guard_refusals
 run_check C102 check_c102_lane_grants
 run_check C103 check_c103_bypass_launcher
+run_check C104 check_c104_memory_truth
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

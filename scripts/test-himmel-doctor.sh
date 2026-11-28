@@ -2851,4 +2851,19 @@ out="$(c101_run "$t/rows.dir")"
 if grepq "$out" 'INFO C101-guard-refusals'; then pass "C101 a path that is no readable file is not judged"; else fail "C101 unreadable -> $out"; fi
 rm -rf "$t"
 
+echo "== C104 (HIMMEL-11656): the doctor counts memory notes that point at dead paths or closed work =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c104.XXXXXX")" || { fail "C104: mktemp -d failed"; exit 1; }
+mkdir -p "$t/mem" "$t/mirror/HIMMEL"
+c104_run() { env MEMDIR="${1-$t/mem}" MEMORY_TRUTH_REF=HEAD MEMORY_TRUTH_MIRROR="$t/mirror" JIRA_PROJECT_KEY=HIMMEL CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --only C104 --no-color 2>&1; }
+printf -- '---\nname: live\n---\n\nRun scripts/himmel-doctor.sh now.\n' > "$t/mem/live.md"
+out="$(c104_run)"
+if grepq "$out" 'OK   C104-memory-truth' && ! grepq "$out" 'WARN C104'; then pass "C104 a note naming a path on main -> OK"; else fail "C104 live path -> $out"; fi
+printf -- '---\nname: dead\n---\n\nRun scripts/no-such-dir-c104/gone.sh now.\nWork waits on HIMMEL-9.\n' > "$t/mem/dead.md"
+printf -- '---\nkey: "HIMMEL-9"\nstatusCategory: "Done"\n---\n' > "$t/mirror/HIMMEL/HIMMEL-9.md"
+out="$(c104_run)"
+if grepq "$out" -F 'WARN C104-memory-truth: 2 memory note line(s)' && grepq "$out" -F 'check-memory-truth.sh lists them'; then pass "C104 a dead path and a closed wait -> WARN counting 2"; else fail "C104 dead path -> $out"; fi
+out="$(c104_run "$t/no-store")"
+if grepq "$out" 'INFO C104-memory-truth: check not run' && ! grepq "$out" 'OK   C104'; then pass "C104 no memory store -> INFO, not OK"; else fail "C104 no store -> $out"; fi
+rm -rf "$t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
