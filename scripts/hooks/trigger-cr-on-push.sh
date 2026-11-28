@@ -16,7 +16,7 @@
 #
 # Sibling, not a merge into trigger-cr-on-pr-create.sh: the two fire on
 # different command shapes (`gh pr create` vs `git push`) and need different
-# fast-path tokens; the two files stay double-post-safe because BOTH read and
+# fast-path tokens; the two files dedup each other because BOTH read and
 # write the SAME ledger (scripts/lib/coderabbit-trigger-ledger.sh) — whichever hook
 # runs first for a given head SHA wins, the other becomes a no-op. Hooks
 # under one PostToolUse matcher may run in parallel, so a `git push && gh pr
