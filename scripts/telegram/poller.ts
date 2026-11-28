@@ -455,7 +455,7 @@ const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg:
   return (await auto?.peerReply?.(msg)) === true;
 };
 
-const HELD_REPLY_NOTE = "the operator replied to your message, but a code gate of the bridge (afk-sudo or /config restore) took the reply, so its text is not shown. Ask the operator to resend it, with a number prefixed by text:";
+const HELD_REPLY_NOTE = "the operator replied to your message, but a code gate of the bridge (afk-sudo or /config restore) took the reply, so its text is not shown. Ask the operator to send it again once no afk-sudo prompt is waiting, with a number in it prefixed by text:";
 async function noteHeldChiefReply(root: string, msg: DeliveredMsg, consoleRoute?: ConsoleRouteGate): Promise<void> {
   if (msg.reply_to_message_id == null || !consoleRoute?.authorize(msg.from, msg.chat_id)) return;
   try {
