@@ -625,6 +625,42 @@ test('a chain that moves check-write-hold.sh off the last place is refused', () 
   });
 });
 
+const UNEXPANDED = 'block-unexpanded-file-path.sh';
+const FILE_CHAINS = ['Edit|Write|MultiEdit|NotebookEdit', 'Read|Grep'];
+
+test('block-unexpanded-file-path.sh is the first member of both file-tool chains, in both halves, exactly once', () => {
+  const groups = JSON.parse(readFileSync(SETTINGS, 'utf8')).hooks.PreToolUse
+    .filter((g) => g.hooks.some((h) => String(h.command).includes(UNEXPANDED)));
+  assert.deepEqual(groups.map((g) => g.matcher).sort(), [...FILE_CHAINS].sort());
+  for (const g of groups) {
+    const commands = g.hooks.filter((h) => String(h.command).includes(UNEXPANDED));
+    assert.equal(commands.length, 1, `${g.matcher}: one command names the guard`);
+    const halves = commands[0].command.split('; else ').map(chainMembers);
+    assert.equal(halves.length, 2, `${g.matcher}: the command has an if and an else half`);
+    for (const half of halves) {
+      assert.equal(half[0], UNEXPANDED, `${g.matcher}: the guard runs first`);
+      assert.equal(half.filter((s) => s === UNEXPANDED).length, 1, `${g.matcher}: the guard appears once per half`);
+    }
+  }
+});
+
+test('a chain that moves block-unexpanded-file-path.sh to second place is refused', () => {
+  withFixture((fixture) => {
+    const settings = JSON.parse(readFileSync(fixture, 'utf8'));
+    const group = settings.hooks.PreToolUse.find((g) => g.matcher === FILE_CHAINS[0]);
+    const hook = group.hooks.find((h) => String(h.command).includes(UNEXPANDED));
+    const second = chainMembers(hook.command.split('; else ')[0])[1];
+    assert.ok(second, 'the chain has a member after the guard');
+    hook.command = hook.command
+      .replaceAll(`scripts/hooks/${UNEXPANDED}`, '@@FIRST@@')
+      .replaceAll(`scripts/hooks/${second}`, `scripts/hooks/${UNEXPANDED}`)
+      .replaceAll('@@FIRST@@', `scripts/hooks/${second}`);
+    writeFileSync(fixture, `${JSON.stringify(settings, null, 2)}\n`);
+    const result = invoke('--check', fixture);
+    assert.notEqual(result.status, 0, 'the guard in second place must be refused');
+  }, { wired: true });
+});
+
 test('still refuses an impostor scripts/hooks/*.sh script under an owned event', () => {
   withFixture((fixture) => {
     const settings = JSON.parse(readFileSync(fixture, 'utf8'));

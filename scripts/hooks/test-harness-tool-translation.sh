@@ -23,6 +23,7 @@ pass() { PASSED=$((PASSED + 1)); echo "PASS $1"; }
 fail() { FAILED=$((FAILED + 1)); echo "FAIL $1"; }
 
 SB=$(mktemp -d "${TMPDIR:-/tmp}/harness-tool-translation.XXXXXX") || { echo "FAIL fixture: mktemp"; exit 1; }
+SB=$(cd -P "$SB" && pwd -P) || { echo "FAIL fixture: pwd -P"; exit 1; }
 trap 'chmod -R u+rwX "$SB" 2>/dev/null; rm -rf "$SB"' EXIT
 mkdir -p "$SB/home" "$SB/tmp" "$SB/elsewhere" "$SB/t3/userdata"
 printf '{"providerInstances":{}}\n' > "$SB/t3/userdata/settings.json"
@@ -248,6 +249,32 @@ payload grok shell "cat $CANARY"
 PROJECT_DIR=$ROOT run_user "$ROOT/scripts/hooks/block-read-secrets.sh"
 expect "user block-read-secrets: inside himmel the wrapper skips (control)" pass
 
+names_unexpanded_guard() { grep -q 'block-unexpanded-file-path' "$SB/err"; }
+for h in claude-grok grok claude-cursor cursor; do
+    payload "$h" write "$WORK_FILE "
+    run_group "$PROJECT_SETTINGS" 'Edit|Write|MultiEdit|NotebookEdit'
+    if [ "$V" = deny ] && names_unexpanded_guard; then pass "project Edit|Write: $h write to a trailing-space path is denied by block-unexpanded-file-path"
+    else fail "project Edit|Write: $h write to a trailing-space path - want the long-path guard's deny, got $V ($(head -c 300 "$SB/err" | tr '\n' ' '))"; fi
+    payload "$h" read \~/x
+    run_group "$PROJECT_SETTINGS" 'Read|Grep';     expect "project Read|Grep: $h read of ~/x is denied" deny
+done
+for h in claude-grok grok; do
+    payload "$h" edit readme.txt
+    run_group "$PROJECT_SETTINGS" 'Edit|Write|MultiEdit|NotebookEdit'
+    if [ "${V#rc}" = "$V" ] && ! names_unexpanded_guard; then pass "project Edit|Write: $h edit of the fixtures' relative readme.txt gets no deny from block-unexpanded-file-path ($V)"
+    else fail "project Edit|Write: $h edit of the fixtures' relative readme.txt - got $V ($(head -c 300 "$SB/err" | tr '\n' ' '))"; fi
+    payload "$h" read readme.txt
+    run_group "$PROJECT_SETTINGS" 'Read|Grep';     expect_not "project Read|Grep: $h read of the fixtures' relative readme.txt passes" deny
+done
+for h in grok cursor; do
+    ROW_ENV=(UNEXPANDED_FILE_PATH_OK=1)
+    payload "$h" write "$WORK_FILE "
+    run_group "$PROJECT_SETTINGS" 'Edit|Write|MultiEdit|NotebookEdit'
+    ROW_ENV=()
+    if [ "${V#rc}" = "$V" ] && ! names_unexpanded_guard; then pass "project Edit|Write: $h with UNEXPANDED_FILE_PATH_OK=1 gets no deny from block-unexpanded-file-path ($V)"
+    else fail "project Edit|Write: $h with UNEXPANDED_FILE_PATH_OK=1 - got $V ($(head -c 300 "$SB/err" | tr '\n' ' '))"; fi
+done
+
 echo "== parity: each member, native call vs its Claude twin =="
 OWED=""
 parity() {
@@ -371,6 +398,9 @@ member_rules() {
         approval-grant-check.sh)
             rule shell shell "grok cursor" "PATH=$FX2/sudo:$PATH AFK_GRANT_DIR=$FX2/marks" - "$GRANT_CMD" ;;
         guard-judge-write-scope.sh) rule file write "grok cursor" - "$judge" "$WORK_FILE" ;;
+        block-unexpanded-file-path.sh)
+            rule file write "grok cursor" - - "$WORK_FILE "
+            rule read read "grok cursor" - - \~/x ;;
         guard-memory-capture.sh)
             rule file write "grok cursor" - ".tool_input.content = \"$LONG_LINE\"" "$SB/home/.claude/projects/proj/memory/MEMORY.md" ;;
         check-write-hold.sh)
