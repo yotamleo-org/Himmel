@@ -3093,7 +3093,7 @@ if [ "$probe" = 1 ]; then
     [ "$mode" = hung ] && exec -a "q6-sleep-${Q_TAG:-none}" sleep 60
     rem=4000
     case "$mode:$bucket" in gql-out:graphql | rest-out:core | secondary:*) rem=0 ;; esac
-    printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: %s\r\n' "$rem" "$(($(date +%s) + 1800))"
+    printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: %s\r\n' "$rem" "${Q_RESET:-$(($(date +%s) + 1800))}"
     [ "$mode" != secondary ] || printf 'Retry-After: 60\r\n'
     printf '\r\n{}\n'
     [ "$rem" != 0 ] || exit 1
@@ -3107,9 +3107,18 @@ case "$mode" in
     files-out) case "$*" in */files*) echo 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' >&2; exit 1 ;; esac ;;
     view-out) [ "$1 $2" = "pr view" ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
     from-third) [ "$calls" -ge 3 ] && { echo 'GraphQL: API rate limit already exceeded for user ID 1.' >&2; exit 1; } ;;
+    files-one) case "$*" in
+        */pulls/4602/files*) echo 'gh: boom' >&2; exit 1 ;;
+        *merged*) ;;
+        *headRefName*) printf '4603\tfix(x): a late change\tfix/q6-late\n' ;;
+    esac ;;
 esac
 case "$1 $2" in
-    "pr list") case "$*" in *merged*) ;; *headRefName*) printf '4601\tfix(x): an open change\tfix/q6-open\n4602\tfix(x): another open change\tfix/q6-other\n' ;; *) printf '4601\n4602\n' ;; esac ;;
+    "pr list") case "$*" in
+        *merged*) case "$*" in *"--search ${Q_MERGED:-none} "*) printf 'fix(x): [%s] done\tfix/done\n' "$Q_MERGED" ;; esac ;;
+        *headRefName*) printf '4601\tfix(x): an open change\tfix/q6-open\n4602\tfix(x): another open change\tfix/q6-other\n' ;;
+        *) printf '4601\n4602\n' ;;
+    esac ;;
     "api "*) echo scripts/q6/pr-file.sh ;;
 esac
 exit 0
@@ -3140,14 +3149,11 @@ q6run() { # <mode> [extra env...] -- [dispatcher args...]: sets Q6_OUT, Q6_RC, Q
         ${envs[@]+"${envs[@]}"} timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" "$@" 2>/dev/null)"; Q6_RC=$?  # gnu-ok: the chief kit is Linux-only
     Q6_SECS=$(( $(date +%s) - t0 ))
 }
-q6_paused() { # <row name> <want prefix: quota-pause or gh-stall>: the single pause line, rc 0, nothing else
-    local nl
-    nl="$(printf '%s\n' "$Q6_OUT" | grep -c .)"
+q6_paused() {
     [ "$Q6_RC" = 0 ] && pass "T6 $1: rc 0" || fail "T6 $1: rc 0 (got $Q6_RC after ${Q6_SECS}s)"
-    [ "$nl" = 1 ] && pass "T6 $1: stdout is one line" || fail "T6 $1: stdout is one line (got $nl: $Q6_OUT)"
-    has "T6 $1: the line is # $2" "$Q6_OUT" "# $2 "
+    has "T6 $1: line 1 is # $2" "$(printf '%s\n' "$Q6_OUT" | sed -n 1p)" "# $2 "
     lacks "T6 $1: no POOL-EMPTY" "$Q6_OUT" "POOL-EMPTY"
-    lacks "T6 $1: no row" "$Q6_OUT" "HIMMEL-98"
+    lacks "T6 $1: no RESUME row" "$Q6_OUT" "HIMMEL-9802"
     [ ! -e "$Q6/real-gh-reached" ] && pass "T6 $1: no real gh on PATH was reached" || fail "T6 $1: a gh on PATH was reached"
 }
 q6run rest-out -- --priority-pool-only
@@ -3160,6 +3166,7 @@ has "T6 gql-out: the line names the graphql bucket" "$Q6_OUT" "QUOTA-PAUSE githu
 [ "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")" = 0 ] && pass "T6 I2 gql-out: a paused run makes no call but the probes" || fail "T6 I2 gql-out: a paused run makes no call but the probes ($(grep -v -e rateLimit -e 'api -i user' "$Q6/log" | head -3))"
 q6run secondary -- --priority-pool-only
 q6_paused "secondary (Retry-After at the probe)" quota-pause
+has "T6 secondary: the first refused gate's line is the one printed" "$(printf '%s\n' "$Q6_OUT" | sed -n 1p)" "QUOTA-PAUSE github graphql "
 q6run hung -- --priority-pool-only
 q6_paused "hung (a probe times out)" gh-stall
 [ "$Q6_SECS" -le 15 ] && pass "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)" || fail "T6 hung: a timed-out probe pauses at once (${Q6_SECS}s)"
@@ -3177,6 +3184,7 @@ q6run healthy Q_CLASSIFY=hang NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
 q6_paused "a classification that times out" gh-stall
 q6run gql-out -- --resume-only
 q6_paused "gql-out --resume-only" quota-pause
+check "T6 gql-out --resume-only: stdout is one line" 1 "$(printf '%s\n' "$Q6_OUT" | grep -c .)"
 q6run files-out -- --priority-pool-only
 q6_paused "a refused PR files read with two open PRs" quota-pause
 q6_after="$(awk '/\/files/ { seen = 1; next } seen && !/rateLimit|api -i user/' "$Q6/log")"
@@ -3219,6 +3227,245 @@ has "T6 RED control: a healthy stub lists the RESUME row" "$Q6_OUT" "RESUME	HIMM
 q6_healthy="$Q6_OUT"
 q6run healthy -- --priority-pool-only
 [ "$Q6_OUT" = "$q6_healthy" ] && pass "T6 RED control: two healthy runs print the same bytes" || fail "T6 RED control: two healthy runs print the same bytes"
+
+Q7="$WORK/q7"; Q7M="$WORK/q7m/HIMMEL"; mkdir -p "$Q7" "$Q7M"
+M_SAVE="$M"; M="$Q7M"
+mk HIMMEL-9811 "To Do" High '[]' '["v1.0.1"]' '[]' "stale a" "Edit scripts/q7/a.sh only."
+mk HIMMEL-9812 "To Do" High '[]' '["v1.0.1"]' '[]' "stale b" "Edit scripts/q7/b.sh only."
+mk HIMMEL-9813 "To Do" High '[]' '["v1.0.1"]' '[]' "stale c" "Edit scripts/q7/c.sh only."
+mk HIMMEL-9814 "To Do" High '[]' '["v1.0.1"]' '[]' "no scope" "Do something nice."
+mk HIMMEL-9815 "In Progress" High '[]' '["v1.0.1"]' '[]' "in work" "Edit scripts/q7/d.sh only."
+mk HIMMEL-9816 "IN CI" High '[]' '["v1.0.1"]' '[]' "in ci" "Edit scripts/q7/e.sh only."
+mk HIMMEL-9817 "To Do" High '[]' '["v1.0.1"]' '["blocked by HIMMEL-9815"]' "blocked in the mirror" "Edit scripts/q7/f.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/q7m/HIMMEL.versions.tsv"
+q7run() { local mode="$1"; shift; q6run "$mode" NEXT_DISPATCH_MIRROR="$Q7M" "$@"; }
+q7line() { printf '%s\n' "$Q6_OUT" | sed -n "$1p"; }
+q7rows() { printf '%s\n' "$Q6_OUT" | grep -c "$(printf '\tstale-gh$')"; }
+q7keys() { printf '%s\n' "$Q6_OUT" | grep "$(printf '\tstale-gh$')" | cut -f2 | sort | tr '\n' ' '; }
+Q7_THREE='HIMMEL-9811 HIMMEL-9812 HIMMEL-9813 '
+Q7_SKIPPED='# stale-gh rows=3 skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=none'
+q7_three() {
+    check "10222 $1: rc 0" 0 "$Q6_RC"
+    check "10222 $1: line 2 names the stale pass" "$Q7_SKIPPED" "$(q7line 2)"
+    check "10222 $1: exactly the three startable tickets" "$Q7_THREE" "$(q7keys)"
+}
+q7_one() {
+    check "10222 $1: rc 0" 0 "$Q6_RC"
+    check "10222 $1: one line" "$2" "$Q6_OUT"
+}
+q7_never() {
+    local w body
+    body="$(printf '%s\n' "$Q6_OUT" | sed 1d | grep -v '^# stale-gh ')"
+    for w in RESUME MERGED-NOT-CLOSED RESUME-HELD HANDED-OFF OWED NEEDS-CHIEF-NOTE SERIES-ORPHAN STACKABLE 'SERIES ' POOL-EMPTY NEXT-TIER '# next-dispatchable:' '# pool=' '# resume=' '# intake' '# dropped from' '# disposition' '# scope-batch' 'open PRs unknown'; do
+        lacks "10222 $1: no $w" "$body" "$w"
+    done
+}
+
+q7_stall_line='# gh-stall GH-STALL github read timed out after 2s token=main caller=next-dispatchable nothing-was-judged'
+q7_quota_line='# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged'
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_STALE_BUDGET=0 -- --priority-pool-only
+check "10222 stale-off: budget 0 prints exactly today's one line" "$q7_stall_line" "$Q6_OUT"
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only
+q7_three stale-stall
+check "10222 stale-stall: line 1 keeps its bytes" "$q7_stall_line" "$(q7line 1)"
+check "10222 stale-stall: three rows end stale-gh" 3 "$(q7rows)"
+has "10222 stale-stall: a LOCAL? row" "$Q6_OUT" "LOCAL?	HIMMEL-9811	"
+check "10222 stale-noscope: no scope and a mirror blocker list nothing, the scoped tickets list" "$Q7_THREE" "$(q7keys)"
+check "10222 stale-order: line 3 is the mirror age" '# source mirror_age_min=' "$(q7line 3 | sed 's/[-0-9]*$//')"
+check "10222 stale-order: one stale-gh header line" 1 "$(printf '%s\n' "$Q6_OUT" | grep -c '^# stale-gh ')"
+check "10222 stale-nogh: no gh call after the stalled one" 1 "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")"
+[ ! -s "$Q6/classify.log" ] && pass "10222 stale-nogh: the classifier never ran" || fail "10222 stale-nogh: the classifier never ran ($(head -2 "$Q6/classify.log"))"
+has "10222 stale-tick: the tick reads no counts from a stale output" "$(printf '%s\n' "$Q6_OUT" | bash "$HERE/tick.sh" --pool-dispositions 2>/dev/null)" "# pool-counts ?"
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only --dispositions
+q7_never stale-noresume
+check "10222 stale-noresume: the IN CI ticket is not listed" "$Q7_THREE" "$(q7keys)"
+q7run healthy Q_MERGED=HIMMEL-9816 -- --priority-pool-only
+has "10222 stale-noresume control: a healthy run calls it merged-not-closed" "$Q6_OUT" "MERGED-NOT-CLOSED	HIMMEL-9816"
+lacks "10222 stale-negative: a healthy run has no stale-gh" "$Q6_OUT" "stale-gh"
+
+q7run gql-out Q_RESET=1 NEXT_DISPATCH_STALE_BUDGET=0 -- --priority-pool-only
+check "10222 stale-off: the quota line is today's one line too" "$q7_quota_line" "$Q6_OUT"
+mkdir -p "$Q7/no-tmp"
+q7run gql-out Q_RESET=1 TMPDIR="$Q7/no-tmp/missing" -- --priority-pool-only
+q7_one stale-no-tmp "$q7_quota_line"
+q7run gql-out Q_RESET=1 -- --priority-pool-only
+q7_three stale-quota
+check "10222 stale-quota: line 1 keeps its bytes" "$q7_quota_line" "$(q7line 1)"
+check "10222 stale-quota: no gh call but the probes" 0 "$(grep -cv -e rateLimit -e 'api -i user' "$Q6/log")"
+
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=20 NEXT_DISPATCH_STALE_BUDGET=8 -- --priority-pool-only --dispositions --scope-batch "$Q7/batch-cut.txt"
+q7_three stale-cut
+[ ! -e "$Q7/batch-cut.txt" ] && pass "10222 stale-cut: a run cut at the PR read wrote no batch" || fail "10222 stale-cut: a run cut at the PR read wrote no batch"
+has "10222 stale-cut: the cut names the GitHub pass's bound" "$(q7line 1)" "after 12s"
+[ "$Q6_SECS" -le 25 ] && pass "10222 stale-cut: ends inside 25s (${Q6_SECS}s)" || fail "10222 stale-cut: ends inside 25s (${Q6_SECS}s)"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=10 -- --priority-pool-only
+has "10222 stale-small: a 10s deadline cuts the GitHub pass at 5s" "$(q7line 1)" "after 5s"
+[ "$Q6_SECS" -le 12 ] && pass "10222 stale-small: ends inside 12s (${Q6_SECS}s)" || fail "10222 stale-small: ends inside 12s (${Q6_SECS}s)"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=21 NEXT_DISPATCH_STALE_BUDGET=20 -- --priority-pool-only
+has "10222 stale-monotonic: a budget over half is halved" "$(q7line 1)" "after 11s"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=09 -- --priority-pool-only
+has "10222 stale-leading-zero: a deadline of 09 is nine seconds" "$(q7line 1)" "after 5s"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=2 -- --priority-pool-only
+has "10222 stale-floor: d=2 cuts at 1s" "$(q7line 1)" "after 1s"
+q7run hung-after-probe NEXT_DISPATCH_DEADLINE=1 -- --priority-pool-only
+has "10222 stale-floor: d=1 never cuts below 1s" "$(q7line 1)" "after 1s"
+check "10222 stale-floor: d=1 has no time for a stale pass" 1 "$(printf '%s\n' "$Q6_OUT" | grep -c .)"
+q7run gql-out Q_RESET=1 NEXT_DISPATCH_DEADLINE=0 -- --priority-pool-only
+q7_three stale-nodeadline
+q7run gql-out Q_RESET=1 -- --priority-pool-only --dispositions --scope-batch "$Q7/batch-pre.txt"
+q7_three stale-dispo-pre
+q7_never stale-dispo-pre
+[ ! -e "$Q7/batch-pre.txt" ] && pass "10222 stale-dispo-pre: the stale pass writes no batch" || fail "10222 stale-dispo-pre: the stale pass writes no batch"
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only --dispositions --scope-batch "$Q7/batch-mid.txt"
+q7_three stale-dispo-mid
+q7_never stale-dispo-mid
+[ -e "$Q7/batch-mid.txt" ] && pass "10222 stale-dispo-mid: the flagged GitHub pass had written its batch, as before" || fail "10222 stale-dispo-mid: the flagged GitHub pass had written its batch"
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --why-ticket HIMMEL-9811
+lacks "10222 stale-why-ticket: --why-ticket has no stale pass" "$Q6_OUT" "stale-gh"
+
+Q7D="$WORK/q7d/HIMMEL"; mkdir -p "$Q7D"; cp "$WORK/q7m/HIMMEL.versions.tsv" "$WORK/q7d/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$Q7D"; mk HIMMEL-9820 "To Do" High '[]' '["v1.0.1"]' '[]' "core stale" "Edit scripts/q7/core.sh only."; M="$M_SAVE"
+printf 'CORE HIMMEL-9820 label core\n' > "$CG/core/HIMMEL-9820"; printf 'NO-SPEC HIMMEL-9820\n' > "$CG/spec/HIMMEL-9820"; rm -f "$CG/mode"
+q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_MIRROR="$Q7D" NEXT_DISPATCH_JIRA_CLI="$WORK/cg-stub/index.js" -- --priority-pool-only
+has "10222 stale-design: a DESIGN row" "$Q6_OUT" "DESIGN	HIMMEL-9820	NO-SPEC	"
+check "10222 stale-design: and it ends stale-gh" 1 "$(q7rows)"
+
+Q7S="$WORK/q7s/HIMMEL"; mkdir -p "$Q7S"; cp "$WORK/q7m/HIMMEL.versions.tsv" "$WORK/q7s/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$Q7S"
+for n in 9831 9832; do
+    mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "family $n" "Edit scripts/q7fam/f$n.sh only."
+    sed 's/^type: "Task"/type: "Sub-task"/; s/^parent: null/parent: "HIMMEL-9830"/' "$Q7S/HIMMEL-$n.md" > "$Q7S/HIMMEL-$n.tmp" && mv "$Q7S/HIMMEL-$n.tmp" "$Q7S/HIMMEL-$n.md"
+done
+M="$M_SAVE"
+q6run healthy HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$Q7S" -- --priority-pool-only
+has "10222 stale-series control: a healthy run offers the family" "$Q6_OUT" "SERIES FAMILY "
+q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$Q7S" -- --priority-pool-only
+has "10222 stale-series: a stale pass ran" "$(q7line 2)" "# stale-gh rows=0 "
+lacks "10222 stale-series: and offers no series" "$Q6_OUT" "SERIES "
+
+mkdir -p "$Q7/hold" "$Q7/crash"
+cat > "$Q7/hold/index.js" <<'JSEOF'
+require('child_process').spawnSync('bash', ['-c', 'exec -a "q7-stale-' + process.env.Q7_TAG + '" sleep 60'], { stdio: 'ignore' });
+JSEOF
+printf '%s\n' "process.kill(process.ppid, 'SIGKILL');" > "$Q7/crash/index.js"
+q7run gql-out Q_RESET=1 NEXT_DISPATCH_STALE_BUDGET=2 Q7_TAG="cut$$" NEXT_DISPATCH_JIRA_CLI="$Q7/hold/index.js" -- --priority-pool-only
+q7_one stale-fail-cut "$q7_quota_line"
+[ "$Q6_SECS" -le 10 ] && pass "10222 stale-fail-cut: ends inside 10s (${Q6_SECS}s)" || fail "10222 stale-fail-cut: ends inside 10s (${Q6_SECS}s)"
+pkill -f "q7-stale-cut$$" 2> /dev/null
+q7run gql-out Q_RESET=1 NEXT_DISPATCH_JIRA_CLI="$Q7/crash/index.js" -- --priority-pool-only
+q7_one stale-fail-crash "$q7_quota_line"
+Q7T="term$$"
+Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || fail "10222: mktemp -d failed"
+env -u himmel_github_token_vm2 PATH="$Q6/realbin:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$Q6/envroot" GHQ_PROBE_TIMEOUT=2 \
+    Q_MODE=gql-out Q_RESET=1 Q7_TAG="$Q7T" Q_LOG="$Q6/log" NEXT_DISPATCH_MIRROR="$Q7M" NEXT_DISPATCH_GH_CMD="$WORK/gh-q" \
+    NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" NEXT_DISPATCH_JIRA_CLI="$Q7/hold/index.js" NEXT_DISPATCH_DEADLINE=120 \
+    bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" > /dev/null 2>&1 &
+q7pid=$!
+for _ in $(seq 50); do pgrep -f "q7-stale-$Q7T" > /dev/null && break; sleep 0.2; done
+pgrep -f "q7-stale-$Q7T" > /dev/null && pass "10222 stale-term: the stale pass is running" || fail "10222 stale-term: the stale pass is running"
+q7_kids="$(q6_tree "$q7pid")"
+kill -TERM "$q7pid" 2> /dev/null; wait "$q7pid" 2> /dev/null; q7rc=$?
+check "10222 stale-term: rc 143" 143 "$q7rc"
+for _ in $(seq 50); do pgrep -f "q7-stale-$Q7T" > /dev/null || break; sleep 0.2; done
+q7_alive=""; for q7k in $q7_kids; do kill -0 "$q7k" 2> /dev/null && q7_alive="$q7_alive $q7k"; done
+[ -z "$q7_alive" ] && ! pgrep -f "q7-stale-$Q7T" > /dev/null && pass "10222 stale-term: nothing is left behind" || fail "10222 stale-term: nothing is left behind (alive:$q7_alive)"
+pkill -f "q7-stale-$Q7T" 2> /dev/null
+
+mkdir -p "$Q7/mr/mirror" "$Q7/mr/state/workers"; cp "$Q7M"/*.md "$Q7/mr/mirror/"; cp "$WORK/q7m/HIMMEL.versions.tsv" "$Q7/mr/mirror.versions.tsv"
+M_SAVE="$M"; M="$Q7/mr/mirror"; mk HIMMEL-9818 "To Do" High '[]' '["v1.0.1"]' '[]' "pre-merge" "Edit scripts/q7/g.sh only."; M="$M_SAVE"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9818","pr":"4801","head":"abc","contract":"yes","stage":"pre-merge","result":"pending"}\n' > "$Q7/mr/state/status-events.jsonl"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\necho "OPEN abc"\n' "$Q7/mr/calls" > "$Q7/mr/rows-gh"; chmod +x "$Q7/mr/rows-gh"
+: > "$Q7/mr/calls"
+q6run gql-out Q_RESET=1 NEXT_DISPATCH_MIRROR="$Q7/mr/mirror" MERGE_ROWS_GH="$Q7/mr/rows-gh" -- --priority-pool-only --why --workers-dir "$Q7/mr/state/workers"
+check "10222 stale-mergerows: the other startable tickets list" "$Q7_THREE" "$(q7keys)"
+has "10222 stale-mergerows: the unconfirmed key is withheld, by name" "$Q6_OUT" "# drop HIMMEL-9818 unconfirmed merge"
+check "10222 stale-mergerows: the stale pass asked the helper's gh nothing" "" "$(cat "$Q7/mr/calls")"
+q6run healthy NEXT_DISPATCH_MIRROR="$Q7/mr/mirror" MERGE_ROWS_GH="$Q7/mr/rows-gh" -- --priority-pool-only --workers-dir "$Q7/mr/state/workers"
+check "10222 stale-mergerows control: a healthy run asks once" 1 "$(grep -c . "$Q7/mr/calls")"
+
+printf '{"schema":1,"workers":[{"label":"N1","doc":"%s/no-such-doc.md"}]}\n' "$Q7" > "$Q7/fleet-bad.json"
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 -- --priority-pool-only --why --workers-from "$Q7/fleet-bad.json"
+has "10222 stale-named-unknown: a stale pass still ran" "$(q7line 2)" "# stale-gh rows=0 "
+has "10222 stale-named-unknown: it says why" "$Q6_OUT" "# drop HIMMEL-9811 "
+lacks "10222 stale-named-unknown: not as an unread PR list" "$Q6_OUT" "open PRs unknown"
+
+# shellcheck disable=SC2016  # the stub body is literal text, expanded when the stub runs
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nprintf "%%s\\tTask\\tDone\\tx\\n" "$2"\n' "$Q7/jira.calls" > "$Q7/jira-live"; chmod +x "$Q7/jira-live"
+: > "$Q7/jira.calls"
+q7run gql-out Q_RESET=1 NEXT_DISPATCH_JIRA_CMD="$Q7/jira-live" -- --priority-pool-only
+check "10222 stale-nojira: the mirror's blocker holds" "$Q7_THREE" "$(q7keys)"
+check "10222 stale-nojira: no live read" "" "$(cat "$Q7/jira.calls")"
+q7run healthy NEXT_DISPATCH_JIRA_CMD="$Q7/jira-live" -- --priority-pool-only
+has "10222 stale-nojira control: a healthy run reads the blocker" "$(cat "$Q7/jira.calls")" "HIMMEL-9815"
+
+Q7E="$WORK/q7e/HIMMEL"; mkdir -p "$Q7E"; cp "$WORK/q7m/HIMMEL.versions.tsv" "$WORK/q7e/HIMMEL.versions.tsv"; cp "$Q7M/HIMMEL-9814.md" "$Q7E/"
+q6run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_MIRROR="$Q7E" -- --priority-pool-only
+has "10222 stale-empty: rows=0" "$(q7line 2)" "# stale-gh rows=0 "
+q7_never stale-empty
+q6run healthy NEXT_DISPATCH_MIRROR="$Q7E" -- --priority-pool-only
+has "10222 stale-empty control: a healthy run prints POOL-EMPTY" "$Q6_OUT" "POOL-EMPTY"
+
+SNAP="$Q7/open-prs.json"
+snapget() { python3 -I -c 'import json, sys, time
+d = json.load(open(sys.argv[1]))
+print(eval(sys.argv[2], {"d": d, "p": {str(x["number"]): x for x in d["prs"]}, "time": time}))' "$SNAP" "$1" 2>/dev/null; }
+snapput() {
+    python3 -I -c 'import json, sys, time
+def pr(n, title, files):
+    return {"number": n, "title": title, "head": "fix/h%d" % n, "cross": False, "updatedAt": "2026-01-01T00:00:00Z", "files": files}
+prs = [pr(4601, "fix: [HIMMEL-9811] open", []), pr(4602, "fix: other", ["scripts/q7/b.sh"]), pr(4603, "fix: unread", None)]
+json.dump({"schema": 1, "at": time.time() - float(sys.argv[2]), "repo": sys.argv[3], "prs": prs}, open(sys.argv[1], "w"))' "$SNAP" "$1" "${2:-yotamleo-org/Himmel}"; }
+rm -f "$SNAP"
+q7run healthy NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+check "10222 snap-write: schema and repo" "1 yotamleo-org/Himmel" "$(snapget '"%s %s" % (d["schema"], d["repo"])')"
+check "10222 snap-write: both PRs with their files" "['scripts/q6/pr-file.sh'] ['scripts/q6/pr-file.sh']" "$(snapget '"%s %s" % (p["4601"]["files"], p["4602"]["files"])')"
+check "10222 snap-write: stamped no later than now" True "$(snapget 'd["at"] <= time.time()')"
+snapput -1800; q7at="$(snapget 'd["at"]')"
+q7run healthy NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" NEXT_DISPATCH_NOW="$(($(date +%s) + 3600))" -- --priority-pool-only
+check "10222 snap-newer: a newer snapshot is left alone" "$q7at" "$(snapget 'd["at"]')"
+rm -f "$SNAP"
+q7run files-one NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+check "10222 snap-null: an unread PR keeps its title with null files" "None fix(x): another open change" "$(snapget '"%s %s" % (p["4602"]["files"], p["4602"]["title"])')"
+check "10222 snap-null: a title-list PR the number list lacks has null files" None "$(snapget 'p["4603"]["files"]')"
+rm -f "$SNAP"
+q7run healthy Q_CLASSIFY=hang NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+has "10222 snap-flagged: the run was flagged" "$(q7line 1)" "# gh-stall"
+check "10222 snap-flagged: and still wrote the list" "['4601', '4602']" "$(snapget 'sorted(p)')"
+snapput -3600; q7at="$(snapget 'd["at"]')"
+q7run healthy NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+check "10222 snap-skewed: a file stamped ahead of the clock is replaced" True "$(snapget "d['at'] < $q7at")"
+snapput 60; cp "$SNAP" "$Q7/snap-before"
+Q7L="q7lock$$"
+rm -f "$Q7/locked"
+bash -c 'exec 9> "$1.lock"; flock 9; : > "$2"; exec -a "$3" sleep 60' _ "$SNAP" "$Q7/locked" "$Q7L" &
+q7lockpid=$!
+for _ in $(seq 50); do [ -e "$Q7/locked" ] && break; sleep 0.2; done
+q7run healthy NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+check "10222 snap-locked: a held lock leaves the file byte for byte" same "$(cmp -s "$SNAP" "$Q7/snap-before" && echo same || echo changed)"
+check "10222 snap-locked: and the run still ends 0" 0 "$Q6_RC"
+kill "$q7lockpid" 2> /dev/null; wait "$q7lockpid" 2> /dev/null
+q7at="$(snapget 'd["at"]')"
+q7run healthy NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+check "10222 snap-replace: with the lock free a newer run replaces it" True "$(snapget "d['at'] > $q7at")"
+snapput 60
+q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only --dispositions
+check "10222 snap-own: the key an open PR names is not listed" "HIMMEL-9812 HIMMEL-9813 " "$(q7keys)"
+check "10222 snap-own: line 2 says the snapshot's age" 1 "$(q7line 2 | grep -cE 'prs=snapshot:[0-9]+s$')"
+q7_never snap-noresume
+has "10222 snap-overlap: the snapshot's files overlap" "$Q6_OUT" "# overlap HIMMEL-9812 scripts/q7/b.sh with open PR 4602"
+has "10222 snap-overlap: a PR with unread files is named" "$Q6_OUT" "# overlap unknown for PR 4603"
+lacks "10222 snap-overlap: no blanket unknown with a fresh file" "$Q6_OUT" "# overlap unknown for open PRs"
+for q7case in old future corrupt repo noprs; do
+    case "$q7case" in old) snapput 1801 ;; future) snapput -600 ;; corrupt) printf '{nope\n' > "$SNAP" ;; repo) snapput 60 other/repo ;; noprs) printf '{"schema":1,"at":%s,"repo":"yotamleo-org/Himmel","prs":{}}\n' "$(date +%s)" > "$SNAP" ;; esac
+    q7run hung-after-probe NEXT_DISPATCH_GH_TIMEOUT=2 NEXT_DISPATCH_PR_SNAPSHOT="$SNAP" -- --priority-pool-only
+    has "10222 snap-old $q7case: no snapshot is used" "$Q6_OUT" "# overlap unknown for open PRs (no PR snapshot younger than 1800s)"
+    has "10222 snap-old $q7case: prs=none" "$(q7line 2)" "prs=none"
+done
+Q7H="$WORK/q7home"; mkdir -p "$Q7H"
+q7run healthy HOME="$Q7H" -- --priority-pool-only
+[ ! -e "$Q7H/.himmel/state/next-dispatchable/open-prs.json" ] && pass "10222 snap-home: a substitute gh writes no snapshot under HOME" || fail "10222 snap-home: a substitute gh writes no snapshot under HOME"
+
 
 T11B="$WORK/t11bin"; mkdir -p "$T11B" "$WORK/t11root"
 printf 'himmel_github_token_vm2=ghp_NDREAD0123456789\n' > "$WORK/t11root/.env"
