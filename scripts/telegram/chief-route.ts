@@ -1588,6 +1588,7 @@ function requireCarried(carried: readonly Carried[]): void {
 
 function closureCarries(rows: Rows, spec: string, older: { sha: string; bytes: Buffer }, current: { sha: string; bytes: Buffer }): boolean {
   const texts = [older.bytes.toString("utf8"), current.bytes.toString("utf8")];
+  if (!Buffer.from(texts[0]).equals(older.bytes) || !Buffer.from(texts[1]).equals(current.bytes)) return false;
   const fronts = texts.map(text => FRONT_MATTER.exec(text)); const keys = texts.map(declaredTickets);
   if (!fronts[0] || !fronts[1] || texts[0].slice(fronts[0][0].length) !== texts[1].slice(fronts[1][0].length)) return false;
   if (!keys[0] || !keys[1] || [...keys[0]].sort().join(",") !== [...keys[1]].sort().join(",")) return false;
