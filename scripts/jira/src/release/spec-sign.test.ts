@@ -2238,6 +2238,17 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{if(a[1]?.[1]==='capped-fo
       done();
     });
 
+    it('capped carry v2 closure carry: a plan seal on an older spec carried across a CLEAN spec closure signs, and the record pins the older snapshot (C2)', () => {
+      const f = v2Build({ builder: 'closure-carry', variant: 'carry' }); const key = v2Keys(f)[0];
+      const planReturn = readFileSync(f.verdicts[1], 'utf8');
+      const older = [...planReturn.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (.+)$/gm)].find(m => join(dirname(f.verdicts[1]), m[2]) === f.spec)![1];
+      expect(older, 'the plan return sealed an older spec').not.toBe(sha(f.spec));
+      const row = v2Sign(f);
+      expect(row.capped_carry).toMatchObject({ schema: 2, mode: 'capped-carry-ledger', anchor: key, keys: [key] });
+      expect(attemptFlags()).toEqual(['--key', '--keys']);
+      expect(row.capped_carry!.pins).toContainEqual({ role: 'snapshot', path: join(dirname(f.ledgerPath), key, older), sha256: older });
+    });
+
     it('capped carry v2 admittedNextRound: both routes refuse and the message holds the first route reason, then the v2 reason (E13)', () => {
       const f = v2Build({ builder: 'known-single', variant: 'admittedNextRound' }); const key = v2Keys(f)[0];
       expect(() => v2Sign(f)).toThrow(new RegExp(`residual findings.*capped verifier unavailable/refused: capped-fold: capped-fold: header must declare only ${key}; v2: capped-fold: capped-fold: findings have not reached the refused round cap$`));

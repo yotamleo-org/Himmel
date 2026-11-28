@@ -1,4 +1,4 @@
-fork-sha d8e96de26f89aebfb74d7092fcb31ab78df4ceb4
+fork-sha 7855607d0256ef612af39f21f4adb30cd222c4bf
 name = "aiohttp"
 version = "3.14.5"
 name = "certifi"
