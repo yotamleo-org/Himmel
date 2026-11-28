@@ -2,11 +2,11 @@
 name: qmd
 description: Search indexed local Markdown notes and documentation with QMD.
 license: MIT
-compatibility: Requires qmd CLI or MCP server. Install via `npm install -g @tobilu/qmd`.
+compatibility: Requires qmd CLI or MCP server. himmel installs the pinned fork (docs/setup/new-machine.md section 4e), never `npm install -g @tobilu/qmd`.
 metadata:
   author: tobi
   version: "2.0.0"
-allowed-tools: Bash(qmd:*), mcp__qmd__*, mcp__plugin_qmd_qmd__*
+allowed-tools: Bash(qmd get:*) Bash(qmd multi-get:*) Bash(qmd status:*) mcp__qmd__* mcp__plugin_qmd_qmd__*
 ---
 
 # QMD - Quick Markdown Search
@@ -15,7 +15,7 @@ Local search engine for markdown content.
 
 ## Status
 
-!`qmd status 2>/dev/null || echo "Not installed: npm install -g @tobilu/qmd"`
+!`qmd status 2>/dev/null || echo "Not installed: install the pinned fork, see docs/setup/new-machine.md section 4e"`
 
 ## MCP: `query`
 
@@ -163,8 +163,9 @@ curl -X POST http://localhost:8181/query \
 
 ## Setup
 
+Install the pinned fork first (`docs/setup/new-machine.md` section 4e); never `npm install -g @tobilu/qmd`.
+
 ```bash
-npm install -g @tobilu/qmd
 qmd collection add ~/notes --name notes
 qmd embed
 ```

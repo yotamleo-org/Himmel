@@ -7,9 +7,8 @@ describe and size a skill so agents find it and read it.
 
 **Frontmatter (YAML):**
 - Two required fields: `name` and `description` (see [agentskills.io/specification](https://agentskills.io/specification) for all supported fields)
-- Max 1024 characters total
-- `name`: Use letters, numbers, and hyphens only (no parentheses, special chars)
-- `description`: Third-person, describes ONLY when to use (NOT what it does)
+- `name`: lowercase letters, numbers and single hyphens only, at most 64 characters, equal to the directory name (no parentheses, special chars)
+- `description`: at most 1024 characters. Third-person, describes ONLY when to use (NOT what it does)
   - Start with "Use when..." to focus on triggering conditions
   - Include specific symptoms, situations, and contexts
   - **NEVER summarize the skill's process or workflow** (see Skill Discovery Optimization below for why)
@@ -17,7 +16,7 @@ describe and size a skill so agents find it and read it.
 
 ```markdown
 ---
-name: Skill-Name-With-Hyphens
+name: skill-name-with-hyphens
 description: Use when [specific triggering conditions and symptoms]
 ---
 

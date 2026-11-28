@@ -19,9 +19,11 @@ miss a companion file we had not enumerated. Neither row carries a
 discipline as the luna-* bundled-asset rows. Bumping synced_base without
 re-copying the trees would launder the signal this file exists to raise.
 
-Everything below is copied VERBATIM. Do not edit vendored prose: a local
-edit makes the next re-vendor a merge instead of a copy. himmel's own
-framing lives in its CLAUDE.md and hooks, never inside a vendored SKILL.md.
+Everything below is copied VERBATIM except the `deviation=` rows at the end of
+this file, each a small recorded local patch. Do not edit vendored prose
+without a row there: a local edit makes the next re-vendor a merge instead of
+a copy. himmel's own framing lives in its CLAUDE.md and hooks, never inside a
+vendored SKILL.md.
 
 vendored_from=obra/superpowers@7.0.2 path=skills/<name>
 
@@ -75,4 +77,38 @@ otherwise-verbatim files, linking docs/tool-adoption/pstack-principles-digest.md
 A re-vendor copies the upstream file over it, so re-add the line. The
 HIMMEL-7388 re-vendor dropped it unseen; since HIMMEL-8205,
 hooks/test-note-superpowers-prefix.sh fails while a listed file lacks the
-row's `marker=` text. This is the only carried delta in this plugin.
+row's `marker=` text.
+
+deviation=skills/finishing-a-development-branch/SKILL.md marker=PR-only
+
+HIMMEL-11569: upstream offers "Merge back to <base-branch> locally" (option 1,
+its Step 5 merge block, the Step 6 and quick-reference rows) and cleans up
+worktrees under `.worktrees/`/`worktrees/`. Our rules land work by pull request
+only and keep worktrees in `.claude/worktrees/`. The local-merge option and its
+block are removed, the menu is two options (PR, keep), and the cleanup path is
+`.claude/worktrees/`. A re-vendor copies upstream over it: redo all three.
+
+deviation=skills/using-git-worktrees/SKILL.md marker=.claude/worktrees/
+
+HIMMEL-11569: upstream prefers `.worktrees/` or `worktrees/` and says to add the
+folder to `.gitignore` and commit. Our folder is `.claude/worktrees/<type>+<slug>`,
+already ignored, and a commit to fix an ignore rule is never the step. The
+Directory Selection, Safety Verification, Create the Worktree, quick-reference
+and rationalization rows are rewritten to that. A re-vendor copies upstream over it.
+
+deviation=skills/writing-skills/SKILL.md marker=(description
+
+HIMMEL-11569: upstream's Personal-skills line links `codex-tools.md` and
+`gemini-tools.md` under `../using-superpowers/references/`, which we do not
+vendor, so both links were dead; the line now names `~/.agents/skills/` in
+plain text. The name checklist row and the frontmatter row now state the
+agent-skills limits (name: lowercase, at most 64 characters, equals the
+directory; description: at most 1024). A re-vendor copies upstream over it.
+
+deviation=skills/writing-skills/references/discovery.md marker=skill-name-with-hyphens
+
+HIMMEL-11569: upstream's template teaches `name: Skill-Name-With-Hyphens` and
+"Max 1024 characters total". Our skill lint requires the name to equal the
+directory, and the standard allows lowercase only, name at most 64 characters
+and description at most 1024. The template name is lowercase and the two limit
+lines are split per field. A re-vendor copies upstream over it.

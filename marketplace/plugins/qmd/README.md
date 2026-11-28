@@ -44,7 +44,7 @@ intentional content deltas below are the skill's other fork deltas;
 everything else in the skill tree is verbatim upstream.
 
 The `skills/qmd/` skill is copied from upstream (the upstream `release`
-skill, which is qmd-repo maintenance tooling, is not vendored) with two
+skill, which is qmd-repo maintenance tooling, is not vendored) with four
 content deltas:
 
 - **One line changed:** the skill's `allowed-tools` gains
@@ -52,6 +52,15 @@ content deltas:
   not match the plugin-scoped tool prefix the plugin itself produces
   (pre-existing upstream mismatch; harmless there, fixed here since we own the
   copy).
+- **`allowed-tools` is space-separated and names no bare search call:** the
+  agent-skills standard separates tools with spaces (upstream uses commas), and
+  upstream's `Bash(qmd:*)` pre-approved the bare `qmd query` that the
+  `block-bare-qmd-query` hook refuses. It is now `Bash(qmd get:*)`,
+  `Bash(qmd multi-get:*)` and `Bash(qmd status:*)`; a search goes through
+  `scripts/lib/qmd-bounded.sh`.
+- **Install route:** the `compatibility`, Status and Setup lines point at the
+  pinned fork (`docs/setup/new-machine.md` section 4e) instead of upstream's
+  `npm install -g @tobilu/qmd`.
 - **One section added:** `What works here (himmel fork, measured)`, under
   `Collection Filtering` — query guidance measured on himmel's
   own collections with `scripts/eval/qmd-quality/qmd-quality.sh`; re-run that
