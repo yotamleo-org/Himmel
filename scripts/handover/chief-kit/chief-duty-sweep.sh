@@ -98,9 +98,17 @@ if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object" 
     fleet_ok=0
 fi
 
+proj_repo="$REPO"
+if [ -f "$doc" ]; then
+    # shellcheck disable=SC2016  # single-quoted sed pattern; no expansion wanted
+    doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$doc" 2>/dev/null | head -n 1)"  # swallow-ok: an unreadable doc names no project, so this checkout stands in
+    case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
+fi
+proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
+
 prs_ok=0; prs_tsv=""
 read_prs() {
-    local raw="" cache="$state/chief-duty-sweep-prs.json" age
+    local raw="" cache="$state/chief-duty-sweep-prs-$proj_key.json" age
     if [ -n "${CHIEF_DUTY_SWEEP_PRS:-}" ]; then
         raw=$(cat "$CHIEF_DUTY_SWEEP_PRS" 2>/dev/null) || return 1  # read-sink-ok: a test seam set by the invoking process, a JSON fixture read once; swallow-ok: an unreadable seam file is an unread input
     else
@@ -109,7 +117,7 @@ read_prs() {
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$REPO" && timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$proj_repo" && timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
@@ -268,7 +276,7 @@ if [ -f "$runs_file" ] && jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; 
 fi
 if [ "$runs_ok" = 0 ]; then unread "ciguard"; fi
 reruns="$state/chief-duty-sweep-reruns"
-slug=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
+slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
 if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
     rerun_count=0
     while IFS=$'\t' read -r pr branch head draft fork base; do
