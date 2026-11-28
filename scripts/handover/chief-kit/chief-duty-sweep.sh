@@ -106,6 +106,7 @@ if [ -f "$doc" ]; then
 fi
 proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
 slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
+pr_pin=""; printf '%s\n' "$slug" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' && pr_pin="$slug"  # swallow-ok: a slug that is no plain owner/repo pins nothing, so the checkout names the repository
 
 prs_ok=0; prs_tsv=""
 read_prs() {
@@ -118,7 +119,7 @@ read_prs() {
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$proj_repo" && GH_REPO="$slug" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$proj_repo" && GH_REPO="$pr_pin" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
@@ -321,7 +322,7 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
         fi
         [ -n "$hold" ] || [ "${CHIEF_DUTY_AUTORUN:-1}" != 0 ] || hold="autorun off"
-        [ -n "$hold" ] || [ -n "$slug" ] || hold="no repo slug"
+        [ -n "$hold" ] || [ -n "$pr_pin" ] || hold="no repo slug"
         if [ -z "$hold" ] && [ "$rerun_count" -ge 2 ]; then hold="two reruns this sweep"; fi
         if [ -z "$hold" ]; then
             ( flock -w 5 9 || exit 3  # prim-ok: Linux-only kit, flock serialises the reserve row

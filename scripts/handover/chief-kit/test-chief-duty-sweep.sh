@@ -625,6 +625,16 @@ pworld; for_project "$WORK/w/repoB"; masked_runs success cancelled 1
 psweep
 check "project: a masked-CI rerun names the named repository" "run rerun 12 --failed -R acme/repo-b" "$(sed -n 1p "$STUB/gh-calls")"
 
+pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin ssh://git@github.com/acme/repo-b.git
+psweep
+has "project: an origin that is no plain owner/repo still lists the READY worker" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: and leaves the repository to the checkout rather than pin a malformed one" "" "$(cat "$STUB/pr-repos")"
+
+pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin ssh://git@github.com/acme/repo-b.git; masked_runs success cancelled 1
+psweep
+has "project: a rerun is held when origin is no plain owner/repo" "held: no repo slug" "$OUT"
+check "project: and no rerun call is made" "" "$(cat "$STUB/gh-calls")"
+
 pworld; printf '# chief\n' > "$CHIEF"; masked_runs success cancelled 1; pr_json "$H1" > "$STUB/default-prs.json"
 psweep
 has "project: a chief document with no project line leaves this checkout in charge" "DUTY go-owed 101@$H7_1 :: " "$OUT"
