@@ -371,7 +371,7 @@ A PR-body `Local suites: <path>` line needs the local proof even when CI proved
 the suite. The subprocess and network reads (`gh`, `impacted-suites.sh`) are bounded, and one that fails
 or times out FAILs item 19, except the merge-base and `--lister-id` reads a recorded list needs: those
 fall back to the live read. Reads of local files (the ledger, the manifests once downloaded) are not
-bounded; a ledger that cannot be read means no `impacted` row, so no local proof.
+bounded, except the copy of a recorded list, which is; a ledger that cannot be read means no `impacted` row, so no local proof.
 The impacted list comes from the head's newest `ok` `impacted` row when it stands, so a busy station
 does not time the read out. Step 3.6's `--record` keeps the list it computed as
 `<git-common-dir>/impacted-lists/<blob id>.txt`, and the row names it (`suites_blob`), its merge-base (`mb`)
