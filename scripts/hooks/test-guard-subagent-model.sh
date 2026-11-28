@@ -322,6 +322,18 @@ assert_rc "a definition in a subfolder whose tools omit Agent + haiku is allowed
 RC55=$(run_hook def-hash-quoted "$(payload hash-quoted haiku)" "${DEFS[@]}")
 assert_rc "a # inside a quoted tools value is not a comment: + haiku is DENIED (rc=2)" 2 "$RC55"
 
+mkdir -p "$TMP/linked"
+printf -- '---\nname: linked-def\n---\nbody\n' > "$TMP/linked/real.md"
+ln -s "$TMP/linked/real.md" "$PROJ/.claude/agents/linked.md"
+printf -- "---\nname: apostrophe\ndisallowedTools: Bash(echo can't) # Agent stays enabled\n---\nbody\n" > "$PROJ/.claude/agents/apostrophe.md"
+printf -- '---\nname: star-spec\ndisallowedTools: Bash(git * --help)\n---\nbody\n' > "$PROJ/.claude/agents/star-spec.md"
+RC56=$(run_hook def-symlink "$(payload linked-def haiku)" "${DEFS[@]}")
+assert_rc "a symlinked definition that keeps Agent + haiku is DENIED (rc=2)" 2 "$RC56"
+RC57=$(run_hook def-apostrophe "$(payload apostrophe haiku)" "${DEFS[@]}")
+assert_rc "an apostrophe inside an unquoted value does not hide a comment: + haiku is DENIED (rc=2)" 2 "$RC57"
+RC58=$(run_hook def-star-spec "$(payload star-spec haiku)" "${DEFS[@]}")
+assert_rc "a * inside a Bash(...) specifier does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC58"
+
 echo ""
 echo "=== escape hatch ==="
 
