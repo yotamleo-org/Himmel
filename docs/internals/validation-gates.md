@@ -369,8 +369,32 @@ ruled SKIP even when CI proved it: `<p> (the PR changed it: a CI line does not c
 With any impacted suite, an unreadable file list FAILs item 19.
 A PR-body `Local suites: <path>` line needs the local proof even when CI proved
 the suite. The subprocess and network reads (`gh`, `impacted-suites.sh`) are bounded, and one that fails
-or times out FAILs item 19. Reads of local files (the ledger, the manifests once downloaded) are not
-bounded; a ledger that cannot be read means no `impacted` row, so no local proof.
+or times out FAILs item 19, except the merge-base and `--lister-id` reads a recorded list needs: those
+fall back to the live read. Reads of local files (the ledger, the manifests once downloaded) are not
+bounded, except the copy of a recorded list, which is; a ledger that cannot be read means no `impacted` row, so no local proof.
+The impacted list comes from the head's newest `ok` `impacted` row when it stands, so a busy station
+does not time the read out. Step 3.6's `--record` keeps the list it computed as
+`<git-common-dir>/impacted-lists/<blob id>.txt`, and the row names it (`suites_blob`), its merge-base (`mb`)
+and the lister id (`lister`, from `impacted-suites.sh --lister-id`: the blob ids of `impacted-suites.sh`,
+`review-default-base.sh` (hashed as a guard file) and `tree-invariant-suites.txt`, plus the LC_CTYPE and
+LC_COLLATE values). The list stands only when these hold, checked in order: the three fields are 40 or
+64 lowercase hex; `mb` equals the merge-base of `origin/main` and the head; `lister` equals the id the
+primary checkout's copy prints (item 12's anchor, so a worker's run from its worktree and the chief's
+from the primary agree); the file's blob id and line count match the row. Otherwise item 19 prints
+the first condition that failed (`no impacted row`, `the row has no list`, `merge-base unreadable`,
+`merge-base differs`, `lister unreadable`, `lister moved`, `list file missing or altered`) and reads
+the list live, as before. A row stops standing when the recorder was a branch copy that differs from the
+anchor's (a drifted worktree moves the id only when a hashed file differs), when the anchor pulls a lister
+change, or when the recorder ran under another LC_CTYPE or LC_COLLATE locale; this assumes workers and chiefs on
+one station share one LC_CTYPE and LC_COLLATE pair. When the live read then times out and the condition
+is one a re-record fixes, the FAIL adds a remedy line. **The re-record (owner of this rule):** the chief
+runs step 3.6's record fence by HIMMEL_REPO's own path from a checkout of the head (the branch's
+worktree, or `git worktree add --detach <path> <head>` when it is gone), with that head's own verdict
+file, or one rebuilt from the replaced row: `SUITE <p> = PASS` for each `local_pass` entry, a fresh
+`SUITE <p> = SKIP ruled <chief-session> <reason>` for each `ruled_skip` entry, `SUITE <p> = CI` for the rest
+and for each suite `--check` names as missing. A suite `--check` refuses as `CI` goes back to the PR's
+worker for a local run. A prune between a reuse's stat and its unlink leaves a short window where the
+file goes missing; the row then reads `list file missing or altered`.
 The JS manifests are downloaded only when some suite still needs CI proof after the shard manifests,
 and then the run's jobs are read (`gh api .../actions/runs/<run>/jobs`). A JS artifact
 `js-suite-manifest-<job>` belongs to the job whose name is `<job>` or `<job> (<matrix values>)`, or, for a matrix
@@ -393,6 +417,7 @@ from the run through the API, never from the file.
 | A vitest failure not tied to one file (an unhandled error, a crash after the report) leaves `ran 0` for the files that passed | **Closed:** a JS manifest counts only when its producing job concluded `success` |
 | A PR's own code writes a false line from a test or a source file a job runs | **Open**, ceiling row C-0039 |
 | A PR changes a package's `test` script, `vitest.config.*` or `bunfig.toml`, so a step runs less and stays green | **Open**, ceiling row C-0039 |
+| The impacted list recorded at step 3.6: a branch copy's list does not stand (`lister moved`); a recorder written to print the anchor's lister id, or one that under-lists to an empty list, passes, no wider than a forged `SUITE <p> = PASS` line | **Open**, ceiling row C-1303 |
 
 A red CI run at the head appends one `fail` row per failed suite left to CI to
 `~/.himmel/state/suite-evidence/ci-failures.jsonl`, and a later head of that PR one

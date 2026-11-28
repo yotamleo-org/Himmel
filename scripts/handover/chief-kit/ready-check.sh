@@ -172,7 +172,11 @@
 #      `Local suites: <path>` line needs local proof. Every subprocess and network
 #      read is bounded (the reads of local files are not); an unreadable impacted
 #      list, an unresolvable range, no timeout binary or a timed-out read FAILs. Not part
-#      of `--only 7`.
+#      of `--only 7`. The list is the one step 3.6 recorded for the head (the row's
+#      `suites_blob` file) when its four conditions hold, else the live read; a note
+#      names the first failed condition, and a failed or timed-out merge-base or
+#      --lister-id read falls back to the live read instead of FAILing
+#      (docs/internals/validation-gates.md item 19).
 #
 # 16. outside-PR full review: for an outside PR (a fork, a deleted author, or a
 #      non-Bot author not in scripts/ci/ticket-id-internal-authors.txt; the same
@@ -1996,6 +2000,19 @@ else
 fi
 fi  # ONLY7 == 0: check 11
 
+anchor_primary() {
+    local a="${READY_CHECK_ANCHOR:-}"
+    if [ -z "$a" ]; then
+        a=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+            git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || a=""
+        case "$a" in
+            */.git) a="${a%/.git}" ;;
+            *) a=$(cd "$SELF_DIR/../../.." && pwd) ;;
+        esac
+    fi
+    printf '%s' "$a"
+}
+
 TRUST_PATH=""
 if [ "$ONLY7" -eq 0 ]; then
 # ── 12. trust path, computed from the PR diff ──
@@ -2003,15 +2020,7 @@ if [ "$ONLY7" -eq 0 ]; then
 # the default branch's list against the PR's REST file listing). The worker's READY
 # text is never consulted. A refusal (unreadable list, head moved, listing cut
 # short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
-tp_anchor="${READY_CHECK_ANCHOR:-}"
-if [ -z "$tp_anchor" ]; then
-    tp_anchor=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
-        git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || tp_anchor=""
-    case "$tp_anchor" in
-        */.git) tp_anchor="${tp_anchor%/.git}" ;;
-        *) tp_anchor=$(cd "$SELF_DIR/../../.." && pwd) ;;
-    esac
-fi
+tp_anchor=$(anchor_primary)
 tp_rc=0; tp_out=""
 if [ -z "$tp_branch" ]; then
     tp_rc=2; tp_out="cannot resolve the default branch (gh repo view --json defaultBranchRef gave none)"
@@ -2655,9 +2664,39 @@ check_suite_evidence() {
     rm -rf "$d"
     trap - EXIT
 }
+s17_hex() { LC_ALL=C expr "$1" : '[0-9a-f]\{40\}$' >/dev/null || LC_ALL=C expr "$1" : '[0-9a-f]\{64\}$' >/dev/null; }
+s17_recorded() {
+    local d="$1" blob mb lister n lid la
+    s17_cond=""
+    if [ -z "$row" ]; then s17_cond="no impacted row"; return 1; fi
+    blob=$(printf '%s' "$row" | jq -r '.suites_blob // empty | strings' 2>/dev/null) || blob=""  # swallow-ok: an unreadable field is no list
+    mb=$(printf '%s' "$row" | jq -r '.mb // empty | strings' 2>/dev/null) || mb=""  # swallow-ok: an unreadable field is no list
+    lister=$(printf '%s' "$row" | jq -r '.lister // empty | strings' 2>/dev/null) || lister=""  # swallow-ok: an unreadable field is no list
+    n=$(printf '%s' "$row" | jq -r '.impacted_n // empty | numbers' 2>/dev/null) || n=""  # swallow-ok: an unreadable count fails condition 4
+    if ! s17_hex "$blob" || ! s17_hex "$mb" || ! s17_hex "$lister"; then s17_cond="the row has no list"; return 1; fi
+    s17_mb=$(pr_mb_git merge-base refs/remotes/origin/main "$SHA" 2>/dev/null) || s17_mb=""  # swallow-ok: an empty merge-base fails condition 2
+    if [ -z "$s17_mb" ]; then s17_cond="merge-base unreadable"; return 1; fi
+    if [ "$mb" != "$s17_mb" ]; then s17_cond="merge-base differs"; return 1; fi
+    la=$(anchor_primary)
+    if ! s17_run "impacted-suites.sh --lister-id" "$(s17_bound 15)" "$d/lid" bash "$la/scripts/cr/impacted-suites.sh" --lister-id; then
+        s17_why=""; s17_cond="lister unreadable"; return 1
+    fi
+    lid=$(head -n 1 "$d/lid")
+    if ! s17_hex "$lid"; then s17_cond="lister unreadable"; return 1; fi
+    if [ "$lister" != "$lid" ]; then s17_cond="lister moved"; return 1; fi
+    lid=""
+    if [ -f "${common_dir}/impacted-lists/$blob.txt" ] && [ ! -L "${common_dir}/impacted-lists/$blob.txt" ] \
+        && "$_TIMEOUT_BIN" -k 5 "$(s17_bound 15)" cp "${common_dir}/impacted-lists/$blob.txt" "$d/imp.rec" 2>/dev/null; then
+        lid=$(git hash-object --no-filters -- "$d/imp.rec" 2>/dev/null) || lid=""  # swallow-ok: an unreadable copy fails condition 4
+    fi
+    if [ "$lid" != "$blob" ] || [ "$(wc -l < "$d/imp.rec" | tr -d ' ')" != "$n" ]; then
+        s17_cond="list file missing or altered"; return 1
+    fi
+    mv "$d/imp.rec" "$d/imp.raw" || { s17_cond="list file missing or altered"; return 1; }
+}
 s17_body() {
     local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc
-    local js_names="" job tier n_tskip=0 tskip_names=""
+    local js_names="" job tier n_tskip=0 tskip_names="" s17_cond="" s17_mb=""
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
@@ -2673,9 +2712,35 @@ s17_body() {
     # The anchor's copy, so a PR cannot narrow its own list. It diffs from
     # merge-base(origin/main, SHA) itself and exits 2 when there is none.
     anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
-    if ! s17_run impacted-suites.sh "$(s17_bound 30)" "$d/imp.raw" bash "$anchor/scripts/cr/impacted-suites.sh" "refs/remotes/origin/main..$SHA"; then
-        s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}: $s17_why"
-        return 0
+
+    branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || branch=""  # swallow-ok: an empty branch reads no row
+    ledger="${common_dir:-}/cr-critic-scores.jsonl"
+    : > "$d/lp"
+    : > "$d/rs"
+    if [ -n "$branch" ] && [ -n "${common_dir:-}" ] && [ -r "$ledger" ]; then
+        o16_branch="$branch"; o16_ledger="$ledger"
+        row=$(o16_ledger impacted 'select(.status == "ok") | tojson' | tail -n 1)
+    fi
+    if [ -n "$row" ]; then
+        have_row=1
+        printf '%s' "$row" | jq -r '(.local_pass // []) | .[] | strings' 2>/dev/null | sort -u > "$d/lp" || : > "$d/lp"  # swallow-ok: a malformed field is no local proof
+        printf '%s' "$row" | jq -r '(.ruled_skip // []) | .[] | strings' 2>/dev/null | sort -u > "$d/rs" || : > "$d/rs"  # swallow-ok: a malformed field is no local proof
+    fi
+
+    if s17_recorded "$d"; then
+        s=$(printf '%s' "$row" | jq -r '.ts // "?"' 2>/dev/null) || s="?"  # swallow-ok: the ts is only a label
+        echo "       note: impacted list from the ledger row at ${SHA:0:7} ($s, $(wc -l < "$d/imp.raw" | tr -d ' ') suites)"
+    else
+        echo "       note: the recorded impacted list is not used ($s17_cond); reading it live"
+        if ! s17_run impacted-suites.sh "$(s17_bound 30)" "$d/imp.raw" bash "$anchor/scripts/cr/impacted-suites.sh" "refs/remotes/origin/main..$SHA"; then
+            s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}: $s17_why"
+            case "$s17_why:$s17_cond" in
+                *"timed out"*:"merge-base unreadable"|*"timed out"*:"lister unreadable") ;;
+                *"timed out"*:*)
+                    echo "       the impacted row for ${SHA:0:7} did not stand ($s17_cond): the chief re-records it with pr-check step 3.6's record fence (scripts/cr/pr-check-ref/33-step3-impacted.md) by HIMMEL_REPO's own path, from the branch's worktree root, with that head's own verdict file or one rebuilt from the replaced row, plus a line for each suite --check names as missing; from a detached worktree of the head when the branch's is gone (docs/internals/validation-gates.md item 19)" ;;
+            esac
+            return 0
+        fi
     fi
     grc=0
     grep -v '^$' "$d/imp.raw" > "$d/imp.nz" 2> /dev/null || grc=$?  # grc 1 is no line, an empty list
@@ -2694,21 +2759,6 @@ s17_body() {
     fi
     printf '%s\n' "$files_json" | tr -d '\r' | sort -u > "$d/files"
 
-    # local proof: the newest ok `impacted` row at this head and branch
-    branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || branch=""  # swallow-ok: an empty branch reads no row
-    ledger="${common_dir:-}/cr-critic-scores.jsonl"
-    : > "$d/lp"
-    : > "$d/rs"
-    if [ -n "$branch" ] && [ -n "${common_dir:-}" ] && [ -r "$ledger" ]; then
-        # item 16's reader: rows of this head, branch and PR, oldest first; the newest ok one is the proof
-        o16_branch="$branch"; o16_ledger="$ledger"
-        row=$(o16_ledger impacted 'select(.status == "ok") | tojson' | tail -n 1)
-    fi
-    if [ -n "$row" ]; then
-        have_row=1
-        printf '%s' "$row" | jq -r '(.local_pass // []) | .[] | strings' 2>/dev/null | sort -u > "$d/lp" || : > "$d/lp"  # swallow-ok: a malformed field is no local proof
-        printf '%s' "$row" | jq -r '(.ruled_skip // []) | .[] | strings' 2>/dev/null | sort -u > "$d/rs" || : > "$d/rs"  # swallow-ok: a malformed field is no local proof
-    fi
     # `Local suites: <path>` body lines, one path each (the body is item 7's, CR-stripped)
     printf '%s\n' "${cov_body:-}" | sed -e 's/[[:space:]]*$//' | sed -n 's/^Local suites: \(..*\)$/\1/p' | sort -u > "$d/ls"
     while IFS= read -r s; do

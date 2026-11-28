@@ -322,7 +322,6 @@ _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
     case "$name" in
         ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) return 0 ;;
     esac
-    [ "${#name}" -le 64 ] || return 0
     [ -f "${XDG_STATE_HOME:-$HOME/.local/state}/himmel/bus/peers/$name.json" ] || return 0
     case "$secs" in ''|*[!0-9]*) secs=15 ;; esac
     bus="${ARM_RESUME_BUS_CLI:-$SCRIPT_DIR/../../marketplace/plugins/himmel-bus/bin/bus}"

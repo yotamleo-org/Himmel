@@ -97,6 +97,12 @@ Anything else may be deferred, with a class.
 
 ## Where a follow-up goes
 
+A follow-up is one of two kinds, each with its own label, and no filing or edit gives a ticket both. A **remainder**
+(`jira create --follow-up-of <KEY> --remainder`, label `remainder`) is the parent's own unfinished ask: the parent
+cannot close without it, and with no version of its own it follows the parent's version. A **residual** (`--follow-up-of` without `--remainder`, or
+`--residual-of`, label `residual`) is an extra beyond the parent's ask, such as a judge, critic or CodeRabbit
+suggestion. `jira edit --residual-of` refuses a remainder.
+
 A follow-up of a project a declared release names is placed by the door from its
 priority: `jira create --residual-of` files it with no version and queues its
 INTAKE, and the door rules it (High and above to the current version, the rest to
