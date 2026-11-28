@@ -3290,7 +3290,9 @@ PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scrip
 ### `guard-t3-thread-tools.sh` — T3 instances and chief titles stay operator choices
 
 Fires on every T3 Code MCP tool (matcher `mcp__t3-code__.*`); any other tool
-exits at once. Each T3 provider instance carries its own environment variables,
+exits at once. Claude and Antigravity (after its adapter) send `mcp__t3-code__`;
+Codex sends `mcp__t3_code__` and `mcp__t3_code_direct__` through its `mcp__.*`
+chain, and the guard judges all three prefixes alike. Each T3 provider instance carries its own environment variables,
 so the operator can make an instance that carries a himmel bypass flag and pick
 it in the T3 UI. The T3 tools also let an agent pick the instance of a new or
 existing thread, and a T3 thread title ending in `-chief` or `-console` is the
@@ -3371,7 +3373,8 @@ A security fence: fails CLOSED on a missing `jq`, a payload that does not
 parse, and the unreadable files above. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
 `floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
 (`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
-matcher `mcp__t3-code__.*`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
+matcher `mcp__t3-code__.*`. On Codex it runs in the `.codex/hooks.json` `mcp__.*`
+chain, which sends `mcp__t3_code__` and `mcp__t3_code_direct__`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
 
 ### `require-quiet-run.sh` — bare test-suite bounce
 
@@ -6686,6 +6689,16 @@ on-disk bytes differ from HEAD, but that blob is not the one that would be
 found by walking `anchor_ref`'s history — still denies. That is the intended
 degrade: only a change that genuinely reached the trusted branch re-pins;
 worktree drift or a not-yet-merged hook edit does not.
+
+**Re-running the recorder adds a pin only for a file that is on main.** The
+recovery path that re-runs `record-hook-integrity.sh` for a session that
+already has a v2 record keeps every existing pin as it is. A path that has no
+pin yet is added only when its HEAD blob is the blob at the record's anchor,
+`origin/<default branch>`. So a new file committed only on the branch, such as
+a new `scripts/harnesses/<id>.json` descriptor, gets no pin from a re-run, and
+the launcher's own check still refuses it. A new descriptor must land on main
+before a session trusts it. Suite: `scripts/hooks/test-record-hook-integrity.sh`
+rows H8 and H9.
 
 **New worker-lane fence — the anchor-tamper class in
 `block-worker-write-fence.sh`.** Re-pinning off `origin/<default>` makes

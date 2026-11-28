@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# guard-t3-thread-tools.sh — PreToolUse hook (matcher mcp__t3-code__.*): refuses
+# guard-t3-thread-tools.sh — PreToolUse hook on the T3 Code MCP tools (mcp__t3-code__* from
+# Claude and Antigravity, mcp__t3_code__* and mcp__t3_code_direct__* from Codex): refuses
 # a T3 Code tool call that names a bypass provider instance, or one off the
 # optional narrowing list, or that sets a -chief or -console thread title.
 #
@@ -95,10 +96,12 @@ command -v jq >/dev/null 2>&1 \
 # swallow-ok: a failed parse refuses on the next line
 tool=$(jq -er '.tool_name | strings' <<<"$input" 2>/dev/null) \
     || refuse "a T3 tool call" "The hook input is not JSON with a string tool_name, so it cannot be checked." bad-payload
-case "$tool" in
-    mcp__t3-code__*) ;;
-    *) exit 0 ;;
-esac
+T3_TOOL_PREFIXES="mcp__t3-code__ mcp__t3_code__ mcp__t3_code_direct__"
+judged=0
+for p in $T3_TOOL_PREFIXES; do
+    case "$tool" in "$p"*) judged=1; break ;; esac
+done
+[ "$judged" = 1 ] || exit 0
 
 findings=$(jq -r '
     def key_is($names): ascii_downcase | gsub("_"; "") as $k | any($names[]; . == $k);

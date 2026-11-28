@@ -110,7 +110,12 @@ case "${1:-}" in
     update)
         if [ -e "$STATE/fail-update" ]; then
             echo "qmd: update exploded" >&2
+            if [ -s "$STATE/fail-update" ]; then exit "$(cat "$STATE/fail-update")"; fi
             exit 7
+        fi
+        if [ -e "$STATE/slow-update" ]; then
+            if [ -s "$STATE/slow-update" ]; then echo "SQLiteError: database is locked (errno 5, SQLITE_BUSY)" >&2; fi
+            sleep 60
         fi
         if [ -e "$STATE/busy-update" ]; then
             want=$(cat "$STATE/busy-update")
@@ -533,12 +538,13 @@ assert_contains "transient update lock says it is waiting" "index busy" "$out"
 got_calls=$(calls | tr '\n' ',')
 if [ "$got_calls" = "update,update,update,embed,embed,cleanup," ]; then pass "transient update lock retries update only"; else fail "transient update lock retries update only" "$got_calls"; fi
 
-echo "TEST: 'qmd update' SQLITE_BUSY held past the wait still fails rc 3, loudly"
+echo "TEST: 'qmd update' SQLITE_BUSY held past the wait exits the classified busy code 75, loudly"
 reset_state
 echo -1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
-assert_rc "persistent update lock rc 3" 3 "$rc"
-assert_contains "persistent update lock is explicit" "'qmd update' failed" "$out"
+assert_rc "persistent update lock rc 75" 75 "$rc"
+assert_contains "persistent update lock says the index is busy, not failed" "index BUSY" "$out"
+assert_not_contains "persistent update lock is not reported as a failed update" "'qmd update' failed" "$out"
 assert_contains "persistent update lock names the lock" "index still busy after" "$out"
 assert_not_contains "no embed attempted while the index stays locked" "embed" "$(calls)"
 
@@ -546,7 +552,7 @@ echo "TEST: a 0 s retry step still naps, so a held lock is not hammered back to 
 reset_state
 echo -1 > "$STATE/busy-update"
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=2 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
-assert_rc "0 s retry under a held lock ends rc 3" 3 "$rc"
+assert_rc "0 s retry under a held lock ends rc 75" 75 "$rc"
 assert_contains "0 s retry naps 1 s" "retrying in 1s" "$out"
 update_calls=$(calls | grep -c '^update$' || true)
 if [ "$update_calls" -le 3 ]; then pass "0 s retry makes at most 3 update attempts in a 2 s bound"; else fail "0 s retry makes at most 3 update attempts in a 2 s bound" "$update_calls attempts"; fi
@@ -568,7 +574,7 @@ pkill -P "$holder_pid" 2>/dev/null || true
 kill "$holder_pid" 2>/dev/null || true
 wait "$holder_pid" 2>/dev/null || true
 rm -f "$HOME/.cache/qmd/index.sqlite"
-assert_rc "named-holder case still rc 3" 3 "$rc"
+assert_rc "named-holder case rc 75" 75 "$rc"
 assert_contains "busy line names the holder pid" "$holder_pid (" "$out"
 assert_contains "busy line names the holder command" "qmd-holder-probe" "$out"
 
@@ -593,7 +599,7 @@ if [ -r /proc/locks ] && command -v python3 >/dev/null 2>&1; then
     kill "$reader_pid" "$locker_pid" 2>/dev/null || true
     wait "$reader_pid" "$locker_pid" 2>/dev/null || true
     rm -f "$HOME/.cache/qmd/index.sqlite" "$HOME/.cache/qmd/index.sqlite-shm"
-    assert_rc "write-lock-holder case still rc 3" 3 "$rc"
+    assert_rc "write-lock-holder case rc 75" 75 "$rc"
     assert_contains "busy line names the write-lock holder pid" "write-lock holder: pid $locker_pid (" "$out"
     assert_not_contains "a mere opener is not named the write-lock holder" "write-lock holder: pid $reader_pid" "$out"
 else
@@ -607,6 +613,27 @@ rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SC
 assert_rc "non-busy update failure rc 3" 3 "$rc"
 got_calls=$(calls | tr '\n' ',')
 if [ "$got_calls" = "update," ]; then pass "non-busy update failure runs update once"; else fail "non-busy update failure runs update once" "$got_calls"; fi
+assert_not_contains "a non-busy update failure is not reported busy" "index BUSY" "$out"
+reset_state
+echo 75 > "$STATE/fail-update"
+rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=5 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "a non-busy update failure with qmd's own rc 75 still exits 3" 3 "$rc"
+
+echo "TEST: an update cut by the qmd deadline fails rc 3 with a line naming the deadline"
+reset_state
+touch "$STATE/slow-update"
+rc=0; out=$(QMD_TIMEOUT_SECS=2 QMD_KILL_GRACE_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "deadline-cut update rc 3" 3 "$rc"
+assert_contains "deadline-cut update names the deadline" "cut by the 2s deadline (QMD_TIMEOUT_SECS)" "$out"
+assert_not_contains "deadline-cut update is not reported busy" "index BUSY" "$out"
+assert_not_contains "no embed attempted after a deadline-cut update" "embed" "$(calls)"
+reset_state
+echo busy > "$STATE/slow-update"
+rc=0; out=$(QMD_TIMEOUT_SECS=2 QMD_KILL_GRACE_SECS=1 QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "deadline-cut update that printed SQLITE_BUSY rc 3, never busy 75" 3 "$rc"
+assert_contains "deadline-cut busy update names the deadline" "cut by the 2s deadline (QMD_TIMEOUT_SECS)" "$out"
+update_calls=$(calls | grep -c '^update$' || true)
+if [ "$update_calls" -eq 1 ]; then pass "deadline-cut busy update is not retried"; else fail "deadline-cut busy update is not retried" "$update_calls attempts"; fi
 
 echo "TEST: a non-numeric or negative wait/retry value falls back to the default instead of looping"
 reset_state
@@ -638,7 +665,7 @@ reset_state
 echo -1 > "$STATE/busy-update"
 start=$SECONDS
 rc=0; out=$(QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=30 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
-assert_rc "short bound still ends rc 3" 3 "$rc"
+assert_rc "short bound ends rc 75" 75 "$rc"
 if [ $((SECONDS - start)) -le 5 ]; then pass "30s retry under a 1s bound ends within 5s"; else fail "30s retry under a 1s bound ends within 5s" "took $((SECONDS - start))s"; fi
 
 echo "TEST: the hash-count relabel still applies to an update that succeeds after a retry"

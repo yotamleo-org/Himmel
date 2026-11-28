@@ -130,7 +130,8 @@
 #       reported too (a status carries no app id to verify); the
 #       refusal names that "status-only producer" cause. A
 #       required check that is FAILED exits 1, as any red does. Each of these prints one MERGE-BLOCKED
-#       line naming the rule and sends ONE operator DM per (repo, PR, head)
+#       line naming the rule and sends ONE operator DM per (repo, PR, head),
+#       except a worker's own pre-GO red
 #       (scripts/lib/merge-block-alert.sh); a delivery failure never changes the
 #       exit code. Sits ABOVE 3 in severity: 3 is "fix the review state and
 #       re-run", 5 is "a rule GitHub enforces blocks this until it changes".
@@ -594,7 +595,7 @@ CR_ARMED=0
 CR_STATE=$(cr_app_state "$PWD")
 [ "$CR_STATE" = armed ] && CR_ARMED=1
 
-# The ONE merge-block alert: a MERGE-BLOCKED line + one operator DM.
+# The ONE merge-block alert: a MERGE-BLOCKED line + one operator DM, except a worker's own pre-GO red (merge-block-alert.sh).
 # shellcheck source=scripts/lib/merge-block-alert.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
 . "$(cd "$(dirname "$0")" && pwd)/lib/merge-block-alert.sh"
@@ -760,7 +761,7 @@ _fail_count() {
 # either, so neither is waited on past --grace. `gh pr checks --watch` knows
 # nothing about the required set, which is why a required check that never
 # registers used to read as green (or wait out --max-wait twice).
-_alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "$@"; }
+_alert() { local f=(); [ "${1:-}" = --red ] && { f=(--red); shift; }; merge_watch_alert ${f[@]+"${f[@]}"} "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "$@"; }
 
 # The pure classifier (_required_normalize, _has_producer_ids, _required_status,
 # _join_by_status) is shared with the Jira status derive.
@@ -814,13 +815,18 @@ _required_rows() {
     pr_rows "$DECIDE_TTL"
 }
 
+# _ci_ran_jobs <reqs> <rows> — rc 0 when a required check's row passed; a red with none is billing-shaped, sent without --red.
+_ci_ran_jobs() {
+    awk -F'\t' 'NR == FNR { if ($1 != "") req[$1] = 1; next } $1 == "pass" && ($2 in req) { f = 1 } END { exit !f }' \
+        <(printf '%s\n' "$1") <(printf '%s\n' "$2")
+}
+
 # _producer_rows — "<bucket>\t<name>\t<app id>\t<started_at>\t<id>" for every
 # check run on the head. `gh pr checks --json` exposes no app id, so a
 # producer-pinned requirement is read from the check-runs API instead.
 # --paginate: a busy head has more than one page of runs, and an
 # unread page would read as "missing". `id` lets the caller judge only the
-# LATEST run of a name: this REST list returns EVERY run ever
-# created for the sha, including ones a re-run or a close/reopen superseded.
+# LATEST run of a name (what this list returns: above `_required_status` in scripts/lib/required-checks.sh).
 # started_at is carried for diagnostics only — ordering uses `id` alone (see
 # `_required_status`).
 _producer_rows() {
@@ -966,7 +972,9 @@ required_gate() {
         if [ -n "$failed" ]; then
             echo "check-ci: checks FAILED — required check(s) failed: $failed" >&2
             _job_log_hint
-            _alert "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
+            local red=()
+            _ci_ran_jobs "$reqs" "$rows" && red=(--red)
+            _alert ${red[@]+"${red[@]}"} "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
             _threads_at_exit 1
             exit 1
         fi
@@ -1030,7 +1038,10 @@ _red_alert() {
     rows=$(_required_rows) || return 0
     if _has_producer_ids "$reqs"; then prows=$(_producer_rows) || return 0; fi
     failed=$(_join_by_status fail "$(_required_status "$reqs" "$rows" "$prows")")
-    [ -z "$failed" ] || _alert "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
+    [ -n "$failed" ] || return 0
+    local red=()
+    _ci_ran_jobs "$reqs" "$rows" && red=(--red)
+    _alert ${red[@]+"${red[@]}"} "required check(s) FAILED: $failed — the base branch requires them, so this PR cannot merge until they pass (no merge was tried)"
 }
 
 red_exit() {

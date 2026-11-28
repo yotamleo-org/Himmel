@@ -36,6 +36,9 @@
 #   { "tool_name": "Bash",
 #     "tool_input": { "command": "gh pr create ..." },
 #     "tool_response": { ...carrying the new PR URL gh printed to stdout... } }
+# A transcript sweep and a replay show that `tool_input.command` can
+# arrive as rewritten by rtk's PreToolUse hook (`rtk gh pr create`), so this
+# hook strips that wrapper before matching.
 #
 # Exit semantics — ADVISORY / non-blocking, exit 0 in EVERY case. The PR is
 # already created by the time a PostToolUse hook runs; a hard block here could
@@ -237,6 +240,8 @@ strip_quoted_spans() {
 # why this is not a tokenizer) lives on the sibling, next to the
 # same line; it is not duplicated here so the two cannot drift in prose either.
 stripped=$(strip_quoted_spans "$cmd")
+# shellcheck disable=SC2016  # literal $ inside the character class
+if _rtk_out=$(printf '%s\n' "$stripped" | sed -E 's/(^|[;&|`$({!])([[:space:]]*)((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?rtk[[:space:]]+(proxy[[:space:]]+)?/\1\2\3/g'); then stripped=$_rtk_out; fi
 # shellcheck disable=SC2016  # literal $ inside the character class — intentional
 if ! echo "$stripped" | grep -qE '(^|[;&|`$({!])[[:space:]]*((if|then|else|elif|while|until|do|time|sudo|nohup|command|exec)[[:space:]]+)?((env|timeout|xargs)[[:space:]]+[^|;&]*)?gh([[:space:]]+-[^[:space:];&|()<>`]+([[:space:]]+[^[:space:];&|()<>`-][^[:space:];&|()<>`]*)?)*[[:space:]]+pr[[:space:]]+(create|new)([^[:alnum:]_-]|$)'; then
     exit 0

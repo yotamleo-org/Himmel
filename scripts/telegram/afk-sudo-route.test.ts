@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
@@ -366,6 +366,7 @@ function buttons(opts: { operator?: number | null; promptId?: number | null; pro
 }
 const tapOf = (data: string, extra: Record<string, unknown> = {}) => ({ callback_id: "cb1", from: OP, chat_id: OP, data, ...extra });
 const reply = (text: string, to: number, extra: Record<string, unknown> = {}) => dm(text, { reply_to_message_id: to, ...extra });
+const TO_PROMPT = { reply_to_bot: true, reply_to_text: "Approve abcdefgh: reply to this message with the 4-character nonce" };
 
 test("button: an Approve tap asks for the nonce and code with a prompt and never reaches the helper", async () => {
   const b = buttons();
@@ -548,10 +549,10 @@ test("button: HIMMEL-8375 a code-only reply to a message that is not the bot's i
   expect(b.calls).toEqual([]);
 });
 
-test("button: a reply to a bot message with no known prompt holding a standalone six-digit token, or only a spaced code, is consumed", async () => {
+test("button: a reply to a code prompt the map does not know holding a standalone six-digit token, or only a spaced code, is consumed", async () => {
   for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today", "123 456", "123-456", "12 34 56", "1234567", "10-31 08"]) {
     const b = buttons();
-    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+    expect(b.gate(reply(text, 99, TO_PROMPT))).toBe(true);
     await settle();
     expect(b.calls).toEqual([]);
     expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed."]);
@@ -599,12 +600,11 @@ test("button: while a code prompt is live, a code-shaped message sent without re
   }
 });
 
-test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it is a standalone six-digit token", async () => {
+test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a code prompt the map does not know", async () => {
   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
   for (const text of texts) {
-    // a reply to a bot message with no known prompt is held for a contiguous six-digit token or a text that is wholly a code
     const gone = buttons();
-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text) || text === "(123-456)");
+    expect(gone.gate(reply(text, 99, TO_PROMPT))).toBe(true);
     const live = buttons();
     live.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
@@ -646,15 +646,14 @@ test("poller: ingest then the real delivery mapping carries reply_to_bot into th
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
 
-test("button: a six-digit reply to a bot message with no known prompt is consumed and never forwarded", async () => {
+test("button: a six-digit reply to a code prompt the map does not know is consumed and never forwarded", async () => {
   const b = buttons();
-  expect(b.gate(reply("123456", 99, { reply_to_bot: true }))).toBe(true);
+  expect(b.gate(reply("123456", 99, TO_PROMPT))).toBe(true);
   await settle();
   expect(b.calls).toEqual([]);
   expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed."]);
   expect(b.logs.join("\n")).not.toContain("123456");
-  // other shapes of a reply to the bot stay ordinary text
-  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
+  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { ...TO_PROMPT, from: 999, chat_id: 999 })]) {
     expect(buttons().gate(msg)).toBe(false);
   }
 });
@@ -1075,4 +1074,107 @@ test("a valid reply to the prompt still runs the helper exactly once", async () 
   await settle();
   expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
   expect(b.replies.filter((r) => r.includes("approved"))).toHaveLength(1);
+});
+
+const CHIEF = "HIMMEL-nextleg-2026-11-28ET-recovery-chief";
+const CHIEF_LINE = `Message for chief ${CHIEF}:`;
+const MERGE_BLOCKED_REPLY = "MERGE-BLOCKED PR 6237 in yotamleo-org/Himmel @58365a062312: GitHub refused the merge: X Pull request PR 6237 in yotamleo-org/Himmel is not mergeable: the base branch policy prohibits the merge. T\n\nDidn't we fixed this bug already?";
+const EXPIRED = "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed.";
+
+test("a reply with letters to a chief message holding digits and a hex head is not held and gets no afk-sudo line", async () => {
+  const b = buttons();
+  expect(b.gate(reply(MERGE_BLOCKED_REPLY, 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(false);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies).toEqual([]);
+});
+
+test("a reply to a bot message that is not a bridge-delivered code prompt is never matched against a prompt", async () => {
+  for (const text of ["see 123456 here", "123456 thanks", "we did 123456 and 654321 today"]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(b.gate(reply(text, 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(false);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies).toEqual([]);
+  }
+});
+
+test("a reply to a code prompt the map no longer knows is held whatever it says, and runs no helper", async () => {
+  for (const to of ["Code for abcdefgh:", "Approve abcdefgh: reply to this message with the 4-character nonce", "Deny abcdefgh: reply to this message with the 4-character nonce"]) {
+    for (const text of ["code 123456", "ok thanks"]) {
+      const b = buttons();
+      expect(b.gate(reply(text, 99, { reply_to_bot: true, reply_to_text: to }))).toBe(true);
+      await settle();
+      expect(b.calls).toEqual([]);
+      expect(b.replies).toEqual([EXPIRED]);
+    }
+  }
+});
+
+test("\"do 8276 8277 next\" replied to any other bot message is ordinary text", () => {
+  for (const extra of [{ reply_to_bot: true }, { reply_to_bot: true, reply_to_text: CHIEF_LINE }, { reply_to_bot: true, reply_to_text: "Code for abcdefgh" }]) {
+    expect(buttons().gate(reply("do 8276 8277 next", 99, extra))).toBe(false);
+  }
+});
+
+function chiefInbound() {
+  const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+  mkdirSync(join(r, "consoles", "replies"), { recursive: true });
+  const inbox = join(r, "consoles", `${CHIEF}.md`);
+  writeFileSync(inbox, "");
+  writeFileSync(join(r, "consoles", "replies", `${OP}_9299.json`), JSON.stringify({ name: CHIEF }));
+  const { deps, calls, replies } = fake();
+  const acks: string[] = [];
+  const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
+  const consoleRoute = { authorize: (from: number) => from === OP, reply: async (_chat: number, text: string) => { acks.push(text); } };
+  const send = (text: string) => handleInbound(r, reply(text, 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE, ts: Math.floor(Date.now() / 1000) }), async () => {}, auto, async () => ({ verdict: "spawn" }) as never, () => true, undefined, undefined, undefined, consoleRoute);
+  return { inbox, calls, replies, acks, send };
+}
+
+test("handleInbound delivers the operator's reply to a MERGE-BLOCKED chief message to that chief's inbox", async () => {
+  const c = chiefInbound();
+  await c.send(MERGE_BLOCKED_REPLY);
+  await settle();
+  expect(readFileSync(c.inbox, "utf8")).toContain("Didn't we fixed this bug already?");
+  expect(c.replies).toEqual([]);
+  expect(c.calls).toEqual([]);
+});
+
+test("a reply to a chief message the gate does hold still reaches that chief as a note, never with the code", async () => {
+  const c = chiefInbound();
+  await c.send("123456");
+  await settle();
+  const body = readFileSync(c.inbox, "utf8");
+  expect(body).toContain("afk-sudo");
+  expect(body).not.toContain("123456");
+  expect(c.replies.at(-1)).toContain("held");
+  expect(c.calls).toEqual([]);
+});
+
+test("while a prompt waits, a reply to another bot message holding a nonce and a code in its words is held", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(reply("ok K7QF 123456 thanks", 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect([...b.replies, ...b.logs].join("\n")).not.toContain("123456");
+  expect(b.gate(reply(MERGE_BLOCKED_REPLY, 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(false);
+});
+
+test("a bot message that only starts like a prompt is not taken for one", () => {
+  for (const to of ["Approve abcdefgh: done", "Code for abcdefgh: 2 left"]) {
+    expect(buttons().gate(reply("ship 123456 today", 99, { reply_to_bot: true, reply_to_text: to }))).toBe(false);
+  }
+});
+
+test("the first line of each prompt the bridge sends is taken for a prompt once the map has forgotten it", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  b.tap(tapOf("afk:deny:abcdefgh"));
+  await settle();
+  expect(b.sent).toHaveLength(2);
+  for (const { text } of b.sent) expect(buttons().gate(reply("ok thanks", 99, { reply_to_bot: true, reply_to_text: text.split("\n", 1)[0] }))).toBe(true);
 });

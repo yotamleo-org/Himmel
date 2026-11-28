@@ -41,7 +41,10 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > authenticated; the tick tells that apart from a worker that never accepted
 > (`nonces=RELAYED:<worker>` needs the worker's own `SUCCESSION accepted` bullet,
 > else `UNCONFIRMED:<worker>`). `chief.sh next` gives a live worker with no span, or a well-formed
-> `NONCE-UNKNOWN` span, its brief's RETASK token (only a worker whose doc records no `SUCCESSION accepted`);
+> `NONCE-UNKNOWN` span, the nonce `@record` when `worker-token.sh gen <doc>` reads `state=ok`: its token
+> lives in the token record, and `go-batch.sh`, `auto-go.sh` and `relay-batch.sh` read it from there
+> (`worker-token.sh current <doc>`). `@record` is no token and never quoted. A worker with no usable record
+> gets its brief's RETASK token instead (only a worker whose doc records no `SUCCESSION accepted`);
 > any other span is never replaced.
 >
 > **A held PR names a trigger and a resume doc.** A HELD entry is a `|` segment of the `queue:`

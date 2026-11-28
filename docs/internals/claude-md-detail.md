@@ -2,13 +2,35 @@
 
 The full text of every rule that root `CLAUDE.md` now carries condensed.
 Root `CLAUDE.md` keeps each rule's directive and its enforcer; the prose below is
-the prior wording, verbatim, kept for reference. It is not preloaded.
+the prior wording, kept for reference, plus the detail a condensed rule needs to be
+read correctly (for example what the Git-workflow approval is). It is not preloaded.
 
 ## RULES
 
 ### Git workflow
 - Feature work in git worktrees; never edit or commit on main. [enforced: block-edit-on-main]
 - All changes via PR, ≥1 approval, no direct push. [enforced: no-push-to-main]
+  - For a PR the repo owner authors (every chief worker's PR), the approval is the chief's signed
+    GO: the GO file `merge-on-green.sh --go` checks for the PR at its head. It is not a GitHub
+    review.
+    - Main requires no review count: the branch protection's `required_pull_request_reviews` is null,
+      and the `pull_request` ruleset sets `required_approving_review_count: 0` while requiring
+      resolved threads. So a worker never tells the operator its PR "needs an approval". It sends
+      READY to its chief.
+    - Outside and bot PRs (Dependabot included) do need a code-owner approval, through the required
+      `codeowner-review-gate` check.
+    - merge-on-green enforces the chief-worker GO only when `HIMMEL_CONSOLE_LEG` is set (exported
+      by `headed-arm-worker.sh`)
+      or `--go` is passed. A T3 thread worker whose instance does not set `HIMMEL_CONSOLE_LEG` has
+      neither, so the chief merges its PR itself.
+    - A PR that touches a path in `scripts/ci/ci-trust-paths.txt` merges only on a trust-reviewed
+      GO. merge-on-green and the `gh pr merge` hook (`block-unresolved-cr-merge.sh`) check this for
+      every caller.
+    - The cross-model review is the /pr-check panel, recorded in the local CR ledger
+      (`<git-common-dir>/cr-critic-scores.jsonl`).
+    - The CodeRabbit review is best effort. `check-ci.sh` prints a NOTE on any CodeRabbit state
+      other than success, and nothing waits on it. The thread and body-findings gates still apply to
+      what it posts.
 - Conventional commits; **every commit and every PR carries a ticket ID**.
   Retro-filing is fine; search Jira and extend an existing ticket before
   re-filing. [enforced: conventional-commit-msg]
