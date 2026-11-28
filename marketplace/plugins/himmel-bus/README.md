@@ -17,8 +17,9 @@ Delivery commits validate cursor shape and reject stale or halted cursors.
 An empty, malformed JSON or invalid-shaped persisted cursor wakes the reader;
 `read` persists a fail-closed halt and returns one explicit `notice` explaining
 that recovery will replay from the beginning. Subsequent reads return no records
-and no repeated notice; `pending` is false. The consuming delivery hook must log
-or forward `notice` (the primitive does not print to stdout).
+and no repeated notice; `pending` is false. The delivery hook (`lib/deliver.mjs`)
+and the MCP server's `read` (`server/index.mjs`) forward `notice` to the reader's
+console; `bin/bus wait` only prints it (the primitive does not print to stdout).
 
 After investigating/repairing the cause, call `unhalt(root, name)` explicitly.
 It clears only the halt flag under the same lock, preserving a valid committed
