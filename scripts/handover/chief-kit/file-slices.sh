@@ -134,7 +134,7 @@ SEC = re.compile(r'^## (S\d+[a-z]*(?:-\d+)?):\s*(.*)$')
 STEP = re.compile(r'^## (M\d+):')
 goal = spec_line = None
 sections, step_ids = [], set()
-fence, cur = None, None
+fence, cur, fenced_as = None, None, ''
 for k in range(start, len(lines)):
     line = lines[k]
     fm = FENCE.match(line)
@@ -142,12 +142,13 @@ for k in range(start, len(lines)):
         if fm and fm.group(1)[0] == fence[0] and len(fm.group(1)) >= len(fence) and not line.strip()[len(fm.group(1)):].strip():
             fence = None
         if cur is not None:
-            cur['lines'].append(None)
+            cur['lines'].append(fenced_as)
         continue
     if fm:
         fence = fm.group(1)
+        fenced_as = None if line[:1].isspace() else ''
         if cur is not None:
-            cur['lines'].append(None)
+            cur['lines'].append(fenced_as)
         continue
     if re.match(r'^#{1,2}\s', line):
         cur = None
