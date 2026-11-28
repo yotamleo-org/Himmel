@@ -516,12 +516,16 @@ OPS_CMD=$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash|PowerShell") | .
 seen_by() {
     rm -f "$SB/seen.json"
     case "$1" in
-        project) (cd "$SB/work" && hook_env node "$RUNNER" --chain "$SB/dump.sh" < "$SB/p.json" >/dev/null 2>&1) ;;
-        plugin)  (cd "$SB/work" && hook_env DUMP="$SB/dump.sh" sh -c "$OPS_CMD" < "$SB/p.json" >/dev/null 2>&1) ;;
-        guard)   (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL PLUGIN_ROOT="$SB/guard-dump" hook_env sh -c "$GUARD_CMD" < "$SB/p.json" >/dev/null 2>&1) ;;
-        user)    (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL hook_env node "$WRAPPER" "$SB/dump.sh" < "$SB/p.json" >/dev/null 2>&1) ;;
+        project) (cd "$SB/work" && hook_env node "$RUNNER" --chain "$SB/dump.sh" < "$SB/p.json" >/dev/null 2>"$SB/err") ;;
+        plugin)  (cd "$SB/work" && hook_env DUMP="$SB/dump.sh" sh -c "$OPS_CMD" < "$SB/p.json" >/dev/null 2>"$SB/err") ;;
+        guard)   (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL PLUGIN_ROOT="$SB/guard-dump" hook_env sh -c "$GUARD_CMD" < "$SB/p.json" >/dev/null 2>"$SB/err") ;;
+        user)    (cd "$SB/work" && PROJECT_DIR=$NONHIMMEL hook_env node "$WRAPPER" "$SB/dump.sh" < "$SB/p.json" >/dev/null 2>"$SB/err") ;;
     esac
     SEEN_RC=$?
+}
+refused() {
+    if [ "$SEEN_RC" = 2 ] && [ ! -e "$SB/seen.json" ] && grep -qF -- "$2" "$SB/err"; then pass "$1"
+    else fail "$1 - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing), stderr $(head -c 300 "$SB/err" | tr '\n' ' ')"; fi
 }
 same_call() {
     local got
@@ -573,6 +577,24 @@ for ep in project plugin guard user; do
         if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a truncated grok $post event still reaches its members"
         else fail "$ep: truncated grok $post - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
     done
+    ROW_JQ='.tool_input.cwd = "/x"'; payload cursor shell "$ORDINARY_CMD"; seen_by "$ep"
+    refused "$ep: a cursor Shell with a non-empty cwd is refused" '"cwd" must be empty'
+    ROW_JQ='.tool_input.cwd = null'; payload cursor shell "$ORDINARY_CMD"; seen_by "$ep"
+    refused "$ep: a cursor Shell with a null cwd is refused" '"cwd" must be empty'
+    ROW_JQ='.tool_input.zz_extra = "x"'; payload grok shell "$ORDINARY_CMD"; seen_by "$ep"
+    refused "$ep: a grok run_terminal_command with a key outside its allow list is refused" '"zz_extra" is not allowed'
+    jq -c '.hook_event_name = "PostToolUse"' "$SB/p.json" > "$SB/p2.json" && mv "$SB/p2.json" "$SB/p.json"
+    seen_by "$ep"
+    if [ "$SEEN_RC" = 0 ] && [ "$(jq -r .tool_name "$SB/seen.json" 2>/dev/null)" = Bash ]; then pass "$ep: a grok post event with an extra key still reaches its members"
+    else fail "$ep: grok post event with an extra key - rc $SEEN_RC, member saw $(cat "$SB/seen.json" 2>/dev/null || echo nothing)"; fi
+    ROW_JQ='.tool_input = "x"'; payload grok shell "$ORDINARY_CMD"; seen_by "$ep"
+    refused "$ep: a grok call whose tool_input is not an object is refused" 'not an object'
+    ROW_JQ=""
+    for num in 9007199254740993 -1e400; do
+        printf '{"hook_event_name":"PreToolUse","session_id":"h11339-num","tool_name":"run_terminal_command","tool_input":{"command":"echo hi","timeout":%s}}' "$num" > "$SB/p.json"
+        seen_by "$ep"
+        refused "$ep: a grok call holding the number $num is refused" 'out-of-range number'
+    done
 done
 
 echo "== fail-closed: no readable table, every entry point refuses =="
@@ -597,6 +619,8 @@ stage() {
             unparseable) mkdir -p "$(dirname "$t")"; printf '{ not json\n' > "$t" ;;
             two-document) { cat "$HERE/$TABLE_REL"; printf '{}\n'; } > "$t" && [ "$(jq -s length "$t")" = 2 ] \
                 || { echo "FAIL fixture: two-document table"; exit 1; } ;;
+            no-allow) jq 'del(.tools.Shell.allow)' "$HERE/$TABLE_REL" > "$t" || { echo "FAIL fixture: no-allow table"; exit 1; } ;;
+            bad-empty) jq '.tools.Shell.empty = "cwd"' "$HERE/$TABLE_REL" > "$t" || { echo "FAIL fixture: bad-empty table"; exit 1; } ;;
         esac
     done
 }
@@ -615,7 +639,7 @@ fc_run() {
 for ep in project plugin guard user; do
     stage "$SB/fc" present; fc_run "$SB/fc" "$ep"
     expect "fail-closed $ep: with the table an ordinary call passes (mutation control)" pass
-    states="missing unparseable two-document"
+    states="missing unparseable two-document no-allow bad-empty"
     [ "$(id -u)" = 0 ] || states="$states unreadable"
     for s in $states; do
         stage "$SB/fc" "$s"; fc_run "$SB/fc" "$ep"

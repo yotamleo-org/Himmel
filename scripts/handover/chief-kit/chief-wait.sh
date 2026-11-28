@@ -49,7 +49,18 @@
 #                               the next good reading wakes; while that file is younger than
 #                               CHIEF_WAIT_PAUSED_REPROBE_SEC, default 300, the pool is not
 #                               probed again, so a stalled dispatcher cannot block every
-#                               sample), with the
+#                               sample. The one exception: a paused answer whose line 2 is
+#                               `# stale-gh rows=<n>`, n above 0, is kept in <inbox>.wait.ghpausedrows
+#                               and wakes `WAKE underfilled capacity=<cap> stale-gh rows=<n>
+#                               prs=snapshot:<age>s|none keys=<KEYS>` with those rows, once per new
+#                               key set (<inbox>.wait.ghpausedwake; exit wake-pool-ghpaused); it
+#                               touches no underfill marker, sends no pool-unresolved wake and
+#                               ignores a rows file older than CHIEF_WAIT_PAUSED_REPROBE_SEC. A
+#                               pause with no such line deletes the rows file, an outer kill keeps
+#                               it, and a good probe deletes both files. Each probe passes
+#                               NEXT_DISPATCH_DEADLINE below its own bound (bound minus 20 above
+#                               40 s, else half, never under 1; a smaller non-zero value in the
+#                               environment wins)), with the
 #                               priority-pool list (--priority-pool-only, plus
 #                               --doc when given; POOL-EMPTY when nothing is in
 #                               the pool), the earliest unreleased version's rows first under
@@ -1477,11 +1488,15 @@ rc_session_for() {
 # probe may have read a transient empty pool, and the streak never re-woke on it.
 underfill_file="$inbox.wait.underfill"
 pool_paused_file="$inbox.wait.poolpaused"
+ghpaused_rows_file="$inbox.wait.ghpausedrows"
+ghpaused_seen_file="$inbox.wait.ghpausedwake"
+ghpaused_fresh=""
 unowned_file="$inbox.wait.unowned"
 unowned_none_streak=0
 dispatch_cmd="${CHIEF_WAIT_DISPATCH:-$HERE/next-dispatchable.sh}"
 pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the priority-pool pass) and pool_sig (its sorted key set)
-    local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}" paused_age
+    local budget="${1:-${CHIEF_WAIT_DISPATCH_TIMEOUT:-420}}" paused_age deadline=() secs
+    ghpaused_fresh=""
     pool_lf=(); pool_out=""; pool_sig=""; pool_summary=""; pool_counts=""; pool_unresolved=""; pool_keys=""; pool_dispatch=""; pool_left=""
     [ -r "$dispatch_cmd" ] || return 0
     if [ -e "$pool_paused_file" ]; then
@@ -1492,15 +1507,29 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
     [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live workers' files must reach the collision check
     pool_paused=""
-    pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)"; pool_rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and read below, a pause or a timeout is paused, any other failure drops its rows
+    case "$budget" in
+        ''|0|*[!0-9]*) ;;
+        *)  secs=$((10#$budget / 2)); [ "$((10#$budget))" -le 40 ] || secs=$((10#$budget - 20))
+            [ "$secs" -ge 1 ] || secs=1
+            case "${NEXT_DISPATCH_DEADLINE:-}" in ''|*[!0-9]*) ;; *) [ "$((10#$NEXT_DISPATCH_DEADLINE))" -eq 0 ] || [ "$((10#$NEXT_DISPATCH_DEADLINE))" -ge "$secs" ] || secs=$((10#$NEXT_DISPATCH_DEADLINE)) ;; esac
+            deadline=(env "NEXT_DISPATCH_DEADLINE=$secs") ;;
+    esac
+    pool_out="$(${deadline[@]+"${deadline[@]}"} timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)"; pool_rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and read below, a pause or a timeout is paused, any other failure drops its rows
     case "$pool_rc" in 124|137) pool_paused=1 ;; esac
     case "$pool_out" in '# quota-pause '*|'# gh-stall '*) pool_paused=1 ;; esac
     if [ -n "$pool_paused" ]; then
+        case "$pool_rc" in
+            124|137) ;;
+            *)  case "$(printf '%s\n' "$pool_out" | sed -n 2p)" in
+                    '# stale-gh rows='[1-9]*) printf '%s\n' "$pool_out" > "$ghpaused_rows_file" 2>/dev/null && ghpaused_fresh=1 ;;
+                    *) rm -f "$ghpaused_rows_file" ;;
+                esac ;;
+        esac
         pool_out=""
         printf 'pool=paused\n' > "$pool_paused_file" 2>/dev/null  # swallow-ok: the marker is informational, the pause holds without it
         return 1
     fi
-    if [ "$pool_rc" -eq 0 ]; then rm -f "$pool_paused_file"; else pool_out=""; fi
+    if [ "$pool_rc" -eq 0 ]; then rm -f "$pool_paused_file" "$ghpaused_rows_file" "$ghpaused_seen_file"; else pool_out=""; fi
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_keys="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-keys //p')"  # a stacked-series row names its tickets here, joined to its row by line number
     pool_sig="$(printf '%s\n' "$pool_out" | awk -v pk="$pool_keys" '
@@ -1539,6 +1568,22 @@ pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '#
             for (i = 1; i <= NR; i++) if (kind[i] == "series") { if (!hs++) print "# dispatchable as one series worker"; print line[i] }
             for (i = first; i <= NR; i++) if (kind[i] == "rest") print line[i]
         }'
+}
+ghpaused_wake() {
+    local age mtime keys head
+    [ -n "${pool_paused:-}" ] && [ -e "$ghpaused_rows_file" ] || return 1
+    if [ -z "$ghpaused_fresh" ]; then
+        mtime="$(stat -c %Y "$ghpaused_rows_file")" || return 1  # gnu-ok: Linux-only kit
+        age=$(( $(date +%s) - mtime ))
+        [ "$age" -le "${CHIEF_WAIT_PAUSED_REPROBE_SEC:-300}" ] || return 1
+    fi
+    keys="$(awk -F'\t' '$NF == "stale-gh" { print $2 }' "$ghpaused_rows_file" | sort -u)"
+    [ -n "$keys" ] || return 1
+    set_wake "$keys" "$ghpaused_seen_file" 10080 || return 1
+    head="$(sed -n 2p "$ghpaused_rows_file")"
+    printf 'WAKE underfilled capacity=%s stale-gh rows=%s prs=%s keys=%s\n%s\n' "$cap_val" "$(printf '%s\n' "$head" | sed -n 's/^# stale-gh rows=\([0-9]*\).*/\1/p')" "${head##* prs=}" "$(printf '%s\n' "$keys" | paste -sd, -)" "$tick_line"
+    cat "$ghpaused_rows_file"
+    printf '# stale-gh rows are read from the Jira mirror while GitHub is paused: a hint, not a launch order; with prs=none no open PR was checked\n'
 }
 # underfill_wake: prints the WAKE block for the pool pool_probe just read and succeeds. A
 # pool-unresolved block whose unresolved lines match the last one woken (or digested) is
@@ -3834,7 +3879,7 @@ while :; do
                 printf '%s\n%s\n' "$held_hi_out" "$tick_line"
                 exit_reason='wake-held-priority'; exit 0
             fi
-            resume_stale_read="" resume_stale_keys=""
+            resume_stale_read="" resume_stale_keys="" pool_paused=""
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
@@ -3846,6 +3891,7 @@ while :; do
                     elif underfill_repool; then
                         if underfill_wake; then exit_reason='wake-pool'; exit 0; fi
                     fi
+                    if ghpaused_wake; then exit_reason='wake-pool-ghpaused'; exit 0; fi
                     if resume_stale_out="$(resume_stale_wake)"; then
                         printf 'WAKE resume-stale %s\n%s\n' "$resume_stale_out" "$tick_line"
                         exit_reason='wake-resume-stale'; exit 0
