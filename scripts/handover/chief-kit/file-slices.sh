@@ -24,9 +24,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
 default_cli=""
-[ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js"
+case " $* " in
+    *" --jira-cli "*) ;;
+    *) common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
+       [ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js" ;;
+esac
 
 python3 -I - "$HERE" "$default_cli" "$@" <<'PY'
 import atexit, json, os, re, shutil, subprocess, sys, tempfile
@@ -251,7 +254,6 @@ def parse(sec):
 
 for s in sections:
     parse(s)
-
 
 
 def jira(*a):
