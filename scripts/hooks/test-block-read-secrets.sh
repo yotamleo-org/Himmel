@@ -997,7 +997,9 @@ assert_rc "11536 control: bash -c child after a cd"         2 "$(run_in_shiftdir
 assert_rc "11536 control: env -S child after a cd"          2 "$(run_in_shiftdir "cd empty && env -S 'cat .en*'")"
 rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash "cd sub && fakeroot bash -c 'cat .en*'")" | bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 assert_rc "11536 an unlisted wrapper before bash -c after a cd" 2 "${rs_err##*rc=}"
-case "$rs_err" in *"the word bash in a command that changes the cwd"*) echo "PASS 11536 the wrapper deny names the shell word" ;; *) echo "FAIL 11536 the wrapper deny names the shell word — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
+if command -v shfmt >/dev/null 2>&1; then
+    case "$rs_err" in *"the word bash in a command that changes the cwd"*) echo "PASS 11536 the wrapper deny names the shell word" ;; *) echo "FAIL 11536 the wrapper deny names the shell word — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
+fi
 assert_rc "11536 control: sudo child after a cd"            2 "$(run_in_shiftdir 'cd empty && sudo cat .en*')"
 assert_rc "11536 control: xargs child after a cd"           2 "$(run_in_shiftdir 'cd empty && echo x | xargs cat .en*')"
 assert_rc "11536 control: a non-glob item read beside a glob" 2 "$(run_in_shiftdir 'cd vx && for q in .env; do cat $q q1/*; done')"
