@@ -1228,6 +1228,9 @@ h_malformed "H4 a full-length head= with a non-hex character"
 seed_record "$repo" feature "${feature_sha}${feature_sha:0:24}" "$h_top"
 h_run --branch feature
 h_malformed "H4 a 64-hex head= in a repository of 40-hex ids"
+seed_record "$repo" feature "$(git -C "$repo" rev-parse "$feature_sha^{tree}")" "$h_top"
+h_run --branch feature
+h_malformed "H4 a head= naming a tree, not a commit"
 clear_record "$repo" feature
 printf 'branch=feature\nhead=%s\ntoplevel=%s\n' "$feature_sha" "$h_top" > "$tmp/h-valid-rec"
 ln -s "$tmp/h-valid-rec" "$h_rec"
