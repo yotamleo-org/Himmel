@@ -460,6 +460,13 @@ GB4=$( . "$HERE/go-deliver.sh" || exit 9; HANDOVER_DIR="$ROOT45/b4" gd_worker_to
 GB4c=$( . "$HERE/go-deliver.sh" || exit 9; HANDOVER_DIR="$ROOT45/b4" gd_worker_token "$tmp/chief-rec.md" N45 "$D45" )
 check "11407 GB4 the caller's root, not an inherited HANDOVER_DIR, keys the record token" "$GB4|$([ -n "$REC45" ] && echo minted)" "$REC45|minted"
 check "11407 GB4c control: under another inherited root the same record derives another token" "$([ -n "$GB4c" ] && [ "$GB4c" != "$REC45" ] && echo differs)" "differs"
+SPY5="$tmp/m5/scripts/handover/chief-kit"
+mkdir -p "$SPY5"; ln -s "$HERE/../../lib" "$tmp/m5/scripts/lib"; ln -s "$HERE/../../cr" "$tmp/m5/scripts/cr"
+for f in "$HERE"/*.sh; do [ "$(basename "$f")" = go-deliver.sh ] || ln -s "$f" "$SPY5/$(basename "$f")"; done
+printf '. %q || return 1\ngd_worker_token() { printf "%%s\\n" "${4:-<none>}" >> %q; return 1; }\n' "$HERE/go-deliver.sh" "$tmp/m5/root.log" > "$SPY5/go-deliver.sh"
+bash "$SPY5/go-batch.sh" --dry-run --doc "$tmp/chief-rec.md" --fleet "$tmp/fleet-rec.json" >/dev/null 2>&1
+EXP5=$(go_resolve_root "$ANCHOR")
+check "11407 GB5 go-batch.sh hands gd_worker_token its own resolved GO root" "$(sort -u "$tmp/m5/root.log" 2>/dev/null)|$([ -n "$EXP5" ] && echo resolved)" "$EXP5|resolved"
 REF3="$tmp/m3/scripts/handover/chief-kit"
 mkdir -p "$REF3"; ln -s "$HERE/../../lib" "$tmp/m3/scripts/lib"
 for f in "$HERE"/*.sh; do [ "$(basename "$f")" = worker-token.sh ] || ln -s "$f" "$REF3/$(basename "$f")"; done

@@ -1150,6 +1150,15 @@ OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSU
 check    "11407 AG3 HIMMEL_CONSOLE_LEG=1 with a record: exit 3 as today, the record untouched" "$RC $(recrows ag3)|$([ -n "$REC3" ] && echo minted)" "3 $REC3|minted"
 WORKER="$WORKER_KEEP"
 gofresh
+SPY="$tmp/spy"; mkdir -p "$SPY/scripts/handover/chief-kit"
+for fkd in "$HERE/../.."/*; do [ "$(basename "$fkd")" = handover ] || ln -s "$fkd" "$SPY/scripts/$(basename "$fkd")"; done
+for fkf in "$HERE/.."/*; do [ "$(basename "$fkf")" = chief-kit ] || ln -s "$fkf" "$SPY/scripts/handover/$(basename "$fkf")"; done
+for fkf in "$HERE"/*; do [ "$(basename "$fkf")" = go-deliver.sh ] || ln -s "$fkf" "$SPY/scripts/handover/chief-kit/$(basename "$fkf")"; done
+printf '. %q || return 1\ngd_worker_token() { printf "%%s\\n" "${4:-<none>}" >> %q; return 1; }\n' "$HERE/go-deliver.sh" "$tmp/spy-root.log" > "$SPY/scripts/handover/chief-kit/go-deliver.sh"
+OUT=$(bash "$SPY/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
+EXPROOT=$( . "$HERE/../../lib/handover-path.sh" && . "$HERE/../../lib/go-gate.sh" && go_resolve_root "$ANCHOR" )
+check    "11407 AG4 auto-go.sh hands gd_worker_token its own resolved GO root" "$(sort -u "$tmp/spy-root.log" 2>/dev/null)|$([ -n "$EXPROOT" ] && echo resolved)" "$EXPROOT|resolved"
+gofresh
 
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
 echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2

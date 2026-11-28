@@ -1475,6 +1475,11 @@ for e in "$ANCHOR33"/scripts/handover/chief-kit/*; do [ "${e##*/}" = go-deliver.
 printf 'return 1\n' > "$LT33/scripts/handover/chief-kit/go-deliver.sh"
 fx33; SCRIPT33="$LT33/scripts/handover/chief-kit/go.sh" go33 --doc "$C33" --contract yes 42 "$SHA"
 check "GD17: an unloadable library -> NOT-SENT no-library, exit 0, the path last" "$(line33 1)|$rc33|${out33##*$'\n'}|$(nrec33)" "NOT-SENT 42 $H833 reason=no-library|0|$GO33|0"
+# shellcheck disable=SC2016  # the spy expands its own $4 when it runs
+printf '. %q || return 1\ngd_worker_token() { printf "%%s\\n" "${4:-<none>}" >> %q; return 1; }\n' "$ANCHOR33/scripts/handover/chief-kit/go-deliver.sh" "$D33/root.log" > "$LT33/scripts/handover/chief-kit/go-deliver.sh"
+fx33; SCRIPT33="$LT33/scripts/handover/chief-kit/go.sh" go33 --doc "$C33" --contract yes 42 "$SHA"
+EXP33=$(HANDOVER_DIR="$ROOT33"; . "$ANCHOR33/scripts/lib/handover-path.sh" && . "$ANCHOR33/scripts/lib/go-gate.sh" && go_resolve_root "$ANCHOR33")
+check "GD18: go.sh hands gd_worker_token its own resolved GO root" "$(sort -u "$D33/root.log" 2>/dev/null)|$([ -n "$EXP33" ] && echo resolved)" "$EXP33|resolved"
 
 tp33() { grep -Ev '^[[:space:]]*(#|$)' "$1" > "$D33/pat"; grep -qE -f "$D33/pat" <<< "$2" && echo yes || echo no; }
 TRUST33="$ANCHOR33/scripts/ci/ci-trust-paths.txt"; CORE33="$ANCHOR33/scripts/ci/core-paths.txt"
