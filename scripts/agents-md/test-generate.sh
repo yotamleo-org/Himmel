@@ -147,7 +147,6 @@ if [ -f "$REAL_SRC" ]; then
   if grep -q 'Subagent policy' "$stripped"; then
     ok "comment-strip preserves the body (leak check is non-vacuous)"
   else bad "comment-strip preserves the body (leak check is non-vacuous)"; fi
-  # A leak = ANY 'Fable' text outside comments, wrap-split fragments included.
   leaks="$(grep -n 'Fable' "$stripped" || true)"
   if [ -z "$leaks" ]; then
     ok "no Fable text outside comments (real CLAUDE.md)"
@@ -155,8 +154,7 @@ if [ -f "$REAL_SRC" ]; then
   SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 fi
 
-# c) RED PATH: prove the leak check actually fires when a rewrap breaks an
-# entry: re-wrapping 'an Opus parent spawns a Fable child' stops the rule matching.
+# c) RED PATH: the leak check fires when a rewrap breaks an entry.
 BROKEN="$TMP/fable-rewrap.md"; TGTBROKEN="$TMP/AGENTS-broken.md"
 cat > "$BROKEN" <<'EOF'
 # Fixture Rules
@@ -294,9 +292,6 @@ AGENTS_MD_SOURCE="$TMP/decimal-budget.md" AGENTS_MD_TARGET="$TMP/decimal-agents.
 if grep -q '24000 budget' "$TMP/err"; then ok "24002-byte output warns at the 24000-byte budget"
 else bad "24002-byte output warns at the 24000-byte budget"; fi
 
-# ---- 12. harness-neutral body, folder table, truthful header ----
-# The REAL CLAUDE.md over an EMPTY preamble, so the preamble's own reading note
-# (which names Claude Code on purpose) cannot trip the term check.
 REAL_CLAUDE="$SCRIPT_DIR/../../CLAUDE.md"
 BODY12="$TMP/AGENTS-body12.md"
 AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$BODY12" \
@@ -305,9 +300,6 @@ AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$BODY12" \
 gen12=$?
 if [ "$gen12" -eq 0 ] && grep -q 'Subagent policy' "$BODY12"; then ok "term check reads a generated body (non-vacuous)"
 else bad "term check reads a generated body (rc=$gen12): $(cat "$TMP/err")"; fi
-# Each term is a Claude-only tool, command, env name or model name an agent on
-# another harness cannot act on. Facts ABOUT Claude (e.g. `claude -p` billing)
-# are not instructions and stay.
 for term in 'WebFetch' 'EDIT_ON_MAIN_OK=1 claude' 'CLAUDE_CODE_MAX_' 'haiku' 'Opus' \
             'himmel-ops:' "\`/lanes\`" "\`/handover\`"; do
   if grep -qF -- "$term" "$BODY12"; then bad "generated body holds the Claude-only term: $term"
@@ -318,7 +310,6 @@ AGENTS12="$TMP/AGENTS-real12.md"
 AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$AGENTS12" \
   AGENTS_MD_PREAMBLE="$PREAMBLE" AGENTS_MD_DEBRAND="$DEBRAND" \
   node "$GEN" --write >"$TMP/out" 2>"$TMP/err" || bad "real preamble over real CLAUDE.md generates: $(cat "$TMP/err")"
-# The folder table must name every nested rule file git tracks.
 rulefiles12="$(git -C "$SCRIPT_DIR/../.." ls-files | grep -E '(^|/)_?CLAUDE\.md$' | grep -v '^CLAUDE\.md$')" || rulefiles12=""
 table12="$(grep '^|' "$AGENTS12")"
 missing12=""
