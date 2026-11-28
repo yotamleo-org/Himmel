@@ -206,7 +206,8 @@ const idThenCode = (rest: string, id: string): boolean => new RegExp(`${id}\\d{6
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
 const CODE_ONLY = /^\d{6,7}$/u;
 // The first line of a code prompt this bridge sends (makeAfkSudoCallback); "Code for" is the older prompt's.
-const PROMPT_LINE = /^(?:Approve|Deny|Code for) [a-z2-7]{8}:/;
+const PROMPT_LINE = /^(?:(?:Approve|Deny) [a-z2-7]{8}: reply to this message with the 4-character nonce|Code for [a-z2-7]{8}:$)/;
+const PAIR_IN_TEXT = /(?<![0-9A-Za-z])[0-9A-Za-z]{4}\s*\d{3}[\s-]?\d{3}(?!\d)/;
 const promptReply = (msg: AfkSudoMsg): boolean => msg.reply_to_bot === true && PROMPT_LINE.test(msg.reply_to_text ?? "");
 // Fold a text to ASCII digits before any code test: NFKC (fullwidth), every other Unicode decimal digit
 // (Arabic-Indic and the like, counted from its block's zero) and no format characters (zero-width).
@@ -294,10 +295,10 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       }
       // A message holding a code, wherever it sits in the text, sent while a prompt
       // waits is held: an inbox is readable by the sessions that can run the helper.
-      // A reply to any other bot message is the operator's words to whoever sent it.
-      if (CODE_RUN.test(fold(msg.text)) && msg.reply_to_bot !== true && eligible(deps.access(), msg)) {
+      // A reply to any other bot message is the operator's words to whoever sent it, unless it holds a nonce and a code.
+      if (CODE_RUN.test(fold(msg.text)) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? [];
-        if (waiting.length > 0) {
+        if (waiting.length > 0 && (msg.reply_to_bot !== true || PAIR_IN_TEXT.test(fold(msg.text)))) {
           void deps.reply(msg.chat_id, `⚠️ afk-sudo: a code sent as a plain message is not taken, nothing ran. Reply to the "Approve ${waiting.join('" or "Approve ')}" prompt, or send: approve ${waiting.length === 1 ? waiting[0] : "<request id>"} <nonce> <code>`).catch(() => {});
           return true;
         }

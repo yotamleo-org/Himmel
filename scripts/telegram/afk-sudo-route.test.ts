@@ -1093,7 +1093,7 @@ test("a reply with letters to a chief message holding digits and a hex head is n
 });
 
 test("a reply to a bot message that is not a bridge-delivered code prompt is never matched against a prompt", async () => {
-  for (const text of ["see 123456 here", "123456 thanks", "ship 123456 and 654321 today"]) {
+  for (const text of ["see 123456 here", "123456 thanks", "we did 123456 and 654321 today"]) {
     const b = buttons();
     b.tap(tapOf("afk:approve:abcdefgh"));
     await settle();
@@ -1154,4 +1154,30 @@ test("a reply to a chief message the gate does hold still reaches that chief as 
   expect(body).not.toContain("123456");
   expect(c.replies.at(-1)).toContain("held");
   expect(c.calls).toEqual([]);
+});
+
+test("while a prompt waits, a reply to another bot message holding a nonce and a code in its words is held", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  await settle();
+  expect(b.gate(reply("ok K7QF 123456 thanks", 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect([...b.replies, ...b.logs].join("\n")).not.toContain("123456");
+  expect(b.gate(reply(MERGE_BLOCKED_REPLY, 9299, { reply_to_bot: true, reply_to_text: CHIEF_LINE }))).toBe(false);
+});
+
+test("a bot message that only starts like a prompt is not taken for one", () => {
+  for (const to of ["Approve abcdefgh: done", "Code for abcdefgh: 2 left"]) {
+    expect(buttons().gate(reply("ship 123456 today", 99, { reply_to_bot: true, reply_to_text: to }))).toBe(false);
+  }
+});
+
+test("the first line of each prompt the bridge sends is taken for a prompt once the map has forgotten it", async () => {
+  const b = buttons();
+  b.tap(tapOf("afk:approve:abcdefgh"));
+  b.tap(tapOf("afk:deny:abcdefgh"));
+  await settle();
+  expect(b.sent).toHaveLength(2);
+  for (const { text } of b.sent) expect(buttons().gate(reply("ok thanks", 99, { reply_to_bot: true, reply_to_text: text.split("\n", 1)[0] }))).toBe(true);
 });
