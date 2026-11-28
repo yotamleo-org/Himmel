@@ -200,6 +200,16 @@ for pause in '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 fl
     rm -f "$FX/dispo.pause"
 done
 
+reset
+refresh
+cp "$CH" "$tmp/good.json"
+{ printf '# gh-stall GH-STALL github read timed out after 80s token=main caller=next-dispatchable nothing-was-judged\n# stale-gh rows=1 skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=none\n'
+    printf 'LOCAL?\tHIMMEL-1\tMedium\tv1\tstale\tfiles=a.sh\tstale-gh\n'; } > "$FX/dispo.pause"
+refresh
+check "stale-focus: stale rows leave the last good focus-chains.json byte for byte" "$(cmp -s "$CH" "$tmp/good.json" && echo same)" same
+contains "stale-focus: stderr names the pause" "$(cat "$tmp/err")" "gh-stall GH-STALL"
+rm -f "$FX/dispo.pause"
+
 # --- focus-plan set: the priority line comes from a hand-kept plan, not the registry
 reset
 printf 'focus-plan: %s/plan.md\n' "$tmp/doc" >> "$DOC"

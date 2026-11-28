@@ -553,6 +553,7 @@ raw_scan() {
 command -v jq >/dev/null 2>&1 || raw_scan
 tool=$(printf '%s' "$input" | jq -r '.tool_name | strings' 2>/dev/null) || raw_scan
 [ -n "$tool" ] || raw_scan
+MAX_FILE_PATH_BYTES=4096
 
 case "$tool" in
     Bash)
@@ -614,6 +615,11 @@ case "$tool" in
         env_assign_word "$cmd" && deny "a session does not set HIMMEL_BUS_* for itself or a child (name built by quoting or expansion)"
         ;;
     Edit|Write|MultiEdit|NotebookEdit)
+        plen=$(printf '%s' "$input" | jq -r '(.tool_input.file_path // .tool_input.notebook_path // "") | if type == "string" then utf8bytelength else 0 end') \
+            || deny "the file path length could not be read (fail-closed)"
+        case "$plen" in '' | *[!0-9]*) deny "the file path length could not be read (fail-closed)" ;; esac
+        [ "$plen" -gt "$MAX_FILE_PATH_BYTES" ] \
+            && deny "the file path is $plen bytes, over the $MAX_FILE_PATH_BYTES-byte limit: Claude Code hands a hook such a path unexpanded, so the guard cannot check the path the tool would write; use a shorter path"
         path=$(printf '%s' "$input" | jq -er '(.tool_input.file_path // .tool_input.notebook_path) | strings' 2>/dev/null) || raw_scan
         path=$(norm "$path")
         lexnorm "$path"
