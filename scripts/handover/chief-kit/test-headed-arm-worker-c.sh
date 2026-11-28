@@ -787,16 +787,18 @@ printf "[%s]" "$@" > "$(dirname "$0")/env48-out"
 printf " code=%s entry=%s\n" "${CLAUDE_CODE_EXPERIMENTAL_CODE_MODE-unset}" "${CLAUDE_CODE_ENTRYPOINT-unset}" >> "$(dirname "$0")/env48-out"
 EOF_SHIM48
 chmod 755 "$shim_env48"
-rm -f "$tmp/env48-out"
+rm -f "$tmp/env48-out"; rc=0
 (unset WORKER_SESSION_REMOTE_CONTROL CLAUDE_CODE_EXPERIMENTAL_CODE_MODE; WORKER_SESSION_CODE_MODE=1 CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
   WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
-  bash "$SHIM" --model claude-sonnet-5 "load doc") || true
+  bash "$SHIM" --model claude-sonnet-5 "load doc") || rc=$?
+check "48s shim: WORKER_SESSION_CODE_MODE=1 launch exits 0" "$rc" "0"
 check "48s shim: WORKER_SESSION_CODE_MODE=1 sets the Code Mode var, drops the inherited entrypoint, argv unchanged" \
   "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=1 entry=unset"
-rm -f "$tmp/env48-out"
+rm -f "$tmp/env48-out"; rc=0
 (unset WORKER_SESSION_REMOTE_CONTROL WORKER_SESSION_CODE_MODE; CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
   WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
-  bash "$SHIM" --model claude-sonnet-5 "load doc") || true
+  bash "$SHIM" --model claude-sonnet-5 "load doc") || rc=$?
+check "48t shim: a launch without the switch exits 0" "$rc" "0"
 check "48t shim: WORKER_SESSION_CODE_MODE unset -> an inherited Code Mode var is dropped, entrypoint untouched" \
   "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=unset entry=sdk-ts"
 rm -f "$tmp/env48-out"; rc=0
