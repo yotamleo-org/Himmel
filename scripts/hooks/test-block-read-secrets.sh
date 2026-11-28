@@ -1033,6 +1033,7 @@ assert_rc "11536 an inherited RS_AST_TOP_CMD is refused"    2 "${rs_err##*rc=}"
 # shellcheck disable=SC2329
 rs_nodotcompgen() { compgen() { builtin compgen "$@" | grep -v '^\.'; return 0; }; export -f compgen; run_in_shiftdir "$1"; }
 assert_rc "11536 a compgen that lists no dotfile keeps the deny" 2 "$(rs_nodotcompgen 'cd only && cat *')"
+assert_rc "11536 control: the same compgen still proves a clean dir" "$rs_proved" "$(rs_nodotcompgen 'cd verdicts/q1 && cat *')"
 }
 rm -rf "$SHIFTDIR"
 nolib=$(mktemp -d "${TMPDIR:-/tmp}/guard-nolib.XXXXXX") || exit 1
