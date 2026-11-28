@@ -1683,6 +1683,7 @@ STATUS_t3_providers="";               DETAIL_t3_providers=""
 STATUS_agy_profiles="";               DETAIL_agy_profiles=""
 # The config UI rebuild + service restart is advisory too: its row prints only when the pulled range touched scripts/config-ui.
 STATUS_config_ui="";                  DETAIL_config_ui=""
+STATUS_luna_mcp="";                   DETAIL_luna_mcp=""
 STATUS_bypass_daemon="";              DETAIL_bypass_daemon="" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 # probe-mode station tools (rtk, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
@@ -1976,6 +1977,45 @@ update_config_ui() {
     rm -f "$pending"
     STATUS_config_ui="updated"; DETAIL_config_ui="bundle rebuilt; $unit not active, nothing restarted"
     return 0
+}
+
+update_luna_mcp() {
+    local dir="$ROOT/marketplace/plugins/luna-mcp" unit="luna-mcp.service" from to changed="" log
+    [ -f "$dir/package.json" ] || return 0
+    from="${PULL_HEAD_BEFORE:-}"
+    to=$(git rev-parse HEAD 2>/dev/null) || to=""
+    { [ -n "$from" ] && [ -n "$to" ] && [ "$from" != "$to" ]; } || return 0
+    changed=$(git diff --name-only "$from" "$to" -- marketplace/plugins/luna-mcp/src marketplace/plugins/luna-mcp/package.json marketplace/plugins/luna-mcp/package-lock.json 2>/dev/null) || changed=""
+    [ -n "$changed" ] || return 0
+    echo ""
+    echo "==> luna-mcp rebuild (marketplace/plugins/luna-mcp/dist)"
+    if [ "$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="run from a linked worktree — $unit serves the primary checkout, so nothing was rebuilt; run the update there"
+        return 0
+    fi
+    if ! command -v systemctl >/dev/null 2>&1; then
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="systemctl not found — nothing rebuilt or restarted"
+        return 0
+    fi
+    if ! systemctl --user cat "$unit" >/dev/null 2>&1; then
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="$unit is not installed — nothing rebuilt or restarted"
+        return 0
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="npm not on PATH — $unit still runs the old build; by hand: (cd marketplace/plugins/luna-mcp && npm install && npm run build), then systemctl --user try-restart $unit"
+        return 0
+    fi
+    if ! log=$( (cd "$dir" && npm install --silent && npm run build --silent) 2>&1 ); then
+        printf '%s\n' "$log" | tail -20 | sed 's/^/    /'
+        STATUS_luna_mcp="failed"; DETAIL_luna_mcp="build failed — $unit left running on the old build; by hand: (cd marketplace/plugins/luna-mcp && npm install && npm run build), then systemctl --user try-restart $unit"
+        return 1
+    fi
+    if systemctl --user try-restart "$unit" >/dev/null 2>&1; then
+        STATUS_luna_mcp="updated"; DETAIL_luna_mcp="rebuilt, $unit try-restarted (a stopped unit stays stopped)"
+        return 0
+    fi
+    STATUS_luna_mcp="failed"; DETAIL_luna_mcp="rebuilt but systemctl --user try-restart $unit failed — restart it by hand"
+    return 1
 }
 
 update_bypass_daemon() { # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
@@ -2435,6 +2475,9 @@ EOF
     fi
     if [ -n "$STATUS_config_ui" ]; then
         printf '    %-14s %-14s %s\n' "config_ui" "$STATUS_config_ui" "$DETAIL_config_ui"
+    fi
+    if [ -n "$STATUS_luna_mcp" ]; then
+        printf '    %-14s %-14s %s\n' "luna_mcp" "$STATUS_luna_mcp" "$DETAIL_luna_mcp"
     fi
     if [ -n "$STATUS_bypass_daemon" ]; then # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
         printf '    %-14s %-14s %s\n' "bypass_daemon" "$STATUS_bypass_daemon" "$DETAIL_bypass_daemon" # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
@@ -4348,6 +4391,7 @@ sync_graphify
 sync_graph apply || true
 # advisory: a failed UI build leaves the running service alone and shows in the status table, never aborts the update.
 update_config_ui apply || true
+update_luna_mcp || true
 update_bypass_daemon apply || true # t13b-ok: the long-running bypass daemon is this ticket's deliverable; this line names or manages it
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
 # function now returns non-zero so `--only cli_proxy` can report it (above);

@@ -535,6 +535,90 @@ assert_eq "bypass_daemon --check: the check exits 0" "0" "$rc_10"
 assert_eq "bypass_daemon --check: the service script is called with exactly restart-if-changed --check" "restart-if-changed --check" "$calls_10"
 assert_contains "bypass_daemon --check: the row says what apply would do" "bypass_daemon  *skipped  *check mode" "$out_10"
 
+echo "Test 11: luna_mcp — rebuild + try-restart on a luna-mcp change, nothing otherwise, no-unit skip, failed build never restarts"
+make_mock_clone
+mkdir -p "$CHECKOUT_DIR/marketplace/plugins/luna-mcp/src"
+printf '{}\n' > "$CHECKOUT_DIR/marketplace/plugins/luna-mcp/package.json"
+printf 'export {};\n' > "$CHECKOUT_DIR/marketplace/plugins/luna-mcp/src/server.ts"
+git -C "$CHECKOUT_DIR" add -A
+git -C "$CHECKOUT_DIR" commit --quiet -m "luna-mcp"
+defbranch11=$(git -C "$CHECKOUT_DIR" rev-parse --abbrev-ref HEAD)
+git -C "$CHECKOUT_DIR" push --quiet origin "HEAD:$defbranch11"
+pusher11="$TMP/pusher11"
+git clone --quiet "$(dirname "$CHECKOUT_DIR")/upstream.git" "$pusher11"
+git -C "$pusher11" config user.email "test@test.test"; git -C "$pusher11" config user.name "Test"
+push_change_11() {
+    mkdir -p "$pusher11/$(dirname "$1")"
+    printf '%s\n' "$RANDOM" >> "$pusher11/$1"
+    git -C "$pusher11" add "$1"
+    git -C "$pusher11" commit --quiet -m "change $1"
+    git -C "$pusher11" push --quiet origin "HEAD:$defbranch11"
+}
+fake_home_11="$TMP/fake-home-test11"; mkdir -p "$fake_home_11/.himmel/state" "$TMP/lm11"
+claude_ok_11="$TMP/claude-ok-test11"; make_claude_stub "$claude_ok_11" 0
+bin_11="$TMP/bin-test11"; mkdir -p "$bin_11"
+cat > "$bin_11/npm" <<'STUB'
+#!/bin/sh
+printf 'npm %s|%s\n' "$(pwd)" "$*" >> "$LM11_CALLS"
+case "$(pwd)|$*" in */luna-mcp\|run\ build*) exit "$LM11_NPM_RC" ;; esac
+exit 0
+STUB
+cat > "$bin_11/systemctl" <<'STUB'
+#!/bin/sh
+printf 'systemctl %s\n' "$*" >> "$LM11_CALLS"
+case "$*" in *"cat luna-mcp.service"*) [ "$LM11_UNIT" = yes ] && exit 0; exit 1 ;; esac
+case "$*" in *is-active*) echo inactive; exit 3 ;; esac
+exit 0
+STUB
+chmod +x "$bin_11/npm" "$bin_11/systemctl"
+run_11() {
+    : > "$TMP/lm11/calls"; rc_11=0
+    out_11=$(USERPROFILE='' HOME="$fake_home_11" PATH="$bin_11:$PATH" LM11_CALLS="$TMP/lm11/calls" \
+            LM11_UNIT="$1" LM11_NPM_RC="$2" \
+            HIMMEL_UPDATE_CLAUDE_BIN="$claude_ok_11" HERMES_HOME="$TMP/no-hermes" \
+            CLAUDE_USER_SETTINGS="$fake_home_11/.claude/settings.json" CLAUDE_CONFIG_DIR="$fake_home_11/.claude" \
+            bash "$CHECKOUT_DIR/scripts/himmel-update.sh" 2>&1) || rc_11=$?
+    calls_11=$(grep 'luna-mcp' "$TMP/lm11/calls" || true)
+}
+
+push_change_11 marketplace/plugins/luna-mcp/src/server.ts
+run_11 yes 0
+assert_eq "luna_mcp src change: rc 0" "0" "$rc_11"
+assert_contains "luna_mcp src change: builds in luna-mcp" "luna-mcp|run build" "$calls_11"
+assert_contains "luna_mcp src change: try-restarts the unit" "systemctl --user try-restart luna-mcp.service" "$calls_11"
+assert_not_contains "luna_mcp src change: never a plain restart" "systemctl --user restart luna-mcp" "$calls_11"
+assert_not_contains "luna_mcp src change: never a plain start" "systemctl --user start luna-mcp" "$calls_11"
+assert_contains "luna_mcp src change: the status row says updated" "luna_mcp  *updated" "$out_11"
+
+push_change_11 marketplace/plugins/luna-mcp/package-lock.json
+run_11 yes 0
+assert_contains "luna_mcp lockfile change: builds" "luna-mcp|run build" "$calls_11"
+assert_contains "luna_mcp lockfile change: try-restarts" "try-restart luna-mcp.service" "$calls_11"
+
+push_change_11 marketplace/plugins/luna-mcp/README.md
+run_11 yes 0
+assert_eq "luna_mcp README-only change: runs neither build nor restart" "" "$calls_11"
+assert_not_contains "luna_mcp README-only change: no row" "luna_mcp  " "$out_11"
+
+push_change_11 docs/unrelated.md
+run_11 yes 0
+assert_eq "luna_mcp negative control (no luna-mcp change): runs neither build nor restart" "" "$calls_11"
+assert_not_contains "luna_mcp negative control: no row" "luna_mcp  " "$out_11"
+
+push_change_11 marketplace/plugins/luna-mcp/src/server.ts
+run_11 no 0
+assert_eq "luna_mcp no unit: rc 0" "0" "$rc_11"
+assert_contains "luna_mcp no unit: prints a skip line" "luna_mcp  *skipped  *luna-mcp.service is not installed" "$out_11"
+assert_not_contains "luna_mcp no unit: does not build" "run build" "$calls_11"
+assert_not_contains "luna_mcp no unit: does not restart" "try-restart" "$calls_11"
+
+push_change_11 marketplace/plugins/luna-mcp/src/server.ts
+run_11 yes 1
+assert_eq "luna_mcp failed build: the update still exits 0 (advisory step)" "0" "$rc_11"
+assert_contains "luna_mcp failed build: the build ran" "luna-mcp|run build" "$calls_11"
+assert_not_contains "luna_mcp failed build: never restarts" "try-restart" "$calls_11"
+assert_contains "luna_mcp failed build: the row says failed" "luna_mcp  *failed  *build failed" "$out_11"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"
