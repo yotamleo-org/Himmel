@@ -330,7 +330,7 @@ else bad "folder table names every nested rule file; missing:$missing12"; fi
 # reads GEMINI.md, so a bare Gemini is a false claim; Antigravity is the Gemini surface.
 title12="$(grep -m1 '^# AGENTS.md' "$AGENTS12")"
 case "$title12" in *Antigravity*) ok "title names Antigravity";; *) bad "title names Antigravity: $title12";; esac
-if printf '%s\n' "$title12" | grep -qE '(^|[^(])Gemini'; then bad "title names a bare Gemini: $title12"
+if grep -qE '(^|[^(])Gemini' <<< "$title12"; then bad "title names a bare Gemini: $title12"
 else ok "title never names Gemini CLI as a reader"; fi
 
 # ---- summary --------------------------------------------------------------
