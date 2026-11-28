@@ -1228,7 +1228,9 @@ h_malformed "H4 a full-length head= with a non-hex character"
 seed_record "$repo" feature "${feature_sha}${feature_sha:0:24}" "$h_top"
 h_run --branch feature
 h_malformed "H4 a 64-hex head= in a repository of 40-hex ids"
-seed_record "$repo" feature "$(git -C "$repo" rev-parse "$feature_sha^{tree}")" "$h_top"
+h_tree="$(git -C "$repo" rev-parse --verify --quiet "$feature_sha^{tree}")" || h_tree=""
+if [ "${#h_tree}" -eq "${#feature_sha}" ]; then ok "H4 fixture: the tree id is a full id"; else bad "H4 fixture: no tree id for $feature_sha (got '$h_tree')"; fi
+seed_record "$repo" feature "$h_tree" "$h_top"
 h_run --branch feature
 h_malformed "H4 a head= naming a tree, not a commit"
 clear_record "$repo" feature
