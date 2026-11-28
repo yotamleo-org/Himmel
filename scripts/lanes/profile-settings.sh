@@ -47,10 +47,12 @@ if ! JSON="$(cd "$CWD" && node "$HERE/plugin-profiles.mjs" "$PROFILE" 2>&1)" || 
     exit 2
 fi
 case "$JSON" in '{'*) ;; *) echo "profile-settings: profile '$PROFILE' resolver output is not JSON: $JSON" >&2; exit 2 ;; esac
-if printf '%s' "$JSON" | node -e 'process.exit(Object.hasOwn(JSON.parse(require("fs").readFileSync(0, "utf8")), "env") ? 0 : 1)'; then
-    echo "profile-settings: profile '$PROFILE' carries a maintainer grant; only headed-arm-worker.sh launches it, so this path refuses it" >&2
-    exit 4
-fi
+printf '%s' "$JSON" | node -e 'process.exit(Object.hasOwn(JSON.parse(require("fs").readFileSync(0, "utf8")), "env") ? 10 : 11)' 2>/dev/null
+case $? in
+    10) echo "profile-settings: profile '$PROFILE' carries a maintainer grant; only headed-arm-worker.sh launches it, so this path refuses it" >&2; exit 4 ;;
+    11) ;;
+    *) echo "profile-settings: profile '$PROFILE' settings could not be checked for a maintainer grant" >&2; exit 2 ;;
+esac
 if command -v sha256sum >/dev/null 2>&1; then HASH="$(printf '%s\n' "$JSON" | sha256sum | cut -c1-12)"
 elif command -v shasum >/dev/null 2>&1; then HASH="$(printf '%s\n' "$JSON" | shasum -a 256 | cut -c1-12)"
 else HASH=""; fi
