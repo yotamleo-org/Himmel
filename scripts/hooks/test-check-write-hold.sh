@@ -455,7 +455,32 @@ w "$KT" "$R/scripts/ci/v-slash.sh/"
 same "free trust path, a trailing slash: exit 2" "$RC" 2
 contains "free trust path, a trailing slash: the deny names the file" "$ERR" "scripts/ci/v-slash.sh is a trust path outside your brief Writes"
 norow "free trust path, a trailing slash: no row" scripts/ci/v-slash.sh
-if mkdir -p "$R/scripts/CI" && [ -d "$R/scripts/ci" ] && [ ! "$R/scripts/CI" -ef "$R/scripts/ci" ]; then
+KD=HIMMEL-1543
+hold "$KD" scripts/ci/dead-11544.sh
+age_row scripts/ci/dead-11544.sh
+before="$(ev_count)"
+w "$KT" "$R/scripts/ci/dead-11544.sh"
+same "a trust path whose row belongs to a dead holder (aged, lock released): exit 2" "$RC" 2
+same "dead holder: the deny text is the free one" "$ERR" "$(free_trust_text scripts/ci/dead-11544.sh "$KT")"
+same "dead holder: no takeover, the row still names it" "$(row_field scripts/ci/dead-11544.sh 1)" "$KD"
+same "dead holder: one event" "$(ev_count)" "$((before + 1))"
+same "dead holder: a deny event naming no holder" "$(tail -n 1 "$EVENTS" | cut -f2-5)" "$(printf 'deny\tscripts/ci/dead-11544.sh\t%s\tnobody' "$KT")"
+contains "dead holder: the chief's asks list it" "$(hp asks --repo "$R")" "$(printf '%s\tscripts/ci/dead-11544.sh\tnobody\t' "$KT")"
+KP=HIMMEL-1544
+mkdir -p "$W/ghstub"
+printf '#!/bin/sh\necho MERGED\n' > "$W/ghstub/gh"
+chmod +x "$W/ghstub/gh"
+printf '%s\t%s lbl\t%s\tpr\t4711\n' "$KP" "$KP" "$(docof "$KP")" > "$(rowf scripts/ci/merged-11544.sh)"
+age_row scripts/ci/merged-11544.sh
+fx Write file_path "$R/scripts/ci/merged-11544.sh"
+as_worker "$KT" HOLDS_GH="$W/ghstub/gh"
+same "a trust path whose row is a merged PR's: exit 2" "$RC" 2
+same "merged-PR row: the deny text is the free one" "$ERR" "$(free_trust_text scripts/ci/merged-11544.sh "$KT")"
+same "merged-PR row: no takeover, the row still names it" "$(row_field scripts/ci/merged-11544.sh 1)" "$KP"
+: > "$(rowf scripts/ci/dead-11544.sh).grant.$KT"
+w "$KT" "$R/scripts/ci/dead-11544.sh"
+same "dead holder, granted: exit 0" "$RC" 0
+if mkdir -p "$R/scripts/CI" &&[ -d "$R/scripts/ci" ] && [ ! "$R/scripts/CI" -ef "$R/scripts/ci" ]; then
     w "$KT" "$R/scripts/CI/v-case.sh"
     same "control: on a case-sensitive file system scripts/CI is another directory, no trust path: exit 0" "$RC" 0
     hasrow "control: that write claims scripts/CI/v-case.sh" scripts/CI/v-case.sh

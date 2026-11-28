@@ -196,21 +196,30 @@ fi
 
 printf -v q_repo '%q' "$primary"
 printf -v q_rel '%q' "$rel"
+free_route=""
+[ ! -f "$primary/scripts/ci/ci-trust-paths.txt" ] || free_route=--free-route
+
+free_deny() {
+    case "$1" in
+        chief)
+            deny "$rel is a trust path outside your brief Writes, held by no one: a trust path needs a grant before your first write. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo --chief-doc CHIEF_DOC $q_rel . Otherwise the operator launches with WRITE_HOLD_OK=1"
+            ;;
+        operator)
+            deny "$rel is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1"
+            ;;
+    esac
+}
 
 if [ ! -e "$row" ]; then
-    if [ ! -e "$row.grant.$KEY" ] && [ -f "$primary/scripts/ci/ci-trust-paths.txt" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
+    if [ ! -e "$row.grant.$KEY" ] && [ -n "$free_route" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
         route=any
         if bounded 2 "$scratch" /dev/null python3 -I "$HOLDS" grant-route --repo "$primary" -- "$rel"; then
             IFS= read -r route < "$scratch" || route=any
         fi
         case "$route" in
-            chief)
+            chief|operator)
                 event deny "$rel" nobody
-                deny "$rel is a trust path outside your brief Writes, held by no one: a trust path needs a grant before your first write. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo --chief-doc CHIEF_DOC $q_rel . Otherwise the operator launches with WRITE_HOLD_OK=1"
-                ;;
-            operator)
-                event deny "$rel" nobody
-                deny "$rel is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1"
+                free_deny "$route"
                 ;;
         esac
     fi
@@ -241,7 +250,7 @@ if [ -z "$scratch" ] && ! scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX")
     event fault "$rel" 'mktemp failed'
     exit 0
 fi
-bounded 10 /dev/null "$scratch" python3 -I "$HOLDS" claim --key "$KEY" --label "${HIMMEL_HOLD_LABEL:-}" --doc "$DOC" --repo "$primary" --source claim -- "$rel"
+bounded 10 /dev/null "$scratch" python3 -I "$HOLDS" claim --key "$KEY" --label "${HIMMEL_HOLD_LABEL:-}" --doc "$DOC" --repo "$primary" --source claim ${free_route:+"$free_route"} -- "$rel"
 rc=$?
 if [ "$rc" -eq 124 ]; then
     event fault "$rel" 'holds.py over the bound'
@@ -253,9 +262,14 @@ if [ "$rc" -ne 1 ]; then
     exit 0
 fi
 refused=0
+freed=""
 while IFS= read -r line; do
-    case "$line" in holds:*) refused=1 ;; esac
+    case "$line" in
+        holds-free:\ *) freed=${line#holds-free: } ;;
+        holds:*) refused=1 ;;
+    esac
 done < "$scratch"
+case "$freed" in chief|operator) free_deny "$freed" ;; esac
 if [ "$refused" != 1 ]; then
     event fault "$rel" 'holds.py exit 1 with no holds: line'
     exit 0

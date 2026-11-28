@@ -666,8 +666,16 @@ def sync_denied_write(repo, lines):
         sys.stderr.write('holds: cannot write %s: %s\n' % (sync_denied_name(repo), e.strerror or e))
 
 
-def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen=None):
-    """-> 'claimed' | 'own' | 'granted' | 'skipped' | 'fault' | 'refused:<message>'."""
+def free_route_of(rel):
+    try:
+        trust = load_trust()
+    except (re.error, UnicodeError):
+        trust = None
+    return grant_route(rel, rel, trust) if trust is not None else 'any'
+
+
+def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen=None, free_route=False):
+    """-> 'claimed' | 'own' | 'granted' | 'skipped' | 'fault' | 'refused:<message>' | 'free:<chief|operator>'."""
     norm = normalize(repo, path)
     if norm is None:
         return 'skipped'  # a tree is noted, not held
@@ -734,6 +742,11 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None, seen
                     log_event('deny', rel, key, fields[0])
                 seen[1].add(sig)
             return 'refused:' + refusal(rel, fields, key)
+        if free_route:
+            route = free_route_of(rel)
+            if route != 'any':
+                log_event('deny', rel, key, FREE_HOLDER)
+                return 'free:' + route
         if state == 'unknown':
             fault('holder liveness unproven', rel, key)
             return 'fault'
@@ -789,9 +802,11 @@ def op_claim(a):
     judge = Judge(repo)
     refused = []
     for p in a.paths:
-        r = claim_one(repo, judge, p, a.key, a.label, a.doc, a.source, a.pr)
+        r = claim_one(repo, judge, p, a.key, a.label, a.doc, a.source, a.pr, free_route=a.free_route)
         if r.startswith('refused:'):
             refused.append(r[len('refused:'):])
+        elif r.startswith('free:'):
+            refused.append('holds-free: ' + r[len('free:'):])
     for m in refused:
         sys.stderr.write(m + '\n')
     return 1 if refused else 0
@@ -1724,7 +1739,7 @@ def pending_asks(repo):
         if os.path.exists(os.path.join(d, '%s.grant.%s' % (name, key))):
             continue
         st, f = read_row(os.path.join(d, name))
-        if (st == 'ok' and f[0] == holder) or (st == 'gone' and holder == FREE_HOLDER):
+        if (st == 'ok' and f[0] == holder) or (holder == FREE_HOLDER and not (st == 'ok' and f[0] == key)):
             out.append((key, path, holder))
     return out
 
@@ -2189,6 +2204,7 @@ def build_parser():
         sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
     sp.add_argument('--source', choices=SOURCES, default='claim')
     sp.add_argument('--pr', default='')
+    sp.add_argument('--free-route', action='store_true', help='a trust path whose holder is dead or unknown is refused (holds-free: <route>), never taken over')
     sp.add_argument('paths', nargs='+', metavar='PATH')
     sp = add('seed', op_seed, help='claim every file in a doc\'s Writes lines, all or nothing')
     for o in ('--key', '--label', '--doc', '--repo'):
