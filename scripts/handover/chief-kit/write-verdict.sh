@@ -478,10 +478,13 @@ if [ -e "$DESK_REG" ] || [ -L "$DESK_REG" ]; then
         echo "write-verdict: refusing - $DESK_REG cannot be read, so this session may be a judge desk's; nothing written" >&2
         exit 3
     fi
-    if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && grep -qxF -- "$CLAUDE_CODE_SESSION_ID" "$DESK_REG"; then
-        echo "write-verdict: refusing - this is a judge desk session; nothing written" >&2
-        exit 3
-    fi
+    desk_rc=1
+    [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] || { grep -qxF -- "$CLAUDE_CODE_SESSION_ID" "$DESK_REG"; desk_rc=$?; }
+    case "$desk_rc" in
+        0) echo "write-verdict: refusing - this is a judge desk session; nothing written" >&2; exit 3 ;;
+        1) ;;
+        *) echo "write-verdict: refusing - $DESK_REG cannot be read, so this session may be a judge desk's; nothing written" >&2; exit 3 ;;
+    esac
 fi
 # The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
 # never the caller's cwd. Without --repo the reads of the repo under review (the

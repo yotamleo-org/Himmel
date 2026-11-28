@@ -1247,6 +1247,12 @@ check "32 row 14: ...the record exists" "$([ -f "$scope_dir/q32k/judge.md" ] && 
 rc=0; verdict_rc q32k "$SHA_A" || rc=$?
 check "32 row 14: ...and go_trust_verdict accepts it" "$rc" 0
 rm -rf "$root/$scope/judge-desk"
+mkdir -p "$root/$scope/judge-desk/sessions" || { echo "FAIL: 32 unreadable-registry setup" >&2; exit 1; }
+rc=0; out=$(wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=q32u CLAUDE_CODE_SESSION_ID=sess-4689 bash "$SCRIPT" q32u GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 8: a registry that cannot be read refuses rc 3" "$rc" 3
+contains "32 row 8: ...naming the unreadable registry" "$out" "judge-desk/sessions cannot be read"
+check "32 row 8: ...and no verdicts/q32u/ exists" "$(gone32 q32u)" none
+rmdir "$root/$scope/judge-desk/sessions" "$root/$scope/judge-desk"
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

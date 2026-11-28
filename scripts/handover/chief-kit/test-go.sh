@@ -206,7 +206,7 @@ for fx10 in "$FXA10" "$FXW10"; do
 done
 rc=0
 # shellcheck disable=SC2016  # $1/$2 expand in the inner bash
-out10="$(HIMMEL_REPO="$FXA10" HANDOVER_DIR="$ROOT10" HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 \
+out10="$(unset HIMMEL_CONSOLE_JUDGE; HIMMEL_REPO="$FXA10" HANDOVER_DIR="$ROOT10" HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 \
     _as_claude bash -c 'cd "$1/scripts/handover/chief-kit" && env -u HIMMEL_CONSOLE_LEG bash ./go.sh 77 "$2"' _ "$FXW10" "$SHA" 2>&1)" || rc=$?
 check    "desk: LEG stripped, marker kept: exit 3" "$rc" "3"
 contains "desk: LEG stripped, marker kept: refuses as a chief worker" "$out10" "chief-spawned worker"

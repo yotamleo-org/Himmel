@@ -360,7 +360,7 @@ go_verdict_line() {
 }
 
 # go_pr_qids <verdicts-dir> <pr> <head> — each qid (a directory name; no go-pr-* chief GO
-# and no dsk* judge desk qid, neither a ruling) holding a .md with the exact
+# and no dsk[0-9]* judge desk qid, neither a ruling) holding a .md with the exact
 # line `pr: <pr>` or naming `for head `<head>``, sorted, one per line. A missing
 # directory prints nothing; rc 2 when it cannot be read.
 go_pr_qids() {
