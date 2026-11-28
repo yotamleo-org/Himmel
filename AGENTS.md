@@ -1,4 +1,4 @@
-# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Gemini / Cursor / Copilot / …)
+# AGENTS.md — himmel rules for Codex, Antigravity (Gemini), Cursor and Copilot CLI
 
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Source of truth: CLAUDE.md. Regenerate: node scripts/agents-md/generate.mjs --write -->
@@ -8,6 +8,10 @@
 > `CLAUDE.md`, himmel's source-of-truth rule file. Edit `CLAUDE.md`, then
 > regenerate with `node scripts/agents-md/generate.mjs --write`. A pre-commit
 > drift guard blocks any commit where this file is stale.
+
+Gemini CLI reads `GEMINI.md` unless its own settings name another file, so it
+does not load this file by default; Antigravity does. A tracked root `GEMINI.md`
+is refused so Antigravity never loads the rules twice.
 
 ## Precedence — read this first
 
@@ -23,6 +27,23 @@ Phrases in the rules below such as "use judgement", "deviate only for a concrete
 reason", or "treat as defaults" are **defaults, not contradictions** — the ladder
 above resolves every apparent conflict. Do not spend reasoning reconciling them:
 follow the default unless rule (1) or (2) overrides it.
+
+## Folder rules — read before editing a folder
+
+Your harness loads at most the rule files on the path from the repo root to the
+folder your session started in (Antigravity loads the root file only). Before you edit anything under a folder below,
+open its rule file, even when you started at the root. Each folder except the
+vendored HUD one also holds an `AGENTS.md` that points at the same file.
+
+| Before editing | Read first |
+|---|---|
+| `marketplace/plugins/` | `marketplace/plugins/CLAUDE.md` |
+| `marketplace/plugins/claude-hud/` (vendored; it holds no `AGENTS.md` of its own) | `marketplace/plugins/claude-hud/CLAUDE.md` |
+| `scripts/bitbucket/` | `scripts/bitbucket/CLAUDE.md` |
+| `scripts/handover/` | `scripts/handover/CLAUDE.md` |
+| `scripts/hooks/` | `scripts/hooks/CLAUDE.md` |
+| `scripts/jira/` | `scripts/jira/CLAUDE.md` |
+| `templates/luna-second-brain/` | `templates/luna-second-brain/_CLAUDE.md` |
 
 ## Reading note for non-Claude harnesses
 
@@ -105,14 +126,14 @@ Detail: `docs/internals/enforcement.md#claude-invocation-billing`.
 Delegate only what is independent and sizeable; never spawn a subagent to verify your own
 work (reviewing a diff you did not author is independent review). Brief every child fully —
 it inherits nothing. **Every dispatch names an explicit model**; raise *effort* before tier.
-A specified edit list ending in a machine check names haiku at medium effort. Inline
+A specified edit list ending in a machine check names the smallest model tier at medium effort. Inline
 implementation on a top-tier parent is the anti-pattern. [enforced: orchestrator-inline-guard]
-Escalate, not top-down: an Opus parent spawns a top-model child for the one hard
+Escalate, not top-down: a mid-tier parent spawns a top-model child for the one hard
 call; work above your tier is returned.
 
 Invariants: spawn depth and concurrency are capped by
-`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;
-haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
+your harness's spawn-depth and concurrency caps;
+the smallest model tier does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
 work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,
 Copilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their
 lane descriptors are complete; never GLM. Salus PHI egress is governed by
@@ -120,7 +141,7 @@ lane descriptors are complete; never GLM. Salus PHI egress is governed by
 carries a RETASK block with a fresh nonce; a revision arrives only as a direct
 message quoting it (a narrowing or halt needs no token), never widens
 permissions. Tiers, cost, live inventory:
-`docs/internals/lane-calibration.md`, `/lanes`, `docs/internals/retask-channel.md`.
+`docs/internals/lane-calibration.md`, `docs/internals/retask-channel.md`.
 
 ### Adding a rule — pick the cheapest layer
 **Structural > instructional**: on the second drift escalate to a hook or gate, never
@@ -145,7 +166,7 @@ description: fix the cause, no larger than the ticket, and change the text in th
 qmd finds content: `bash scripts/lib/qmd-bounded.sh query -c <name> "<question>"` (a miss is not proof of absence; a bare qmd call is refused).
 graphify explains structure: `bash scripts/graphify/worker-graph.sh explain|path "<symbol>"` (a query on a sentence is noise; the bare graphify form fails in a worktree; this line wins over the section below).
 Send each search as its own tool call, with no other call in the same response: a call sent beside one that a hook rewrites is refused unrun.
-Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch` directly.
+Extraction runs on scratchpad copies, never live vaults. A live URL → fetch it directly with your web-fetch tool.
 
 ## WORKFLOWS
 
@@ -153,14 +174,14 @@ Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetc
 worktree path, committed-vs-dirty, trailers-in-first-commit, review-owed marker
 and unresolved findings, remaining ordered steps. Drop tool dumps.
 
-**Handover:** state lives in `$HANDOVER_DIR`; use `/handover`, never edit docs; scripts call
+**Handover:** state lives in `$HANDOVER_DIR`; use the handover skill, never edit docs; scripts call
 `handover_root` (`scripts/lib/handover-path.sh`). `docs/internals/handover-system.md`.
 
 ## ENFORCEMENT (runs automatically)
 
-Hook off switch = a session env var set in the LAUNCHING shell (e.g. `EDIT_ON_MAIN_OK=1 claude`).
+Hook off switch = a session env var set in the LAUNCHING shell (e.g. `EDIT_ON_MAIN_OK=1` exported before your harness starts).
 Per-repo opt-out: a gitignored `.single-writer` marker. Environment: `docs/setup/new-machine.md`.
-When a guardrail stops you, use `himmel-ops:stuck-playbook` (`docs/internals/stuck-playbook.md`).
+When a guardrail stops you, read `docs/internals/stuck-playbook.md`.
 
 ## REFERENCE INDEX
 
