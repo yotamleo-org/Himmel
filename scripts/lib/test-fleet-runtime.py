@@ -262,9 +262,9 @@ class Runtime(unittest.TestCase):
         self.assertIsNone(self.preflight_run_timeout(source.replace('timeout=PREFLIGHT_TIMEOUT', 'timeout=60')))
 
     def test_a_managed_wave_of_eleven_all_start_below_the_target(self):
-        self.call('control', 'set', self.m, '--mode', 'active', '--target', '20', '--expect-gen', '1')
         (self.bucket / '.himmel').mkdir(exist_ok=True)
         (self.bucket / '.himmel/config.json').write_text('{"policy":{"HIMMEL_FLEET_CAP":30}}\n')
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '20', '--expect-gen', '1')
         docs = []
         for n in range(1, 12):
             doc = self.bucket / ('TEST-%d-N%d-wave.md' % (100 + n, n))
@@ -311,9 +311,9 @@ class Runtime(unittest.TestCase):
     def cap_readers_env(self):
         """Target 3 under policy cap 4, one wrapped worker in the census and one legacy api reservation: the
         unmanaged rules count neither, a managed launch counts both."""
-        self.call('control', 'set', self.m, '--mode', 'active', '--target', '3', '--expect-gen', '1')
         (self.bucket / '.himmel').mkdir(exist_ok=True)
         (self.bucket / '.himmel/config.json').write_text('{"policy":{"HIMMEL_FLEET_CAP":4}}\n')
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '3', '--expect-gen', '1')
         handover = self.bucket / 'handover'
         handover.mkdir()
         wrapped = handover / 'wrapped.md'
@@ -371,8 +371,14 @@ class Runtime(unittest.TestCase):
         self.call('add', self.m, settled, '--lane', 'native', '--pending')
         first = self.launch_read(env, doc=settled, aid='old')
         self.assertIn(first.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), first.stderr)
-        self.rt('outcome', aid='old', doc=settled, extra=('--phase', 'refused'))
-        self.assertTrue((self.bucket / 'slots' / settled.stem).exists())
+        record = self.attempts()['old']
+        with (self.bucket / '.himmel/launch-refusals.jsonl').open('a') as stream:
+            stream.write(json.dumps(dict(
+                v=2, kind='launch-attempt', source='fleet-runtime', ts=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                attempt_id='old', name=record['name'], doc=record['doc'], family=record['family'], owner=record.get('owner'),
+                session=record.get('session'), outcome='refused', cause='runtime', phase='runtime',
+                committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'))) + '\n')
+        self.assertTrue((self.bucket / 'slots' / settled.stem / 'managed.json').exists())
         plain = self.plain_read(env, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m))
         launch = self.launch_read(env)
         plain_n, plain_cap = self.fleet_total(plain.stderr).split('/')
@@ -397,7 +403,7 @@ class Runtime(unittest.TestCase):
         loose.mkdir()
         (loose / 'notes.md').write_text('# personal\n')
         for extra in ({}, {'WORKER_SESSION_DOC': str(self.doc)}, {'FLEET_LAUNCH_DOC': str(loose / 'notes.md')}):
-            p = self.plain_read(env, FLEET_LAUNCH_DOC=None, **extra)
+            p = self.plain_read(env, **dict({'FLEET_LAUNCH_DOC': None}, **extra))
             self.assertEqual(self.fleet_total(p.stderr), '0/4', (extra, p.stderr))
             for line in ('cap-source=', 'family target not read', 'timeout-bin:'):
                 self.assertNotIn(line, p.stderr, extra)
