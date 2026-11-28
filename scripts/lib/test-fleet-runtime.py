@@ -35,9 +35,6 @@ _lt_fire() {
 
 
 def loss_trigger(tree, where, once):
-    """Replace the tree's key-library symlink with a file that sources the real library by absolute path and
-    removes .admit once or on every call: `top` while sourced, `func` inside fleet_reservation_key. Each pass
-    dumps its own /proc/$$/environ and cmdline into the returned marks directory."""
     marks = tree / 'loss-marks'
     marks.mkdir()
     key = tree / 'scripts/lib/fleet-reservation-key.sh'
@@ -237,7 +234,6 @@ class Runtime(unittest.TestCase):
 
     @staticmethod
     def preflight_run_timeout(source):
-        """The value `run` bounds its one preflight call with, when that bound is the PREFLIGHT_TIMEOUT constant."""
         module = ast.parse(source)
         consts = {target.id: node.value.value for node in module.body if isinstance(node, ast.Assign)
                   and isinstance(node.value, ast.Constant) for target in node.targets if isinstance(target, ast.Name)}
@@ -309,8 +305,6 @@ class Runtime(unittest.TestCase):
         print('W2: largest hold %ss, slowest launch %.1fs' % (max(holds), max(r[3] for r in results)), file=sys.stderr)
 
     def cap_readers_env(self):
-        """Target 3 under policy cap 4, one wrapped worker in the census and one legacy api reservation: the
-        unmanaged rules count neither, a managed launch counts both."""
         (self.bucket / '.himmel').mkdir(exist_ok=True)
         (self.bucket / '.himmel/config.json').write_text('{"policy":{"HIMMEL_FLEET_CAP":4}}\n')
         self.call('control', 'set', self.m, '--mode', 'active', '--target', '3', '--expect-gen', '1')
@@ -430,8 +424,6 @@ class Runtime(unittest.TestCase):
         self.assertNotIn('fleet-runtime:', p.stderr)
 
     def primary_tree(self, name):
-        """A copy of anchorless_tree's layout with no .git and no .env entry, then `git init`ed, so the guard
-        reads it as its own primary checkout; a fixture .env sets the policy cap."""
         tree = self.bucket / name
         tree.mkdir()
         real = {Path('scripts'), Path('scripts/handover'), Path('scripts/handover/chief-kit'), Path('scripts/lib')}
@@ -454,7 +446,6 @@ class Runtime(unittest.TestCase):
         return tree
 
     def detached_preflight(self, tree, env):
-        """Run the tree's preflight by a double fork, so no claude ancestor remains; returns (rc, stdout, stderr)."""
         out, err, rc = (self.bucket / (tree.name + suffix) for suffix in ('.out', '.err', '.rc'))
         inner = 'bash "$1" > "$2" 2> "$3" < /dev/null; echo $? > "$4"'
         outer = '( o=$$; while kill -0 "$o" 2>/dev/null; do sleep 0.05; done; bash -c "$0" _ "$@" ) > /dev/null 2>&1 &'

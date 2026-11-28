@@ -983,7 +983,7 @@ err_lacks "(R3x) a 150 s budget is read as 90" 're-running admission'
 r3_run r3xc "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=120 _FLEET_ADMIT_T0="$(( $(date +%s) - 93 ))"
 err_has "(R3x) control: a 120 s budget is kept" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
 
-D1_BOUNDS="FLEET_ADMIT_LAUNCH_WAIT_SECS=2 FLEET_ADMIT_RETRY_ITERS=3"
+D1_BOUNDS=(FLEET_ADMIT_LAUNCH_WAIT_SECS=2 FLEET_ADMIT_RETRY_ITERS=3)
 d1_pidns="$(readlink /proc/self/ns/pid 2>/dev/null)"
 d1_dead=""
 for _d1_try in 1 2 3 4 5; do
@@ -1003,15 +1003,13 @@ else
   slots_d1="$(mktemp -d "$W/slots-d1.XXXXXX")" || exit 1
   d1_lock "$slots_d1" "$d1_dead"
   : > "$W/err.log"
-  # shellcheck disable=SC2086
-  d1_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9806-d1 HIMMEL_FLEET_CAP=4 $D1_BOUNDS)"
+  d1_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9806-d1 HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
   check "(D1) a 5 s old lock with a dead holder in this pid namespace -> admitted" PROCEED "$d1_out"
   err_has "(D1) ... reclaimed from the dead holder at once" "from a dead holder pid $d1_dead (age "
   sleep 120 & d1_live=$!
   d1_lock "$slots_d1" "$d1_live"
   : > "$W/err.log"
-  # shellcheck disable=SC2086
-  d1c_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9807-d1c HIMMEL_FLEET_CAP=4 $D1_BOUNDS)"
+  d1c_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9807-d1c HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
   check "(D1c) control: a live holder -> refused" SKIPPED-FLEET "$d1c_out"
   err_has "(D1c) ... naming the live holder" "holder pid $d1_live "
   for d1n in "other:pid:[1]" "nofile:-" "emptypid:"; do
@@ -1022,8 +1020,7 @@ else
     esac
     d1n_before="$(d1_state "$slots_d1")"
     : > "$W/err.log"
-    # shellcheck disable=SC2086
-    d1n_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9808-d1n HIMMEL_FLEET_CAP=4 $D1_BOUNDS)"
+    d1n_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9808-d1n HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
     check "(D1n ${d1n%%:*}) not confirmed dead in this namespace -> refused" SKIPPED-FLEET "$d1n_out"
     check "(D1n ${d1n%%:*}) ... the lock untouched" "$d1n_before" "$(d1_state "$slots_d1")"
   done
@@ -1035,8 +1032,7 @@ else
   d1_lock "$slots_d1" "$d1_dead"
   d1s_hook "$W/hook-d1s" "$W/d1s.rec" "$slots_d1"
   : > "$W/err.log"
-  # shellcheck disable=SC2086
-  d1s_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9809-d1s HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1s" $D1_BOUNDS)"
+  d1s_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9809-d1s HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1s" "${D1_BOUNDS[@]}")"
   check "(D1s) the gate-made hook fired" gate-made "$(cat "$W/d1s.rec" 2>/dev/null)"
   check "(D1s) a same-second live claim made under the gate wait -> refused" SKIPPED-FLEET "$d1s_out"
   check "(D1s) ... the swapped lock untouched" "$d1_live" "$(cat "$slots_d1/.admit/pid" 2>/dev/null)"
@@ -1047,8 +1043,7 @@ else
     awk -v n="$d1s_line" 'NR == n { $0 = "    :" } 1' "$SUT_LIB/usage-preflight.sh" > "$lt_d1s/scripts/lib/usage-preflight.sh"
     d1_lock "$slots_d1" "$d1_dead"
     d1s_hook "$W/hook-d1sc" "$W/d1sc.rec" "$slots_d1"
-    # shellcheck disable=SC2086
-    d1sc_out="$(SUT="$lt_d1s/scripts/lib/usage-preflight.sh" run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9810-d1sc HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1sc" $D1_BOUNDS)"
+    d1sc_out="$(SUT="$lt_d1s/scripts/lib/usage-preflight.sh" run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9810-d1sc HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1sc" "${D1_BOUNDS[@]}")"
     check "(D1s) control: without the pid re-check the swapped live claim is stolen" PROCEED "$d1sc_out"
   else
     FAIL=$((FAIL+1)); echo "FAIL - (D1s) control: the gated pid re-check is not one line in the preflight"
@@ -1085,7 +1080,8 @@ err_has "(B1z) ... after its 8 tries, read as decimal" 'after 8 retries'
 kill "$b1_holder" 2>/dev/null; wait "$b1_holder" 2>/dev/null
 
 wave() {
-  local label="$1" cap="$2" i pids="" callers="" ps
+  local label="$1" cap="$2" i ps
+  local -a pids=() callers=()
   ps="$W/ps-$label"
   printf '{"policy":{"HIMMEL_FLEET_CAP":%s}}\n' "$cap" > "$HOME/.himmel/config.json"
   mkdir -p "$ps/proc"
@@ -1093,20 +1089,17 @@ wave() {
   wave_slots="$(mktemp -d "$W/slots-$label.XXXXXX")" || exit 1
   : > "$W/err.log"; rm -f "$W/go-$label"
   for i in 1 2 3 4 5 6 7 8 9 10 11; do
-    sleep 300 & callers="$callers $!"
+    sleep 300 & callers+=("$!")
     ( while [ ! -e "$W/go-$label" ]; do sleep 0.01; done
       run_pf "$wave_slots" "$ps" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER="HIMMEL-t98$i-$label" CADENCE_USAGE_CALLER_PID="$!" > "$W/out-$label-$i"
-    ) & pids="$pids $!"
+    ) & pids+=("$!")
   done
-  ( sleep 300; for i in $pids; do kill "$i" 2>/dev/null; done ) & local watchdog=$!
+  ( sleep 300; for i in "${pids[@]}"; do kill "$i" 2>/dev/null; done ) & local watchdog=$!
   touch "$W/go-$label"
-  # shellcheck disable=SC2086
-  wait $pids 2>/dev/null
+  wait "${pids[@]}" 2>/dev/null
   kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
-  # shellcheck disable=SC2086
-  kill $callers 2>/dev/null
-  # shellcheck disable=SC2086
-  wait $callers 2>/dev/null
+  kill "${callers[@]}" 2>/dev/null
+  wait "${callers[@]}" 2>/dev/null
   wave_ok=$(cat "$W"/out-"$label"-* 2>/dev/null | grep -c '^PROCEED$')
   wave_cap_refused=$(grep -c 'fleet at/over cap' "$W/err.log")
   printf '{"policy":{"HIMMEL_FLEET_CAP":4}}\n' > "$HOME/.himmel/config.json"
