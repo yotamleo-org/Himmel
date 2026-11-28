@@ -41,6 +41,7 @@ KEY_RE = re.compile(r'^[A-Za-z][A-Za-z0-9]*-\d+$')
 GRANT_RE = re.compile(r'\.grant\.[A-Za-z][A-Za-z0-9]*-\d+$')
 TMP_PREFIX = '%00'       # escaping only ever makes %25 and %2F, so a name starting %00 is never a row
 MAX_NAME = 255
+FREE_HOLDER = 'nobody'
 LOCK_WAIT = 5.0          # seconds a row write waits for the directory lock before it faults
 SIDECARS = ('.worker-preface.md', '.worker-contract.md')  # a launch's sidecars carry the doc's name; they are not a doc of the key
 
@@ -1686,7 +1687,8 @@ ASK_TAIL = 256 * 1024    # bytes of events.log read for the asks: the log grows 
 
 def pending_asks(repo):
     """[(key, path, holder)]: a trust-path (or settings or CI workflow) deny from the last day that no grant answers, whose
-    holder's row still holds the path here, whose asker's key is not Done. Local files only."""
+    holder's row still holds the path here (holder FREE_HOLDER: still no row), whose asker's key is not Done. Local files
+    only."""
     trust = load_trust()
     if trust is None:
         return []
@@ -1723,7 +1725,7 @@ def pending_asks(repo):
         if os.path.exists(os.path.join(d, '%s.grant.%s' % (name, key))):
             continue
         st, f = read_row(os.path.join(d, name))
-        if st == 'ok' and f[0] == holder:
+        if (st == 'ok' and f[0] == holder) or (st == 'gone' and holder == FREE_HOLDER):
             out.append((key, path, holder))
     return out
 

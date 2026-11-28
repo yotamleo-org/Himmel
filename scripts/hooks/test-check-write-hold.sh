@@ -358,14 +358,15 @@ hasrow "the hook does not fold aliases: the old spelling has its own row" script
 : > "$R/scripts/lib/rename-aliases.tsv"
 
 # ---- trust paths
-w "$KA" "$R/scripts/handover/chief-kit/holds.py"
+hold() { hp claim --key "$1" --label "$1 lbl" --doc "$(docof "$1")" --repo "$R" -- "$2" > /dev/null 2>&1; }
+hold "$KA" scripts/handover/chief-kit/holds.py
 w "$KB" "$R/scripts/handover/chief-kit/holds.py"
 same "a trust path held by a rival: exit 2" "$RC" 2
 same "the trust path routes chief in the real holds.py" "$(python3 -I "$HOLDS_REAL" grant-route --repo "$R" -- scripts/handover/chief-kit/holds.py)" chief
 same "route chief: the deny text is exact" "$ERR" "$(trust_text scripts/handover/chief-kit/holds.py "$KA" "$KB")"
 lacks "route chief: the deny has no HOLD-ASK" "$ERR" "HOLD-ASK"
 lacks "route chief: the deny no longer says there is no grant" "$ERR" "has no grant"
-w "$KA" "$R/.claude/settings.json"
+hold "$KA" .claude/settings.json
 w "$KB" "$R/.claude/settings.json"
 same "a settings file held by a rival: exit 2" "$RC" 2
 same "a settings file routes operator in the real holds.py" "$(python3 -I "$HOLDS_REAL" grant-route --repo "$R" -- .claude/settings.json)" operator
@@ -373,8 +374,8 @@ same "route operator: the deny text is exact" "$ERR" "$(operator_text .claude/se
 lacks "route operator: the deny has no HOLD-ASK" "$ERR" "HOLD-ASK"
 lacks "route operator: the deny offers no chief stamp" "$ERR" "--chief-doc"
 
-w "$KA" "$R/scripts/hooks/lib/x.sh"
-w "$KB" "$R/scripts/hooks/block-x.sh"
+hold "$KA" scripts/hooks/lib/x.sh
+hold "$KB" scripts/hooks/block-x.sh
 w "$KA" "$R/scripts/hooks/block-x.sh"; rc1=$RC; e1=$ERR
 w "$KB" "$R/scripts/hooks/lib/x.sh"; rc2=$RC; e2=$ERR
 same "crossed trust holders, first: exit 2" "$rc1" 2
@@ -386,6 +387,45 @@ grep -vE '^(#|$)' "$TRUST" > "$W/trust-patterns"
 for p in scripts/handover/chief-kit/holds.py scripts/hooks/check-write-hold.sh; do
     if printf '%s\n' "$p" | grep -qE -f "$W/trust-patterns"; then pass "$p matches ci-trust-paths.txt"; else fail "$p matches ci-trust-paths.txt"; fi
 done
+
+KT=HIMMEL-1541
+KS=HIMMEL-1542
+free_trust_text() {
+    printf '%s is a trust path outside your brief Writes, held by no one: a trust path needs a grant before your first write. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I %q grant --key %s --repo %q --chief-doc CHIEF_DOC %q . Otherwise the operator launches with WRITE_HOLD_OK=1' \
+        "$1" "$HOLDS_REAL" "$2" "$R" "$1"
+}
+free_operator_text() {
+    printf '%s is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1' "$1"
+}
+before="$(ev_count)"
+fx Edit file_path "$WT/scripts/ci/run-shell-tests.sh" "$WT"
+as_worker "$KT"
+same "an Edit of an unheld trust path outside Writes, from a worktree: exit 2" "$RC" 2
+same "free trust path: the deny text is exact" "$ERR" "$(free_trust_text scripts/ci/run-shell-tests.sh "$KT")"
+same "free trust path: the deny is a structured decision" "$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision')" deny
+norow "free trust path: no row is published" scripts/ci/run-shell-tests.sh
+same "free trust path: one event" "$(ev_count)" "$((before + 1))"
+same "free trust path: a deny event naming no holder" "$(tail -n 1 "$EVENTS" | cut -f2-5)" "$(printf 'deny\tscripts/ci/run-shell-tests.sh\t%s\tnobody' "$KT")"
+contains "free trust path: the chief's asks list it as a chief ask" "$(hp asks --repo "$R")" "$(printf '%s\tscripts/ci/run-shell-tests.sh\tnobody\t' "$KT")"
+: > "$(rowf scripts/ci/run-shell-tests.sh).grant.$KT"
+as_worker "$KT"
+same "free trust path, granted: exit 0" "$RC" 0
+same "free trust path, granted: the write publishes the worker's row" "$(row_field scripts/ci/run-shell-tests.sh 1)" "$KT"
+w "$KT" "$R/.github/workflows/x11544.yml"
+same "an unheld CI workflow outside Writes: exit 2" "$RC" 2
+same "free CI workflow: the deny text is exact" "$ERR" "$(free_operator_text .github/workflows/x11544.yml)"
+norow "free CI workflow: no row" .github/workflows/x11544.yml
+w "$KT" "$R/docs/free-11544.md"
+same "control: an unheld non-trust file outside Writes: exit 0" "$RC" 0
+hasrow "control: that write claims the file" docs/free-11544.md
+printf '> **Writes:** scripts/ci/seeded-11544.sh\n' > "$(docof "$KS")"
+hp seed --key "$KS" --label "$KS lbl" --doc "$(docof "$KS")" --repo "$R" > /dev/null 2>&1
+w "$KS" "$WT/scripts/ci/seeded-11544.sh" "$WT"
+same "control: a trust path inside the brief Writes: exit 0" "$RC" 0
+same "control: that row is the brief's" "$(row_field scripts/ci/seeded-11544.sh 4)" brief
+fx Write file_path "$R/scripts/ci/bypass-11544.sh"
+as_worker "$KT" WRITE_HOLD_OK=1
+same "WRITE_HOLD_OK=1 on a free trust path: exit 0" "$RC" 0
 
 # ---- multi-key docs: only the first key is the worker's identity
 K3A=HIMMEL-311
@@ -483,6 +523,14 @@ same "holds.py hanging: the write passes" "$RC" 0
 if [ "$elapsed" -lt 15 ]; then pass "holds.py hanging: the hook's own bound fires under 15 s (${elapsed}s)"; else fail "holds.py hanging: the hook's own bound fires under 15 s (${elapsed}s)"; fi
 same "holds.py hanging: one event" "$(ev_count)" "$((before + 1))"
 same "holds.py hanging: that event is a fault" "$(ev_last)" fault
+start=$SECONDS
+w "$KT" "$R/scripts/ci/hang-11544.sh"
+elapsed=$((SECONDS - start))
+same "grant-route hanging on a free trust path: the write passes" "$RC" 0
+if [ "$elapsed" -lt 5 ]; then pass "grant-route hanging: its bound fires under 5 s (${elapsed}s)"; else fail "grant-route hanging: its bound fires under 5 s (${elapsed}s)"; fi
+stub_tree 'import sys; sys.exit(2)'
+w "$KT" "$R/scripts/ci/fault-11544.sh"
+same "grant-route failing on a free trust path: the write passes" "$RC" 0
 HOOK_UT="$HOOK"
 
 before="$(ev_count)"
