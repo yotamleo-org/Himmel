@@ -17,21 +17,11 @@
 # Both functions: sourceable from hooks and scripts, `return`-only (never
 # `exit`), no `set -e` toggling. bash 3.2-safe.
 
-# chief_worker — rc 0 when HIMMEL_CONSOLE_LEG is truthy (this process IS a
-# chief-spawned worker, exported by headed-arm-worker.sh). Same five falsy
-# spellings every call site used before this helper, case-insensitive,
-# whitespace-stripped: empty, 0, false, off, no — anything else is truthy.
-# A judge desk or judge session is a chief worker too, so a GO script refuses one
-# that strips HIMMEL_CONSOLE_LEG: rc 0 while HIMMEL_CONSOLE_JUDGE_NOVERDICT is set
-# and not 0, or while HIMMEL_CONSOLE_JUDGE is truthy by the same spellings.
+# chief_worker — rc 0 for a chief worker (HIMMEL_CONSOLE_LEG), a judge (HIMMEL_CONSOLE_JUDGE) or a judge desk (HIMMEL_CONSOLE_JUDGE_NOVERDICT
+# set, not 0); LEG and JUDGE are falsy only as empty, 0, false, off or no, case-insensitive, whitespace-stripped.
 chief_worker() {
-    if [ -n "${HIMMEL_CONSOLE_JUDGE_NOVERDICT+x}" ] && [ "$HIMMEL_CONSOLE_JUDGE_NOVERDICT" != 0 ]; then
-        return 0
-    fi
-    case "$(printf '%s' "${HIMMEL_CONSOLE_JUDGE:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
-        ''|0|false|off|no) ;;
-        *) return 0 ;;
-    esac
+    { [ -n "${HIMMEL_CONSOLE_JUDGE_NOVERDICT+x}" ] && [ "$HIMMEL_CONSOLE_JUDGE_NOVERDICT" != 0 ]; } && return 0
+    case "$(printf '%s' "${HIMMEL_CONSOLE_JUDGE:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in ''|0|false|off|no) ;; *) return 0 ;; esac
     case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
         *) return 0 ;;

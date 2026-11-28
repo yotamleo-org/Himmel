@@ -570,6 +570,7 @@ verdict dsk6139a 101 "$H1" GO
 printf 'finding\n' > "$STUB/delta.out"
 sweep
 has "dsk: a dsk verdict at the READY head leaves the duty judge-owed" "DUTY judge-owed 101@$H7_1 :: " "$OUT"
+has "dsk: the older verdict still reaches the classifier" "--verdict-file $B/verdicts/j101a/judge.md $H2 $H1" "$(cat "$STUB/delta-calls")"
 hasnt "dsk: the classifier never reads the dsk record" "dsk6139a" "$(cat "$STUB/delta-calls")"
 
 check "no gh call outside the seam" "" "$(cat "$STUB/path-gh-calls")"
