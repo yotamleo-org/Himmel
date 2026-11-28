@@ -379,7 +379,7 @@ else
 fi
 # shellcheck disable=SC2016
 for row in '|git commit -F /tmp/msg|' '1|git commit -F /tmp/msg && git push|' '1|git push|' \
-    '1|git commit -m \"$(id)\"|' '1|git commit -m `id`|' \
+    '1|git commit -m \"$(id)\"|' '1|git commit -m `id`|' '1|python3 x.py|' '1|rm -f x|' \
     '1|git commit -F /tmp/msg|/home/u/.claude-codex'; do
     leg=${row%%|*}; rest=${row#*|}; cmd=${rest%%|*}; cfg=${rest#*|}
     out=$(run_silent "$leg" "$cmd" "$cfg")
