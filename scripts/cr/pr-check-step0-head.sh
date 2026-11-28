@@ -86,6 +86,8 @@ step0_head_read() {
             *) bad=1; break ;;
         esac
     done 2>/dev/null < "$p"
+    case "$h" in *[!0-9a-f]*) bad=1 ;; esac
+    case "${#h}" in 40|64) ;; *) bad=1 ;; esac
     if [ "$bad" -ne 0 ] || [ "$nb" -ne 1 ] || [ "$nh" -ne 1 ] || [ "$nt" -ne 1 ]; then
         printf '%s\n' "$p"
         return 2

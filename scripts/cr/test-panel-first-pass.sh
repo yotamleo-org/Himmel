@@ -1219,6 +1219,9 @@ h_malformed "H4 a fourth key"
 seed_record "$repo" feature "$feature_sha" ""
 h_run --branch feature
 h_malformed "H4 an empty toplevel="
+seed_record "$repo" feature "not-a-sha" "$h_top"
+h_run --branch feature
+h_malformed "H4 a head= that is not a full object id"
 clear_record "$repo" feature
 printf 'branch=feature\nhead=%s\ntoplevel=%s\n' "$feature_sha" "$h_top" > "$tmp/h-valid-rec"
 ln -s "$tmp/h-valid-rec" "$h_rec"
