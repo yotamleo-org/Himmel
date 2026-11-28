@@ -520,6 +520,122 @@ usage_text="$(bash "$SCRIPT" 2>&1)"
 case "$usage_text" in *'lowercase word: native, claudex, openrouter, deepseek, t3'*) usage_names=yes ;; *) usage_names=no ;; esac
 check '11. the usage text names lane t3' yes "$usage_names"
 
+d12="$tmp/m12"; mkdir -p "$d12"
+m12="$d12/chief-a.fleet.json"; m12b="$d12/chief-b.fleet.json"
+gone="$d12/HIMMEL-12-N90-gone.md"
+wrapped="$d12/HIMMEL-12-N91-wrapped.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n- 11:00 WRAPPED — done\n' > "$wrapped"
+held="$d12/HIMMEL-12-N92-held.md"; printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$held"
+onproc="$d12/HIMMEL-12-N93-onproc.md"
+open="$d12/HIMMEL-12-N94-open.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n' > "$open"
+race="$d12/HIMMEL-12-N95-race.md"
+touch -d '2 hours ago' "$wrapped" "$held" "$open"
+lock12="$d12/queue-lock"
+# shellcheck disable=SC2016
+printf '#!/bin/bash\ncase "$2" in\n  */HIMMEL-12-N92-*) exit 11 ;;\n  */HIMMEL-12-N95-*) n=$(cat "%s/n95" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n95"; [ "$n" -lt 1 ] || exit 11 ;;\nesac\nexit 0\n' "$d12" "$d12" > "$lock12"
+chmod +x "$lock12"
+printf '{"schema":1,"keep_me":1,"workers":[{"doc":"%s","label":"N90"},{"doc":"%s","label":"N91"},{"doc":"%s","label":"N92"}]}\n' "$gone" "$wrapped" "$held" > "$m12"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N93"},{"doc":"%s","label":"N94"},{"doc":"%s","label":"N95"}]}\n' "$onproc" "$open" "$race" > "$m12b"
+before_a="$(cat "$m12")"; before_b="$(cat "$m12b")"
+WORKER_SESSION_DOC="$onproc" python3 -c 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(60)' & live12=$!
+sleep .2
+dry="$(TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" 2>/dev/null)"; rc=$?
+check '12. a dry run succeeds (rc 0)' 0 "$rc"
+check '12. the dry run rewrites no manifest' "$before_a|$before_b" "$(cat "$m12")|$(cat "$m12b")"
+check '12. the dry run lists a gone doc with its proof' 1 "$(grep -c "^would-retire	$m12	N90	$gone	lock free, no live session, doc gone$" <<<"$dry")"
+check '12. the dry run lists a wrapped doc with its proof' 1 "$(grep -c "^would-retire	$m12	N91	$wrapped	lock free, no live session, newest marker WRAPPED$" <<<"$dry")"
+check '12. a row whose lock is held is kept' 1 "$(grep -c "^keep	$m12	N92	$held	lock held$" <<<"$dry")"
+check '12. a row a live claude session is on is kept, though its doc is gone' 1 "$(grep -c "^keep	$m12b	N93	$onproc	live session$" <<<"$dry")"
+check '12. a row whose doc is not wrapped is kept' 1 "$(grep -c "^keep	$m12b	N94	$open	newest marker LIVE, not wrapped$" <<<"$dry")"
+check '12. the sibling manifest is swept too' 1 "$(grep -c "^would-retire	$m12b	N95	$race	" <<<"$dry")"
+check '12. the dry run names every row once' 6 "$(grep -c . <<<"$dry")"
+rm -f "$d12/n95"
+out="$(TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" --apply 2>/dev/null)"; rc=$?
+kill "$live12" 2>/dev/null; wait "$live12" 2>/dev/null
+check '12. the apply succeeds (rc 0)' 0 "$rc"
+check '12. the apply prints each row it retired' "retired	$m12	N90	$gone	lock free, no live session, doc gone
+retired	$m12	N91	$wrapped	lock free, no live session, newest marker WRAPPED" "$(grep '^retired' <<<"$out")"
+check '12. the proven-gone rows leave the manifest and the held row stays' "$held" "$(jq -r '.workers[].doc' "$m12")"
+check '12. a key the writer does not own survives the rewrite' 1 "$(jq -r '.keep_me' "$m12")"
+check '12. the live-session and not-wrapped rows stay' "$onproc
+$open
+$race" "$(jq -r '.workers[].doc' "$m12b")"
+check '12. a row whose lock is taken before the rewrite is kept by the re-check under the lock' 1 "$(grep -c "^keep	$m12b	N95	$race	lock held$" <<<"$out")"
+TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" --force >/dev/null 2>&1; rc=$?
+check '12. an unknown retire flag is a usage error (rc 2)' 2 "$rc"
+d12c="$tmp/m12c"; mkdir -p "$d12c"
+m12c="$d12c/chief.fleet.json"
+managed="$d12c/HIMMEL-12-N96-managed.md"; gone2="$d12c/HIMMEL-12-N97-gone.md"
+printf '{"schema":1,"attempts":{"a1":{"doc":"%s","phase":"launched"}}}\n' "$managed" > "$d12c/fleet-control.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N96"},{"doc":"%s","label":"N97"}]}\n' "$managed" "$gone2" > "$m12c"
+before_c="$(cat "$m12c")"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" 2>/dev/null)"
+check '12. a managed attempt of the anchor is kept, though its doc is gone' 1 "$(grep -c "^keep	$m12c	N96	$managed	managed attempt$" <<<"$out")"
+PATH="$tmp/fail-bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
+check '12. a failed rewrite exits 1' 1 "$rc"
+check '12. and says the rewrite failed' 1 "$(grep -c "^fleet-manifest: cannot write $m12c$" "$d12c/err")"
+check '12. and reports no row as retired' 0 "$(grep -c '^retired' "$d12c/out")"
+check '12. and leaves the manifest as it was' "$before_c" "$(cat "$m12c")"
+: > "$d12c/fleet-control.json"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
+check '12. an empty fleet-control.json refuses the retire (rc 1)' 1 "$rc"
+check '12. and names the unread anchor' 1 "$(grep -c "^fleet-manifest: cannot read $d12c/fleet-control.json$" "$d12c/err")"
+check '12. and nothing is retired' "$before_c" "$(cat "$m12c")"
+printf '{"schema":1,"attempts":false}\n' > "$d12c/fleet-control.json"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
+check '12. a fleet-control.json whose attempts is not an object refuses the retire (rc 1)' 1 "$rc"
+check '12. and names the unread anchor too' 1 "$(grep -c "^fleet-manifest: cannot read $d12c/fleet-control.json$" "$d12c/err")"
+check '12. and nothing is retired either' "$before_c" "$(cat "$m12c")"
+d12d="$tmp/m12d"; mkdir -p "$d12d"
+m12d="$d12d/chief.fleet.json"; late="$d12d/HIMMEL-12-N98-late.md"
+lock12d="$d12d/queue-lock"
+# shellcheck disable=SC2016
+printf '#!/bin/bash\nn=$(cat "%s/n" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n"\n[ "$n" -ge 1 ] || exit 0\nWORKER_SESSION_DOC="$2" python3 -c "import ctypes,time; ctypes.CDLL(None).prctl(15,b\\"claude\\",0,0,0); time.sleep(60)" & echo $! > "%s/pid"\ni=0; until [ "$(cat /proc/$!/comm 2>/dev/null)" = claude ] || [ "$i" -ge 100 ]; do i=$((i + 1)); sleep .05; done\nexit 0\n' "$d12d" "$d12d" "$d12d" > "$lock12d"
+chmod +x "$lock12d"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N98"}]}\n' "$late" > "$m12d"
+out="$(TICKET_STATUS_QUEUE_LOCK="$lock12d" bash "$SCRIPT" retire "$m12d" --apply 2>/dev/null)"; rc=$?
+kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
+check '12. the apply with a late session succeeds (rc 0)' 0 "$rc"
+check '12. a session that starts on a candidate during the locked re-check keeps its row' "keep	$m12d	N98	$late	live session" "$out"
+check '12. and the row stays in the manifest' "$late" "$(jq -r '.workers[].doc' "$m12d")"
+mkdir -p "$d12d/real"; ln -s real "$d12d/link"
+m12e="$d12d/link.fleet.json"; viaLink="$d12d/link/HIMMEL-12-N99-late.md"
+rm -f "$d12d/n" "$d12d/pid"
+# shellcheck disable=SC2016
+sed -e 's|WORKER_SESSION_DOC="$2"|WORKER_SESSION_DOC="'"$(cd -P "$d12d/real" && pwd -P)"'/${2##*/}"|' "$lock12d" > "$d12d/queue-lock-phys"; chmod +x "$d12d/queue-lock-phys"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N99","lane":"native"}]}\n' "$viaLink" > "$m12e"
+rm -f "$m12d"
+out="$(TICKET_STATUS_QUEUE_LOCK="$d12d/queue-lock-phys" bash "$SCRIPT" retire "$m12e" --apply 2>/dev/null)"; rc=$?
+kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
+check '12. the apply with a late session on the physical path succeeds (rc 0)' 0 "$rc"
+check '12. a late session on the physical path of a candidate keeps its row' "keep	$m12e	N99	$viaLink	live session" "$out"
+d12f="$tmp/m12f"; mkdir -p "$d12f/bin"
+m12f="$d12f/chief.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N89"}]}\n' "$d12f/HIMMEL-12-N89-gone.md" > "$m12f"
+before_f="$(cat "$m12f")"
+printf '#!/bin/bash\ncase " $* " in *" --arg drop "*) : > "%s/hit"; "%s" "$@" | head -c 10; exit 1 ;; esac\nexec "%s" "$@"\n' "$d12f" "$(command -v jq)" "$(command -v jq)" > "$d12f/bin/jq"
+chmod +x "$d12f/bin/jq"
+PATH="$d12f/bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12f" --apply >"$d12f/out" 2>/dev/null; rc=$?
+check '12. a rewrite whose jq dies mid-output exits 1' 1 "$rc"
+check '12. and the failing jq was the rewrite' yes "$([ -e "$d12f/hit" ] && echo yes)"
+check '12. and leaves the manifest whole' "$before_f" "$(cat "$m12f")"
+check '12. and reports no row as retired' 0 "$(grep -c '^retired' "$d12f/out")"
+d12g="$tmp/m12g"; mkdir -p "$d12g"
+m12g="$d12g/chief.fleet.json"; fresh12="$d12g/HIMMEL-12-N87-fresh.md"
+printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$fresh12"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N87"}]}\n' "$fresh12" > "$m12g"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" --apply 2>/dev/null)"; rc=$?
+check '12. the apply over a doc that just wrapped succeeds (rc 0)' 0 "$rc"
+check '12. a doc that wrapped under 1 h ago keeps its row' "keep	$m12g	N87	$fresh12	doc changed under 1 h ago" "$out"
+check '12. and the row stays in the manifest' "$fresh12" "$(jq -r '.workers[].doc' "$m12g")"
+touch -d '2 hours ago' "$fresh12"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" 2>/dev/null)"
+check '12. the same doc an hour older is retired' "would-retire	$m12g	N87	$fresh12	lock free, no live session, newest marker WRAPPED" "$out"
+target12="$d12g/target.md"; link12="$d12g/HIMMEL-12-N86-link.md"
+printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$target12"; touch -d '2 hours ago' "$target12"; ln -s target.md "$link12"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N86"}]}\n' "$link12" > "$m12g"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" 2>/dev/null)"
+check '12. a doc that is a symlink keeps its row, even to an old WRAPPED target' "keep	$m12g	N86	$link12	doc is a symlink" "$out"
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
     exit 0
