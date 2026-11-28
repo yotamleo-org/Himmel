@@ -10,16 +10,7 @@
 #   5. a disposition at another head, a tampered row, fix-here -> exit 9.
 #   6. a Critical needs a judge source whose GO verdict rules this head.
 #   7. an Important on a trust-path PR needs a judge source too.
-#  14. a judge's signed GO that carries the ruling line (fixtures/cr-disposition/
-#      d1-ruling-line.txt) is the disposition of the deferral it rules. Branch t14
-#      holds two deferrals on a trust path (the section-7 anchor); every row starts
-#      from t14_reset: the ledger right after them, no JV* verdicts, no GO file, and
-#      JV1, a GO at the head for PR 93 that rules nothing. wv writes a GO through
-#      the real write-verdict.sh.
-#
-# defer_finding <id> <severity> <text> [branch] [deferred_to] [artifact] - a worker-deferred
-# finding at $FHEAD, written through the ledger's single writer (test-pr-check-run invariant 7);
-# branch defaults to $BR, deferred_to to the stub's known key (`-` records none), artifact to diff.
+#  14. a judge's signed GO carrying the ruling line is the disposition of the deferral it rules.
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
@@ -383,7 +374,6 @@ rc=0; out="$(cd "$tmp/foreign" && env -u GH_CMD -u himmel_github_token_vm2 PATH=
 contains "13: from another repo's folder the gated checkout's ledger is read" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check    "13: the head-branch read runs in the gated checkout" "$(cat "$tmp/t13.log")" "$(cd "$REPO" && pwd -P)"
 
-# --- 14. a judge's signed GO is the disposition of the deferral it rules ---
 D1FIX="$HERE/fixtures/cr-disposition/d1-ruling-line.txt"
 VD="$HDIR/$VSCOPE/verdicts"
 FUKEY=HIMMEL-6352

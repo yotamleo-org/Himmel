@@ -210,11 +210,6 @@ jira_get() {
     fi
 }
 
-# judge_ruled <qid> <"fid@fhead disposition"> [d1] - a GO verdict for $SHA under the judge's
-# directory, its mac checked over the bytes read once and its pr: line naming $PR, carries the
-# ruling on a line of its own inside ## Verdict. With d1 the second argument is "<fid>@<fhead>",
-# the line is the ruling line above (follow-up:<KEY> and all three attests), a record carrying
-# "delta: no-op" is skipped, and each <KEY> found is printed.
 judge_ruled() {
     local scope f snap text line name keys=""
     scope=$(go_verdict_scope "$ANCHOR" "$VREPO") || return 1
@@ -251,8 +246,6 @@ judge_ruled() {
     printf '%s\n' "$keys"
 }
 
-# One TSV line per open crit/imp: id, finding head, sev, the latest disposition row for this PR
-# at SHA (disposition, source, attest, mac) or "-", then deferred_to or "-", artifact, perspective.
 ROWS=$(LEDGER="$LEDGER" BRANCH="$BRANCH" PR="$PR" SHA="$SHA" AMEND_AUTH="$ANCHOR/scripts/cr/ledger-amend-auth.js" node -e '
 const fs=require("fs"),e=process.env,SEP=String.fromCharCode(31);
 const rows=[];
@@ -304,7 +297,7 @@ verdict_context() {
     [ "$VC_BUILT" -eq 0 ] || { [ -z "$VC_ERR" ]; return; }
     VC_BUILT=1
     if [ -z "$ROOT" ]; then
-        # shellcheck disable=SC2031  # HANDOVER_DIR is the caller's; only the lib subshells reassign it
+        # shellcheck disable=SC2031
         VC_ERR="cannot resolve the handover root (HANDOVER_DIR='${HANDOVER_DIR:-}') to read the judge verdicts at this head"
         return 1
     fi
