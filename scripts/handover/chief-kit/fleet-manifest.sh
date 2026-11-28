@@ -411,7 +411,8 @@ retire_verdict() {
 retire_managed() {
     RETIRE_MANAGED=$'\n'
     [ -e "$1" ] || return 0
-    RETIRE_MANAGED=$'\n'"$(jq -r '(.attempts // {})[] | .doc // empty' "$1")"$'\n' || return 1
+    RETIRE_MANAGED=$'\n'"$(jq -r -s 'if length == 1 and (.[0] | type) == "object" then (.[0].attempts // {})[] | .doc // empty
+        else error("not one JSON object") end' "$1")"$'\n' || return 1
 }
 
 fleet_retire() (
@@ -452,13 +453,15 @@ fleet_retire() (
             # prim-ok: a 30 s bounded flock on fd 9, as the other manifest writers.
             { exec 9>>"$m.lock" && flock -x -w 30 9; } || { echo "fleet-manifest: cannot lock $m.lock" >&2; exit 1; }
             jq -e -s "$VALID" "$m" >/dev/null 2>&1 || { echo "fleet-manifest: refusing to rewrite an invalid manifest: $m" >&2; exit 1; }
-            retire_managed "$dir/fleet-control.json" || exit 1
-            drop=""
+            retire_managed "$dir/fleet-control.json" || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
+            listed=$'\n'"$(jq -r "$JQ_W"'W[].doc' "$m")"$'\n' || exit 1
+            drop="" done_rows=""
             while IFS=$'\t' read -r doc label; do
                 [ -n "$doc" ] || continue
+                case "$listed" in *$'\n'"$doc"$'\n'*) ;; *) continue ;; esac
                 v=$(retire_verdict "$doc")
                 case "$v" in
-                    retire$'\t'*) drop="$drop$doc"$'\n'; printf 'retired\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#retire$'\t'}" ;;
+                    retire$'\t'*) drop="$drop$doc"$'\n'; done_rows="$done_rows$(printf 'retired\t%s\t%s\t%s\t%s' "$m" "$label" "$doc" "${v#retire$'\t'}")"$'\n' ;;
                     *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}" ;;
                 esac
             done <<<"$cands"
@@ -466,6 +469,7 @@ fleet_retire() (
             jq --arg drop "$drop" 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end
                 | ($drop | split("\n")) as $D | .workers |= map(select(.doc as $d | any($D[]; . == $d) | not))' "$m" \
                 | atomic_write "$m" || { echo "fleet-manifest: cannot write $m" >&2; exit 1; }
+            printf '%s' "$done_rows"
         ) || rc=1
         [ -z "$lines" ] || printf '%s\n' "$lines"
         n_ret=$((n_ret + $(grep -c '^retired' <<<"$lines")))

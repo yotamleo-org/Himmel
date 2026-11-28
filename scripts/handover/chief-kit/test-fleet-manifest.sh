@@ -562,6 +562,22 @@ $race" "$(jq -r '.workers[].doc' "$m12b")"
 check '12. a row whose lock is taken before the rewrite is kept by the re-check under the lock' 1 "$(grep -c "^keep	$m12b	N95	$race	lock held$" <<<"$out")"
 TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" --force >/dev/null 2>&1; rc=$?
 check '12. an unknown retire flag is a usage error (rc 2)' 2 "$rc"
+d12c="$tmp/m12c"; mkdir -p "$d12c"
+m12c="$d12c/chief.fleet.json"
+managed="$d12c/HIMMEL-12-N96-managed.md"; gone2="$d12c/HIMMEL-12-N97-gone.md"
+printf '{"schema":1,"attempts":{"a1":{"doc":"%s","phase":"launched"}}}\n' "$managed" > "$d12c/fleet-control.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N96"},{"doc":"%s","label":"N97"}]}\n' "$managed" "$gone2" > "$m12c"
+before_c="$(cat "$m12c")"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" 2>/dev/null)"
+check '12. a managed attempt of the anchor is kept, though its doc is gone' 1 "$(grep -c "^keep	$m12c	N96	$managed	managed attempt$" <<<"$out")"
+PATH="$tmp/fail-bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>/dev/null; rc=$?
+check '12. a failed rewrite exits 1' 1 "$rc"
+check '12. and reports no row as retired' 0 "$(grep -c '^retired' "$d12c/out")"
+check '12. and leaves the manifest as it was' "$before_c" "$(cat "$m12c")"
+: > "$d12c/fleet-control.json"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>/dev/null; rc=$?
+check '12. an empty fleet-control.json refuses the retire (rc 1)' 1 "$rc"
+check '12. and nothing is retired' "$before_c" "$(cat "$m12c")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
