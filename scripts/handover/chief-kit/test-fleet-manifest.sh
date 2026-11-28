@@ -12,7 +12,6 @@
 #      add refuses to clobber an invalid one
 #   6b. add refuses a doc with whitespace or a glob character (tick word-splits)
 #   7. concurrent adds (two dispatches at once) lose no entry
-#   12. retire removes only rows proven gone across the bucket's manifests, a dry run by default
 #
 # Hermetic: temp dir only. PLATFORM GUARD: the
 # chief kit is Linux-only (util-linux flock). bash 3.2-safe.
@@ -530,7 +529,7 @@ onproc="$d12/HIMMEL-12-N93-onproc.md"
 open="$d12/HIMMEL-12-N94-open.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n' > "$open"
 race="$d12/HIMMEL-12-N95-race.md"
 lock12="$d12/queue-lock"
-# shellcheck disable=SC2016  # $2 and $n belong to the stub and expand when it runs
+# shellcheck disable=SC2016
 printf '#!/bin/bash\ncase "$2" in\n  */HIMMEL-12-N92-*) exit 11 ;;\n  */HIMMEL-12-N95-*) n=$(cat "%s/n95" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n95"; [ "$n" -lt 1 ] || exit 11 ;;\nesac\nexit 0\n' "$d12" "$d12" > "$lock12"
 chmod +x "$lock12"
 printf '{"schema":1,"keep_me":1,"workers":[{"doc":"%s","label":"N90"},{"doc":"%s","label":"N91"},{"doc":"%s","label":"N92"}]}\n' "$gone" "$wrapped" "$held" > "$m12"

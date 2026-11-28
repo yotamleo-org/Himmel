@@ -385,8 +385,15 @@ fleet_t3() (
 )
 
 retire_verdict() {
-    local doc=$1 lrc marker mrc
+    local doc=$1 lrc marker mrc rd=$1
     case "$RETIRE_MANAGED" in *$'\n'"$doc"$'\n'*) printf 'keep\tmanaged attempt\n'; return 0 ;; esac
+    marker=$(ts_marker_newest "$doc"); mrc=$?
+    case "$mrc:$marker" in
+        2:*|0:WRAPPED|0:HALTED) ;;
+        0:) printf 'keep\tno marker, not wrapped\n'; return 0 ;;
+        0:*) printf 'keep\tnewest marker %s, not wrapped\n' "$marker"; return 0 ;;
+        *) printf 'keep\tdoc unreadable\n'; return 0 ;;
+    esac
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
         "$TICKET_STATUS_QUEUE_LOCK" status "$doc" >/dev/null 2>&1; lrc=$?
     else
@@ -397,15 +404,29 @@ retire_verdict() {
         11|12) printf 'keep\tlock held\n'; return 0 ;;
         *) printf 'keep\tlock unreadable (rc %s)\n' "$lrc"; return 0 ;;
     esac
-    _ts_no_live_session_on "$doc" || { printf 'keep\tlive session\n'; return 0; }
-    marker=$(ts_marker_newest "$doc"); mrc=$?
-    case "$mrc:$marker" in
-        2:*) printf 'retire\tlock free, no live session, doc gone\n' ;;
-        0:WRAPPED|0:HALTED) printf 'retire\tlock free, no live session, newest marker %s\n' "$marker" ;;
-        0:) printf 'keep\tno marker, not wrapped\n' ;;
-        0:*) printf 'keep\tnewest marker %s, not wrapped\n' "$marker" ;;
-        *) printf 'keep\tdoc unreadable\n' ;;
+    if [ -d "${doc%/*}" ]; then rd=$(cd -P -- "${doc%/*}" && pwd -P)/${doc##*/} || rd=$doc; fi
+    case "$RETIRE_SESSIONS" in
+        unreadable) printf 'keep\tlive session not ruled out\n'; return 0 ;;
+        *$'\n'"$doc"$'\n'*|*$'\n'"$rd"$'\n'*) printf 'keep\tlive session\n'; return 0 ;;
     esac
+    if [ "$mrc" = 2 ]; then printf 'retire\tlock free, no live session, doc gone\n'
+    else printf 'retire\tlock free, no live session, newest marker %s\n' "$marker"; fi
+}
+
+retire_sessions() {
+    local p comm st kv
+    RETIRE_SESSIONS=$'\n'
+    [ -d /proc/self ] || { RETIRE_SESSIONS=unreadable; return 0; }
+    for p in /proc/[0-9]*; do
+        IFS= read -r comm 2>/dev/null < "$p/comm" || { [ -d "$p" ] && { RETIRE_SESSIONS=unreadable; return 0; }; continue; }
+        [ "$comm" = claude ] || continue
+        IFS= read -r st 2>/dev/null < "$p/stat" || { [ -d "$p" ] && { RETIRE_SESSIONS=unreadable; return 0; }; continue; }
+        st=${st##*) }
+        case "${st%% *}" in Z|X) continue ;; esac
+        { while IFS= read -r -d '' kv; do
+            case "$kv" in WORKER_SESSION_DOC=*) RETIRE_SESSIONS="$RETIRE_SESSIONS${kv#WORKER_SESSION_DOC=}"$'\n' ;; esac
+        done; } 2>/dev/null < "$p/environ" || { [ -d "$p" ] && { RETIRE_SESSIONS=unreadable; return 0; }; }
+    done
 }
 
 retire_managed() {
@@ -418,7 +439,7 @@ retire_managed() {
 }
 
 fleet_retire() (
-    local manifest="${2:-}" apply=false dir m rows doc label v cache=$'\n' rest cands lines n_ret=0 n_keep=0 n_m=0 rc=0
+    local manifest="${2:-}" apply=false dir m doc work n_ret n_keep n_m=0 rc=0
     [ "$#" -ge 2 ] || { usage >&2; exit 2; }
     shift 2
     while [ "$#" -gt 0 ]; do
@@ -429,54 +450,59 @@ fleet_retire() (
     dir=$(dirname -- "$manifest")
     [ -d "$dir" ] || { echo "fleet-manifest: no directory for $manifest" >&2; exit 1; }
     retire_managed "$dir/fleet-control.json" || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
+    retire_sessions
+    work=$(tmpdir) || exit 1
+    trap 'rm -rf "$work"' EXIT
+    : > "$work/manifests"; : > "$work/docs"; : > "$work/out"
     for m in "$dir"/*.fleet.json; do
         [ -f "$m" ] || continue
         if [ -L "$m" ] || [ -L "$m.lock" ] || ! jq -e -s "$VALID" "$m" >/dev/null 2>&1; then
             echo "fleet-manifest: retire skips a manifest it cannot rewrite: $m" >&2; rc=1; continue
         fi
+        jq -r "$JQ_W"'W[].doc' "$m" >> "$work/docs" || { echo "fleet-manifest: retire skips a manifest it cannot read: $m" >&2; rc=1; continue; }
+        printf '%s\n' "$m" >> "$work/manifests"
+    done
+    sort -u "$work/docs" | while IFS= read -r doc; do
+        printf '%s\t%s\n' "$doc" "$(retire_verdict "$doc")"
+    done > "$work/verdicts" || exit 1
+    while IFS= read -r m; do
         n_m=$((n_m + 1))
-        rows=$(jq -r "$JQ_W"'W[] | [.doc, (.label // "-")] | @tsv' "$m") || { rc=1; continue; }
-        cands=""
-        while IFS=$'\t' read -r doc label; do
-            [ -n "$doc" ] || continue
-            case "$cache" in
-                *$'\n'"$doc"$'\t'*) rest=${cache#*$'\n'"$doc"$'\t'}; v=${rest%%$'\n'*} ;;
-                *) v=$(retire_verdict "$doc"); cache="$cache$doc"$'\t'"$v"$'\n' ;;
-            esac
-            case "$v" in
-                retire$'\t'*)
-                    if [ "$apply" = true ]; then cands="$cands$doc"$'\t'"$label"$'\n'
-                    else printf 'would-retire\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#retire$'\t'}"; n_ret=$((n_ret + 1)); fi ;;
-                *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}"; n_keep=$((n_keep + 1)) ;;
-            esac
-        done <<<"$rows"
-        [ -n "$cands" ] || continue
-        lines=$(
+        jq -r "$JQ_W"'W[] | [.doc, (.label // "-")] | @tsv' "$m" > "$work/rows" || { rc=1; continue; }
+        : > "$work/cands"
+        awk -F'\t' -v OFS='\t' -v m="$m" -v apply="$apply" -v cands="$work/cands" '
+            NR == FNR { v[$1] = $2; why[$1] = $3; next }
+            $1 == "" { next }
+            v[$1] == "retire" && apply == "true" { print $1, $2 > cands; next }
+            v[$1] == "retire" { print "would-retire", m, $2, $1, why[$1]; next }
+            { print "keep", m, $2, $1, (($1 in why) ? why[$1] : "doc unread") }' "$work/verdicts" "$work/rows" \
+            | tee -a "$work/out" || rc=1
+        [ -s "$work/cands" ] || continue
+        (
             # prim-ok: a 30 s bounded flock on fd 9, as the other manifest writers.
             { exec 9>>"$m.lock" && flock -x -w 30 9; } || { echo "fleet-manifest: cannot lock $m.lock" >&2; exit 1; }
             jq -e -s "$VALID" "$m" >/dev/null 2>&1 || { echo "fleet-manifest: refusing to rewrite an invalid manifest: $m" >&2; exit 1; }
-            retire_managed "$dir/fleet-control.json" || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
-            listed=$'\n'"$(jq -r "$JQ_W"'W[].doc' "$m")"$'\n' || exit 1
+            retire_managed "$dir/fleet-control.json" 9>&- || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
+            retire_sessions
+            listed=$'\n'"$(jq -r "$JQ_W"'W[].doc' "$m" 9>&-)"$'\n' || exit 1
             drop="" done_rows=""
             while IFS=$'\t' read -r doc label; do
                 [ -n "$doc" ] || continue
                 case "$listed" in *$'\n'"$doc"$'\n'*) ;; *) continue ;; esac
-                v=$(retire_verdict "$doc")
+                v=$(retire_verdict "$doc" 9>&-)
                 case "$v" in
                     retire$'\t'*) drop="$drop$doc"$'\n'; done_rows="$done_rows$(printf 'retired\t%s\t%s\t%s\t%s' "$m" "$label" "$doc" "${v#retire$'\t'}")"$'\n' ;;
                     *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}" ;;
                 esac
-            done <<<"$cands"
+            done < "$work/cands"
             [ -n "$drop" ] || exit 0
             jq --arg drop "$drop" 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end
                 | ($drop | split("\n")) as $D | .workers |= map(select(.doc as $d | any($D[]; . == $d) | not))' "$m" \
                 | atomic_write "$m" || { echo "fleet-manifest: cannot write $m" >&2; exit 1; }
             printf '%s' "$done_rows"
-        ) || rc=1
-        [ -z "$lines" ] || printf '%s\n' "$lines"
-        n_ret=$((n_ret + $(grep -c '^retired' <<<"$lines")))
-        n_keep=$((n_keep + $(grep -c '^keep' <<<"$lines")))
-    done
+        ) | tee -a "$work/out" || rc=1
+    done < "$work/manifests"
+    n_ret=$(grep -c -e '^would-retire' -e '^retired' "$work/out")
+    n_keep=$(grep -c '^keep' "$work/out")
     if [ "$apply" = true ]; then
         echo "fleet-manifest: retire: $n_ret row(s) retired, $n_keep kept across $n_m manifest(s) in $dir" >&2
     else
