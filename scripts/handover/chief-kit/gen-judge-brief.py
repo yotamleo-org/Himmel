@@ -34,15 +34,30 @@ tier-return|operator-ruling; the launcher refuses an opus/fable judge without th
 Optional: pr + head (a 40-hex sha; the change under review), tickets (ticket keys), author_doc
 (the worker's own handover doc), attack (list of lines of attack to try, NOT conclusions),
 evidence (list of {item, for}), completion (default: the PR merge-question shape),
-description, model (default claude-opus-5-5), do_not, delta_class (what delta-class.sh printed for
-the push being re-judged: trust or finding; absent for a first judge), escalation_reason (a
+description, model (default claude-opus-5-5), do_not, delta_class (trust, finding, or none when
+the `delta: no-op` write was refused; usually left out, see below), escalation_reason (a
 Fable judge's one-call reason, --dispatch-json only).
 
-The model follows the class. A first judge and a trust delta keep Opus. A finding
-delta is a Sonnet judge: the brief names claude-sonnet-5-5 and carries the line
+The delta is classified here. For a spec with pr and head, the generator finds the PR's last
+real judge record on another head in the harness bucket's verdicts (no-op and chief-go records
+skipped; latest written-at wins) and runs delta-class.sh --qid <its qid> <that head> <head> in
+the current checkout. A delta after a NO-GO that prints none counts as finding: a NO-GO head
+cannot carry a no-op. With no delta_class key the printed class is used; none is refused with
+the no-op write-verdict.sh line to run instead. A delta_class of finding that the classifier
+prints as trust is refused, and so is none against trust or finding. When the records cannot be
+read the spec is used as given (a first judge keeps Opus).
+
+The model follows the class. A first judge, a trust delta and a declared none delta keep Opus. A
+finding delta is a Sonnet judge: the brief names claude-sonnet-5-5 and carries the line
 `DELTA-JUDGE: <head>` that guard-agent-model.sh requires before it allows Sonnet; it needs pr and
 head, takes no tier (the Tier gate is for opus and fable), and refuses a model other than Sonnet.
-A none delta needs no judge and is refused. The last stdout field is `model=<id>`.
+The last stdout field is `model=<id>`.
+
+Effort: with --dispatch-json, an Opus first judge (no delta_class) of a PR whose whole diff from its
+merge base with origin/main touches no path of origin/main's scripts/ci/ci-trust-paths.txt (the
+grep -E match delta-class.sh uses) and no file under a hooks/ directory runs at effort medium: the Agent object carries "effort":
+"medium" and the write-verdict.sh line names it. Every other judge keeps the judge-ro frontmatter
+effort (high), and any git or read error reads as a trust path.
 
 Blind, not thin (the template's first rule): the spec may carry the evidence and the attack
 list but never a conclusion, so conclusion / verdict / disposition / recommendation keys
@@ -107,8 +122,9 @@ def validate(s):
         die('unknown spec key(s): %s' % ', '.join(unknown))
     dc = s.get('delta_class')
     if dc is not None:
-        if dc not in ('trust', 'finding'):
-            die('delta_class must be trust or finding (a none delta needs no judge), got %r' % (dc,))
+        if dc not in ('trust', 'finding', 'none'):
+            die('delta_class must be trust, finding or none (none only when the delta: no-op write was refused), '
+                'got %r' % (dc,))
         if dc == 'finding':
             if not (s.get('pr') and s.get('head')):
                 die('delta_class finding needs pr and head: the DELTA-JUDGE marker names the head it judges')
@@ -157,6 +173,109 @@ def validate(s):
     at = s['attack'] if s.get('attack') is not None else []
     if not isinstance(at, list) or not all(isinstance(a, str) and a.strip() for a in at):
         die('attack must be a list of non-blank lines')
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ANCHOR = os.path.abspath(os.path.join(HERE, '..', '..', '..'))
+VERDICT_HEAD = re.compile(r'^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]{40})`\.?$')
+
+
+def verdicts_dir():
+    r = subprocess.run(['bash', '-c', '. "$1/scripts/lib/go-gate.sh" && . "$1/scripts/lib/handover-path.sh" && '
+                        'r=$(go_resolve_root "$1") && s=$(go_verdict_scope "$1" "") && printf "%s/%s/verdicts" "$r" "$s"',
+                        '_', ANCHOR], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                       text=True, timeout=60)
+    return r.stdout if r.returncode == 0 and r.stdout.startswith('/') else None
+
+
+# git-env-ok: pr_touches_trust runs git with an env that drops every GIT_* name
+def pr_touches_trust(head):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+
+    def git(*a):
+        r = subprocess.run(['git'] + list(a), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, text=True, timeout=60, env=env)
+        if r.returncode != 0:
+            raise OSError('git %s failed' % a[0])
+        return r.stdout
+    try:
+        base = git('merge-base', 'origin/main', head).strip()
+        names = [n for n in git('diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-relative',
+                                base, head).split('\0') if n]
+        pats = [p for p in git('show', 'origin/main:scripts/ci/ci-trust-paths.txt').split('\n')
+                if p.strip() and not p.lstrip().startswith('#')]
+        if not pats:
+            return True
+        pats.append('(^|/)hooks/')
+        for p in pats:
+            r = subprocess.run(['grep', '-Eq', '-e', p], input='\n'.join(names) + '\n', stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, text=True, timeout=60)
+            if r.returncode != 1:
+                return True
+        return False
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return True
+
+
+def last_judged(vdir, pr, head):
+    best = None
+    for qid in os.listdir(vdir):
+        if qid.startswith('go-pr-'):
+            continue
+        d = os.path.join(vdir, qid)
+        if not os.path.isdir(d) or os.path.islink(d):
+            continue
+        for name in os.listdir(d):
+            if not name.endswith('.md') or name.startswith(('chief-go', 'delta-noop')):
+                continue
+            with open(os.path.join(d, name), encoding='utf-8', errors='replace') as f:
+                lines = f.read(8192).replace('\r', '').split('\n')
+            if 'pr: %s' % pr not in lines or 'delta: no-op' in lines or '## Verdict' not in lines:
+                continue
+            v = next((l for l in lines[lines.index('## Verdict') + 1:] if l.strip()), '')
+            m = VERDICT_HEAD.match(v)
+            if not m or m.group(2) == head:
+                continue
+            at = next((l[len('written-at: '):] for l in lines if l.startswith('written-at: ')), '')
+            if best is None or at > best[0]:
+                best = (at, qid, m.group(2), m.group(1))
+    return best
+
+
+def classify_delta(s):
+    if not (str(s.get('pr') or '').isdigit() and re.fullmatch(r'[0-9a-f]{40}', str(s.get('head') or ''))):
+        return
+    try:
+        vdir = verdicts_dir()
+        prior = last_judged(vdir, str(s['pr']), s['head']) if vdir and os.path.isdir(vdir) else None
+    except (OSError, subprocess.SubprocessError, UnicodeError) as e:
+        print('gen-judge-brief: delta: verdict records unreadable (%s); the spec is used as given' % e.__class__.__name__,
+              file=sys.stderr)
+        return
+    if prior is None:
+        print('gen-judge-brief: delta: no earlier judged head for PR %s; a first judge' % s['pr'], file=sys.stderr)
+        return
+    _, qid, judged, word = prior
+    try:
+        r = subprocess.run(['bash', os.path.join(HERE, 'delta-class.sh'), '--qid', qid, judged, s['head']],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+        c = r.stdout.strip() if r.returncode == 0 and r.stdout.strip() in ('trust', 'finding', 'none') else 'trust'
+    except (OSError, subprocess.SubprocessError):
+        c = 'trust'
+    if c == 'none' and word == 'NO-GO':
+        c = 'finding'
+    print('gen-judge-brief: delta: %s against %s at %s (%s, qid %s)' % (c, s['pr'], judged, word, qid), file=sys.stderr)
+    dc = s.get('delta_class')
+    if dc is None:
+        if c == 'none':
+            die('delta none: PR %s head %s touches no trust path and no judged finding since the GO at %s, so it needs '
+                'no judge. Record the no-op instead: bash scripts/handover/chief-kit/write-verdict.sh %s GO %s --pr %s '
+                '--evidence-file <path> --delta-noop %s --model <m> --effort <e> (docs/handover/chief-sections/judge.md). '
+                'Only if that write is refused, set "delta_class": "none" to dispatch an Opus judge.'
+                % (s['pr'], s['head'], judged, qid, s['head'], s['pr'], judged))
+        s['delta_class'] = c
+    elif (dc == 'finding' and c == 'trust') or (dc == 'none' and c != 'none'):
+        die('delta_class %s refused: delta-class.sh prints %s for %s..%s' % (dc, c, judged, s['head']))
 
 
 def agent_alias(s):
@@ -219,7 +338,7 @@ def persist_text(s, no_persist):
             '`<primary checkout>` is the directory holding the `.git` that '
             '`git rev-parse --path-format=absolute --git-common-dir` prints. A refused write is reported in your '
             'reply under your GUARD RULE, never re-spelled.'
-            % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), judge_effort()))
+            % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), s['_effort']))
 
 
 SEARCH_ALONE = ('Send each search as its own tool call, with no other call in the same response: '
@@ -415,6 +534,8 @@ def main():
         template = open(a.template).read()
     except OSError as e:
         die('cannot read the template: %s' % e, 2)
+    if isinstance(spec, dict):
+        classify_delta(spec)
     validate(spec)
     if spec.get('escalation_reason') is not None and not a.dispatch_json:
         die('escalation_reason is only read with --dispatch-json (a headed judge session takes no Agent model)')
@@ -431,11 +552,16 @@ def main():
     if a.dispatch_json:
         spec['_brief_nonce'] = secrets.token_hex(8)
         spec['_completion'] = completion_of(spec)
+        spec['_effort'] = judge_effort()
+        if alias == 'opus' and spec.get('delta_class') is None and spec.get('pr') and not pr_touches_trust(spec['head']):
+            spec['_effort'] = 'medium'
         desc = 'Judge %s on %s' % (spec['qid'], spec['ticket'])
         call = {'description': desc, 'subagent_type': 'judge-ro', 'model': alias,
                 'prompt': dispatch_prompt(spec, a, alias), 'run_in_background': False}
-        print('gen-judge-brief: dispatch qid=%s nonce=%s judge-brief=%s model=%s (from %s); nothing written'
-              % (spec['qid'], spec['_nonce'], spec['_brief_nonce'], alias, model_of(spec)), file=sys.stderr)
+        if spec['_effort'] != judge_effort():
+            call['effort'] = spec['_effort']
+        print('gen-judge-brief: dispatch qid=%s nonce=%s judge-brief=%s model=%s (from %s) effort=%s; nothing written'
+              % (spec['qid'], spec['_nonce'], spec['_brief_nonce'], alias, model_of(spec), spec['_effort']), file=sys.stderr)
         print(json.dumps(call, ensure_ascii=False))
         return
     root = os.path.realpath(a.handover_root)
