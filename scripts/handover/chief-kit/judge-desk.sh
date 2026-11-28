@@ -751,10 +751,10 @@ def cmd_wait(o):
         die('wait needs --chief (the one recipient the desk may message)', 2)
     if not o.since:
         die('wait needs --since (the desk start)', 2)
-    start = time.monotonic()
-    first = True
-    while first or time.monotonic() - start < o.max_wait:
-        first = False
+    deadline = time.monotonic() + o.max_wait
+    last = False
+    while not last:
+        last = time.monotonic() >= deadline
         d.expire_leases()
         if os.path.exists(d.stop_file):
             print('STOP')
@@ -780,10 +780,8 @@ def cmd_wait(o):
             if live is not None and live < open_n:
                 print('ENDED')
                 return 0
-        remaining = o.max_wait - (time.monotonic() - start)
-        if remaining <= 0:
-            break
-        time.sleep(min(o.tick, remaining))
+        if not last:
+            time.sleep(min(o.tick, max(deadline - time.monotonic(), 0)))
     print('TIMEOUT')
     return 0
 

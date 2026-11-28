@@ -575,6 +575,17 @@ printf '#!/usr/bin/env bash\ncase "$2" in %s) echo live-subagents=0; exit 0 ;; *
 out="$(JUDGE_DESK_LIVE="$WORK/live-s0.sh" D wait --max-wait 0 2>&1)"
 eq "review: wait returns ENDED for a predecessor session's finished judge" "$out" ENDED
 
+newcase
+newrun 6139 "$H" a || fail "review: the claim for the final-poll row failed"
+cat > "$WORK/live-late.sh" <<STUB
+#!/usr/bin/env bash
+printf '{"schema":1,"kind":"request","pr":7000,"head":"$HX","lane":"native","worker_doc":null,"snapshot":"x","bullet_hhmm":"14:02","requested_at":"2026-11-28T11:00:00+00:00","seen_at":"2026-11-28T11:01:00+00:00","base":null}\n' >> "$B/judge-desk/judge-requests.jsonl"
+echo live-subagents=1
+exit 1
+STUB
+out="$(JUDGE_DESK_LIVE="$WORK/live-late.sh" D wait --max-wait 1 --tick 60 2>&1)"
+eq "review: wait polls once more at the deadline, so a request that arrived while it slept is seen" "$out" REQUEST
+
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash /x/'write'-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
 eq "review: a script name split by quotes is still a write-verdict.sh call (rc 3)" "$rc" 3
 stopped "review: a script name split by quotes writes STOP"
