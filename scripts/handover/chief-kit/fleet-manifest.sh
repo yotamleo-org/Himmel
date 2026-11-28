@@ -467,7 +467,7 @@ fleet_retire() (
     done > "$work/verdicts" || exit 1
     while IFS= read -r m; do
         n_m=$((n_m + 1))
-        jq -r "$JQ_W"'W[] | [.doc, (.label // "-")] | @tsv' "$m" > "$work/rows" || { rc=1; continue; }
+        jq -r "$JQ_W"'W[] | [.doc, (if (.label // "") == "" then "-" else .label end)] | @tsv' "$m" > "$work/rows" || { rc=1; continue; }
         : > "$work/cands"
         RETIRE_M="$m" RETIRE_CANDS="$work/cands" awk -F'\t' -v OFS='\t' -v apply="$apply" '
             BEGIN { m = ENVIRON["RETIRE_M"]; cands = ENVIRON["RETIRE_CANDS"] }
@@ -496,9 +496,11 @@ fleet_retire() (
             while IFS=$'\t' read -r doc label v why; do
                 [ -n "$doc" ] || continue
                 if [ "$v" = retire ]; then
+                    rd=$doc
+                    if [ -d "${doc%/*}" ]; then rd=$(cd -P -- "${doc%/*}" && pwd -P)/${doc##*/} || rd=$doc; fi
                     case "$RETIRE_SESSIONS" in
                         unreadable) v=keep why='live session not ruled out' ;;
-                        *$'\n'"$doc"$'\n'*) v=keep why='live session' ;;
+                        *$'\n'"$doc"$'\n'*|*$'\n'"$rd"$'\n'*) v=keep why='live session' ;;
                     esac
                 fi
                 case "$v" in

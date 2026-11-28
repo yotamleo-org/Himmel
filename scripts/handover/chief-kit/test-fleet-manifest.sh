@@ -591,10 +591,22 @@ lock12d="$d12d/queue-lock"
 printf '#!/bin/bash\nn=$(cat "%s/n" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n"\n[ "$n" -ge 1 ] || exit 0\nWORKER_SESSION_DOC="$2" python3 -c "import ctypes,time; ctypes.CDLL(None).prctl(15,b\\"claude\\",0,0,0); time.sleep(60)" & echo $! > "%s/pid"\ni=0; until [ "$(cat /proc/$!/comm 2>/dev/null)" = claude ] || [ "$i" -ge 100 ]; do i=$((i + 1)); sleep .05; done\nexit 0\n' "$d12d" "$d12d" "$d12d" > "$lock12d"
 chmod +x "$lock12d"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N98"}]}\n' "$late" > "$m12d"
-out="$(TICKET_STATUS_QUEUE_LOCK="$lock12d" bash "$SCRIPT" retire "$m12d" --apply 2>/dev/null)"
+out="$(TICKET_STATUS_QUEUE_LOCK="$lock12d" bash "$SCRIPT" retire "$m12d" --apply 2>/dev/null)"; rc=$?
 kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
+check '12. the apply with a late session succeeds (rc 0)' 0 "$rc"
 check '12. a session that starts on a candidate during the locked re-check keeps its row' "keep	$m12d	N98	$late	live session" "$out"
 check '12. and the row stays in the manifest' "$late" "$(jq -r '.workers[].doc' "$m12d")"
+mkdir -p "$d12d/real"; ln -s real "$d12d/link"
+m12e="$d12d/link.fleet.json"; viaLink="$d12d/link/HIMMEL-12-N99-late.md"
+rm -f "$d12d/n" "$d12d/pid"
+# shellcheck disable=SC2016
+sed -e 's|WORKER_SESSION_DOC="$2"|WORKER_SESSION_DOC="'"$(cd -P "$d12d/real" && pwd -P)"'/${2##*/}"|' "$lock12d" > "$d12d/queue-lock-phys"; chmod +x "$d12d/queue-lock-phys"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N99","lane":"native"}]}\n' "$viaLink" > "$m12e"
+rm -f "$m12d"
+out="$(TICKET_STATUS_QUEUE_LOCK="$d12d/queue-lock-phys" bash "$SCRIPT" retire "$m12e" --apply 2>/dev/null)"; rc=$?
+kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
+check '12. the apply with a late session on the physical path succeeds (rc 0)' 0 "$rc"
+check '12. a late session on the physical path of a candidate keeps its row' "keep	$m12e	N99	$viaLink	live session" "$out"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
