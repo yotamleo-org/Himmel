@@ -700,7 +700,7 @@ bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$ya" --thread ya1 >/dev/
 check '13. attach with an unreadable sibling manifest refuses (rc 2), never reads it as no binding' 2 "$rc"
 
 mkco y4 "$HB/y4"; mkm a none
-yb="$B/DEMO-1-N9-t3-yb-$today.md"; printf '# x\n\n> **Launch gate:** passed\n' > "$yb"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$yb"
+yb="$B/DEMO-1-N9-t3-yb-$today.md"; printf '# x\n\n> **Writes:** scripts/a.sh\n\n> **Launch gate:** passed\n' > "$yb"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$yb"
 ( flock -x 8; sleep 45 ) 8>>"$B/t3-relay.owner.lock" & lockholder=$!
 sleep 0.3
 t0="$(date +%s)"
@@ -747,6 +747,11 @@ check '14. the refusal names the key, never the forged line' yes "$(grep -q 'DEM
 check '14. and binds nothing' pending "$(jq -r --arg d "$fd" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
 bash "$BIND" attach --manifest "$M" --doc "$sd" --thread signed1 >/dev/null 2>&1; rc=$?
 check '14. attach binds the gated signed row' "0 signed1" "$rc $(jq -r --arg d "$sd" '.workers[] | select(.doc == $d) | .t3_thread' "$M")"
+wd="$B/DEMO-403-N8-t3-nowrites-$today.md"
+printf '# DEMO-403 - no writes\n\n> **Launch gate:** passed\n\n## Results (newest at the bottom)\n' > "$wd"
+fmx add "$M" --lane t3 --lockless "$wd"
+bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >"$T/out" 2>"$T/err"; rc=$?
+check '14. attach refuses a gated doc with no Writes line, so the pinned-guard check is never skipped' "3 yes" "$rc $(grep -q "no '> \*\*Writes:\*\*' line" "$T/err" && echo yes)"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"

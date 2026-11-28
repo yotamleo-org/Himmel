@@ -30,7 +30,8 @@
 # unbind    removes the row and records the tombstone in one write, so the thread is never bound again.
 #
 # Exit: 0 nothing new; 1 something was printed; 2 usage or config failure (also an unreadable owner status or a stuck
-# owner lock); 3 the launch gate refused prepare, or attach found no gate record; 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
+# owner lock); 3 the launch gate refused prepare or attach, or attach found no gate record, no ticket in the doc name or
+# no Writes line; 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
 # the owner and the owner is live (its own re-sends and upkeep still ran), or a takeover ran out of pass time (nothing else ran; it retries next pass).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_RELAY_UNBIND_DAYS. Siblings are found beside this file.
 # Platform: Linux (util-linux flock, GNU timeout), bash 3.2+, jq.
@@ -194,9 +195,10 @@ if [ "$verb" = attach ]; then
         || die 3 "$doc has no launch gate record (a '> **Launch gate:** passed' line that prepare writes once core-check, spec-check and the guard-lib rule pass): nothing attached; run relay-bind.sh prepare for the ticket"
     [[ ${doc##*/} =~ ^([A-Za-z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
     akey="${BASH_REMATCH[1]}"
+    wline="$(grep -m 1 '^> \*\*Writes:\*\* *[^ ]' "$doc")" || die 3 "$doc has no '> **Writes:**' line naming a path, so the pinned-guard check has nothing to read: nothing attached"
     GATE_DIR="$(tmpdir)" || die 2 "mktemp failed"
     trap 'rm -rf "$GATE_DIR"' EXIT
-    { printf -- '---\nresume_cwd: %s\n---\n# %s - attach gate\n\n' "$PROJECT" "$akey"; grep -m 1 '^> \*\*Writes:\*\*' "$doc"; } > "$GATE_DIR/gate.md"
+    printf -- '---\nresume_cwd: %s\n---\n# %s - attach gate\n\n%s\n' "$PROJECT" "$akey" "$wline" > "$GATE_DIR/gate.md" || die 2 "cannot write the gate copy"
     launch_gate "$GATE_DIR/gate.md" "$akey" || exit 3
     fm t3 set "$manifest" "$doc" --thread "$thread" || die 2 "fleet-manifest t3 set failed (is the doc listed?)"
     exit 0
