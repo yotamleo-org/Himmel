@@ -90,7 +90,7 @@ else
         *) ok "qmd allowed-tools has no commas" ;;
     esac
     case " $allowed " in
-        *' Bash(qmd:*)'*|*' Bash(qmd *)'*|*' Bash(qmd)'*|*' Bash(qmd query'*|*' Bash(qmd search'*|*' Bash(qmd vsearch'*) bad "qmd allowed-tools pre-approves a bare qmd call: $allowed" ;;
+        *' Bash(qmd:*)'*|*' Bash(qmd *)'*|*' Bash(qmd)'*|*' Bash(qmd*)'*|*' Bash(qmd query'*|*' Bash(qmd search'*|*' Bash(qmd vsearch'*) bad "qmd allowed-tools pre-approves a bare qmd call: $allowed" ;;
         *) ok "qmd allowed-tools names no bare qmd call" ;;
     esac
 fi
