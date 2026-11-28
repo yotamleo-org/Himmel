@@ -1497,3 +1497,4 @@ scripts/test-himmel-update-t3-providers.sh	2
 scripts/test-new-worktree-jira-reuse.sh	1
 scripts/test-worktree-resume.sh	46
 scripts/vm/test-graph-choices-e2e-stage.sh	53
+scripts/handover/chief-kit/test-file-slices.sh	12
