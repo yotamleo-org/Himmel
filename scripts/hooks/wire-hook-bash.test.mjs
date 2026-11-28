@@ -658,6 +658,7 @@ test('a chain that moves block-unexpanded-file-path.sh to second place is refuse
     writeFileSync(fixture, `${JSON.stringify(settings, null, 2)}\n`);
     const result = invoke('--check', fixture);
     assert.notEqual(result.status, 0, 'the guard in second place must be refused');
+    assert.match(result.stderr, /script inventory mismatch: expected block-unexpanded-file-path\.sh, found /);
   }, { wired: true });
 });
 

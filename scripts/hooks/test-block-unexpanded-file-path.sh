@@ -22,9 +22,10 @@ T=$(mktemp -d "${TMPDIR:-/tmp}/unexpanded-path.XXXXXX") || { echo "FATAL: mktemp
 T=$(cd -P "$T" && pwd -P)
 trap 'rm -rf "$T"' EXIT
 
-mkdir -p "$T/nojq" "$T/emptyjq"
-printf '#!/bin/sh\nexit 0\n' > "$T/emptyjq/jq"
-chmod +x "$T/emptyjq/jq"
+if ! { mkdir -p "$T/nojq" "$T/emptyjq" && printf '#!/bin/sh\nexit 0\n' > "$T/emptyjq/jq" && chmod +x "$T/emptyjq/jq"; }; then
+    echo "FATAL: the jq shim dirs could not be built"
+    exit 1
+fi
 
 pass=0
 fail=0

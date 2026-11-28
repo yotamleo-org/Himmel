@@ -256,7 +256,9 @@ for h in claude-grok grok claude-cursor cursor; do
     if [ "$V" = deny ] && names_unexpanded_guard; then pass "project Edit|Write: $h write to a trailing-space path is denied by block-unexpanded-file-path"
     else fail "project Edit|Write: $h write to a trailing-space path - want the long-path guard's deny, got $V ($(head -c 300 "$SB/err" | tr '\n' ' '))"; fi
     payload "$h" read \~/x
-    run_group "$PROJECT_SETTINGS" 'Read|Grep';     expect "project Read|Grep: $h read of ~/x is denied" deny
+    run_group "$PROJECT_SETTINGS" 'Read|Grep'
+    if [ "$V" = deny ] && names_unexpanded_guard; then pass "project Read|Grep: $h read of ~/x is denied by block-unexpanded-file-path"
+    else fail "project Read|Grep: $h read of ~/x - want the long-path guard's deny, got $V ($(head -c 300 "$SB/err" | tr '\n' ' '))"; fi
 done
 for h in claude-grok grok; do
     payload "$h" edit readme.txt
