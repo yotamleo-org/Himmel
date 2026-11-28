@@ -475,7 +475,8 @@ including on a chain failure), a block of **best-effort advisory
 steps** runs, among them: a codex plugin re-sync, the agent CLI sync, a
 statusLine hud re-wire, the graphify pin sync and graph pull, the config UI
 rebuild, the luna-mcp rebuild and `try-restart` of `luna-mcp.service` when the
-pull changed its sources (a failed build leaves the service on its old build),
+pull changed its sources and `~/.local/share/himmel/luna-mcp` resolves to this
+checkout (a failed build leaves the service on its old build),
 the cli-proxy host roll, the installed-marketplaces catch-up, the
 himmel plugin install, update and cache refresh, a **plugin install-state
 report** (`marketplace update` only re-syncs *already-installed*
