@@ -56,7 +56,7 @@ assert "default QMD_FORK_REF is a full 40-hex SHA" \
 default_repo="$(env -u QMD_FORK_REPO bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_fork_repo')"
 assert "default QMD_FORK_REPO is the carried fork yotamleo-org/qmd (decision 517)" \
   test "$default_repo" = "https://github.com/yotamleo-org/qmd.git"
-assert "default QMD_FORK_REF opens an existing index without the write lock (fork PR #58 on himmel-main-upstream-2.9.0)" \
+assert "default QMD_FORK_REF is the fork PR #58 squash merge on himmel-main-upstream-2.9.0" \
   test "$default_ref" = "7855607d0256ef612af39f21f4adb30cd222c4bf"
 # The pinned fork commit must carry the fixed MCP server (2.3.0+ clears the HTTP
 # transport advisories). The fixture is the real bun.lock lines of the fork at the
