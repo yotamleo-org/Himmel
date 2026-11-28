@@ -13,7 +13,8 @@
 #               carry the values; the tab's session receives them (a konsole
 #               stub runs what follows -e, as a real tab would, and a launcher
 #               stub records its env).
-#   3b. CHIEF   chief.sh's printed chief launch line exports both values
+#   3b. CHIEF   chief.sh's printed chief launch line carries both values in
+#               the env prefix of each of its two claude commands
 #               (fixture: chief/test-chief.sh's shape, scripts/handover and
 #               scripts/lib copied, the rest linked, an always-OK bus).
 #   3c. ARM     arm-resume.sh's relaunch entry exports both values, and a
@@ -179,11 +180,8 @@ cline="$( cd "$CFX" && env -u CHIEF_CONTEXT HANDOVER_DIR="$TMP/chief-root" USER_
     CHIEF_WORK_DIR="$TMP/chief-work" bash "$CFX/scripts/handover/chief/chief.sh" new --bucket capsrepo --dry-run 2>&1 | grep -E '^(would-)?launch: ' )"
 has "chief: the printed launch line exports the spawn depth" "$cline" "$DEPTH"
 has "chief: the printed launch line exports the concurrency cap" "$cline" "$CONC"
-if printf '%s\n' "$cline" | grep -qE "^(would-)?launch: cd [^;]* && export $DEPTH $CONC && \{ bash "; then
-    ok "chief: the export runs before the launch block, so it reaches claude on the bus-exec path too"
-else
-    bad "chief: the export runs before the launch block" "$cline"
-fi
+check "chief: both claude commands (bus-exec and direct) carry the caps in their env prefix" \
+    "$(printf '%s\n' "$cline" | grep -oE -- "-u NO_COLOR $DEPTH $CONC CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude " | wc -l | tr -d ' ')" "2"
 
 echo ""
 echo "=== 3c. arm-resume.sh's relaunch entry (cron backend, dry run) ==="

@@ -87,8 +87,7 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 # Keep this identical to headed-arm.sh's env prefix.
 # shellcheck source=../../lib/subagent-caps.sh
 . "$HERE/../../lib/subagent-caps.sh"
-CHIEF_LAUNCH_CAPS="export ${SUBAGENT_CAPS_ENV[*]}"
-CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
+CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR ${SUBAGENT_CAPS_ENV[*]} CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"
@@ -1233,8 +1232,8 @@ launch_cmd() {
         [ -z "$CHIEF_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CHIEF_BUS_PREDECESSOR")"
         claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/chief-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
     fi
-    printf 'cd %q && %s && { bash %q %s %s %s %s; %s; }' \
-        "$repo" "$CHIEF_LAUNCH_CAPS" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(chief_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
+    printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
+        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(chief_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
         "$claude_cmd"
 }
 
