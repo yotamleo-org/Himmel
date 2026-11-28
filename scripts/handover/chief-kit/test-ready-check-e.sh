@@ -120,6 +120,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [WARN] 14. bug-origin not checked: type
 [WARN] 17. partial-merge remainder not checked: no --contract given for HIMMEL-100 (a GO writer names it)
 [PASS] 18. no blocking or undecided finding at the head the merge gates on (read as the merge reads it, with and without the GO)
+       note: the recorded impacted list is not used (no impacted row); reading it live
 [PASS] 19. suite evidence: 0 impacted, nothing to prove
 [PASS] 20. conflicts resolved: no hand-resolved merge conflict in origin/main..${SHA:0:7}
 [WARN] 21. ticket comments of HIMMEL-100 not checked: no worker handover doc named HIMMEL-100-N*.md under $tmp/no-handovers

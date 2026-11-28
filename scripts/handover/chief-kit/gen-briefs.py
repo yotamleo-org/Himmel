@@ -147,7 +147,9 @@ the handover root is refused. Output files, in the bucket: the brief
 `<KEY>-<label>-<slug>-<date>.md`, the launcher `launch-<label>.sh`, and
 `<input>.out` (the input plus each worker's nonce and doc stem). With --manifest,
 each launcher's sha256 is appended to `<manifest stem>.launchers.sha256` beside
-the manifest (sha256sum format), which Telegram /launch-worker checks.
+the manifest (sha256sum format), which Telegram /launch-worker checks. The manifest must be a
+plain file in the bucket, for every worker: the fleet runtime refuses any other, so a manifest
+outside the bucket, or a symlink, is refused before anything is written.
 
 context_1m (a non-blank one-line reason; native lane only, never with ab_arm): the brief gets `> **Context:** 1m — operator-ruling: <reason>`, the line
 headed-arm-worker.sh requires for WORKER_SESSION_CONTEXT=1m, and the launcher exports WORKER_SESSION_CONTEXT=1m. Without the key neither is written
@@ -1809,12 +1811,20 @@ def render_rm_launcher(l, ctx, doc):
         # The RM brief has no Prior art line, and headed-arm-worker.sh sets the RM env itself.
         'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --chief %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the chief's launch line, nothing starts here
             q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh') + (' --fleet ' + q(ctx['manifest']) if ctx.get('manifest') else ''), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
-        'sleep 12',
+    ] + arm_result_lines(stem)
+    return '\n'.join(lines) + '\n'
+
+
+def arm_result_lines(stem):
+    return [
+        'arm_pid=$!',
+        'arm_i=0; while [ "$arm_i" -lt 60 ] && kill -0 "$arm_pid" 2>/dev/null; do sleep 1; arm_i=$((arm_i + 1)); done',
         'tail -n 2 "$W/%s.launch.out"' % stem,
+        'arm_rc=0; kill -0 "$arm_pid" 2>/dev/null || { wait "$arm_pid"; arm_rc=$?; }',
+        '[ "$arm_rc" -eq 0 ] || { echo "REFUSED sig-%s rc=$arm_rc"; exit "$arm_rc"; }' % stem,
         'touch "$W/sig-%s"' % stem,
         'echo "fired sig-%s"' % stem,
     ]
-    return '\n'.join(lines) + '\n'
 
 
 def render_launcher(l, ctx, doc):
@@ -1848,11 +1858,7 @@ def render_launcher(l, ctx, doc):
         'setsid nohup bash %s%s --profile %s --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
             q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh') + (' --fleet ' + q(ctx['manifest']) if ctx.get('manifest') else ''), lane_arg, q(l['profile']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         # stderr stays in launch.out: a launch refused for an overlapping write hold exits 2 and prints its holder line there
-        'sleep 12',
-        'tail -n 2 "$W/%s.launch.out"' % stem,
-        'touch "$W/sig-%s"' % stem,
-        'echo "fired sig-%s"' % stem,
-    ]
+    ] + arm_result_lines(stem)
     return '\n'.join(lines) + '\n'
 
 
@@ -1918,11 +1924,17 @@ def main():
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
     ctx['bucket'] = a.bucket
     refuse_git_bucket(a.bucket, a.handover_root)
+    if a.manifest:
+        runtime = "; the fleet runtime refuses a launch whose manifest is not a plain file in the worker doc's directory, so every launch would be refused"
+        if os.path.realpath(os.path.dirname(os.path.abspath(a.manifest))) != os.path.realpath(a.bucket):
+            series = [l['series_plan']['sid'] for l in workers if l.get('series_plan')]
+            die('--manifest %s is not in the bucket %s%s%s' % (a.manifest, a.bucket, runtime, (
+                '; next-dispatchable.sh reads series ledgers beside the manifest, so it would never see the ledger of series %s' % ', '.join(series)) if series else ''))
+        if os.path.islink(a.manifest):
+            die('--manifest %s is a symlink%s' % (a.manifest, runtime))
     for l in workers:
         sp = l.get('series_plan')
         if sp:
-            if a.manifest and os.path.realpath(os.path.dirname(os.path.abspath(a.manifest))) != os.path.realpath(a.bucket):
-                die('--manifest %s is not in the bucket %s; next-dispatchable.sh reads series ledgers beside the manifest, so it would never see the ledger of series %s' % (a.manifest, a.bucket, sp['sid']))
             sp['ledger'] =os.path.join(a.bucket, 'series', sp['sid'] + '.json')
             if os.path.exists(sp['ledger']):
                 die('series ledger %s already exists; pick a new series or remove it' % sp['ledger'])
@@ -2044,7 +2056,8 @@ def main():
             # launchers written above are native headed-arm-worker launches unless the worker says otherwise.
             arm = (' --arm ' + shlex.quote(l['ab_arm'])) if l.get('ab_arm') else ''
             print('bash scripts/handover/chief-kit/fleet-manifest.sh add %s %s --lane %s%s --pending' % (shlex.quote(a.manifest), shlex.quote(os.path.join(a.bucket, l['stem'] + '.md')), shlex.quote(l.get('lane', 'native')), arm))
-        print('launch with: ' + '; '.join('bash %s/launch-%s.sh' % (a.bucket, l['label']) for l in workers))
+        for l in workers:
+            print('launch with: bash %s/launch-%s.sh' % (a.bucket, l['label']))
 
 
 if __name__ == '__main__':
