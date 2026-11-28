@@ -770,13 +770,15 @@ bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
 need_bytes() {
     local n
     n="$(bytes_of "$2")"
+    case "$n" in '' | *[!0-9]*) echo "FAIL: fixture $1 could not be measured" >&2; exit 1 ;; esac
     if [ "$n" -lt "$3" ] || [ "$n" -gt "$4" ]; then echo "FAIL: fixture $1 is $n bytes, not $3 to $4" >&2; exit 1; fi
 }
 mkpath() {
-    local p="$1/" seg
+    local p="$1/" seg n
     seg="$(printf 'a%.0s' $(seq 1 99))/"
-    while [ $((${#p} + 100)) -lt "$2" ]; do p="$p$seg"; done
-    while [ "${#p}" -lt "$2" ]; do p="${p}b"; done
+    n="$(bytes_of "$p")"
+    while [ $((n + 100)) -lt "$2" ]; do p="$p$seg"; n=$((n + 100)); done
+    while [ "$n" -lt "$2" ]; do p="${p}b"; n=$((n + 1)); done
     printf '%s' "$p"
 }
 SP_PAD="$(printf ' %.0s' $(seq 1 4100))"
