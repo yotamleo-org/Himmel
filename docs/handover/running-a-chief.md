@@ -1713,8 +1713,8 @@ the replay comparison above.
 #### A finished top-level T3 thread does not wake its launcher
 
 A worker that a chief or coordinator opens with a top-level T3 launch can end its turn without waking the
-launcher. T3 wakes a parent only for a real `delegate_task` child. A top-level launch is not a child, so its turn
-end sends nothing, and the result waits until someone looks. Baseline on T3 server 0.1.13, 2026-11-28, in a
+launcher. T3's completion wake goes to the parent of a real `delegate_task` child. A top-level launch is not a
+child, so its turn end wakes no one, and the result waits until someone looks. Baseline on T3 server 0.1.13, 2026-11-28, in a
 disposable project with no schedule or peers:
 
 | Row | Setup | Seen | Result |
