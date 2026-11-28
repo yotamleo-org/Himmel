@@ -445,6 +445,7 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   // Fails CLOSED; a starved run let a subagent write an operator-chain row.
   'block-subagent-release-operator.sh',
   'guard-judge-write-scope.sh',
+  'block-unexpanded-file-path.sh',
   // The readiness tool allow-list: a crash, signal, overrun or exhausted entry
   // deadline denies instead of being carried or skipped.
   READINESS_GUARD,

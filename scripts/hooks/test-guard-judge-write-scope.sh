@@ -4,6 +4,9 @@ set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd -P)
 REPO=$(cd "$HERE/../.." && pwd -P)
+# shellcheck source=../lib/override-env.sh
+. "$REPO/scripts/lib/override-env.sh"
+scrub_override_env
 HOOK="$HERE/guard-judge-write-scope.sh"
 LAUNCHER="$HERE/run-hook-with-bash.js"
 SETTINGS="$REPO/.claude/settings.json"
@@ -154,7 +157,18 @@ fence_denies W5-symlinked-judge-dir "$(wpayload judge-ro aj1 Write "$FXROOT/j910
 mkdir -m 700 "$FXROOT/j9106"
 ln -s "$JD/.holder" "$FXROOT/j9106/.holder"
 fence_denies W5b-symlinked-holder "$(wpayload judge-ro aj1 Write "$FXROOT/j9106/evidence.md")"
-fence_denies W6-dotdot "$(wpayload judge-ro aj1 Write "$JD/../j9101/evidence.md")"
+run_fence W6-dotdot "$(wpayload judge-ro aj1 Write "$JD/../j9101/evidence.md")"
+if [ "$RC" = 2 ] && fence_named W6-dotdot; then
+    ok "W6-dotdot (the fence alone: rc 2, the fence's deny)"
+else
+    bad "W6-dotdot: want the fence's own deny (rc 2), got rc=$RC: $(head -c 300 "$T/err-W6-dotdot")"
+fi
+run_chain W6-dotdot-chain "$(wpayload judge-ro aj1 Write "$JD/../j9101/evidence.md")"
+if [ "$RC" = 2 ] && grep -q 'block-unexpanded-file-path: the file path is not in the form' "$T/err-W6-dotdot-chain"; then
+    ok "W6-dotdot-chain (chain rc 2, the long-path guard's form deny comes first)"
+else
+    bad "W6-dotdot-chain: want the long-path guard's form deny (chain rc 2), got rc=$RC: $(head -c 300 "$T/err-W6-dotdot-chain")"
+fi
 fence_denies W7-sh-name "$(wpayload judge-ro aj1 Write "$JD/evidence.sh")"
 mkdir -p "$T/hroot/tuser/himmel/verdicts/Hj9101a"
 fence_denies W8-verdicts-under-handover-root "$(wpayload judge-ro aj1 Write "$T/hroot/tuser/himmel/verdicts/Hj9101a/judge.md")"

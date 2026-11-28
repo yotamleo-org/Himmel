@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-unset T3CODE_UNWATCH_OK
+unset T3CODE_UNWATCH_OK GH_CMD
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/block-t3code-unwatch-open-pr.sh"
@@ -64,6 +64,13 @@ if [ ! -s "$GH_STUB_LOG" ]; then echo "ok   other tool never calls gh"; else ech
 T3CODE_UNWATCH_OK=1 GH_STUB_STATE=OPEN run "override allows OPEN" "$TMP/p-url.json" 0 "T3CODE_UNWATCH_OK"
 T3CODE_UNWATCH_OK=1 GH_STUB_STATE=OPEN run "override allow is printed with state and PR" "$TMP/p-url.json" 0 "state=OPEN"
 if [ ! -e "$HOME/.himmel" ]; then echo "ok   override writes no file ledger"; else echo "FAIL override wrote under HOME: $(ls -A "$HOME/.himmel")"; FAIL=$((FAIL+1)); fi
+
+mkdir -p "$TMP/seam"
+printf '#!/usr/bin/env bash\nprintf %s\n' "'{\"state\":\"OPEN\",\"mergeStateStatus\":\"BLOCKED\",\"reviewDecision\":\"\"}\n'" > "$TMP/seam/gh-open"
+printf '#!/usr/bin/env bash\nexit 4\n' > "$TMP/seam/gh-fail"
+chmod +x "$TMP/seam/gh-open" "$TMP/seam/gh-fail"
+GH_CMD="$TMP/seam/gh-open" GH_STUB_STATE=MERGED run "GH_CMD names the gh the guard runs, ahead of PATH" "$TMP/p-url.json" 2 "state=OPEN"
+GH_CMD="$TMP/seam/gh-fail" GH_STUB_STATE=MERGED run "a failing GH_CMD takes the warn path" "$TMP/p-url.json" 0 "failed (rc=4)"
 
 GH_STUB_MODE=error run "unreadable PR fails open with warning" "$TMP/p-url.json" 0 "WARNING"
 GH_STUB_MODE=garbage run "garbage gh output fails open with warning" "$TMP/p-url.json" 0 "WARNING"

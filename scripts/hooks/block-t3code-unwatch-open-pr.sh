@@ -39,10 +39,11 @@ case "$num" in
     ''|*[!0-9]*) warn "no PR number in tool_input"; exit 0 ;;
 esac
 
+gh_cmd=${GH_CMD:-gh}
 if [ -n "$repo" ]; then
-    view=$(gh pr view "$num" --repo "$repo" --json state,mergeStateStatus,reviewDecision 2>/dev/null)  # swallow-ok: rc is checked right below and warns
+    view=$("$gh_cmd" pr view "$num" --repo "$repo" --json state,mergeStateStatus,reviewDecision 2>/dev/null)  # swallow-ok: rc is checked right below and warns
 else
-    view=$(gh pr view "$num" --json state,mergeStateStatus,reviewDecision 2>/dev/null)  # swallow-ok: rc is checked right below and warns
+    view=$("$gh_cmd" pr view "$num" --json state,mergeStateStatus,reviewDecision 2>/dev/null)  # swallow-ok: rc is checked right below and warns
 fi
 rc=$?
 if [ "$rc" != 0 ]; then warn "gh pr view $num failed (rc=$rc)"; exit 0; fi

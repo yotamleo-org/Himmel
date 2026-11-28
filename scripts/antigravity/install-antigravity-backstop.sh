@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
+# Test seam HIMMEL_PRIMARY_ROOT (the checkout whose hook adapter goes into hooks.json),
+# registered in scripts/chokepoints.json: on the anchor checkout a value that differs from the Claude
+# session's launch environment exits 96 (scripts/lib/chokepoint-seam-guard.sh).
 set -uo pipefail
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "install-antigravity-backstop.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/antigravity/install-antigravity-backstop.sh || exit 96
 
 DRY_RUN=0
 for arg in "$@"; do

@@ -123,9 +123,11 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // chain it appears in.
   'block-edit-live-settings.sh',
   // PreToolUse `Read|Grep`.
+  'block-unexpanded-file-path.sh',
   'block-read-secrets.sh',
   'read-clamp.sh',
   // PreToolUse `Edit|Write|MultiEdit|NotebookEdit` chain.
+  'block-unexpanded-file-path.sh',
   'guard-judge-write-scope.sh',
   'block-edit-on-main.sh',
   // Denies writes to a LIVE settings.json/settings.local.json
