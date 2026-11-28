@@ -201,24 +201,23 @@ fi
 printf -v q_repo '%q' "$primary"
 printf -v q_rel '%q' "$rel"
 
-if [ ! -e "$row" ] && [ ! -e "$row.grant.$KEY" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
-    route=any
-    if bounded 2 "$scratch" /dev/null python3 -I "$HOLDS" grant-route --repo "$primary" -- "$rel"; then
-        IFS= read -r route < "$scratch" || route=any
-    fi
-    case "$route" in
-        chief)
-            event deny "$rel" nobody
-            deny "$rel is a trust path outside your brief Writes, held by no one: a trust path needs a grant before your first write. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo --chief-doc CHIEF_DOC $q_rel . Otherwise the operator launches with WRITE_HOLD_OK=1"
-            ;;
-        operator)
-            event deny "$rel" nobody
-            deny "$rel is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1"
-            ;;
-    esac
-fi
-
 if [ ! -e "$row" ]; then
+    if [ ! -e "$row.grant.$KEY" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
+        route=any
+        if bounded 2 "$scratch" /dev/null python3 -I "$HOLDS" grant-route --repo "$primary" -- "$rel"; then
+            IFS= read -r route < "$scratch" || route=any
+        fi
+        case "$route" in
+            chief)
+                event deny "$rel" nobody
+                deny "$rel is a trust path outside your brief Writes, held by no one: a trust path needs a grant before your first write. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=) and can stamp a grant with: python3 -I $(holds_real) grant --key $KEY --repo $q_repo --chief-doc CHIEF_DOC $q_rel . Otherwise the operator launches with WRITE_HOLD_OK=1"
+                ;;
+            operator)
+                event deny "$rel" nobody
+                deny "$rel is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1"
+                ;;
+        esac
+    fi
     tmp="$dir/%00w.$$"
     if ! { [ -d "$dir" ] || mkdir -p "$dir"; } || ! printf '%s\t%s\t%s\tclaim\t\n' "$KEY" "$(clean "${HIMMEL_HOLD_LABEL:-}")" "$(clean "$DOC")" > "$tmp"; then
         rm -f "$tmp"
