@@ -781,8 +781,11 @@ check "48q dry-run --headless --profile: exit 0" "$rc" "0"
 not_contains "48q dry-run --headless --profile: no Remote Control" "$out" "remote-control="
 
 shim_env48="$tmp/shim-env48"
-# shellcheck disable=SC2016 # literal $@ and ${..} belong to the stub script, not this one
-printf '%s\n' '#!/usr/bin/env bash' 'printf "[%s]" "$@" > "$(dirname "$0")/env48-out"; printf " code=%s entry=%s\n" "${CLAUDE_CODE_EXPERIMENTAL_CODE_MODE-unset}" "${CLAUDE_CODE_ENTRYPOINT-unset}" >> "$(dirname "$0")/env48-out"' > "$shim_env48"
+cat > "$shim_env48" <<'EOF_SHIM48'
+#!/usr/bin/env bash
+printf "[%s]" "$@" > "$(dirname "$0")/env48-out"
+printf " code=%s entry=%s\n" "${CLAUDE_CODE_EXPERIMENTAL_CODE_MODE-unset}" "${CLAUDE_CODE_ENTRYPOINT-unset}" >> "$(dirname "$0")/env48-out"
+EOF_SHIM48
 chmod 755 "$shim_env48"
 rm -f "$tmp/env48-out"
 (unset WORKER_SESSION_REMOTE_CONTROL CLAUDE_CODE_EXPERIMENTAL_CODE_MODE; WORKER_SESSION_CODE_MODE=1 CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
@@ -815,12 +818,17 @@ not_contains "48w dry-run --code-mode: no Remote Control" "$out" "remote-control
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "48x dry-run without --code-mode: exit 0" "$rc" "0"
 not_contains "48x dry-run without --code-mode: no code-mode= (off by default)" "$out" "code-mode="
-for args48 in "--no-profile" "--lane claudex --profile worker-impl" "--headless --profile worker-impl" "--relay"; do
+for case48 in no-profile claudex headless relay; do
+  case "$case48" in
+    no-profile) args48=(--no-profile) ;;
+    claudex) args48=(--lane claudex --profile worker-impl) ;;
+    headless) args48=(--headless --profile worker-impl) ;;
+    relay) args48=(--relay) ;;
+  esac
   rc=0
-  # shellcheck disable=SC2086 # args48 is a deliberate word list
-  out="$(bash "$SCRIPT" --dry-run --code-mode $args48 PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
-  check "48y dry-run --code-mode $args48: refused (exit 2)" "$rc" "2"
-  contains "48y dry-run --code-mode $args48: refused by the Code Mode guard" "$out" "refusing --code-mode"
+  out="$(bash "$SCRIPT" --dry-run --code-mode "${args48[@]}" PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+  check "48y dry-run --code-mode ${args48[*]}: refused (exit 2)" "$rc" "2"
+  contains "48y dry-run --code-mode ${args48[*]}: refused by the Code Mode guard" "$out" "refusing --code-mode"
 done
 d48cm="$tmp/c48cm"; mk_launch_stubs "$d48cm" "PROJ-8320-cm"; mkdir -p "$tmp/repo48cm"
 rc=0
