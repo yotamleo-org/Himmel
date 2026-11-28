@@ -3621,7 +3621,7 @@ _11274_both_red='{"check_runs":[{"name":"lint","status":"completed","conclusion"
 _11274_rows=$'pass:lint\nfail:shell-unit (ubuntu-latest)'
 _11274_rows_red=$'fail:lint\nfail:shell-unit (ubuntu-latest)'
 _11274_seq() {
-    mkdir -p "$1" && printf '%s' "$2" > "$1/1.json" && printf '%s' "$3" > "$1/2.json"
+    { mkdir -p "$1" && printf '%s' "$2" > "$1/1.json" && printf '%s' "$3" > "$1/2.json"; } || { echo "FATAL: 11274 seq $1"; exit 1; }
 }
 
 _r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)

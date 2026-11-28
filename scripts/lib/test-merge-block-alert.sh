@@ -360,6 +360,7 @@ new_case a1d
     HIMMEL_TEST_FIXTURE=1 ALERT_LOG="$CASE/alerts.log" TELEGRAM_ACCESS_PATH="$ACCESS" \
     merge_watch_alert --red octo/demo 42 "$C2" "required check(s) FAILED: x" 2>>"$CASE/err"
 )
+if grep -q "your own PR's watch: not sent" "$CASE/err"; then pass; else fail "11274-author-fixture-no-dir: the author path ran (got: $(cat "$CASE/err"))"; fi
 eq "11274-author-fixture-no-dir: no .author under the repo's own sentinel dir" 0 \
     "$(find "$AREPO/.git/himmel-merge-block-alert" -name '*.author' 2>/dev/null | wc -l | tr -d ' ')"
 
