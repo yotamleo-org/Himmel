@@ -382,7 +382,7 @@ check '24. it leaves no legs: line and no refusal text' '0 0' "$(grep -c '^legs:
 #     own line. The pool-disposition text is the chief template's real seed (the backtick span in its
 #     Standing rules), not a typed line; wrapped prose under workers: is still carried.
 seed25="$(sed -n 's/.*`\(pool-disposition: <KEY>[^`]*\)`.*/\1/p' "$HERE/../../../docs/handover/chief-template.md" | head -1)"
-check '25. setup: the template seeds a pool-disposition line' 'pool-disposition: <KEY> slice|close|question|hold|park <named target> [authority=|wake=]' "$seed25"
+check '25. setup: the template seeds a pool-disposition line' 'pool-disposition: <KEY> slice|close|question|hold|park <named target> [authority=|wake=pr:<n>|wake=done:<KEY>]' "$seed25"
 hy="$HANDOVER_DIR/b/HIMMEL-nextleg-HY-chief.md"
 printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111` note a\n  wrapped prose b\n%s\ntracker-plan: some/dir\nqueue: none\n\n## Results\n' "$seed25" > "$hy"
 bash "$FM" add "${hy%.md}.fleet.json" --lane native "$d1" >/dev/null 2>&1
