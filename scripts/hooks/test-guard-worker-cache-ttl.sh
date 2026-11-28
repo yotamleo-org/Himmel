@@ -101,7 +101,7 @@ OUT=""; RC=0
 PAYLOAD_FILE="$TMP/payload.in"
 run_guard() {   # run_guard <payload> [ENV=val ...] — sets OUT and RC
     local p="$1"; shift
-    printf '%s' "$p" > "$PAYLOAD_FILE"
+    printf '%s' "$p" > "$PAYLOAD_FILE" || { echo "setup: could not write the payload fixture" >&2; exit 1; }
     OUT="$(env HIMMEL_CONSOLE_LEG=1 "$@" bash "$HOOK" < "$PAYLOAD_FILE")"; RC=$?
 }
 expect_block() {   # expect_block <label> — reads OUT/RC from the last run_guard
@@ -139,7 +139,7 @@ case "$out" in
     *'HIMMEL-1-N1-fixture-worker.md'*) ok "reason names the held doc" ;;
     *) bad "reason lacks the held doc — got: $out" ;;
 esac
-printf '%s' "$out" > "$TMP/block-out.json"
+printf '%s' "$out" > "$TMP/block-out.json" || { echo "setup: could not write the block-output fixture" >&2; exit 1; }
 if jq -e '.decision == "block" and (.reason | length > 0)' < "$TMP/block-out.json" >/dev/null 2>&1; then
     ok "block output is valid JSON"
 else
@@ -205,7 +205,7 @@ run_guard "$(payload "$T_IDLE" true)"
 expect_allow "stop_hook_active=true -> allow (one refusal per stop)"
 run_guard "$(payload "$T_IDLE" false other-session)"
 expect_allow "another session's stop (lock not ours) -> allow"
-printf '%s' "$(payload "$T_IDLE")" > "$PAYLOAD_FILE"
+printf '%s' "$(payload "$T_IDLE")" > "$PAYLOAD_FILE" || { echo "setup: could not write the payload fixture" >&2; exit 1; }
 OUT="$(env -u HIMMEL_CONSOLE_LEG bash "$HOOK" < "$PAYLOAD_FILE")"; RC=$?
 expect_allow "not a chief worker (HIMMEL_CONSOLE_LEG unset) -> allow"
 run_guard "$(payload "$T_IDLE")" HIMMEL_RELEASE_MANAGER=1
