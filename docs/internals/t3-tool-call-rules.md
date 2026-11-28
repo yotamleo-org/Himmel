@@ -81,7 +81,7 @@ comes first in the message, so the coordinator's bounded activity read can find 
 {"threadId":"<coordinator thread id>","message":"Event <stable event id>. Read <absolute coordinator state file>. Use coordinator owner generation <generation>. <one-line result or status>","mode":"queue","freshContext":true}
 ```
 
-- **One bounded sweep per scheduled run.** A scheduled fresh run spends one lookup on its own inbound T3
+- **One bounded sweep per scheduled run.** A scheduled fresh run spends one of its four lookups on its own inbound T3
   activity: one messages page (at most 20 items, at most 300 characters per item) plus the recent run ids and
   statuses. It compares the terminal event ids with the consumed ids in the state file and sends each missing
   event id and its run id to the chief for replay. If the page or the run metadata cannot cover every delivery
@@ -91,7 +91,8 @@ comes first in the message, so the coordinator's bounded activity read can find 
 - **Operator requests go through the chief**, which sends them on the queued fresh route above. A raw T3 UI
   wake that reuses the provider session invalidates a cost or freshness sample.
 - **A stale, retired or missing generation** in the brief makes the turn send the chief a blocker and end
-  before it acts or writes.
+  before it acts or writes. An event id the state file already lists as consumed is a duplicate delivery: the
+  turn ends without acting.
 
 ## The steer hook
 

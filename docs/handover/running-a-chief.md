@@ -1647,9 +1647,11 @@ and compacts in place. The tool forms are in
   generation between owners.
 - **Every turn reads, acts once, checkpoints and ends.** A turn reads the file before it acts. A missing or
   unreadable file, or a brief whose generation is retired, stale or missing, sends the supervising chief a
-  blocker and ends before acting or writing. Otherwise the turn does one bounded unit: one event and at most
-  four lookups, with one latest item per lookup and at most 3,000 characters per item. Use metadata
-  projections; larger or unbounded reads go to the work's owner. The checkpoint replaces the file atomically:
+  blocker and ends before acting or writing. A brief whose event id is already among the consumed ids ends
+  without acting: it is a duplicate delivery. Otherwise the turn does one bounded unit: one event and at most
+  four lookups, with one latest item per lookup and at most 3,000 characters per item. A scheduled run's one
+  activity sweep takes one of those four slots. Use metadata projections; larger or unbounded reads go to the
+  work's owner. The checkpoint replaces the file atomically:
   write a temp file in the same directory, then rename it over the state file.
 - **Pending actions.** Before an external action, checkpoint a pending action key derived from the event and
   the target. Record the resulting handle once the action is confirmed. Where a T3 operation takes a

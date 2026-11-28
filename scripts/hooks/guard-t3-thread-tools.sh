@@ -4,12 +4,6 @@
 # a T3 Code tool call that names a bypass provider instance, or one off the
 # optional narrowing list, or that sets a -chief or -console thread title.
 #
-# Fresh schedules: a schedule_task that creates (scheduledTaskId absent or null) an
-# interval schedule (an object, or one level of JSON text) with bindToCurrentThread
-# true or omitted and freshSession false or omitted is refused (rule
-# non-fresh-bound-interval), and the deny prints the freshSession: true form. It reads
-# only the tool input: no settings, state or registry, and never echoes the prompt.
-#
 # Bypass instance: an entry in T3's settings file
 # (${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json, .providerInstances) whose
 # env / environment (on the instance or its config) names a *_OK or *BYPASS*
