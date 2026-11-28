@@ -707,7 +707,7 @@ if [ "$pr_mode" = 0 ]; then
             echo "pr-check-context: WARNING - could not clear the step 0 head record: $step0_left is still there; remove it" >&2
         fi
     else
-        echo "pr-check-context: WARNING - cannot load $SCRIPT_DIR/pr-check-step0-head.sh, so no step 0 head record was cleared or written; pass --head <head> to panel-first-pass.sh" >&2
+        echo "pr-check-context: WARNING - cannot load $SCRIPT_DIR/pr-check-step0-head.sh, so no step 0 head record was cleared or written; this checkout is incomplete and its panel-first-pass.sh cannot run either - update it" >&2
     fi
 fi
 
