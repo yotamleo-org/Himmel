@@ -21,6 +21,11 @@
 #                or the file is gone) and no held lock carries its Live-state lock token. Left out
 #                of the tally as replaced and own are. A held lock is a live session and always
 #                counts, so a live worker that has not quoted back stays missing.
+#   ambiguous    the label has two or more live sessions (rows that neither closed nor were replaced)
+#                and the tally cannot tell which one answers; it counts as pending, never accepted
+# A label on several manifest rows (a worker relaunched under the same label) is judged on its LIVE
+# session only: each row resolves to the doc its session writes to (the end of its -RESUME chain), and an
+# older session's quote-back never stands in for the relaunch's.
 # The bullet grammar is strict, one whole line:
 #   - [HH:MM ][LIVE — ]SUCCESSION accepted: [`]<incoming>[`] replaces [`]<outgoing>[`]
 # and it must be a `- ` bullet, so a prose line or a mirrored relay quoting it confirms nothing.
@@ -208,15 +213,45 @@ worker_state() {
     if [ -n "$inc" ] && [ "$inc" = "$successor" ]; then echo quoted-back; else unquoted_state "$ldoc"; fi
 }
 
+chain_tail() {
+    local d="$1" n=0
+    while [ "$n" -lt 5 ] && [ -f "${d%.md}-RESUME.md" ]; do d="${d%.md}-RESUME.md"; n=$((n + 1)); done
+    printf '%s' "$d"
+}
+
+resolve_live() {
+    local rdocs rdoc tail seen=""
+    live_n=0; live_doc=""
+    rdocs="$(jq -r --arg l "$1" "$JQ_W"'[W[] | select(.label == $l)][] | .doc // empty' "$manifest" 2>/dev/null)" || return 1  # swallow-ok: a failed listing returns 1, the caller reads the worker as missing
+    while IFS= read -r rdoc; do
+        [ -n "$rdoc" ] && [ -f "$rdoc" ] || continue
+        tail="$(chain_tail "$rdoc")"
+        if [ -n "$seen" ] && printf '%s\n' "$seen" | grep -Fxq -- "$tail"; then continue; fi
+        seen="${seen}${seen:+
+}$tail"
+        doc_closed "$tail" && continue
+        [ -n "$(worker_named_successor "$tail")" ] && bash "$HERE/../queue-lock.sh" status "$tail" >/dev/null 2>&1 && continue
+        live_n=$((live_n + 1)); live_doc="$tail"
+    done <<< "$rdocs"
+    return 0
+}
+
 total=0; ok=0; pending=""; closed=0
 while IFS= read -r label; do
     [ -n "$label" ] || continue
-    ldoc=""; token=""
+    ldoc=""; token=""; live_n=0; live_doc=""; row_fail=0
     if [ -f "$manifest" ]; then
         # only a lookup that succeeded can prove a worker has no doc: its lock token is passed on then
-        if ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"; then token="$(entry_token "$label")"; fi  # swallow-ok: a failed lookup passes no token, so the worker is never proven closed by it
+        if ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"; then  # swallow-ok: a failed lookup passes no token, so the worker is never proven closed by it
+            token="$(entry_token "$label")"
+            resolve_live "$label" || row_fail=1
+        fi
     fi
-    state="$(worker_state "$ldoc" "$token")"
+    if [ "$row_fail" -eq 1 ]; then state=missing
+    elif [ "$live_n" -gt 1 ]; then state=ambiguous
+    elif [ "$live_n" -eq 1 ]; then state="$(worker_state "$live_doc" "$token")"
+    else state="$(worker_state "$ldoc" "$token")"
+    fi
     if [ "$state" = closed ] && [ -f "$manifest" ]; then
         # a label can sit on several manifest rows (a doc, then its relaunch): closed only when every row is
         # closed, so a worker still running on a later row is never left out
@@ -243,7 +278,7 @@ while IFS= read -r label; do
     if [ "$state" = missing ]; then
         case "$relayed" in *",$label,"*) state=relayed ;; esac
     fi
-    echo "$label $state"
+    if [ "$state" = ambiguous ]; then echo "$label ambiguous ($live_n live sessions under this label, cannot tell which one answers)"; else echo "$label $state"; fi
     if [ "$state" = quoted-back ]; then ok=$((ok + 1)); else pending="${pending}${pending:+,}$label"; fi
 done <<EOF
 $entries

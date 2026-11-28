@@ -538,5 +538,57 @@ lacks "the missing worker is not also classified quoted-back" "$out" "N2 quoted-
 lacks "the quoted-back worker is not also classified missing" "$out" "N1 missing"
 rm -f "${MAN%.json}.moved.json"
 
+L_OLD="$WORK/11592-N91-old.md"; L_NEW="$WORK/11592-N91-relaunch.md"
+mk11592() {
+    local f="$1"; shift
+    { printf '# worker\n\n## Results (newest at the bottom)\n\n'; for b in "$@"; do printf '%s\n' "$b"; done; } > "$f"
+}
+rows11592() {
+    local first=1 d
+    { printf '{"schema":1,"workers":['; for d in "$@"; do [ "$first" -eq 1 ] || printf ','; first=0; printf '{"doc":"%s","label":"N91","lane":"native"}' "$d"; done; printf ']}\n'; } > "$MAN"
+}
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N91:Y-N91-aa:lock91:11`\n' > "$CDOC"
+mk11592 "$L_OLD" "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")" "- 04:00 WRAPPED — relaunched as N91b"
+mk11592 "$L_NEW" "- 04:05 LIVE — relaunched"
+rows11592 "$L_OLD" "$L_NEW"
+out="$(run)"; rc=$?
+has "an acknowledged old row then an unacknowledged relaunch is INCOMPLETE" "$out" "INCOMPLETE 0/1 (waiting on: N91)"
+has "and names the relaunched worker as missing" "$out" "N91 missing"
+lacks "and never counts the old session's acknowledgement" "$out" "N91 quoted-back"
+lacks "and prints no LIVE line" "$out" "append-results.sh"
+eq "and exits 1" "$rc" 1
+rows11592 "$L_NEW" "$L_OLD"
+out="$(run)"
+has "the order of the rows does not matter: the unacknowledged live row is still missing" "$out" "N91 missing"
+mk11592 "$L_NEW" "- 04:05 LIVE — relaunched" "$(q "$SUCC" "$PRED")"
+out="$(run)"; rc=$?
+has "control: once the relaunch acknowledges, the label is quoted-back" "$out" "N91 quoted-back"
+eq "and the set reads complete (rc 0)" "$rc" 0
+mk11592 "$L_OLD" "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")" "- 04:00 LIVE — still working"
+mk11592 "$L_NEW" "- 04:05 LIVE — relaunched" "$(q "$SUCC" "$PRED")"
+rows11592 "$L_OLD" "$L_NEW"
+out="$(run)"; rc=$?
+has "two live rows for one label are reported ambiguous, naming the label" "$out" "N91 ambiguous"
+has "and the set is INCOMPLETE waiting on that label" "$out" "INCOMPLETE 0/1 (waiting on: N91)"
+lacks "and neither row's acknowledgement is counted" "$out" "N91 quoted-back"
+eq "and exits 1" "$rc" 1
+R_OLD="$WORK/11592-N92-old.md"; R_NEW="$WORK/11592-N92-old-RESUME.md"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N92:Y-N92-aa:lock92:12`\n' > "$CDOC"
+mk11592 "$R_OLD" "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")" "- 04:00 WRAPPED — continues from the RESUME doc"
+mk11592 "$R_NEW" "- 04:05 LIVE — resumed"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N92","lane":"native"}]}\n' "$R_OLD" > "$MAN"
+out="$(run)"; rc=$?
+has "an acknowledged doc whose RESUME doc is running unacknowledged is missing" "$out" "N92 missing"
+eq "and the set is INCOMPLETE (rc 1)" "$rc" 1
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N92","lane":"native"},{"doc":"%s","label":"N92","lane":"native"}]}\n' "$R_OLD" "$R_NEW" > "$MAN"
+out="$(run)"
+has "a doc and its RESUME doc on two rows are one session, not ambiguous" "$out" "N92 missing"
+lacks "and never ambiguous" "$out" "N92 ambiguous"
+mk11592 "$R_NEW" "- 04:05 LIVE — resumed" "$(q "$SUCC" "$PRED")"
+out="$(run)"
+has "control: the RESUME doc acknowledging makes the label quoted-back" "$out" "N92 quoted-back"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
