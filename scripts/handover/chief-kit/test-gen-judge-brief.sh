@@ -4,8 +4,6 @@
 # brief it writes is the docs/handover/judge-brief-template.md fenced block with every
 # placeholder filled, passes brief-lint.sh and the launcher's Tier gate, is blind (a spec that
 # carries a conclusion is refused), and never overwrites. Every path is a fixture: no launch.
-# Delta rows: a re-judge is classified from fixture judge records (none refused with --delta-noop,
-# finding on Sonnet, trust on Opus, a NO-GO head never none, a declared class the classifier contradicts refused).
 # GEN_JUDGE_BRIEF overrides the script under test (the RED control: a missing script fails
 # every row). bash 3.2-safe.
 #

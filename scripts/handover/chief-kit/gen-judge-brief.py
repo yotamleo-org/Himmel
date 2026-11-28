@@ -183,7 +183,6 @@ def verdicts_dir():
 
 
 def last_judged(vdir, pr, head):
-    """(written-at, qid, head, GO|NO-GO) of the PR's latest real judge record on another head, or None."""
     best = None
     for qid in os.listdir(vdir):
         if qid.startswith('go-pr-'):
@@ -209,7 +208,6 @@ def last_judged(vdir, pr, head):
 
 
 def classify_delta(s):
-    """Set delta_class from the PR's last judged head; refuse a declared class the classifier contradicts."""
     if not (str(s.get('pr') or '').isdigit() and re.fullmatch(r'[0-9a-f]{40}', str(s.get('head') or ''))):
         return
     try:
