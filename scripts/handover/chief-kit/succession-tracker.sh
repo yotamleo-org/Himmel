@@ -220,15 +220,15 @@ chain_tail() {
 }
 
 resolve_live() {
-    local rdocs rdoc tail seen=""
+    local rdocs rdoc tail seen="" nl='
+'
     live_n=0; live_doc=""
     rdocs="$(jq -r --arg l "$1" "$JQ_W"'[W[] | select(.label == $l)][] | .doc // empty' "$manifest" 2>/dev/null)" || return 1  # swallow-ok: a failed listing returns 1, the caller reads the worker as missing
     while IFS= read -r rdoc; do
         [ -n "$rdoc" ] && [ -f "$rdoc" ] || continue
         tail="$(chain_tail "$rdoc")"
-        if [ -n "$seen" ] && printf '%s\n' "$seen" | grep -Fxq -- "$tail"; then continue; fi
-        seen="${seen}${seen:+
-}$tail"
+        case "$nl$seen" in *"$nl$tail$nl"*) continue ;; esac
+        seen="$seen$tail$nl"
         doc_closed "$tail" && continue
         [ -n "$(worker_named_successor "$tail")" ] && bash "$HERE/../queue-lock.sh" status "$tail" >/dev/null 2>&1 && continue
         live_n=$((live_n + 1)); live_doc="$tail"
