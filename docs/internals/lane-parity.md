@@ -211,7 +211,7 @@ redirect and the peer-taint gate stay in force wherever a himmel hook runs.
 |---|---|---|
 | main-claude (workers, chiefs, repo agents) | WebFetch and WebSearch; every repo agent file names both on its `tools:` line | the project allow rule and the `Agent(web-fetch)` deny are owed to B15 (settings.json) |
 | codex-direct | hosted `web_search`, cached, on by default | himmel sets nothing; live mode is the operator's `~/.codex/config.toml` choice |
-| antigravity-t3 | `search_web` only | the `read_url_content` adapter arm is OPEN: its URL argument key is unread without a live thread; the adapter denies an unlisted tool |
+| antigravity-t3 | `search_web` only; none in a salus vault | the `read_url_content` adapter arm is OPEN: its URL argument key is unread without a live thread; the adapter denies an unlisted tool. In a salus vault `block-agy-salus-egress.sh` refuses `search_web` |
 | hermes-main | `web_search` and `web_extract` via the parity_guard allowlist | unchanged |
 | copilot / cursor | `deferred`: none by design (`--deny-url "*"`) | a guarded bulk lane |
 
@@ -341,6 +341,7 @@ carry it. The other rows are read by people.
 | `guard:auto-approve-safe-bash.sh` | has | has | structural: fail-open approver, not a deny-guard; the adapter allows a clean pass by default |
 | `guard:auto-arm-on-cap.sh` | has | has | structural: watchdog on the Claude subscription cap, fail-open by design, no Antigravity analog |
 | `guard:block-agent-native-egress.sh` | has | gap-ticketed: .codex/hooks.json: add block-agent-native-egress.sh to the mcp__.* chain | structural: MCP server agent-native is not on the adapter allowlist |
+| `guard:block-agy-salus-egress.sh` | structural: a salus vault's own .claude/hooks/block-cloud-egress.sh is the Claude session's egress floor | gap-ticketed: a Codex session in a salus vault has no egress floor yet; the Codex lane's salus work owns it | has |
 | `guard:block-antigravity-read-fence.sh` | structural: fences the Antigravity home and oauth token, a path Claude Code does not have | structural: fences the Antigravity home and oauth token, a path Codex does not have | has |
 | `guard:block-backend-tier.sh` | has | has | has |
 | `guard:block-bank-lift-writes.sh` | has | has | has |

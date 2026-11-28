@@ -17,8 +17,9 @@ interpret. **Never diagnose.** Every inferred / morphology statement is flagged
 with the `[inferred]` token (the same token `_CLAUDE.md` + `_skin-photo-archive.md`
 already use). See `_CLAUDE.md` for the full posture-A floor.
 
-Run this skill with **cwd = the medical vault** so `.claude/hooks/block-cloud-egress.sh`
-is in force (no cloud/web/push egress of PHI).
+Run this skill with **cwd = the medical vault** so the vault's egress floor is in
+force (no cloud/web/push egress of PHI); `_CLAUDE.salus-floors.md` says which floor
+loads for which harness.
 
 ---
 
@@ -106,7 +107,7 @@ Answer a health follow-up **grounded in the vault**.
 
 ## Guardrails (do not violate)
 - No diagnosis, ever — flag every inference `[inferred]`.
-- cwd = the medical vault so the egress floor loads; no cloud/web/non-Anthropic egress.
+- cwd = the medical vault so the egress floor loads (`_CLAUDE.salus-floors.md`); PHI must not leave the machine by web, cloud MCP or network command.
 - Selective staging; never `git add -A`; never push.
 - Idempotent photo filing (content-hash dedup).
 - Deferred (not this skill yet): in-place derm-prep / circle-test table mutation.

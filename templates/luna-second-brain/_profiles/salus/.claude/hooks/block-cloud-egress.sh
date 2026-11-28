@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # salus posture-A EGRESS FLOOR (PreToolUse, all tools).
 #
-# This repo holds medical PHI. Posture A = Anthropic/Claude (in-session) is the
-# ONLY processor that may see the content. This hook is the STRUCTURAL floor that
-# the prose guardrails alone could not provide: it hard-DENIES (exit 2) any tool
-# call that could move PHI off-machine to a non-Anthropic service, plus any
-# network/push/remote command. The medical pipeline never needs these — it runs
-# on local tools (PyMuPDF/Docling) + the in-session Claude vision read.
+# This repo holds medical PHI. The trusted in-session processors of operator
+# decision 1259 (Claude, Codex, Google Antigravity) may read the content; nothing
+# may carry it off the machine. This hook is the STRUCTURAL floor for Claude
+# sessions: it hard-DENIES (exit 2) any tool call that could move PHI to a web or
+# cloud service, plus any network/push/remote command. Antigravity sessions get
+# the same floor from himmel's block-agy-salus-egress.sh through the user-scope
+# backstop; _CLAUDE.salus-floors.md says which floor loads for which harness.
 #
 # Posture: default-ALLOW with a specific DENYLIST (failing closed on every tool
 # would break the local pipeline). On its own parse error it allows — but the
@@ -19,7 +20,7 @@ set -euo pipefail
 payload="$(cat 2>/dev/null || true)"
 tn="$(printf '%s' "$payload" | grep -oE '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed -E 's/.*"([^"]*)"$/\1/' || true)"
 
-deny() { echo "posture-A FLOOR: '$1' blocked — medical PHI must not leave the machine (no cloud/web/non-Anthropic egress). The pipeline uses local tools + in-session Claude vision only." >&2; exit 2; }
+deny() { echo "posture-A FLOOR: '$1' blocked — medical PHI must not leave the machine by web, cloud MCP or network command." >&2; exit 2; }
 
 case "$tn" in
   WebSearch|WebFetch|gemini-subagent) deny "$tn" ;;
