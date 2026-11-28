@@ -53,6 +53,12 @@ finding delta is a Sonnet judge: the brief names claude-sonnet-5-5 and carries t
 head, takes no tier (the Tier gate is for opus and fable), and refuses a model other than Sonnet.
 The last stdout field is `model=<id>`.
 
+Effort: with --dispatch-json, an Opus first judge (no delta_class) of a PR whose whole diff from its
+merge base with origin/main touches no path of origin/main's scripts/ci/ci-trust-paths.txt (the
+grep -E match delta-class.sh uses) and no file under a hooks/ directory runs at effort medium: the Agent object carries "effort":
+"medium" and the write-verdict.sh line names it. Every other judge keeps the judge-ro frontmatter
+effort (high), and any git or read error reads as a trust path.
+
 Blind, not thin (the template's first rule): the spec may carry the evidence and the attack
 list but never a conclusion, so conclusion / verdict / disposition / recommendation keys
 are refused.
@@ -182,6 +188,35 @@ def verdicts_dir():
     return r.stdout if r.returncode == 0 and r.stdout.startswith('/') else None
 
 
+# git-env-ok: pr_touches_trust runs git with an env that drops every GIT_* name
+def pr_touches_trust(head):
+    env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+
+    def git(*a):
+        r = subprocess.run(['git'] + list(a), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, text=True, timeout=60, env=env)
+        if r.returncode != 0:
+            raise OSError('git %s failed' % a[0])
+        return r.stdout
+    try:
+        base = git('merge-base', 'origin/main', head).strip()
+        names = [n for n in git('diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-relative',
+                                base, head).split('\0') if n]
+        pats = [p for p in git('show', 'origin/main:scripts/ci/ci-trust-paths.txt').split('\n')
+                if p.strip() and not p.lstrip().startswith('#')]
+        if not pats:
+            return True
+        pats.append('(^|/)hooks/')
+        for p in pats:
+            r = subprocess.run(['grep', '-Eq', '-e', p], input='\n'.join(names) + '\n', stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, text=True, timeout=60)
+            if r.returncode != 1:
+                return True
+        return False
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return True
+
+
 def last_judged(vdir, pr, head):
     best = None
     for qid in os.listdir(vdir):
@@ -303,7 +338,7 @@ def persist_text(s, no_persist):
             '`<primary checkout>` is the directory holding the `.git` that '
             '`git rev-parse --path-format=absolute --git-common-dir` prints. A refused write is reported in your '
             'reply under your GUARD RULE, never re-spelled.'
-            % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), judge_effort()))
+            % (s['qid'], s['pr'], s['qid'], s['head'], s['pr'], model_of(s), s['_effort']))
 
 
 SEARCH_ALONE = ('Send each search as its own tool call, with no other call in the same response: '
@@ -517,11 +552,16 @@ def main():
     if a.dispatch_json:
         spec['_brief_nonce'] = secrets.token_hex(8)
         spec['_completion'] = completion_of(spec)
+        spec['_effort'] = judge_effort()
+        if alias == 'opus' and spec.get('delta_class') is None and spec.get('pr') and not pr_touches_trust(spec['head']):
+            spec['_effort'] = 'medium'
         desc = 'Judge %s on %s' % (spec['qid'], spec['ticket'])
         call = {'description': desc, 'subagent_type': 'judge-ro', 'model': alias,
                 'prompt': dispatch_prompt(spec, a, alias), 'run_in_background': False}
-        print('gen-judge-brief: dispatch qid=%s nonce=%s judge-brief=%s model=%s (from %s); nothing written'
-              % (spec['qid'], spec['_nonce'], spec['_brief_nonce'], alias, model_of(spec)), file=sys.stderr)
+        if spec['_effort'] != judge_effort():
+            call['effort'] = spec['_effort']
+        print('gen-judge-brief: dispatch qid=%s nonce=%s judge-brief=%s model=%s (from %s) effort=%s; nothing written'
+              % (spec['qid'], spec['_nonce'], spec['_brief_nonce'], alias, model_of(spec), spec['_effort']), file=sys.stderr)
         print(json.dumps(call, ensure_ascii=False))
         return
     root = os.path.realpath(a.handover_root)

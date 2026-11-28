@@ -91,7 +91,11 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   never a refspec fetch: the primary-checkout guard refuses it), then read with
   `git diff origin/main...<sha>` and `git show <sha>:<path>`; never FETCH_HEAD.
 - **Start an ordinary first or trust judge at Opus**: Sonnet is only for the
-  re-judge of a later push whose delta classifies `finding` (below). Escalate only
+  re-judge of a later push whose delta classifies `finding` (below). The generator sets the
+  effort too: an Opus first judge of a PR whose diff from its merge base with origin/main touches
+  no path of origin/main's trust list and no file under a hooks/ directory runs at effort medium
+  (operator ruling, 2026-11-28); a trust-path or hooks judge, a delta judge and any judge whose
+  diff cannot be read keep high. Escalate only
   when a judge returns above-my-tier
   (`bash scripts/handover/chief-kit/judge-ladder.sh next-tier <tier>`; Fable's next
   rung is the operator). Spend each convening with `judge-ladder.sh convene <seat>

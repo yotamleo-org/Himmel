@@ -452,11 +452,12 @@ printf 'class: other\nclass-reason: fixture\n\n## Evidence checked\n\n- read the
 DJ="$(git -C "$DREPO" rev-parse HEAD)"
 : > "$DREPO/.git/cr-critic-scores.jsonl"
 dcommit() {
-    git -C "$DREPO" checkout -q --detach "$DJ" && cat > "$DREPO/$1" && git -C "$DREPO" add -A && git -C "$DREPO" commit -qm "change $1" && git -C "$DREPO" rev-parse HEAD
+    git -C "$DREPO" checkout -q --detach "$DJ" && mkdir -p "$(dirname "$DREPO/$1")" && cat > "$DREPO/$1" && git -C "$DREPO" add -A && git -C "$DREPO" commit -qm "change $1" && git -C "$DREPO" rev-parse HEAD
 }
 NDOC="$(printf 'more\n' | dcommit docs/c.md)"
 NSRC="$(seq 1 10 | awk 'NR==3 { $0 = "three" } 1' | dcommit src/a.txt)"
 NCI="$(printf 'x\n' | dcommit scripts/ci/x.sh)"
+NHOOK="$(printf 'x\n' | dcommit src/hooks/h.sh)"
 denv() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$WORK/handovers" USER_SLUG=u \
     CLAUDE_CODE_SESSION_ID=sess-judge HOME="$WORK/dhome" "$@"; }
 dverdict() {
@@ -486,6 +487,7 @@ dspec r2 102 "$NSRC" - 0;      drun r2
 has "delta: a finding delta carries its DELTA-JUDGE line" "$(jf prompt)" "
 DELTA-JUDGE: $NSRC
 "
+[ "$(jf effort)" = "null" ] && has "effort: a finding delta keeps no effort key and --effort high" "$(jf prompt)" "--effort high" || fail "effort finding delta: $(jf effort)"
 dspec r3 103 "$NCI" - 1;       drun r3
 [ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "delta: a trust delta after a GO runs on opus" || fail "delta trust rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
 lacks "delta: a trust delta carries no DELTA-JUDGE line" "$(jf prompt)" "DELTA-JUDGE:"
@@ -501,6 +503,14 @@ if [ "$dj_rc" = 1 ] && [ -z "$dj_out" ] && grep -q 'delta_class none refused' "$
 dspec r8 108 "$NDOC" - 1;      drun r8
 [ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "delta: a PR with no records is a first judge on opus" || fail "first judge rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
 has "delta: a PR with no records says a first judge" "$(cat "$WORK/dj.err")" "a first judge"
+dspec e1 201 "$NDOC" - 1;      drun e1
+[ "$dj_rc" = 0 ] && [ "$(jf effort)" = "medium" ] && has "effort: a first judge of a PR touching no trust path runs at medium" "$(jf prompt)" "--effort medium" || fail "effort docs-only rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
+dspec e2 202 "$NCI" - 1;       drun e2
+[ "$dj_rc" = 0 ] && [ "$(jf effort)" = "null" ] && has "effort: a first judge of a trust-path PR keeps no effort key and --effort high" "$(jf prompt)" "--effort high" || fail "effort trust path rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
+dspec e3 203 "$NHOOK" - 1;     drun e3
+[ "$dj_rc" = 0 ] && [ "$(jf effort)" = "null" ] && has "effort: a first judge of a PR adding a hooks/ file keeps high" "$(jf prompt)" "--effort high" || fail "effort hooks rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
+dspec e5 205 "$HEAD40" - 1;    drun e5
+[ "$dj_rc" = 0 ] && [ "$(jf effort)" = "null" ] && has "effort: a head that is not a commit fails closed to high" "$(jf prompt)" "--effort high" || fail "effort unreadable head rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
