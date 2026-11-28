@@ -631,7 +631,7 @@ if printf '%s\n' "$MSGS" | tr -d '\r' | grep -q '^Fixes-main-red:'; then
 fi
 add_check 8 pass
 
-TRC=0; TOKEN=$(gd_worker_token "$DOC" "$WORKER" "$WORKER_DOC") || TRC=$?
+TRC=0; TOKEN=$(gd_worker_token "$DOC" "$WORKER" "$WORKER_DOC" "$ROOT") || TRC=$?
 [ "$TRC" -ne 2 ] || fail 9 "the token record for $WORKER is unreadable"
 [ "$TRC" -eq 0 ] || fail 9 "no usable RETASK token for $WORKER in the token record, the chief doc's Live state or its brief"
 

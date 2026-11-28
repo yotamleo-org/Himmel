@@ -237,7 +237,7 @@ while IFS=$'\t' read -r PR HEADSHA _base DRAFT <&3; do
         QID=$(newest_qid "$PR" "$HEADSHA")
         if [ -z "$QID" ]; then hold "no judge verdict at head ($WHY)"; continue; fi
     fi
-    TRC=0; TOKEN=$(gd_worker_token "$DOC" "$LABEL" "$WDOC") || TRC=$?
+    TRC=0; TOKEN=$(gd_worker_token "$DOC" "$LABEL" "$WDOC" "$ROOT") || TRC=$?
     if [ "$TRC" -ne 0 ]; then
         if [ "$TRC" -eq 2 ]; then printf 'NO-TOKEN %s %s (token record unreadable)\n' "$PR" "$LABEL"; else printf 'NO-TOKEN %s %s\n' "$PR" "$LABEL"; fi
         HELD=$((HELD + 1)); continue

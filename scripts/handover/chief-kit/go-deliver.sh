@@ -9,7 +9,7 @@
 #                                                 for <label> (legs: too while legacy names are on)
 #   gd_brief_token <worker doc>                   the first backticked value of the last
 #                                                 `> **RETASK:**` line above `## Results`
-#   gd_worker_token <chief doc> <label> <worker doc>  the record's, else (exit 1/3) the live one, else the brief's; rc 2 unreadable record
+#   gd_worker_token <chief doc> <label> <worker doc> [<root>]  the record's under <root>, else (exit 1/3) the live one, else the brief's; rc 2 unreadable record
 #   gd_worker_map <manifest>                      <pr> TAB <label> TAB <doc> TAB <lane> per manifest
 #                                                 row whose doc's newest READY or MERGED bullet names a PR
 #   gd_pr_worker <manifest> <pr>                  <label> TAB <doc> TAB <lane> of the last row for <pr>
@@ -75,7 +75,11 @@ gd_brief_token() {
 
 gd_worker_token() {
     local t rc=0
-    t=$(bash "$_GD_HERE/worker-token.sh" current "$3" 2>/dev/null) || rc=$?  # swallow-ok: every exit is handled below
+    if [ -n "${4:-}" ]; then
+        t=$(HANDOVER_DIR="$4" bash "$_GD_HERE/worker-token.sh" current "$3" 2>/dev/null) || rc=$?  # swallow-ok: every exit is handled below
+    else
+        t=$(bash "$_GD_HERE/worker-token.sh" current "$3" 2>/dev/null) || rc=$?  # swallow-ok: every exit is handled below
+    fi
     case "$rc" in
         0) printf '%s\n' "$t"; return 0 ;;
         1|3) ;;

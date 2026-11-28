@@ -451,6 +451,15 @@ contains "11407 GB1c no record row: the brief token as today" "$(msg_of 42)" 'Yo
 contains "11407 GB2 an unreadable record: NO-TOKEN naming the record" "$OUT" "NO-TOKEN 243 N43 (token record unreadable)"
 check "11407 GB2 no GO file for the unreadable record's PR" "$(find "$HANDOVER_DIR/.locks/go" -name '243.*' | wc -l | tr -d ' ')" "0"
 contains "11407 GB2c keymismatch: the brief token" "$OUT" 'Your token `CJ-N44-b0`.'
+mkdir -p "$HANDOVER_DIR/b4"
+D45="$HANDOVER_DIR/b4/wk-9245-N45-root-2026-11-25.md"
+REC45=$(bash "$WT" mint "$D45" CJ-N45 2>/dev/null)
+printf '# t\n\n> %s\n\n## Results\n' "$(RETASK CJ-N45-stale)" > "$D45"
+ROOT45="$HANDOVER_DIR"
+GB4=$( . "$HERE/go-deliver.sh" || exit 9; HANDOVER_DIR="$ROOT45/b4" gd_worker_token "$tmp/chief-rec.md" N45 "$D45" "$ROOT45" )
+GB4c=$( . "$HERE/go-deliver.sh" || exit 9; HANDOVER_DIR="$ROOT45/b4" gd_worker_token "$tmp/chief-rec.md" N45 "$D45" )
+check "11407 GB4 the caller's root, not an inherited HANDOVER_DIR, keys the record token" "$GB4|$([ -n "$REC45" ] && echo minted)" "$REC45|minted"
+check "11407 GB4c control: under another inherited root the same record derives another token" "$([ -n "$GB4c" ] && [ "$GB4c" != "$REC45" ] && echo differs)" "differs"
 REF3="$tmp/m3/scripts/handover/chief-kit"
 mkdir -p "$REF3"; ln -s "$HERE/../../lib" "$tmp/m3/scripts/lib"
 for f in "$HERE"/*.sh; do [ "$(basename "$f")" = worker-token.sh ] || ln -s "$f" "$REF3/$(basename "$f")"; done
