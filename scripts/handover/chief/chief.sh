@@ -55,7 +55,7 @@
 # real `## Current direction` block; 10 `next` refused: a launch still writes to the
 # predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait, or that manifest
 # is unreadable; 11 `next` or `wrap` refused: the HANDOFF cannot be read, or a numbered
-# item of it carries no owed-row id (o<N>) and no closed mark; 18 `--project` refused: the project folder would not load the
+# item of it carries no owed-row id (o<N>) and no (closed) mark; 18 `--project` refused: the project folder would not load the
 # himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
@@ -126,7 +126,7 @@ wrap (the predecessor's last step, run from its own session) writes the
 WRAPPED bullet and releases the lock, and refuses (exit 4, nothing written)
 while this session has a live in-process subagent. next and wrap refuse
 (exit 11) while a numbered item of the chief's -HANDOFF.md carries neither an
-owed-row id (o<N>, printed by owe.sh add) nor the word closed.
+owed-row id (o<N>, printed by owe.sh add) nor the mark (closed).
 
 Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT and the default;
 --context standard or CHIEF_CONTEXT=standard opts down to 200000.
@@ -582,7 +582,8 @@ EOS
 
 check_handoff_items_owed() {
     local unowed known check_ids=1
-    [ -f "$1" ] || return 0
+    [ -e "$1" ] || return 0
+    [ -f "$1" ] && [ -r "$1" ] || { err "refusing to hand over: cannot read $1"; return 1; }
     if known="$(bash "$HERE/../chief-kit/owe.sh" list --bucket "$2" --all)"; then
         known="$(printf '%s\n' "$known" | cut -f1 | tr '\n' ' ')"
     else
@@ -591,8 +592,8 @@ check_handoff_items_owed() {
     fi
     unowed="$(KNOWN=" $known " CHECK_IDS="$check_ids" awk '
         function covered(s,   t, id) {
-            t = tolower(s); gsub(/(not|never)[ \t]+([a-z]+[ \t]+)?([a-z]+[ \t]+)?closed/, "", t)
-            if (t ~ /(^|[^a-z0-9_])closed([^a-z0-9_]|$)/) return 1
+            t = tolower(s)
+            if (index(t, "(closed)")) return 1
             while (match(t, /(^|[^a-z0-9_])o[1-9][0-9]*([^a-z0-9_]|$)/)) {
                 id = substr(t, RSTART, RLENGTH); gsub(/[^o0-9]/, "", id)
                 if (ENVIRON["CHECK_IDS"] != 1 || index(ENVIRON["KNOWN"], " " id " ")) return 1
@@ -606,9 +607,9 @@ check_handoff_items_owed() {
         num != "" { item = item " " $0 }
         END { flush() }' "$1")" || { err "refusing to hand over: cannot read $1"; return 1; }
     [ -n "$unowed" ] || return 0
-    err "refusing to hand over: a numbered item of $1 carries no closed mark and no owed-row id (o<N>) that $2/owed.jsonl holds:"
+    err "refusing to hand over: a numbered item of $1 carries no (closed) mark and no owed-row id (o<N>) that $2/owed.jsonl holds:"
     printf '%s\n' "$unowed" >&2
-    err "  write a row for each, put the o<N> it prints in the item (or mark it closed), and retry: bash $HERE/../chief-kit/owe.sh add --bucket $2 --chief <letter> --kind ticket|proof|ruling|step --text \"<the item>\""
+    err "  write a row for each, put the o<N> it prints in the item (or mark it (closed)), and retry: bash $HERE/../chief-kit/owe.sh add --bucket $2 --chief <letter> --kind ticket|proof|ruling|step --text \"<the item>\""
     return 1
 }
 
