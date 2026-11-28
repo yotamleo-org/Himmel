@@ -1220,10 +1220,13 @@ printf '{"name":"drift","edited":true}\n' > "$PH/scripts/harnesses/drift.json"
 git -C "$PH" -c user.email=t@t -c user.name=t commit -q -am drift-edit
 run_recorder "$PH" "$OUTH" "sess-h"
 hH10="$(h_verify)"
-if [ -z "$(h_pin scripts/harnesses/drift.json)" ] && [ "$hH10" = "deny scripts/harnesses/drift.json" ]; then
+drift_main="$(git -C "$PH" rev-parse --verify --quiet origin/main:scripts/harnesses/drift.json)"
+if [ -n "$drift_main" ] && [ "$drift_main" != "$(git -C "$PH" rev-parse HEAD:scripts/harnesses/drift.json)" ] \
+  && [ "$(jq -r '.anchor' "$RECH")" = "$(git -C "$PH" rev-parse origin/main)" ] \
+  && [ -z "$(h_pin scripts/harnesses/drift.json)" ] && [ "$hH10" = "deny scripts/harnesses/drift.json" ]; then
   ok "rowH10: a re-run does not pin a new descriptor whose path is on origin/main with other bytes"
 else
-  bad "rowH10: drift.json edited on the branch gave '$hH10' pin='$(h_pin scripts/harnesses/drift.json)' (want no pin and a deny naming it)"
+  bad "rowH10: drift.json edited on the branch gave '$hH10' pin='$(h_pin scripts/harnesses/drift.json)' main-blob='$drift_main' record-anchor=$(jq -r '.anchor' "$RECH") (want no pin and a deny naming it)"
 fi
 
 # ---------------------------------------------------------------------------
