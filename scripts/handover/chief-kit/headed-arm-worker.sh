@@ -1801,6 +1801,7 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
         WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
+        HIMMEL_HOOK_INTEGRITY_BYPASS_OK) [ -z "${HIMMEL_MAINTAINER_ACTION:-}" ] && continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
         # cleared at start-up and rewritten from the HANDOVER_DIR propagation on, so scrubbing it here would drop HANDOVER_DIR's line.

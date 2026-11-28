@@ -208,6 +208,20 @@ for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search 
     done
 done
 
+echo "== T3 schedule_task: a bound interval without a fresh session is refused on every registry harness =="
+SCHED_BOUND='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}'
+SCHED_DEFAULT='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000}}'
+SCHED_TEXT='{"prompt":"coordinate","schedule":"{\"type\":\"interval\",\"everyMs\":1800000}","bindToCurrentThread":true,"freshSession":false}'
+SCHED_FRESH='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":true}'
+SCHED_UNBOUND='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":false,"freshSession":false}'
+for id in $HARNESS_IDS; do
+    run_harness "$id" schedule_task "$SCHED_BOUND" deny "SCHED-BOUND denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_DEFAULT" deny "SCHED-DEFAULT denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_TEXT" deny "SCHED-TEXT denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_FRESH" allow "fresh-session interval allowed"
+    run_harness "$id" schedule_task "$SCHED_UNBOUND" allow "unbound interval allowed"
+done
+
 echo "== T3 preview tools (plugin-profiles previewBrowserTools): no lane guard denies one, so the profile option only adds an allow rule =="
 PREVIEW_TOOLS="$(jq -r '.previewBrowserTools[]?' "$REPO/scripts/lanes/plugin-profiles.json")"
 if [ -n "$PREVIEW_TOOLS" ]; then ok "the registry lists the preview tools"; else bad "the registry lists no preview tools"; fi
