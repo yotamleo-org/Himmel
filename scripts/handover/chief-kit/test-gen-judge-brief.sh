@@ -4,6 +4,8 @@
 # brief it writes is the docs/handover/judge-brief-template.md fenced block with every
 # placeholder filled, passes brief-lint.sh and the launcher's Tier gate, is blind (a spec that
 # carries a conclusion is refused), and never overwrites. Every path is a fixture: no launch.
+# Delta rows: a re-judge is classified from fixture judge records (none refused with --delta-noop,
+# finding on Sonnet, trust on Opus, a NO-GO head never none, a declared class the classifier contradicts refused).
 # GEN_JUDGE_BRIEF overrides the script under test (the RED control: a missing script fails
 # every row). bash 3.2-safe.
 #
@@ -22,6 +24,7 @@ lacks() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-judge-brief-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+export HANDOVER_DIR="$WORK/handovers" USER_SLUG=u
 export HIMMEL_CEILINGS_LEDGER="$WORK/no-ceilings-ledger.tsv"
 case "$HIMMEL_CEILINGS_LEDGER" in "$WORK"/*) ;; *) echo "FAIL: the ceilings ledger escapes the work dir"; exit 1 ;; esac
 unset HIMMEL_BUCKET_DIR
@@ -158,7 +161,9 @@ has "a trust delta prints model=claude-opus-5-5" "$gen_out" "model=claude-opus-5
 lacks "a trust delta brief carries no DELTA-JUDGE marker" "$gen_doc" "DELTA-JUDGE:"
 has "a trust delta brief keeps the opus Tier line" "$gen_doc" "> **Tier:** opus — "
 
-mutate dnone 'd["delta_class"]="none"';                              refuse "a none delta is refused: it needs no judge" dnone "delta_class"
+mutate dnone 'd["delta_class"]="none"'
+gen_ok dnone
+[ "$gen_rc" = 0 ] && has "a declared none delta with no prior record prints model=claude-opus-5-5" "$gen_out" "model=claude-opus-5-5" || fail "a declared none delta rc=$gen_rc: $(cat "$WORK/dnone.err")"
 mutate dbad 'd["delta_class"]="full"';                               refuse "an unknown delta_class is refused" dbad "delta_class"
 mutate dnopr 'd["delta_class"]="finding"; del d["pr"]; del d["head"]'; refuse "a finding delta with no PR head is refused" dnopr "delta_class"
 mutate dopus 'd["delta_class"]="finding"; d["model"]="claude-opus-5-5"'; refuse "a finding delta pinned to opus is refused" dopus "delta_class"
@@ -430,6 +435,74 @@ GOLDEN
 dj spec
 printf '%s' "$dj_out" | masked > "$WORK/now.txt"
 if diff "$WORK/golden.txt" "$WORK/now.txt" > "$WORK/golden.diff"; then pass "pin: without --no-persist the dispatch matches the golden"; else fail "pin: the dispatch drifted from the golden: $(cat "$WORK/golden.diff")"; fi
+
+DREPO="$WORK/drepo"
+mkdir -p "$DREPO/scripts/ci" "$DREPO/src" "$DREPO/docs" "$WORK/dhome/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$WORK/dhome/.config/himmel/go-hmac.key"
+scratch="/tmp/claude-$(id -u)"
+[ -d "$scratch" ] || mkdir -m 700 "$scratch"
+DEVD="$(mktemp -d "$scratch/gen-judge-brief-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed"; exit 1; }
+trap 'rm -rf "$WORK" "$DEVD"' EXIT
+printf 'class: other\nclass-reason: fixture\nfinding: src/a.txt:3-4\n\n## Evidence checked\n\n- read the diff\n' > "$DEVD/ev-go.md"
+printf 'class: other\nclass-reason: fixture\n\n## Evidence checked\n\n- read the diff\n' > "$DEVD/ev-nogo.md"
+(
+    cd "$DREPO" && git -c init.defaultBranch=main init -q && git config user.email t@t && git config user.name t \
+        && git config commit.gpgsign false && printf '^scripts/ci/\n' > scripts/ci/ci-trust-paths.txt \
+        && seq 1 10 > src/a.txt && printf 'c\n' > docs/c.md && git add -A && git commit -qm base \
+        && git update-ref refs/remotes/origin/main HEAD
+) || fail "delta fixture repo"
+DJ="$(git -C "$DREPO" rev-parse HEAD)"
+: > "$DREPO/.git/cr-critic-scores.jsonl"
+dcommit() {
+    git -C "$DREPO" checkout -q --detach "$DJ" && cat > "$DREPO/$1" && git -C "$DREPO" add -A && git -C "$DREPO" commit -qm "change $1" && git -C "$DREPO" rev-parse HEAD
+}
+NDOC="$(printf 'more\n' | dcommit docs/c.md)"
+NSRC="$(seq 1 10 | awk 'NR==3 { $0 = "three" } 1' | dcommit src/a.txt)"
+NCI="$(printf 'x\n' | dcommit scripts/ci/x.sh)"
+denv() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$WORK/handovers" USER_SLUG=u \
+    CLAUDE_CODE_SESSION_ID=sess-judge HOME="$WORK/dhome" "$@"; }
+dverdict() {
+    denv bash "$HERE/write-verdict.sh" "$1" "$2" "$DJ" --pr "$3" --model test-model --effort high --evidence-file "$4" >/dev/null 2>"$WORK/dv.err" \
+        || fail "cannot write the $1 verdict: $(cat "$WORK/dv.err")"
+}
+dverdict dq101 GO 101 "$DEVD/ev-go.md"
+dverdict dq102 GO 102 "$DEVD/ev-go.md"
+dverdict dq103 GO 103 "$DEVD/ev-go.md"
+dverdict dq104 NO-GO 104 "$DEVD/ev-nogo.md"
+dverdict dq105 GO 105 "$DEVD/ev-go.md"
+dverdict dq106 GO 106 "$DEVD/ev-go.md"
+dverdict dq107 GO 107 "$DEVD/ev-go.md"
+dspec() {
+    python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr"]=int(sys.argv[3]); d["head"]=sys.argv[4]; d["qid"]="jd"+sys.argv[3]
+if sys.argv[5] != "-": d["delta_class"]=sys.argv[5]
+if sys.argv[6] == "0": del d["tier"]
+json.dump(d,open(sys.argv[2],"w"))' "$WORK/spec.json" "$WORK/$1.json" "$2" "$3" "$4" "$5"
+}
+drun() {
+    dj_out="$(cd "$DREPO" && denv python3 "$SUT" "$WORK/$1.json" --chief "$CHIEF" --dispatch-json 2>"$WORK/dj.err")"; dj_rc=$?
+}
+dspec r1 101 "$NDOC" - 1;      drun r1
+if [ "$dj_rc" = 1 ] && [ -z "$dj_out" ] && grep -q -- '--delta-noop' "$WORK/dj.err"; then pass "delta: a none delta after a GO is refused with the --delta-noop line"; else fail "delta none rc=$dj_rc out=$dj_out err: $(cat "$WORK/dj.err")"; fi
+dspec r2 102 "$NSRC" - 0;      drun r2
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "sonnet" ] && pass "delta: a finding delta after a GO runs on sonnet" || fail "delta finding rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+has "delta: a finding delta carries its DELTA-JUDGE line" "$(jf prompt)" "
+DELTA-JUDGE: $NSRC
+"
+dspec r3 103 "$NCI" - 1;       drun r3
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "delta: a trust delta after a GO runs on opus" || fail "delta trust rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+lacks "delta: a trust delta carries no DELTA-JUDGE line" "$(jf prompt)" "DELTA-JUDGE:"
+dspec r4 104 "$NDOC" - 0;      drun r4
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "sonnet" ] && pass "delta: a none delta after a NO-GO counts as finding (sonnet)" || fail "delta nogo rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+dspec r5 105 "$NCI" finding 0; drun r5
+if [ "$dj_rc" = 1 ] && grep -q 'delta_class finding refused' "$WORK/dj.err"; then pass "delta: a declared finding the classifier prints as trust is refused"; else fail "declared finding rc=$dj_rc err: $(cat "$WORK/dj.err")"; fi
+dspec r6 106 "$NDOC" none 1;   drun r6
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "delta: a declared none over a none delta dispatches opus" || fail "declared none rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+lacks "delta: a declared none delta carries no DELTA-JUDGE line" "$(jf prompt)" "DELTA-JUDGE:"
+dspec r7 107 "$NSRC" none 1;   drun r7
+if [ "$dj_rc" = 1 ] && [ -z "$dj_out" ] && grep -q 'delta_class none refused' "$WORK/dj.err"; then pass "delta: a declared none over a finding delta is refused"; else fail "declared none vs finding rc=$dj_rc err: $(cat "$WORK/dj.err")"; fi
+dspec r8 108 "$NDOC" - 1;      drun r8
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "opus" ] && pass "delta: a PR with no records is a first judge on opus" || fail "first judge rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
+has "delta: a PR with no records says a first judge" "$(cat "$WORK/dj.err")" "a first judge"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

@@ -126,8 +126,8 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   resolves before the classifier. The fallback is
   `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh` with the same arguments;
   it matches no allow rule, so in auto mode the classifier decides it. If both spellings are
-  refused, dispatch an ordinary judge (no `delta_class` key, the default model), never a
-  `finding` brief: the class is `none`. The writer re-runs the classifier, refuses
+  refused, dispatch an ordinary judge with `"delta_class": "none"` (Opus), never a
+  `finding` brief. The writer re-runs the classifier, refuses
   (exit 2) unless it prints `none`, and signs `delta: no-op`, `delta-judged: <sha>` and
   `delta-class: none` into `verdicts/<qid>/delta-noop-<head>.md`. The judged head must carry the
   qid's signed GO; a no-op is never itself a judged head, so each later push is classified against
@@ -141,10 +141,19 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   (it echoes `agent-model-delta-judge: …` on stderr). The marker rescues Sonnet only: haiku and
   fable stay denied. The first full judge of a PR keeps Opus, and so does a delta that prints
   `trust`: the guard only reads the declaration and cannot check the class, so the chief does.
-  **Do not pick the model by hand**: put `"delta_class": "<what delta-class.sh printed>"` in the
-  `gen-judge-brief.py` spec (`finding` or `trust`; a first judge omits it). `finding` runs on
-  Sonnet and carries the `DELTA-JUDGE: <head>` line (it needs `pr` and `head`, takes no `tier`,
-  and refuses another model); `trust` and no key keep Opus.
+  **Do not pick the model by hand**: `gen-judge-brief.py` classifies a re-judge itself. For a spec
+  with `pr` and `head` it finds the PR's last real judge record on another head in the harness
+  bucket (no-op and chief-go records skipped) and runs
+  `delta-class.sh --qid <its qid> <that head> <head>` in the current checkout, so run it in the
+  checkout that holds both commits. Leave `delta_class` out: `finding` runs on Sonnet with the
+  `DELTA-JUDGE: <head>` line (takes no `tier`, refuses another model), `trust` keeps Opus, and
+  `none` is refused with the `--delta-noop` line to run instead. A delta after a NO-GO that prints
+  `none` counts as `finding`, since a NO-GO head cannot carry a no-op. A declared
+  `"delta_class": "finding"` that the classifier prints as `trust` is refused.
+  `"delta_class": "none"` is only for the fallback above, when both no-op spellings are refused: it
+  dispatches an Opus judge and is refused when the classifier prints `trust` or `finding`. With no
+  earlier judged head, or records it cannot read, the spec is used as given (a first judge keeps
+  Opus).
   **A re-judge after a class NO-GO reuses that NO-GO's qid** (write the GO into the qid that holds
   the current NO-GO, as `judge-<head>.md` beside it): the panel route reads the GO's
   `layer-decision:` line only from a qid that holds a current NO-GO, so a GO in a fresh qid is not
