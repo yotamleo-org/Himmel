@@ -643,5 +643,78 @@ sock_len="$(chrome_sock_len "$sock_tmp")"
 expect_eq "41 control: T3's inherited TMPDIR overflows Chrome's socket path" "$([ "$(chrome_sock_len "$T3_LONG_TMPDIR")" -ge 107 ] && echo over || echo under)" over
 expect_eq "41 playwright's socket path stays under 107 bytes (got $sock_len)" "$([ "$sock_len" -lt 107 ] && echo under || echo over)" under
 
+write_registry "$PIN" '["design","design-imagegen"]'
+cp "$T/installed.orig" "$P/installed_plugins.json"
+fresh
+bash "$GEN" --apply --profile design >/dev/null 2>&1; rc=$?
+expect_eq "U1 apply exits 0" "$rc" 0
+mkskill "$T/plug/d-v2/higgsfield-generate"; mkskill "$T/plug/d-v2/higgsfield-soul-id"
+jq --arg p "$T/plug/d-v2" '.plugins["d@mp"] = [{scope:"user",installPath:$p,version:"2"}]' "$T/installed.orig" > "$P/installed_plugins.json"
+out="$(bash "$GEN" --check --profile design 2>/dev/null)"; rc=$?
+expect_eq "U1 check after a plugin version move exits 1" "$rc" 1
+expect_ok "U1 the check line names skills.json differs" grep -q '^NOT OK antigravity_design;.*skills.json differs' <<<"$out"
+out="$(bash "$GEN" --apply --profile design 2>&1)"
+expect_ok "U1 apply prints WROTE for skills.json" grep -q '^WROTE .*skills.json' <<<"$out"
+expect_eq "U1 skills.json names the new install path" "$(entry_of "$(home_of)/config/skills.json" "$T/plug/d-v2")" '["higgsfield-generate","higgsfield-soul-id"]'
+bash "$GEN" --check --profile design >/dev/null 2>&1; rc=$?
+expect_eq "U1 check after the re-apply exits 0" "$rc" 0
+cp "$T/installed.orig" "$P/installed_plugins.json"
+
+fresh
+mkskill "$HOME/.agents/skills/hx/higgsfield-generate"; mkskill "$HOME/.agents/skills/hx/higgsfield-soul-id"
+ln -s "$HOME/.agents/skills/hx" "$T/plug/agents-link"
+jq --arg p "$T/plug/agents-link" '.plugins["d@mp"] = [{scope:"user",installPath:$p,version:"1"}]' "$T/installed.orig" > "$P/installed_plugins.json"
+out="$(bash "$GEN" --apply --profile design 2>&1)"; rc=$?
+expect_eq "H2 an install path symlinked into ~/.agents/skills exits 3" "$rc" 3
+expect_ok "H2 prints REFUSED" grep -q REFUSED <<<"$out"
+expect_eq "H2 nothing written" "$(test -e "$(home_of)" && echo yes || echo no)" no
+bash "$GEN" --dry-run --profile design >/dev/null 2>&1; rc=$?
+expect_eq "H2 dry-run refuses too" "$rc" 3
+cp "$T/installed.orig" "$P/installed_plugins.json"
+rm -f "$T/plug/agents-link"
+
+fresh
+out="$(bash "$GEN" --check --profile design 2>/dev/null)"; rc=$?
+expect_eq "C1 check on a missing home exits 1" "$rc" 1
+expect_eq "C1 the first line's first reason is home missing" "$(printf '%s\n' "$out" | head -n 1 | cut -d';' -f1-2)" "NOT OK antigravity_design; home missing"
+
+CHOKEPOINTS="$HERE/../chokepoints.json"
+CSG_LIB="$HERE/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+. "$CSG_LIB" || { bad "cannot load $CSG_LIB"; exit 1; }
+SEAM_EXCLUDE="T3_PI_BUILTIN_RELAY T3CODE_HOME"
+AP_KEY="scripts/t3/antigravity-profiles.sh"
+AP_SEAMS="HIMMEL_AGY_SKILL_CACHE T3_AP_ADAPTER T3_AP_BACKSTOP T3_AP_PLUGIN_PROFILES T3_AP_REGISTRY"
+AP_SCAN="$GEN"
+BS_KEY="scripts/antigravity/install-antigravity-backstop.sh"
+BS_SEAMS="HIMMEL_PRIMARY_ROOT"
+BS_SCAN="$HERE/../antigravity/install-antigravity-backstop.sh"
+seam_list() {
+    local label="$1" key="$2" fixed="$3" got n missing=""
+    shift 3
+    got="$(jq -r --arg k "$key" '.[$k].seam_env_vars | sort | join(" ")' "$CHOKEPOINTS" 2>/dev/null)"
+    expect_eq "S-LIST $label: $key equals the fixed list" "$got" "$fixed"
+    # shellcheck disable=SC2013 # one bare variable name per line, never spaces
+    for n in $(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "$@" | sed 's/^.*\${//' | sort -u); do
+        case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
+    done
+    expect_eq "S-LIST $label: every seam its script reads is in $key" "$missing" ""
+}
+seam_gate() {
+    local label="$1" key="$2" fixed="$3" got n out rc
+    got="$(_csg_registry_seams "$CHOKEPOINTS" "$key" | tr ' ' '\n' | sort | tr '\n' ' ')"
+    expect_eq "S-GATE $label: _csg_registry_seams $key equals the fixed list" "${got% }" "$fixed"
+    for n in $fixed; do
+        out="$(unset "$n"; env -0 > "$T/csg-base"; export "$n=x"; _csg_verdict "$T/csg-base" "$T" "$T" "$fixed")"; rc=$?
+        expect_eq "S-GATE $label: $n set after launch is refused by name" "$rc|$out" "1|$n"
+        out="$(export "$n=x"; env -0 > "$T/csg-base"; _csg_verdict "$T/csg-base" "$T" "$T" "$fixed")"; rc=$?
+        expect_eq "S-GATE $label: $n equal to the launch value is allowed" "$rc|$out" "0|"
+    done
+}
+seam_list ap "$AP_KEY" "$AP_SEAMS" "$AP_SCAN"
+seam_list backstop "$BS_KEY" "$BS_SEAMS" "$BS_SCAN"
+seam_gate ap "$AP_KEY" "$AP_SEAMS"
+seam_gate backstop "$BS_KEY" "$BS_SEAMS"
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

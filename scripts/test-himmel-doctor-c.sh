@@ -3005,4 +3005,96 @@ c102_cfg "{$c102_net}"; out="$(c102_run)"
 c102_lacks "H10 no lane_grants_hosts -> no hosts line" ' hosts:'
 rm -rf "$c102_t"
 
+c104_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c104.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c104_t/home" "$c104_t/t3/userdata/providers/antigravity/h1/config"
+printf '{"providerInstances":{}}\n' > "$c104_t/t3/userdata/settings.json"
+printf '{}\n' > "$c104_t/t3/userdata/providers/antigravity/h1/config/skills.json"
+cat > "$c104_t/agy" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$C104_ARGV"
+case "$1" in
+    --list) printf '%s\n' "${C104_LIST_OUT-design}"; exit "${C104_LIST_RC:-0}" ;;
+    --check)
+        [ -z "${C104_CHECK_ERR:-}" ] || printf '%s\n' "$C104_CHECK_ERR" >&2
+        [ -z "${C104_CHECK_OUT:-}" ] || printf '%s\n' "$C104_CHECK_OUT"
+        exit "${C104_CHECK_RC:-0}" ;;
+esac
+exit 9
+STUB
+chmod +x "$c104_t/agy"
+c104_hash() { (cd "$c104_t/t3" && find . -type f | sort | while IFS= read -r f; do cksum "$f"; done) | cksum; }
+c104_prep() { : > "$c104_t/argv"; c104_before="$(c104_hash)"; }
+c104_run() {
+    C104_ARGV="$c104_t/argv" HIMMEL_DOCTOR_AGY_PROFILES="$c104_t/agy" T3CODE_HOME="$c104_t/t3" HOME="$c104_t/home" \
+        bash "$DOC" --no-color --only C104 --root "$REPO_ROOT" 2>&1
+}
+c104_clean() {
+    if ! grep -q -v -x -E -e '--list' -e '--check --profile [A-Za-z0-9._-]+' "$c104_t/argv" && [ "$(c104_hash)" = "$c104_before" ]; then
+        pass "$1: only --list/--check, T3 home unchanged"
+    else
+        fail "$1: argv=$(tr '\n' '|' < "$c104_t/argv") home $([ "$(c104_hash)" = "$c104_before" ] && echo same || echo CHANGED)"
+    fi
+}
+C104_NOTSET_LINE='NOT OK antigravity_design; home missing; hooks.json lacks himmel-antigravity-backstop; pinned checkout not fetched; skills.json is not a regular file; mcp_config.json is not a regular file'
+
+echo "== C104 D-OK: --check rc 0 -> OK, profile home current =="
+c104_prep; out="$(C104_CHECK_RC=0 C104_CHECK_OUT='OK antigravity_design' c104_run)"
+if grepq "$out" -F 'OK   C104-agy-profiles: antigravity_design: profile home current' && ! grepq "$out" -E '(WARN|INFO) C104'; then
+    pass "D-OK -> OK row"
+else
+    fail "D-OK -> $(printf '%s' "$out" | grep -A1 C104)"
+fi
+c104_clean D-OK
+
+echo "== C104 D-STALE: --check rc 1, another first reason -> WARN with the line and the --apply fix =="
+c104_prep; out="$(C104_CHECK_RC=1 C104_CHECK_OUT='NOT OK antigravity_design; skills.json differs from what apply would write' c104_run)"
+if grepq "$out" -F 'WARN C104-agy-profiles: NOT OK antigravity_design; skills.json differs from what apply would write' \
+    && grepq "$out" -F 'antigravity-profiles.sh --apply --profile design'; then
+    pass "D-STALE -> WARN"
+else
+    fail "D-STALE -> $(printf '%s' "$out" | grep -A1 C104)"
+fi
+c104_clean D-STALE
+
+echo "== C104 D-NOTSET: --check rc 1, first reason home missing (C1's line) -> INFO =="
+c104_prep; out="$(C104_CHECK_RC=1 C104_CHECK_OUT="$C104_NOTSET_LINE" c104_run)"
+if grepq "$out" -F 'INFO C104-agy-profiles: antigravity_design: not set up on this station' && ! grepq "$out" 'WARN C104'; then
+    pass "D-NOTSET -> INFO"
+else
+    fail "D-NOTSET -> $(printf '%s' "$out" | grep -A1 C104)"
+fi
+c104_clean D-NOTSET
+
+echo "== C104 D-LISTFAIL: --list non-zero -> one WARN naming the rc, no --check =="
+c104_prep; out="$(C104_LIST_RC=2 C104_LIST_OUT='' c104_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C104-agy-profiles')" = 1 ] && grepq "$out" -F 'rc=2' && ! grep -q -- '--check' "$c104_t/argv"; then
+    pass "D-LISTFAIL -> one WARN, no --check"
+else
+    fail "D-LISTFAIL -> $(printf '%s' "$out" | grep -A1 C104) argv=$(tr '\n' '|' < "$c104_t/argv")"
+fi
+c104_clean D-LISTFAIL
+
+echo "== C104 D-OTHER: --check rc 96 -> WARN naming the rc and the first stderr line =="
+c104_prep; out="$(C104_CHECK_RC=96 C104_CHECK_ERR='antigravity-profiles.sh: seam(s) T3_AP_BACKSTOP differ from this session - refusing' c104_run)"
+if grepq "$out" 'WARN C104-agy-profiles' && grepq "$out" -F 'rc=96' && grepq "$out" -F 'seam(s) T3_AP_BACKSTOP differ' && ! grepq "$out" 'OK   C104'; then
+    pass "D-OTHER -> WARN with rc and stderr"
+else
+    fail "D-OTHER -> $(printf '%s' "$out" | grep -A1 C104)"
+fi
+c104_clean D-OTHER
+rm -rf "$c104_t"
+
+echo "== C104 D-REAL: the real helper on an empty HOME and T3 home -> INFO, nothing written =="
+c104r_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c104r.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c104r_t/home" "$c104r_t/t3"
+c104r_snap() { find "$c104r_t/home" "$c104r_t/t3" | sort | while IFS= read -r f; do ls -ld "$f"; done; }
+c104r_before="$(c104r_snap)"
+out="$(env -u HIMMEL_DOCTOR_AGY_PROFILES HOME="$c104r_t/home" T3CODE_HOME="$c104r_t/t3" bash "$DOC" --no-color --only C104 --root "$REPO_ROOT" 2>&1)"
+if grepq "$out" -F 'INFO C104-agy-profiles: antigravity_design: not set up on this station' && [ "$(c104r_snap)" = "$c104r_before" ]; then
+    pass "D-REAL -> INFO, HOME and T3 home unchanged"
+else
+    fail "D-REAL -> $(printf '%s' "$out" | grep -A1 C104) snapshot $([ "$(c104r_snap)" = "$c104r_before" ] && echo same || echo CHANGED)"
+fi
+rm -rf "$c104r_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

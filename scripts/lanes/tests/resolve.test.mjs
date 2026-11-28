@@ -6,7 +6,7 @@ import { makeTmpDir } from '../../lib/test-tmpdir.mjs';
 import { delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { BASH_BIN } from './lib/resolve-bash.mjs';
 import { resolveLanes, resolveLaneInventory, formatCodexHealth, buildCtx, fmtCtx, formatContextAnnotation, formatQuotaAnnotation, mergeLocalOverlay, unknownOverlayKeys } from '../resolve.mjs';
@@ -77,6 +77,34 @@ test('T3 thread lanes resolve without headless dispatch recipes', () => {
     'gpt-6.1-sol', 'gpt-6.1-terra',
     'gpt-6-sol', 'gpt-6-astra', 'gpt-6-luna',
   ]);
+});
+test('LN1 antigravity-t3-design row: t3-thread, no models/quota/dispatch, instance from antigravity-profiles.sh --list', () => {
+  assert.ok(resolveLanes(REG, ctx({ paths: ['agy'] })).some((l) => l.id === 'antigravity-t3-design'), 'resolves with agy on PATH');
+  assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === 'antigravity-t3-design'), 'does not resolve without agy');
+  const row = REG.lanes.find((l) => l.id === 'antigravity-t3-design');
+  assert.equal(row.class, 't3-thread');
+  for (const key of ['models', 'quota', 'dispatch', 'thought_level', 'laneOf']) {
+    assert.equal(row[key], undefined, `the designer row carries no ${key}`);
+  }
+  const bin = makeTmpDir('lanes-ln1-bin-');
+  writeFileSync(join(bin, 'agy'), '#!/bin/sh\n');
+  chmodSync(join(bin, 'agy'), 0o755);
+  const text = execFileSync(process.execPath, [RESOLVER], {
+    encoding: 'utf8',
+    env: { ...process.env, LANES_REGISTRY: join(TEST_DIR, '..', 'lanes.json'), PATH: `${bin}${delimiter}${process.env.PATH}` },
+  });
+  const line = text.split('\n').find((l) => l.startsWith(`- ${row.label} `));
+  assert.ok(line, 'the designer row renders in /lanes text');
+  assert.ok(line.includes('[t3 instance: antigravity_design]'), line);
+  const home = makeTmpDir('lanes-ln1-home-');
+  const listed = spawnSync('bash', [join(TEST_DIR, '..', '..', 't3', 'antigravity-profiles.sh'), '--list'], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, HOME: home },
+  });
+  assert.equal(listed.status, 0, listed.stderr);
+  const m = /^antigravity_(.+)$/.exec(row.t3Instance ?? '');
+  assert.ok(m, `t3Instance is antigravity_<p>: ${row.t3Instance}`);
+  assert.ok(listed.stdout.split('\n').includes(m[1]), `--list prints ${m[1]}`);
 });
 test('buildCtx pathHas does a real PATH lookup (follow-through)', () => {
   const bin = makeTmpDir('lanes-bin-');

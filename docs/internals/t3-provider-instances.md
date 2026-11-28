@@ -71,6 +71,14 @@ the Claude entries go ahead.
 - No `_relay` copy is made of any `antigravity_*` id, even one whose profile left the registry (the relay
   rule below): its `<id>_relay` home would be one no check ever passed. Each is skipped with a warning.
 - Seam: `T3_PI_AGY_PROFILES` replaces the `antigravity-profiles.sh` path (tests).
+- The test seams are registered in scripts/chokepoints.json: `T3_PI_RESOLVER`, `T3_PI_PROFILES`,
+  `T3_PI_EMPTY_OK`, `T3_PI_AGY_PROFILES`, `HIMMEL_PROFILE_SETTINGS_DIR`, and the unregistered children's
+  `HIMMEL_PROFILE_REPO` (`profile-settings.sh`), `PLUGIN_PROFILES_REGISTRY` and `PLUGIN_PROFILES_ADAPTERS`
+  (`plugin-profiles.mjs`). The script sources `scripts/lib/chokepoint-seam-guard.sh` first: on the anchor
+  checkout, in a session with a Claude ancestor, one that differs from the session's launch environment
+  exits 96. `T3CODE_HOME` (set here per call for `antigravity-profiles.sh`) and the operator opt-in
+  `T3_PI_BUILTIN_RELAY` are not registered; the threat model and the accepted ceiling are in
+  `docs/internals/t3-antigravity-profiles.md` ("The seams are fenced").
 - Run `antigravity-profiles.sh --apply` first: T3 starts an instance the moment it is in its settings, and
   a home that `--check` has not passed has no himmel hooks. The operator runs it, on the live home.
 

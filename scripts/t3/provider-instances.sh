@@ -21,8 +21,23 @@
 # --profile <p>` exits 0 with "OK antigravity_<p>". rc 1 with "NOT OK antigravity_<p>..." adds nothing;
 # any other outcome, or a failed --list, writes nothing and exits 2. Existing antigravity entries
 # are never edited, and no "_relay" copy is made of any antigravity_* id. Seam: T3_PI_AGY_PROFILES (the script).
+# Test seams registered in scripts/chokepoints.json (on the anchor checkout a value that differs from the
+# Claude session's launch environment exits 96): T3_PI_RESOLVER, T3_PI_PROFILES, T3_PI_EMPTY_OK,
+# T3_PI_AGY_PROFILES, HIMMEL_PROFILE_SETTINGS_DIR, and its unregistered children's HIMMEL_PROFILE_REPO
+# (profile-settings.sh), PLUGIN_PROFILES_REGISTRY and PLUGIN_PROFILES_ADAPTERS (plugin-profiles.mjs).
+# Not registered: T3CODE_HOME (set here per call for antigravity-profiles.sh) and the operator opt-in
+# T3_PI_BUILTIN_RELAY.
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
 set -u
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "provider-instances.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/t3/provider-instances.sh || exit 96
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 RESOLVER="${T3_PI_RESOLVER:-$HERE/../lanes/profile-settings.sh}"
 EMPTY_OK=",${T3_PI_EMPTY_OK:-operator},"

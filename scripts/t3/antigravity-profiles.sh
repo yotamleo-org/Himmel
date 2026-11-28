@@ -35,9 +35,21 @@
 # Env seams (tests): T3_AP_REGISTRY (registry; default antigravity-profiles.json beside this
 # script), T3_AP_PLUGIN_PROFILES (default scripts/lanes/plugin-profiles.json), T3_AP_BACKSTOP
 # (backstop command; default scripts/antigravity/install-antigravity-backstop.sh),
-# HIMMEL_AGY_SKILL_CACHE (default $HOME/.himmel/cache/agy-skills). HOME and T3CODE_HOME as usual.
+# HIMMEL_AGY_SKILL_CACHE (default $HOME/.himmel/cache/agy-skills), T3_AP_ADAPTER (the adapter --smoke
+# compares; default scripts/hooks/antigravity-hook-adapter.sh). HOME and T3CODE_HOME as usual.
+# These five seams are registered in scripts/chokepoints.json: on the anchor checkout a value that
+# differs from the Claude session's launch environment exits 96 (scripts/lib/chokepoint-seam-guard.sh).
 # Platform: POSIX bash 3.2+, jq, git (--apply fetches pinned skills).
 set -u
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "antigravity-profiles.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/t3/antigravity-profiles.sh || exit 96
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
 REGISTRY="${T3_AP_REGISTRY:-$HERE/antigravity-profiles.json}"
