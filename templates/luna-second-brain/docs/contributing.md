@@ -11,9 +11,9 @@ guardrails are welcome.
    ```bash
    bash scripts/setup.sh
    ```
-3. **Create a worktree branch** — never edit on `main`. The
-   pre-commit `worktree-isolation` hook refuses commits when
-   `HEAD == main`:
+3. **Create a branch** — never commit on `main`. The pre-commit
+   `worktree-isolation` hook refuses commits when `HEAD == main`; a branch
+   is enough, a separate worktree is not required:
    ```bash
    git switch -c feat/<slug>
    ```
