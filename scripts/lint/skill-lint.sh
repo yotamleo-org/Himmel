@@ -86,7 +86,8 @@
 # tests self-contained. CI runs this script over the full tree, so a
 # duplicate introduced against an unstaged sibling is still caught there.
 #
-# Exit: 0 = clean, 1 = findings, 2 = usage error.
+# Exit: 0 = clean, 1 = findings, 2 = usage error, or the description parse
+# helper could not check (it failed, or PyYAML is missing under CI=true).
 # bash 3.2-safe (no arrays); POSIX ERE only.
 
 set -uo pipefail
