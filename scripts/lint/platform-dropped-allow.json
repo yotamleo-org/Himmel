@@ -268,6 +268,12 @@
       "  // executable itself for a bare binary invocation (graphify.EXE hook-guard)."
     ]
   },
+  "scripts/hooks/block-agy-salus-egress.sh": {
+    "reason": "guard detector: matches an other-platform command spelling so the guard stays closed",
+    "lines": [
+      "        *\"git push\"*|*\"git remote add\"*|*\"git remote set-url\"*|*\"curl \"*|*\"curl.exe\"*|*\"wget \"*|*\"Invoke-WebRequest\"*|*\"Invoke-RestMethod\"*|*\"scp \"*|*\"rclone \"*) CLASS=\"network/push command\" ;;"
+    ]
+  },
   "scripts/hooks/block-bank-lift-writes.sh": {
     "reason": "comment that is still true (history or detector scope); guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
     "lines": [
