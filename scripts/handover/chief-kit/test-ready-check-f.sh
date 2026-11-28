@@ -548,13 +548,21 @@ s17_clear; s17_good; S17_IMPACTED_N=3
 s17_at "$S17_H1"
 s17_falls_back R14 "list file missing or altered" yes
 
+s17_fifo_row() {
+    local label="$1" fifo="$2" wpid
+    check "19 $label: the fixture is a FIFO" "$([ -p "$fifo" ] && echo yes)" "yes"
+    ( printf 'x' > "$fifo" ) 2>/dev/null &
+    wpid=$!
+    s17_at "$S17_H1"
+    s17_falls_back "$label" "list file missing or altered" yes
+    check "19 $label: item 19 never opened the FIFO (its writer is still blocked)" "$(kill -0 "$wpid" 2>/dev/null && echo blocked)" "blocked"
+    kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null
+}
 s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
-s17_t0=$SECONDS; s17_at "$S17_H1"; s17_dt=$((SECONDS - s17_t0))
-s17_falls_back "R18a a FIFO at the list path" "list file missing or altered" yes
-check "19 R18a: the FIFO is never read (${s17_dt}s)" "$((s17_dt < 60))" "1"
+s17_fifo_row "R18a a FIFO at the list path" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
 s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$tmp/s17-fifo"; ln -s "$tmp/s17-fifo" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
-s17_at "$S17_H1"
-s17_falls_back "R18b a symlink at the list path" "list file missing or altered" yes
+check "19 R18b: the fixture is a symlink" "$([ -L "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt" ] && echo yes)" "yes"
+s17_fifo_row "R18b a symlink to a FIFO at the list path" "$tmp/s17-fifo"
 rm -f "$tmp/s17-fifo"
 
 s17_clear; S17_ROW_HEAD="$S17_ORPHAN"; s17_list "$S17_LIST_AB"; S17_MB="$S17_BASE"; S17_LISTER="$S17_LID"; STUB_LISTER_ID="$S17_LID"; S17_LP="[\"$S17_A\"]"

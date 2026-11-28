@@ -2686,7 +2686,7 @@ s17_recorded() {
     if [ "$lister" != "$lid" ]; then s17_cond="lister moved"; return 1; fi
     lid=""
     if [ -f "${common_dir}/impacted-lists/$blob.txt" ] && [ ! -L "${common_dir}/impacted-lists/$blob.txt" ] \
-        && cp "${common_dir}/impacted-lists/$blob.txt" "$d/imp.rec" 2>/dev/null; then
+        && "$_TIMEOUT_BIN" -k 5 "$(s17_bound 15)" cp "${common_dir}/impacted-lists/$blob.txt" "$d/imp.rec" 2>/dev/null; then
         lid=$(git hash-object --no-filters -- "$d/imp.rec" 2>/dev/null) || lid=""  # swallow-ok: an unreadable copy fails condition 4
     fi
     if [ "$lid" != "$blob" ] || [ "$(wc -l < "$d/imp.rec" | tr -d ' ')" != "$n" ]; then

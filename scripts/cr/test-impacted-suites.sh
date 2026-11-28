@@ -1987,7 +1987,7 @@ lx_combo_bad=""
 for lx_c in "--check $lx_range" "--plan $lx_range" "--check $lx_range --record --branch b --head $lx_head" "--shell $lx_range" \
     "--check $lx_range --from-file $LXV" "--runner scripts/lanes/tests/plugins.test.mjs" "--runner-check" \
     "--selector-miss $lx_range --red-file $LS/red.txt" "--paths-file $LS/paths.txt $lx_range" "--red-file $LS/red.txt" \
-    "--run scripts/test-lx-a.sh" "$lx_range"; do
+    "--run scripts/test-lx-a.sh" "$lx_range" "--lister-id"; do
     # shellcheck disable=SC2086  # each combination is a fixed word list
     lx_o=$( cd "$LX" && bash "$IS" --lister-id $lx_c 2>/dev/null ); lx_x=$?
     if [ "$lx_x" -ne 2 ] || grepq "$lx_o" '^[0-9a-f]\{40\}$'; then lx_combo_bad="$lx_combo_bad [$lx_c rc=$lx_x]"; fi
@@ -2021,8 +2021,10 @@ rm -f "$LXD"
 lx_reset; lx_rec
 lx_old 13 "$LXD/$lx_id.txt"; lx_rec
 if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt"; then pass "IS5b(a) a 13-day-old list is reused and renewed"; else fail "IS5b(a) reuse: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
-chmod 400 "$LXD/$lx_id.txt"; lx_old 20 "$LXD/$lx_id.txt"; lx_rec
-if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt" && [ -w "$LXD/$lx_id.txt" ]; then pass "IS5b(b) a 20-day-old list is pruned and written again (a new file, not the read-only old one renewed)"; else fail "IS5b(b) prune then write: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
+chmod 444 "$LXD/$lx_id.txt"
+if [ -z "$(find "$LXD/$lx_id.txt" -perm 444)" ]; then fail "IS5b(b) setup: the old list is not mode 444"; fi
+lx_old 20 "$LXD/$lx_id.txt"; lx_rec
+if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt" && [ -n "$(find "$LXD/$lx_id.txt" -perm 600)" ]; then pass "IS5b(b) a 20-day-old list is pruned and written again (a new file, not the read-only old one renewed)"; else fail "IS5b(b) prune then write: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
 lx_reset; mkdir -p "$LXD"
 printf 'n\n' > "$LXD/notes.md"; printf 'n\n' > "$LXD/$H40.txt.bak"; printf 't\n' > "$LXD/.tmp-x"; printf 't\n' > "$LXD/.tmp-y"
 lx_old 20 "$LXD/notes.md" "$LXD/$H40.txt.bak"; lx_old 3 "$LXD/.tmp-x"
