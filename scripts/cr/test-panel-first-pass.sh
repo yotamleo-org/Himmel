@@ -202,7 +202,6 @@ empty_sha="$(git -C "$repo" rev-parse feature-empty)"
 _pre_tmp="$(_list_panel_avail_tmp)"
 
 # =============================================================================
-# T1 (H6): no step 0 head record and no --head -> exit 2 naming step 0, no panel call, no preflight row.
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && bash "$SCRIPT" --branch feature) 2>"$tmp/err" )"; rc=$?
 err="$(cat "$tmp/err")"
