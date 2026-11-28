@@ -6,7 +6,6 @@
 # Covers: fable / claude-fable-5-1 -> deny; same WITH marker -> allow; empty marker
 # -> deny; opus/sonnet/haiku and no model -> allow; judge sonnet -> deny,
 # opus -> allow, no model -> allow, marked sonnet -> allow; other tool -> allow;
-# a spec/plan critic or closure check on a judge agent -> deny on any model;
 # malformed/empty stdin -> allow (fail-open); allow path prints nothing. A
 # placeholder / too-short ESCALATION reason -> deny; a marked override echoes its
 # reason on stderr; the blocked-model list is data in
