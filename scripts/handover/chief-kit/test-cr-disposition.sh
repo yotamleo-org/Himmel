@@ -503,6 +503,11 @@ t14_reset
 verdict "$HDIR" JV5 "**GO** for head \`$SHA\`." 93 "- $(d1 t14-imp)"$'\n'"- $(d1 t14-crit)"
 chk 93 "$SHA" --trust-path yes
 check "14 R5 control: the D1 form after '- ' -> exit 0" "$rc" "0"
+t14_reset
+verdict "$HDIR" JV5 "**GO** for head \`$SHA\`." 93 reason later "e"$'\n\n'"## Verdict"$'\n\n'"$D1BOTH"
+chk 93 "$SHA" --trust-path yes
+check "14 R5b: the D1 lines under a second ## Verdict heading in the evidence -> exit 1" "$rc" "1"
+both_open "14 R5b"
 
 t14_reset
 for f in t14-imp t14-crit; do bash "$DISP" record 93 "$SHA" "$f@$FHEAD" fix-here --source chief >/dev/null 2>&1; done

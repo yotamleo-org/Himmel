@@ -229,13 +229,12 @@ judge_ruled() {
         text=$(printf '%s' "$snap" | tr -d '\r')
         [ "$(printf '%s\n' "$text" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }')" = "pr: $PR" ] || continue
         if [ "${3:-}" != d1 ]; then
-            printf '%s\n' "$text" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } /^## / { p = 0 } p' | grep -qxF -e "$2" -e "- $2" && return 0
+            printf '%s\n' "$text" | awk '/^## / { if (!seen && /^## Verdict[[:space:]]*$/) { p = 1; seen = 1; next } p = 0 } p' | grep -qxF -e "$2" -e "- $2" && return 0
             continue
         fi
         ! printf '%s\n' "$text" | grep -qx 'delta: no-op' || continue
         keys="$keys$(printf '%s\n' "$text" | D1_PRE="$2 follow-up:" D1_SUF=" attest:$ATTEST_ALL" awk '
-            /^## Verdict[[:space:]]*$/ { p = 1; next }
-            /^## / { p = 0 }
+            /^## / { if (!seen && /^## Verdict[[:space:]]*$/) { p = 1; seen = 1; next } p = 0 }
             !p { next }
             {
                 l = $0; pre = ENVIRON["D1_PRE"]; suf = ENVIRON["D1_SUF"]
