@@ -281,8 +281,11 @@ force word and main apart is not refused, nor is a lone `$x` argument, which no 
 wrapper, alias or shell function under another name; a value bound away from the push line
 by any other means (a variable in a non-shell file such as Python, `printf -v`, `mapfile`, a
 binding after `;`, `then` or `{`, a binding in another file copy, a value a loop reads from a
-file or a pipe); or a push whose words a quote, heredoc or open bracket carries across lines.
-Each misses the floor and reaches the operator's phone ask instead.
+file or a pipe); a program in argv whose push or delete verb comes from stdin or a file copy
+(`xargs git` with `push --force origin main` on stdin, `xargs -I{} git {} --force origin main`
+with `push` on stdin, `xargs gh repo` with `delete o/r` on stdin); or a push whose words a
+quote, heredoc or open bracket carries across lines. Each misses the floor and reaches the
+operator's phone ask instead.
 
 Config `never_remote_extra` only adds fnmatch patterns. A match answers
 `result=never-remote rule=<name>` (exit 5), is ledgered, and gives the operator no
