@@ -4114,18 +4114,13 @@ adversarially-hardened selector extraction; a block prints
 `block-red-ci-merge: …` to stderr and exits 2) AND into
 `scripts/handover/pr-merge.sh` before its mergeability poll (a block there
 exits `pr-merge.sh` with code **6**, distinct from the CR gate's 5 and a real
-merge failure's 4). On this path both gate libraries are required: one that
-cannot load exits **8**, and a gate that could not reach a verdict (its selector
-did not resolve, or it printed a `degraded` note) exits **9**, both before any
-merge call. A bypass var, a `no_code_review` profile and a PR with no checks at
-all stay exemptions.
+merge failure's 4).
 
 **On Bitbucket Cloud** `pr-merge.sh` runs `bb_forge_ci_gate` instead: every build status
 on the PR head (the CLI's `pr statuses`, which carries Pipelines and external CI alike)
 must be `SUCCESSFUL`. A failed, stopped, running or unrecognised status blocks (exit 6),
-and so does an unreadable or truncated list: this gate fails **closed**, as
-`pr-merge.sh`'s GitHub path now does on a degraded lookup (exit 9); the hook's own
-copy of the GitHub gate still fails open. A head with no statuses at all is allowed with a note, as a checkless
+and so does an unreadable or truncated list: this gate fails **closed**, unlike the
+GitHub gate. A head with no statuses at all is allowed with a note, as a checkless
 GitHub PR is. Bypass: `CI_MERGE_GATE_OK=1`. The gates read the head `pr-merge.sh` pinned
 first; `bb_forge_pr_merge` re-reads it just before the merge and refuses (exit 4) if it
 moved or cannot be read. Bitbucket's merge API has no server-side head pin, so a push
