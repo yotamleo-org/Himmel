@@ -243,5 +243,35 @@ if ls "$ROOT/log/leg9".[0-9]* >/dev/null 2>&1 && printf '%s' "$text" | grep -q '
     pass "rotated segment + empty active log -> pending mail delivered"
 else fail "segment delivery (out='$out')"; fi
 
+longname() { printf 'L'; head -c "$(( $1 - 1 ))" /dev/zero | tr '\0' a; }
+long_row() {
+    local id="$1" name="$2" body="$3" pass_text="$4" P text rc1 out1 again
+    h register "$name" worker con
+    P="$(start_session "$name")"
+    h bind "$name" "$P"
+    h append "$name" "{\"f\":\"con\",\"c\":1,\"b\":\"$body\"}"
+    if [ ! -s "$ROOT/log/$name.jsonl" ]; then fail "I1 $id: mail could not be queued, row proves nothing"; return; fi
+    run_as "$name" "$(post)"; text="$(ctx)"; rc1="$rc"; out1="$out"
+    run_as "$name" "$(post)"; again="$out"
+    if [ "$rc1" = 0 ] && printf '%s' "$text" | grep -q '^bus #1 from con:$' && printf '%s' "$text" | grep -qF "| $body" && [ -z "$again" ]; then
+        pass "I1 $id: $pass_text"
+    else fail "I1 $id (rc=$rc1 out='$out1' again='$again')"; fi
+}
+MAX="$(node --input-type=module -e "import { SESSION_NAME } from '$REPO_ROOT/marketplace/plugins/himmel-bus/lib/store.mjs'; let m = 0; for (let n = 1; n <= 4096; n++) if (SESSION_NAME.test('L' + 'a'.repeat(n - 1))) m = n; console.log(m);")"
+if [ -n "$MAX" ] && [ "$MAX" -ge 100 ] 2>/dev/null && [ "$MAX" -le 170 ]; then
+    N100="$(longname 100)"; NMAX="$(longname "$MAX")"; NOVER="$(longname $((MAX + 1)))"
+    long_row R1 "$N100" "long name" "a 100-character session name gets its bus mail"
+    long_row R2 "$NMAX" "max name" "a name of the store's maximum length ($MAX) gets its bus mail"
+    if cp "$ROOT/log/$NMAX.jsonl" "$ROOT/log/$NOVER.jsonl" 2>/dev/null && [ -s "$ROOT/log/$NOVER.jsonl" ]; then
+        start_session "$NOVER" >/dev/null
+        run_as "$NOVER" "$(post)"
+        if [ "$rc" = 0 ] && [ -z "$out" ] && [ ! -e "$ROOT/cur/$NOVER" ]; then
+            pass "I1 N1: a name one over the store limit is not delivered (rc 0, silent, no cursor)"
+        else fail "I1 N1 (rc=$rc out='$out')"; fi
+    else fail "I1 N1: planted mail missing, row proves nothing"; fi
+else
+    fail "long-name block: store limit MAX='$MAX' is outside 100..170 (170 keeps the cursor commit temp, name + 85 bytes, under 255)"
+fi
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
