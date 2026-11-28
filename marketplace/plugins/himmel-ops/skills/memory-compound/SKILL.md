@@ -134,7 +134,7 @@ it only reports. Hand each listed note to its reader batch: the synthesis
 corrects it against main, keeps the old fact as a line starting
 `Incident YYYY-MM-DD:` (the check skips those), and sets `verified:` in its
 front matter (docs/operator-conventions.md). The doctor shows the same count as
-`C104-memory-truth`. Then read
+`C105-memory-truth`. Then read
 `$MEMDIR/MEMORY.md` and list the topic files (`$MEMDIR/*.md`, excluding
 `MEMORY.md`). Each topic file is one fact with frontmatter (`type:` =
 `user|feedback|project|reference`). Group the files by theme — environment
