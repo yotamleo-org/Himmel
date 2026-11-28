@@ -11,7 +11,8 @@
 # A body line starting "Incident YYYY-MM-DD:" (optionally after "- " or "**")
 # records what once went wrong, not what to do, so it is not judged.
 # A note whose file name marks it sensitive (secret, token, credential,
-# password, keyring, private, keys, env) is never opened, only counted.
+# password, keyring, private, keys, env) is never opened, only counted; a
+# symlink is never followed.
 #
 # A repo path is a slash-joined token whose first part is a top-level
 # directory of the repo tree. Not one: a token after "/", "~", "$" or ":"
@@ -27,7 +28,8 @@
 #      origin/main, else main), MEMORY_TRUTH_MIRROR (default
 #      ~/.himmel/state/jira-mirror, read as <mirror>/<PROJECT>/<KEY>.md),
 #      JIRA_PROJECT_KEY (the project of a bare ticket number; default HIMMEL).
-# Exit: 0 nothing found, 1 findings, 2 setup error.
+# Exit: 0 nothing found, 1 findings, 2 setup error (no store, repo or ref, a
+# note that cannot be read, or no mirror while some note waits on a ticket).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,7 +61,7 @@ git -C "$REPO" ls-tree -r --name-only "$REF" > "$TMP/tree" 2>/dev/null && [ -s "
 
 notes=(); skipped=0
 for f in "$MEMDIR"/*.md; do
-    [ -f "$f" ] || continue
+    [ -f "$f" ] && [ ! -L "$f" ] || continue
     b="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
     if grep -Eq 'secret|token|credential|password|passwd|keyring|private|(^|[-_.])(keys?|env)([-_.]|$)' <<< "$b"; then
         skipped=$((skipped + 1)); continue
@@ -95,9 +97,10 @@ if [ "${#notes[@]}" -gt 0 ]; then
             if (n < 3 && comp[n] !~ /\./ && !slash && before != "`") continue
             if (!(p in have)) printf "P\t%s\t%d\t%s\n", name, FNR, p
         }
-        low = tolower($0)
-        if (match(low, /(wait(s|ed|ing)?[[:space:]]+(on|for)|sync(s|ed|ing)?[[:space:]]+with)[[:space:]]+/)) {
-            rest = substr($0, RSTART + RLENGTH)
+        low = tolower($0); line = $0
+        while (match(low, /(wait(s|ed|ing)?[[:space:]]+(on|for)|sync(s|ed|ing)?[[:space:]]+with)[[:space:]]+/)) {
+            rest = substr(line, RSTART + RLENGTH)
+            low = substr(low, RSTART + RLENGTH); line = rest
             if (match(rest, /[;!?()]|\."?[[:space:]]|\."?$| — /)) rest = substr(rest, 1, RSTART - 1)
             if (match(rest, /^[0-9][0-9][0-9]+/)) printf "W\t%s\t%d\t%s-%s\n", name, FNR, proj, substr(rest, 1, RLENGTH)
             while (match(rest, /[A-Z][A-Z0-9]+-[0-9]+/)) {
@@ -105,7 +108,12 @@ if [ "${#notes[@]}" -gt 0 ]; then
                 rest = substr(rest, RSTART + RLENGTH)
             }
         }
-    }' "$TMP/tree" "${notes[@]}" > "$TMP/raw"
+    }' "$TMP/tree" "${notes[@]}" > "$TMP/raw" \
+        || { printf 'memory-truth: could not read every note in %s\n' "$MEMDIR" >&2; exit 2; }
+fi
+if awk -F '\t' '$1 == "W" { f = 1 } END { exit !f }' "$TMP/raw" && [ ! -d "$MIRROR" ]; then
+    printf 'memory-truth: Jira mirror not found at %s; the waited-on tickets were not checked\n' "$MIRROR" >&2
+    exit 2
 fi
 awk -F '\t' '$1 == "P" { print $4 }' "$TMP/raw" | git -C "$REPO" check-ignore --no-index --stdin > "$TMP/ignored" 2>/dev/null
 awk -F '\t' 'FILENAME == ARGV[1] { ign[$0] = 1; next } !($1 == "P" && ($4 in ign))' "$TMP/ignored" "$TMP/raw" > "$TMP/kept"

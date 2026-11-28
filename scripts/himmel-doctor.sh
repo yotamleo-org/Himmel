@@ -6448,7 +6448,7 @@ check_c104_memory_truth() {
         0) emit OK C104-memory-truth "no memory note names a repo path missing on main or waits on a closed ticket" ;;
         1)
             n="$(printf '%s\n' "$out" | grep -cE '^(dead-path|closed-wait) ')"
-            emit WARN C104-memory-truth "$n memory note line(s) name a repo path missing on main or wait on a ticket the Jira mirror shows Done" \
+            emit WARN C104-memory-truth "$n memory note finding(s): a repo path missing on main, or a wait on a ticket the Jira mirror shows Done" \
                 "bash $script lists them; correct each note against main and set its verified: date (docs/operator-conventions.md, Memory & CLAUDE.md hygiene)" ;;
         *) emit INFO C104-memory-truth "check not run: ${out%%$'\n'*}" ;;
     esac

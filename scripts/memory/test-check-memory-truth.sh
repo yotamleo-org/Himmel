@@ -91,4 +91,32 @@ after="$(cd "$MEM" && ls -la && cat ./*.md)"
 assert_rc "T7 rc" 1 "$rc"
 ok "T7 store unchanged" test "$before" = "$after"
 
+echo "== T8 every wait phrase on a line is judged, not only the first"
+fresh; note two.md 'Eval waits on HIMMEL-77; CR syncs with HIMMEL-9032 first.'
+run
+ok "T8 the second phrase's Done key is reported" has "$out" "closed-wait two.md:5 HIMMEL-9032"
+
+echo "== T9 a note that cannot be read stops the run instead of passing it"
+fresh; note locked.md 'Run `scripts/handover/console/console.sh next`.'
+chmod 000 "$MEM/locked.md"
+if [ -r "$MEM/locked.md" ]; then
+    echo "SKIP T9 this user can read a mode-000 file"
+else
+    run
+    assert_rc "T9 rc" 2 "$rc"
+fi
+chmod 600 "$MEM/locked.md"
+
+echo "== T10 a symlink is never followed, whatever its name"
+fresh; printf 'scripts/handover/console/console.sh\n' > "$SB/outside.md"
+ln -s "$SB/outside.md" "$MEM/innocent.md"
+run
+assert_rc "T10 rc" 0 "$rc"
+
+echo "== T11 no mirror while a note waits on a ticket is a setup error, never a pass"
+fresh; note waits.md 'Eval work waits on HIMMEL-9032.'
+out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
+assert_rc "T11 rc" 2 "$rc"
+ok "T11 names the missing mirror" has "$out" "Jira mirror not found"
+
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAILED"; exit 1; fi
