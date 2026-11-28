@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # skill-lint.sh — in-tree SKILL.md frontmatter hygiene gate.
 #
-# A v1 regression guard, not a platform: four mechanically-checkable rules
-# over the repo-owned SKILL.md corpus (frontmatter presence, name==dirname,
-# no duplicate name, body size cap). Description-length policy is NOT this script's job —
-# that is the existing `skill-description-cap` pre-commit hook
+# A v1 regression guard, not a platform: mechanically-checkable rules over the
+# repo-owned SKILL.md corpus (frontmatter presence, name==dirname, no
+# duplicate name, body size cap) plus one description check: each description
+# is parsed as YAML and must read whole (a ` #` or a second `: ` in a plain
+# value cuts it or breaks it). Description-LENGTH policy is NOT this script's
+# job — that is the existing `skill-description-cap` pre-commit hook
 # (scripts/lanes/skill-cost.mjs --max-desc 120), which is vendoring-aware;
 # duplicating it here would be a second, weaker length policy.
 #
@@ -13,7 +15,8 @@
 #   .claude/skills/*/SKILL.md
 #   plugins/himmel-gh/skills/*/SKILL.md
 #   plugins/himmel-jira/skills/*/SKILL.md
-# Slash-command bodies are in scope for the SIZE check only:
+# Slash-command bodies get the SIZE check and the description parse check
+# (they carry no name:/directory contract):
 #   marketplace/plugins/*/commands/*.md
 #   .claude/commands/*.md
 # Deliberately out of scope: .agents/skills/** (generated Codex-compat
@@ -43,7 +46,24 @@
 #   [dup-name]        two or more scanned SKILL.md files share the same
 #                     `name:` value (routing collision risk).
 #
-#   [size-fail]       body is MORE than SKILL_LINT_FAIL_BYTES (default 20000)
+#   [desc-truncated]  a plain `description:` reads shorter as YAML than it is
+#                     written (a ` #` starts a YAML comment, so the model sees
+#                     half of it): quote the value. Exit 1.
+#   [desc-yaml-error] the `description:` does not parse as YAML, or parses as
+#                     a non-string or empty value (`true`, `123`, a date):
+#                     quote the value. Exit 1. Both rows come from
+#                     scripts/lint/skill-desc-yaml.py, run once after the
+#                     per-file loop as `"$SKILL_LINT_PYTHON" -I` (default
+#                     python3) over every scanned file, and printed as their
+#                     own `<path>:` block.
+#   [desc-yaml-unchecked]
+#                     PyYAML is not importable (helper exit 3): the parse rows
+#                     are skipped, with a stderr note. Exit 2 when CI=true (CI
+#                     fails closed), otherwise the status is unchanged. Any
+#                     other helper failure (a missing interpreter, a traceback)
+#                     prints the helper's stderr and exits 2.
+#
+#   [size-fail]      body is MORE than SKILL_LINT_FAIL_BYTES (default 20000)
 #                     bytes (exactly 20000 passes, 20001 fails; bytes, not
 #                     characters, so a multibyte body is never counted more
 #                     leniently): split it into a core body plus reference
@@ -152,7 +172,12 @@ CHANGED=""
 # working-tree file. Not TAB-delimited pairs: a path can hold a TAB.
 FILES=""
 STAGE_TMP=""
-_cleanup_stage_tmp() { [ -n "$STAGE_TMP" ] && rm -rf "$STAGE_TMP" 2>/dev/null; :; }
+YAML_ERR=""
+_cleanup_stage_tmp() {
+    [ -n "$STAGE_TMP" ] && rm -rf "$STAGE_TMP" 2>/dev/null
+    [ -n "$YAML_ERR" ] && rm -f "$YAML_ERR" 2>/dev/null
+    :
+}
 trap _cleanup_stage_tmp EXIT
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -261,6 +286,9 @@ CHECKED=0
 MISSING=0
 ISSUE_FILES=0
 NAMES=""   # newline-separated "name<TAB>file" for the dup-name pass
+DESC_DISPLAY=""
+COUNTED=$'\n'
+HELPER_FAIL=0
 
 while IFS= read -r f && IFS= read -r content_src; do
     [ -n "$f" ] || continue
@@ -270,11 +298,13 @@ while IFS= read -r f && IFS= read -r content_src; do
         MISSING=$((MISSING + 1))
         continue
     fi
+    set -- "$@" "$content_src"
+    DESC_DISPLAY="$DESC_DISPLAY$f"$'\n'
     CHECKED=$((CHECKED + 1))
     file_issues=0
     file_report=""
 
-    # Command bodies get the size check only: they carry no name:/dir contract.
+    # Command bodies get the size and description checks: they carry no name:/dir contract.
     _is_command=0
     [ "$(basename "$f")" = "SKILL.md" ] || _is_command=1
 
@@ -320,12 +350,51 @@ while IFS= read -r f && IFS= read -r content_src; do
 
     if [ "$file_issues" -gt 0 ]; then
         ISSUE_FILES=$((ISSUE_FILES + 1))
+        COUNTED="$COUNTED$((CHECKED - 1))"$'\n'
         printf '%s:\n' "$f"
         printf '%s' "$file_report"
     fi
 done <<EOF
 $FILES
 EOF
+
+if [ "$CHECKED" -gt 0 ]; then
+    _helper="$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/skill-desc-yaml.py"
+    _py="${SKILL_LINT_PYTHON:-python3}"
+    YAML_ERR="$(mktemp "${TMPDIR:-/tmp}/skill-lint-yaml.XXXXXX")" || {
+        printf 'skill-lint: could not create a scratch file\n' >&2; exit 2
+    }
+    _yout="$("$_py" -I "$_helper" "$@" 2>"$YAML_ERR")"; _yrc=$?
+    case "$_yrc" in
+        0)
+            _last=""
+            while IFS=$'\t' read -r _yi _ytag _ymsg; do
+                case "$_yi" in *[!0-9]*|'') continue ;; esac
+                if [ "$_yi" != "$_last" ]; then
+                    _last="$_yi"
+                    _ydisp="$(printf '%s' "$DESC_DISPLAY" | awk -v n="$_yi" 'NR==n+1{print; exit}')"
+                    printf '%s:\n' "$_ydisp"
+                    case "$COUNTED" in
+                        *$'\n'"$_yi"$'\n'*) ;;
+                        *) ISSUE_FILES=$((ISSUE_FILES + 1)); COUNTED="$COUNTED$_yi"$'\n' ;;
+                    esac
+                fi
+                printf '  %s %s\n' "$_ytag" "$_ymsg"
+            done <<EOF
+$_yout
+EOF
+            ;;
+        3)
+            printf 'skill-lint: [desc-yaml-unchecked] PyYAML not importable by %s; description parse rows skipped\n' "$_py" >&2
+            [ "${CI:-}" = "true" ] && HELPER_FAIL=1
+            ;;
+        *)
+            printf 'skill-lint: the description parse helper failed (exit %s):\n' "$_yrc" >&2
+            cat "$YAML_ERR" >&2
+            HELPER_FAIL=1
+            ;;
+    esac
+fi
 
 # [dup-name] pass — over the same scanned set collected above.
 _dup_names="$(printf '%s' "$NAMES" | awk -F'\t' '{print $1}' | sort | uniq -d)"
@@ -343,6 +412,10 @@ fi
 
 if [ "$EXPLICIT" -eq 1 ] && [ "$CHECKED" -eq 0 ] && [ "$MISSING" -gt 0 ]; then
     printf 'skill-lint: none of the named files exist (%d missing) — checked nothing\n' "$MISSING" >&2
+    exit 2
+fi
+
+if [ "$HELPER_FAIL" -eq 1 ]; then
     exit 2
 fi
 

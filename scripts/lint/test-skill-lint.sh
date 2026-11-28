@@ -18,15 +18,20 @@
 #      (a) bad staged frontmatter + a clean unstaged edit on disk -> flagged
 #      (b) clean staged frontmatter + a bad unstaged edit on disk -> not flagged
 #  11. no-description  : a comment-only description (`# TODO`) counts as empty
-#  12. description ok  : real text followed by a trailing `# comment` stays clean
+#  12. description cut : real text followed by a trailing `# comment` is not
+#                        [no-description] but is [desc-truncated]
 #  13. name-mismatch   : a quoted name: with trailing whitespace still matches
 #  14. description ok  : a quoted value holding ` # ` (`" # TODO"`) is not a comment
 #      (b) an empty quoted value plus a trailing comment is still empty
 #  15. tab in path     : a path containing a TAB is linted by its real path
+#  Y1-Y7 description parse check ([desc-truncated], [desc-yaml-error],
+#      [desc-yaml-unchecked]); every row runs with CI unset except Y6.
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
 set -uo pipefail
+
+unset CI
 
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -311,7 +316,7 @@ assert_contains "[no-description] tag present for comment-only value" "no-descri
 # ---------------------------------------------------------------------------
 # Case 12: real description text plus a trailing comment stays clean
 # ---------------------------------------------------------------------------
-printf '\nCase 12: description with real text and a trailing comment stays clean\n'
+printf '\nCase 12: description with real text and a trailing comment is not empty, but is cut\n'
 
 mkdir -p "$TMP_ROOT/trailing-comment-skill"
 TRAILDESC="$TMP_ROOT/trailing-comment-skill/SKILL.md"
@@ -325,7 +330,9 @@ description: real text # note
 EOF
 
 OUT12="$(bash "$LINT" "$TRAILDESC" 2>&1)"; EC12=$?
-if [ "$EC12" -eq 0 ]; then pass "description with real text plus a trailing comment stays clean"; else fail "expected exit 0, got $EC12" "$OUT12"; fi
+if [ "$EC12" -eq 1 ]; then pass "description with real text plus a trailing comment exits 1 (cut by the parse check)"; else fail "expected exit 1, got $EC12" "$OUT12"; fi
+assert_not_contains "a trailing comment is not [no-description]" "no-description" "$OUT12"
+assert_contains "a trailing comment is [desc-truncated]" "[desc-truncated]" "$OUT12"
 
 # ---------------------------------------------------------------------------
 # Case 13: a quoted name: with trailing whitespace still matches the parent dir
@@ -554,6 +561,158 @@ assert_contains "--changed reports the spaced path" "spaced name.md" "$OUT18J"
 (cd "$CH" && git rm -q ".claude/commands/spaced name.md" && git -c user.name=t -c user.email=t@t commit -q -m deleted)
 OUT18K="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18K=$?
 if [ "$EC18K" -eq 0 ]; then pass "--changed over a deletion exits 0"; else fail "expected exit 0, got $EC18K" "$OUT18K"; fi
+
+printf '\nRows Y1-Y7: [desc-truncated] / [desc-yaml-error]\n'
+
+YD="$TMP_ROOT/yaml"
+mkdir -p "$YD/bus" "$YD/gh-pr-checks" "$YD/plain" "$YD/quoted" "$YD/block" "$YD/hint" "$YD/cmds" "$YD/bad" "$YD/bool" "$YD/empty"
+
+cat > "$YD/bus/SKILL.md" <<'EOF'
+---
+name: bus
+description: Use when you hold or send himmel-bus messages (bus #n from <name>, send/read tools, bus wait) — the protocol in short.
+---
+
+body
+EOF
+cat > "$YD/gh-pr-checks/SKILL.md" <<'EOF'
+---
+name: gh-pr-checks
+description: CI/check status for a specific PR ("is PR N passing", "CI status for #97"). Needs a PR number. Not Jira or local checks.
+---
+
+body
+EOF
+cat > "$YD/cmds/clip-relevance-weekly.md" <<'EOF'
+---
+description: Weekly clip-relevance pass: propose at most five himmel changes from clips and failure records. Files nothing.
+argument-hint: (none)
+---
+
+body
+EOF
+cat > "$YD/plain/SKILL.md" <<'EOF'
+---
+name: plain
+description: Use when you want a plain description with no hash in it at all.
+---
+
+body
+EOF
+cat > "$YD/quoted/SKILL.md" <<'EOF'
+---
+name: quoted
+description: "Use when you hold messages (bus #n from <name>) — quoted, so the hash stays."
+---
+
+body
+EOF
+cat > "$YD/block/SKILL.md" <<'EOF'
+---
+name: block
+description: >
+  First line of a block scalar.
+
+  Second paragraph with a # x inside it.
+---
+
+body
+EOF
+cat > "$YD/hint/SKILL.md" <<'EOF'
+---
+name: hint
+description: Use when you want a good description beside a broken neighbour.
+argument-hint: [--a] [--b]
+---
+
+body
+EOF
+cat > "$YD/bad/SKILL.md" <<'EOF'
+---
+name: bad
+description: a: b
+---
+
+body
+EOF
+cat > "$YD/bool/SKILL.md" <<'EOF'
+---
+name: bool
+description: true
+---
+
+body
+EOF
+cat > "$YD/empty/SKILL.md" <<'EOF'
+---
+name: empty
+description:
+---
+
+body
+EOF
+
+ylint() { env -u CI bash "$LINT" "$@" 2>&1; }
+
+OUTY1="$(ylint "$YD/bus/SKILL.md")"; ECY1=$?
+if [ "$ECY1" -eq 1 ]; then pass "Y1: an unquoted ' #' description exits 1"; else fail "Y1: expected exit 1, got $ECY1" "$OUTY1"; fi
+assert_contains "Y1: [desc-truncated] reports the cut" "[desc-truncated]" "$OUTY1"
+
+OUTY2A="$(ylint "$YD/bus/SKILL.md")"
+OUTY2B="$(ylint "$YD/gh-pr-checks/SKILL.md")"
+OUTY2C="$(ylint "$YD/cmds/clip-relevance-weekly.md")"
+assert_contains "Y2: base himmel-bus bus file is [desc-truncated]" "[desc-truncated]" "$OUTY2A"
+assert_contains "Y2: base gh-pr-checks file is [desc-truncated]" "[desc-truncated]" "$OUTY2B"
+assert_contains "Y2: base clip-relevance-weekly command is [desc-yaml-error]" "[desc-yaml-error]" "$OUTY2C"
+
+OUTY3="$(ylint "$YD/plain/SKILL.md")"; ECY3=$?
+if [ "$ECY3" -eq 0 ]; then pass "Y3 control: a description with no # passes"; else fail "Y3 control: expected exit 0, got $ECY3" "$OUTY3"; fi
+
+OUTY4A="$(ylint "$YD/quoted/SKILL.md")"; ECY4A=$?
+if [ "$ECY4A" -eq 0 ]; then pass "Y4 control: a quoted description holding ' #' passes"; else fail "Y4 control: expected exit 0, got $ECY4A" "$OUTY4A"; fi
+OUTY4B="$(ylint "$YD/block/SKILL.md")"; ECY4B=$?
+if [ "$ECY4B" -eq 0 ]; then pass "Y4 control: a block scalar holding ' # x' over a blank line passes"; else fail "Y4 control: expected exit 0, got $ECY4B" "$OUTY4B"; fi
+
+OUTY5A="$(ylint "$YD/bad/SKILL.md")"; ECY5A=$?
+if [ "$ECY5A" -eq 1 ]; then pass "Y5: 'description: a: b' exits 1"; else fail "Y5: expected exit 1, got $ECY5A" "$OUTY5A"; fi
+assert_contains "Y5: 'a: b' is [desc-yaml-error]" "[desc-yaml-error]" "$OUTY5A"
+OUTY5B="$(ylint "$YD/bool/SKILL.md")"
+assert_contains "Y5: 'description: true' is [desc-yaml-error] not text" "[desc-yaml-error]" "$OUTY5B"
+assert_contains "Y5: 'description: true' says it is not text" "not text" "$OUTY5B"
+OUTY5C="$(ylint "$YD/empty/SKILL.md")"
+assert_contains "Y5: an empty 'description:' is [desc-yaml-error]" "[desc-yaml-error]" "$OUTY5C"
+
+cat > "$YD/stub-noyaml.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub: No module named yaml" >&2
+exit 3
+EOF
+cat > "$YD/stub-crash.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub: Traceback boom" >&2
+exit 1
+EOF
+chmod +x "$YD/stub-noyaml.sh" "$YD/stub-crash.sh"
+
+OUTY6A="$(env CI=true SKILL_LINT_PYTHON="$YD/stub-noyaml.sh" bash "$LINT" "$YD/plain/SKILL.md" 2>&1)"; ECY6A=$?
+if [ "$ECY6A" -eq 2 ]; then pass "Y6: no PyYAML under CI=true exits 2"; else fail "Y6: expected exit 2, got $ECY6A" "$OUTY6A"; fi
+assert_contains "Y6: no PyYAML prints [desc-yaml-unchecked]" "[desc-yaml-unchecked]" "$OUTY6A"
+OUTY6B="$(env -u CI SKILL_LINT_PYTHON="$YD/stub-noyaml.sh" bash "$LINT" "$YD/plain/SKILL.md" 2>&1)"; ECY6B=$?
+if [ "$ECY6B" -eq 0 ]; then pass "Y6: no PyYAML with CI unset keeps the status (0)"; else fail "Y6: expected exit 0, got $ECY6B" "$OUTY6B"; fi
+assert_contains "Y6: no PyYAML with CI unset still prints [desc-yaml-unchecked]" "[desc-yaml-unchecked]" "$OUTY6B"
+OUTY6C="$(env -u CI SKILL_LINT_PYTHON="$YD/stub-crash.sh" bash "$LINT" "$YD/plain/SKILL.md" 2>&1)"; ECY6C=$?
+if [ "$ECY6C" -eq 2 ]; then pass "Y6: a helper that exits 1 makes the run exit 2"; else fail "Y6: expected exit 2, got $ECY6C" "$OUTY6C"; fi
+assert_contains "Y6: the helper's stderr is printed" "Traceback boom" "$OUTY6C"
+
+OUTY8="$(ylint "$YD/plain/SKILL.md" "$YD/bus/SKILL.md" "$YD/bad/SKILL.md")"; ECY8=$?
+if [ "$ECY8" -eq 1 ]; then pass "Y8: several files, the second and third are checked (exit 1)"; else fail "Y8: expected exit 1, got $ECY8" "$OUTY8"; fi
+assert_contains "Y8: the second file's block names its own path" "$YD/bus/SKILL.md:" "$OUTY8"
+assert_contains "Y8: the third file's block names its own path" "$YD/bad/SKILL.md:" "$OUTY8"
+assert_not_contains "Y8: the clean first file gets no block" "$YD/plain/SKILL.md:" "$OUTY8"
+assert_contains "Y8: two files with findings count as 2 issues" "2 issue(s)" "$OUTY8"
+
+OUTY7="$(ylint "$YD/hint/SKILL.md")"; ECY7=$?
+if [ "$ECY7" -eq 0 ]; then pass "Y7 control: a broken argument-hint beside a good description passes"; else fail "Y7 control: expected exit 0, got $ECY7" "$OUTY7"; fi
 
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

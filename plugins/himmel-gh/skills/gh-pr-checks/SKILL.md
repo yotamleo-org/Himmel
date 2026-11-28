@@ -1,6 +1,6 @@
 ---
 name: gh-pr-checks
-description: CI/check status for a specific PR ("is PR N passing", "CI status for #97"). Needs a PR number. Not Jira or local checks.
+description: 'CI/check status for a specific PR ("is PR N passing", "CI status for #97"). Needs a PR number. Not Jira or local checks.'
 ---
 
 # gh-pr-checks

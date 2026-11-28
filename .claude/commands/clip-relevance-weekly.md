@@ -1,5 +1,5 @@
 ---
-description: Weekly clip-relevance pass: propose at most five himmel changes from clips and failure records. Files nothing.
+description: "Weekly clip-relevance pass: propose at most five himmel changes from clips and failure records. Files nothing."
 argument-hint: (none)
 ---
 
