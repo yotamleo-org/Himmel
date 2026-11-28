@@ -387,6 +387,7 @@ fleet_t3() (
 retire_verdict() {
     local doc=$1 lrc marker mrc young rd=$1
     case "$RETIRE_MANAGED" in *$'\n'"$doc"$'\n'*) printf 'keep\tmanaged attempt\n'; return 0 ;; esac
+    [ ! -L "$doc" ] || { printf 'keep\tdoc is a symlink\n'; return 0; }
     marker=$(ts_marker_newest "$doc"); mrc=$?
     case "$mrc:$marker" in
         2:*|0:WRAPPED|0:HALTED) ;;
@@ -395,7 +396,7 @@ retire_verdict() {
         *) printf 'keep\tdoc unreadable\n'; return 0 ;;
     esac
     if [ "$mrc" = 0 ]; then
-        young=$(find -L "$doc" -prune -mmin -60) || { printf 'keep\tdoc age unread\n'; return 0; }
+        young=$(find "$doc" -prune -mmin -60) || { printf 'keep\tdoc age unread\n'; return 0; }
         [ -z "$young" ] || { printf 'keep\tdoc changed under 1 h ago\n'; return 0; }
     fi
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then

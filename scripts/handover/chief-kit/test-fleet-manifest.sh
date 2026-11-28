@@ -631,10 +631,10 @@ touch -d '2 hours ago' "$fresh12"
 out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" 2>/dev/null)"
 check '12. the same doc an hour older is retired' "would-retire	$m12g	N87	$fresh12	lock free, no live session, newest marker WRAPPED" "$out"
 target12="$d12g/target.md"; link12="$d12g/HIMMEL-12-N86-link.md"
-printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$target12"; ln -s target.md "$link12"; touch -h -d '2 hours ago' "$link12"
+printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$target12"; touch -d '2 hours ago' "$target12"; ln -s target.md "$link12"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N86"}]}\n' "$link12" > "$m12g"
 out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" 2>/dev/null)"
-check '12. an old symlink to a doc that wrapped under 1 h ago keeps its row' "keep	$m12g	N86	$link12	doc changed under 1 h ago" "$out"
+check '12. a doc that is a symlink keeps its row, even to an old WRAPPED target' "keep	$m12g	N86	$link12	doc is a symlink" "$out"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
