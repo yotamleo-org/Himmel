@@ -24,14 +24,14 @@
 #  14. description ok  : a quoted value holding ` # ` (`" # TODO"`) is not a comment
 #      (b) an empty quoted value plus a trailing comment is still empty
 #  15. tab in path     : a path containing a TAB is linted by its real path
-#  Y1-Y7 description parse check ([desc-truncated], [desc-yaml-error],
+#  Y1-Y10 description parse check ([desc-truncated], [desc-yaml-error],
 #      [desc-yaml-unchecked]); every row runs with CI unset except Y6.
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
 set -uo pipefail
 
-unset CI
+unset CI SKILL_LINT_PYTHON
 
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
@@ -314,7 +314,7 @@ if [ "$EC11" -eq 1 ]; then pass "exit 1 on comment-only description"; else fail 
 assert_contains "[no-description] tag present for comment-only value" "no-description" "$OUT11"
 
 # ---------------------------------------------------------------------------
-# Case 12: real description text plus a trailing comment stays clean
+# Case 12: real description text plus a trailing comment is not empty, but is cut
 # ---------------------------------------------------------------------------
 printf '\nCase 12: description with real text and a trailing comment is not empty, but is cut\n'
 
@@ -562,7 +562,7 @@ assert_contains "--changed reports the spaced path" "spaced name.md" "$OUT18J"
 OUT18K="$(cd "$CH" && SKILL_LINT_WARN_BYTES=100 SKILL_LINT_FAIL_BYTES=200 bash "$LINT" --changed HEAD~1..HEAD 2>&1)"; EC18K=$?
 if [ "$EC18K" -eq 0 ]; then pass "--changed over a deletion exits 0"; else fail "expected exit 0, got $EC18K" "$OUT18K"; fi
 
-printf '\nRows Y1-Y7: [desc-truncated] / [desc-yaml-error]\n'
+printf '\nRows Y1-Y10: [desc-truncated] / [desc-yaml-error]\n'
 
 YD="$TMP_ROOT/yaml"
 mkdir -p "$YD/bus" "$YD/gh-pr-checks" "$YD/plain" "$YD/quoted" "$YD/block" "$YD/hint" "$YD/cmds" "$YD/bad" "$YD/bool" "$YD/empty"
@@ -703,6 +703,24 @@ assert_contains "Y6: no PyYAML with CI unset still prints [desc-yaml-unchecked]"
 OUTY6C="$(env -u CI SKILL_LINT_PYTHON="$YD/stub-crash.sh" bash "$LINT" "$YD/plain/SKILL.md" 2>&1)"; ECY6C=$?
 if [ "$ECY6C" -eq 2 ]; then pass "Y6: a helper that exits 1 makes the run exit 2"; else fail "Y6: expected exit 2, got $ECY6C" "$OUTY6C"; fi
 assert_contains "Y6: the helper's stderr is printed" "Traceback boom" "$OUTY6C"
+
+mkdir -p "$YD/cline" "$YD/blanks"
+cat > "$YD/cline/SKILL.md" <<'EOF'
+---
+name: cline
+description: Use when you want a description followed by a comment line.
+  # an indented comment line is not description text
+---
+
+body
+EOF
+printf -- '---\nname: blanks\ndescription: aa\n\n\n\n\n\n\n  cc #x\n---\n\nbody\n' > "$YD/blanks/SKILL.md"
+
+OUTY9="$(ylint "$YD/cline/SKILL.md")"; ECY9=$?
+if [ "$ECY9" -eq 0 ]; then pass "Y9: an indented comment line after a plain description is not a cut"; else fail "Y9: expected exit 0, got $ECY9" "$OUTY9"; fi
+OUTY10="$(ylint "$YD/blanks/SKILL.md")"; ECY10=$?
+if [ "$ECY10" -eq 1 ]; then pass "Y10: blank lines in a plain scalar do not hide a trailing ' #' cut"; else fail "Y10: expected exit 1, got $ECY10" "$OUTY10"; fi
+assert_contains "Y10: the cut is [desc-truncated]" "[desc-truncated]" "$OUTY10"
 
 OUTY8="$(ylint "$YD/plain/SKILL.md" "$YD/bus/SKILL.md" "$YD/bad/SKILL.md")"; ECY8=$?
 if [ "$ECY8" -eq 1 ]; then pass "Y8: several files, the second and third are checked (exit 1)"; else fail "Y8: expected exit 1, got $ECY8" "$OUTY8"; fi

@@ -72,12 +72,13 @@ def check(path):
                  "description parses as %s, not text — quote it" % type(value).__name__)]
     if key_value[:1] in ('"', "'", "|", ">"):
         return []
-    parts = [key_value] + [c.strip() for c in continuation]
-    written = " ".join(p for p in parts if p)
-    if len(value) < len(written):
+    parts = [key_value] + [c.strip() for c in continuation if not c.lstrip().startswith("#")]
+    written = " ".join(" ".join(parts).split())
+    read = " ".join(value.split())
+    if len(read) < len(written):
         return [("[desc-truncated]",
                  "description reads %d chars as YAML but %d are written — quote it"
-                 % (len(value), len(written)))]
+                 % (len(read), len(written)))]
     return []
 
 
