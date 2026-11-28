@@ -280,7 +280,8 @@ chief's GO key per worker doc and generation, so the GO key is the secret to gua
 current only through the worker's own `SUCCESSION accepted` bullet naming its chief, or the chief's
 `set` after a quote-back it saw. `relay-batch.sh`, `go-batch.sh` and `auto-go.sh` ask
 `worker-token.sh current` first and fall back to the `## Live state` span and the brief only when the
-worker has no usable record; `chief.sh next` carries a worker that has one, and no usable span, as `@record`, no token. The script
+worker has no usable record; `chief.sh next` carries a live worker that has a usable record and no span, or a well-formed
+`NONCE-UNKNOWN` span, as `@record`, no token. The script
 refuses inside a chief-spawned worker or relay. A same-uid process that can read the GO key can derive
 any generation, the same class as forging a GO mac (a ceilings-ledger row).
 
