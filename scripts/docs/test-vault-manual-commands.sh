@@ -3,18 +3,6 @@
 # himmel plugin. An agent in an adopter vault follows the manual literally, so a
 # command no plugin provides sends it to a dead end.
 #
-# "The manual" = templates/luna-second-brain/_CLAUDE.md, AGENTS.md and the
-# reference files under its docs/. "Provided" = a plugin under marketplace/plugins/
-# or plugins/ ships commands/<name>.md or skills/<name>/SKILL.md.
-#
-# A command is a "/name" after a line start, a space, a backtick or "(", and not
-# followed by "/" or ".", so paths (docs/luna, ~/.local, /usr/bin/env) never match.
-#
-# Cases: 1. the manual names no unprovided command; 2. control: /contra is named
-# and provided; 3. a fixture proves the check flags a dead command and only it,
-# also beside a live one on the same line; 4. a missing manual file, or a path
-# that is not a regular file, is reported.
-#
 # Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/find/grep/sed/mktemp.
 #
 # Usage: bash scripts/docs/test-vault-manual-commands.sh
