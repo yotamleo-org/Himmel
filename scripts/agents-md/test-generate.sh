@@ -154,7 +154,6 @@ if [ -f "$REAL_SRC" ]; then
   SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 fi
 
-# c) RED PATH: the leak check fires when a rewrap breaks an entry.
 BROKEN="$TMP/fable-rewrap.md"; TGTBROKEN="$TMP/AGENTS-broken.md"
 cat > "$BROKEN" <<'EOF'
 # Fixture Rules
