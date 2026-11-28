@@ -313,9 +313,6 @@ OUT11="$(bash "$LINT" "$COMMENTDESC" 2>&1)"; EC11=$?
 if [ "$EC11" -eq 1 ]; then pass "exit 1 on comment-only description"; else fail "expected exit 1, got $EC11" "$OUT11"; fi
 assert_contains "[no-description] tag present for comment-only value" "no-description" "$OUT11"
 
-# ---------------------------------------------------------------------------
-# Case 12: real description text plus a trailing comment is not empty, but is cut
-# ---------------------------------------------------------------------------
 printf '\nCase 12: description with real text and a trailing comment is not empty, but is cut\n'
 
 mkdir -p "$TMP_ROOT/trailing-comment-skill"

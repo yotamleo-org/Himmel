@@ -26,7 +26,6 @@ except ImportError:
 
 
 def description_block(lines):
-    """Return (key_line_value, continuation_lines, block_text) or None."""
     if not lines or lines[0].rstrip() != "---":
         return None
     for i in range(1, len(lines)):

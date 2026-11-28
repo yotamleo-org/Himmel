@@ -305,7 +305,6 @@ while IFS= read -r f && IFS= read -r content_src; do
     file_issues=0
     file_report=""
 
-    # Command bodies get the size and description checks: they carry no name:/dir contract.
     _is_command=0
     [ "$(basename "$f")" = "SKILL.md" ] || _is_command=1
 
