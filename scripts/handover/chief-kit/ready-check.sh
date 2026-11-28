@@ -104,12 +104,19 @@
 #      --commit <head>`), since ci.yml has no push trigger and the mode main
 #      runs is otherwise never tested pre-merge. The FAIL line prints the exact
 #      `gh workflow run` command. A dispatch run that FAILED at the head still
-#      passes, as a PRE-EXISTING line, when every one of its failed jobs also
-#      failed in the default branch's latest completed scheduled/push run of the
-#      same workflow; a job red only on the PR still FAILs and is named, unless
-#      the run logs show it failed only suites (`[FAIL] <suite> (` lines) that
-#      also failed on main, in whatever job (a re-shard moved them); an
-#      unreadable log or a job showing no failed suite keeps the FAIL. A head
+#      passes, as a PRE-EXISTING line, when the default branch's latest
+#      completed scheduled/push run of the same workflow is red and every failed
+#      job of the PR's run is explained: it ended `failure`, the run log names a
+#      failed suite for it (the runner's own `[FAIL] <suite> (` / `[CAP
+#      EXCEEDED] <suite> (` line), and each of its failed steps in the jobs JSON
+#      is on WF_SUITE_STEPS; and every such suite also failed in some job of
+#      main's run (a re-shard moves suites), compared as a whole string. A job on
+#      WF_DERIVED_JOBS whose only failed step is its listed step passes beside
+#      explained jobs when main failed it too. A suite red only on the PR FAILs
+#      and is named with its job. Any other failed job (an unreadable log, a
+#      cancelled or timed-out job, no failed suite, no or an unlisted failed
+#      step, steps missing) FAILs with `UNRESOLVED:` naming the job and why;
+#      ci.yml has no rows on those lists, so its red runs never pass. A head
 #      with no dispatch run of its own passes the same way on a failed dispatch
 #      run of the PR branch at an ANCESTOR of the head, when the PR's own change
 #      to every file it touches is the same at that ancestor and at the head
@@ -1625,6 +1632,13 @@ WF_DISPATCH_EXEMPT="
 .github/workflows/pr-title-lint.yml
 .github/workflows/release.yml
 "
+# A WF_SUITE_STEPS row `<workflow file><TAB><step>` is a step that runs the suite runner, named as the jobs
+# JSON prints it. A WF_DERIVED_JOBS row `<PR job><TAB><main job><TAB><the only step allowed to fail>` is a job
+# whose red is derived from shard jobs that are themselves compared by suite. Exact strings only; an edit to
+# either list is reviewed like the exempt list.
+# shellcheck disable=SC2016  # the step name is the workflow's literal script line, $SUITES unexpanded
+WF_SUITE_STEPS=$(printf '%s\t%s' macos-cadence.yml 'Run if [ -n "$SUITES" ]; then')
+WF_DERIVED_JOBS=$(printf '%s\t%s\t%s' 'macos-cadence / summary' 'macos-cadence / summary' 'macOS jobs must have passed')
 wf_files=$(printf '%s\n' "$files_json" | grep -E '^\.github/workflows/[^/]+\.ya?ml$' || true)
 if [ -z "$files_json" ]; then
     echo "[FAIL] 10. cannot read PR files — workflow_dispatch run not checked"
@@ -1633,15 +1647,12 @@ elif [ -z "$wf_files" ]; then
     echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
 else
     wf_err=""; wf_ids=""; wf_notes=""; wf_note=""; wf_why=""
-    # wf_failed_jobs <run id> [main]: the run's failed job names, sorted, one per line (a matrix shard
-    # is one job); rc 1 when the run cannot be read. The PR's run counts every unsuccessful conclusion
-    # (failure, timed_out, cancelled, ...); with `main` only failure and timed_out count, because a job
-    # main cancelled never ran and so is no evidence it is red there. gh pages the jobs itself.
     wf_failed_jobs() {
-        local body sel='.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)'
-        [ "${2:-}" != main ] || sel='.conclusion | IN("failure", "timed_out")'
+        local body fmt sel='.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)'
+        fmt="\"\\(.name)\\t\\(.conclusion)\\t\" + (if (.steps | type) == \"array\" then [.steps[] | select($sel) | .name] | join(\"\\u001f\") else \"\\u001e\" end)"
+        [ "${2:-}" != main ] || { sel='.conclusion | IN("failure", "timed_out")'; fmt=.name; }
         body=$("$GH" run view "$1" --repo "$nwo" --json jobs 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as not pre-existing
-        printf '%s' "$body" | jq -r ".jobs[]? | select($sel) | .name" 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
+        printf '%s' "$body" | jq -r ".jobs[]? | select($sel) | $fmt" 2>/dev/null | sort -u  # swallow-ok: unparsable jobs read as an empty set, which the caller rejects
     }
     # wf_failed_suites <run id>: the run log's failed suites as `<job><TAB><suite>` lines, sorted, from the
     # runner's own `[FAIL] <suite> (` / `[CAP EXCEEDED] <suite> (` line (the text right after the log's
@@ -1649,7 +1660,7 @@ else
     # whose retry passed prints neither). rc 1 when the log cannot be read.
     wf_failed_suites() {
         local log
-        log=$("$GH" run view "$1" --repo "$nwo" --log 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller keeps the job-name FAIL
+        log=$("$GH" run view "$1" --repo "$nwo" --log 2>/dev/null) || return 1  # swallow-ok: a failed read returns 1, the caller reads it as UNRESOLVED
         printf '%s\n' "$log" | awk -F'\t' 'NF >= 3 && $3 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+Z / {
             t = substr($3, index($3, " ") + 1)
             if (index(t, "[FAIL] ") == 1) t = substr(t, 8)
@@ -1659,39 +1670,21 @@ else
             if (a[1] != "") print $1 "\t" a[1]
         }' | sort -u
     }
-    # wf_suite_rescue <pr run id> <main run id> <jobs the job-name check refused, one per line>: rc 0 and
-    # wf_rescued set (the failed suites, comma-separated) when every one of those jobs shows failed suites
-    # in the PR run's log and every such suite also failed somewhere in main's run: the same test red on
-    # main in another shard, so a re-shard cannot make it look new. rc 1 otherwise; wf_why names a suite red
-    # only on the PR, and stays as the caller set it when a log is unreadable or a job shows no failed suite.
-    wf_suite_rescue() {
-        local pr_s main_s j s_new s_all="" bad=""
-        pr_s=$(wf_failed_suites "$1") || return 1
-        main_s=$(wf_failed_suites "$2") || return 1
-        [ -n "$pr_s" ] && [ -n "$main_s" ] || return 1
-        while IFS= read -r j; do
-            [ -n "$j" ] || continue
-            s_new=$(printf '%s\n' "$pr_s" | awk -F'\t' -v j="$j" '$1 == j { print $2 }')
-            [ -n "$s_new" ] || return 1
-            s_all="$s_all
-$s_new"
-        done <<EOF
-$3
-EOF
-        s_all=$(printf '%s\n' "$s_all" | sed '/^$/d' | sort -u)
-        bad=$(printf '%s\n' "$s_all" | grep -vxFf <(printf '%s\n' "$main_s" | cut -f2) || true)  # swallow-ok: every suite red on main is grep rc 1 and an empty set is the answer
-        if [ -n "$bad" ]; then
-            wf_why="run $1 failed suite(s) not red on main run $2: $(printf '%s' "$bad" | paste -sd, - | sed 's/,/, /g')"
-            return 1
-        fi
-        wf_rescued=$(printf '%s' "$s_all" | paste -sd, - | sed 's/,/, /g')
+    wf_join() { awk 'length($0) { printf "%s%s", (n++ ? ", " : ""), $0 }'; }
+    wf_off_list() {
+        local off
+        off=$(printf '%s' "$1" | tr '\037' '\n' | grep -vxF -f <(printf '%s\n' "$2"))
+        [ "$?" -le 1 ] || return 1
+        printf '%s\n' "$off" | sed -n 1p
     }
-    # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when every failed
-    # job of that run also failed in the default branch's latest completed scheduled/push run
-    # of the same workflow, or (a job moved to another shard) when each refused job fails only suites that
-    # also failed on main. Otherwise rc 1 and wf_why says why (empty when main is not red).
+    # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when the default branch's
+    # latest completed scheduled/push run of the workflow is red, every failed job of the run is explained (it
+    # ended `failure`, its log names a failed suite, each failed step is on WF_SUITE_STEPS) or is a
+    # WF_DERIVED_JOBS job beside one, and every explained suite also failed in some job of main's run. Otherwise
+    # rc 1 and wf_why says why: empty when main is not red, `UNRESOLVED:` when the record cannot explain a job.
     wf_preexisting() {
-        local main_runs main_row main_id main_event pr_jobs main_jobs new rc wf_rescued=""
+        local main_runs main_row main_id main_event pr_jobs main_jobs pr_s main_s name concl steps suites row why
+        local expl="" derived="" unres="" pairs="" bad="" suite_steps rc
         wf_why=""
         main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
         main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
@@ -1699,17 +1692,45 @@ EOF
         main_id="${main_row%% *}"; main_event="${main_row#* }"
         pr_jobs=$(wf_failed_jobs "$2") && [ -n "$pr_jobs" ] || { wf_why="cannot read the failed jobs of run $2"; return 1; }
         main_jobs=$(wf_failed_jobs "$main_id" main) && [ -n "$main_jobs" ] || { wf_why="cannot read the failed jobs of main run $main_id"; return 1; }
-        new=$(printf '%s\n' "$pr_jobs" | grep -vxFf <(printf '%s\n' "$main_jobs")) && rc=0 || rc=$?
-        if [ "$rc" -gt 1 ]; then
-            wf_why="cannot compare the failed jobs of run $2 with main run $main_id"
-            return 1
-        fi
-        if [ -n "$new" ]; then
-            wf_why="run $2 failed on suites not red on main run $main_id: $(printf '%s' "$new" | paste -sd, - | sed 's/,/, /g')"
-            wf_suite_rescue "$2" "$main_id" "$new" || return 1
-            wf_why=""
-        fi
-        wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s' "$pr_jobs" | paste -sd, - | sed 's/,/, /g')${wf_rescued:+ — job(s) moved shard, failed suite(s) red on main: $wf_rescued}"
+        pr_s=$(wf_failed_suites "$2") || { wf_why="UNRESOLVED: the log of run $2 cannot be read, so its failed suites cannot be compared"; return 1; }
+        main_s=$(wf_failed_suites "$main_id") || { wf_why="UNRESOLVED: the log of run $main_id cannot be read, so its failed suites cannot be compared"; return 1; }
+        suite_steps=$(printf '%s\n' "$WF_SUITE_STEPS" | WF_W="$1" awk -F'\t' '$1 == ENVIRON["WF_W"] { print substr($0, length($1) + 2) }')
+        while IFS="$(printf '\t')" read -r name concl steps; do
+            [ -n "$name" ] || continue
+            suites=$(printf '%s\n' "$pr_s" | WF_J="$name" awk -F'\t' '$1 == ENVIRON["WF_J"]')
+            row=$(printf '%s\n' "$WF_DERIVED_JOBS" | WF_J="$name" awk -F'\t' '$1 == ENVIRON["WF_J"] { print; exit }')
+            why=""
+            if [ "$concl" != failure ]; then why="$concl"
+            elif [ "$steps" = "$(printf '\036')" ]; then why="steps unreadable"
+            elif [ -z "$steps" ]; then why="no failed step"
+            elif [ -n "$row" ]; then
+                if ! why=$(wf_off_list "$steps" "$(printf '%s' "$row" | cut -f3)"); then why="derived: steps cannot be compared"
+                elif [ -n "$why" ]; then why="derived: failed step $why"
+                elif ! printf '%s\n' "$main_jobs" | grep -qxF -- "$(printf '%s' "$row" | cut -f2)"; then why="derived: main's $(printf '%s' "$row" | cut -f2) not red"
+                elif [ -z "$suites" ]; then derived="$derived
+$name"; continue
+                fi
+            fi
+            if [ -z "$why" ] && [ -z "$suites" ]; then why="no failed suite"
+            elif [ -z "$why" ]; then
+                if ! why=$(wf_off_list "$steps" "$suite_steps"); then why="steps cannot be compared"
+                elif [ -n "$why" ]; then why="failed step $why"; fi
+            fi
+            if [ -n "$why" ]; then unres="$unres
+$name ($why)"; continue; fi
+            expl="$expl
+$name"; pairs="$pairs
+$suites"
+        done <<EOF
+$pr_jobs
+EOF
+        bad=$(printf '%s\n' "$pairs" | cut -f2 | sed '/^$/d' | sort -u | grep -vxFf <(printf '%s\n' "$main_s" | cut -f2 | sed '/^$/d')) && rc=0 || rc=$?
+        [ "$rc" -le 1 ] || { wf_why="cannot compare the failed suites of run $2 with main run $main_id"; return 1; }
+        [ -z "$bad" ] || wf_why="run $2 failed on suites not red on main run $main_id: $(awk -F'\t' 'NR == FNR { b[$0]; next } $2 in b { print $2 " (" $1 ")" }' <(printf '%s\n' "$bad") <(printf '%s\n' "$pairs") | wf_join)"
+        [ -z "$unres" ] || wf_why="${wf_why:+$wf_why; }UNRESOLVED: run $2 job(s) the logs do not explain: $(printf '%s\n' "$unres" | wf_join)"
+        [ -n "$expl" ] || [ -z "$derived" ] || wf_why="${wf_why:+$wf_why; }UNRESOLVED: run $2 failed only derived job(s) ($(printf '%s\n' "$derived" | wf_join)), which name no suite"
+        [ -z "$wf_why" ] && [ -n "$expl" ] || return 1
+        wf_note="PRE-EXISTING: $1 dispatch run $2 failed only on suites already red on main ($main_event run $main_id): $(printf '%s\n' "$pairs" | cut -f2 | sed '/^$/d' | sort -u | wf_join); failed job(s): $(printf '%s\n' "$expl" | wf_join)${derived:+; derived job(s) red with them: $(printf '%s\n' "$derived" | wf_join)}"
     }
     # wf_wiring_only <workflow path>: rc 0 when the PR's diff of that file is the macos-cadence `suites`
     # wiring and nothing else. Every added line, trimmed, must be blank, a whole-line comment, or one of the
