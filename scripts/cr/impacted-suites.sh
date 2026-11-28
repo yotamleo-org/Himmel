@@ -1843,7 +1843,7 @@ rec_list() {
     if [ -L "$dir" ] || [ ! -d "$dir" ]; then
         rec_why="$dir is a symlink or not a directory"; return 1
     fi
-    find "$dir" -mindepth 1 -maxdepth 1 -type f \( \( -name '*.txt' -mtime +14 \) -o \( -name '.tmp-*' -mtime +1 \) \) -print0 > "$work/prune" 2>/dev/null || : > "$work/prune"  # swallow-ok: a failed prune leaves old files, never a wrong list
+    find "$dir" -mindepth 1 -maxdepth 1 -type f \( \( -name '*.txt' -mtime +14 \) -o \( -name '.tmp-*' -mtime +1 \) \) -print0 > "$work/prune" 2>/dev/null || : > "$work/prune"  # gnu-ok: BSD find takes -mindepth, -maxdepth, -mtime and -print0 too; swallow-ok: a failed prune leaves old files, never a wrong list
     while IFS= read -r -d '' p; do
         n="${p##*/}"
         case "$n" in
