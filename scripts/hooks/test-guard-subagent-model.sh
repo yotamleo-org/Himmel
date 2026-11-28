@@ -221,11 +221,19 @@ assert_rc "empty subagent_type + claude-haiku-5-5 is DENIED (rc=2)" 2 "$RC24"
 RC25=$(run_hook null-type-haiku "$(payload_subagent_null haiku)")
 assert_rc "subagent_type null + haiku is DENIED (rc=2)" 2 "$RC25"
 
-RC26=$(run_hook haiku-worker "$(payload haiku-worker haiku)")
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+mkdir -p "$TMP/empty-home"
+REPO_DEFS=(CLAUDE_PROJECT_DIR="$REPO_ROOT" HOME="$TMP/empty-home")
+for def in haiku-worker edit-runner; do
+    have=1; [ -f "$REPO_ROOT/.claude/agents/$def.md" ] && have=0
+    assert_rc "the repository defines $def" 0 "$have"
+done
+
+RC26=$(run_hook haiku-worker "$(payload haiku-worker haiku)" "${REPO_DEFS[@]}")
 assert_rc "haiku-worker + haiku is allowed (rc=0)" 0 "$RC26"
 assert_empty "haiku-worker + haiku: no output" "$(combined_output haiku-worker)"
 
-RC27=$(run_hook edit-runner-haiku "$(payload edit-runner haiku)")
+RC27=$(run_hook edit-runner-haiku "$(payload edit-runner haiku)" "${REPO_DEFS[@]}")
 assert_rc "edit-runner (no Agent tool) + haiku is allowed (rc=0)" 0 "$RC27"
 assert_empty "edit-runner + haiku: no output" "$(combined_output edit-runner-haiku)"
 
