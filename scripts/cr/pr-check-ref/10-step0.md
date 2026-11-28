@@ -61,6 +61,7 @@
    pr-check-context: behind_base=<commits HEAD lacks from origin/<base>; informational on every profile, never gates; unknown when the ref is missing>
    pr-check-context: main_ahead=<commits local <base> carries beyond origin/<base>; unknown when either ref is missing>
    ```
+   Step 0 also saves the `head=` value for this branch and worktree (checked-out runs only, never `--pr`), so the step 3.0 panel call takes its head from step 0 and needs no `--head`; a failed save prints a WARNING on stderr, and the panel then wants `--head <the head= value>`.
    `lane=` is read, not substituted into any later fence —
    see step 2 (`20-step2-lanes.md`). `anchor_lane=` and `delegated=` are informational — read
    them to confirm which checkout is actually driving this run; nothing

@@ -101,6 +101,16 @@ check "(i) a non-numeric --since is a usage error" 2 "$rc"
 rc=0; bash "$SUT" --chief lc-chief PROJ-1-N9 "$WORK/i.log" >/dev/null 2>&1 || rc=$?
 check "(i) no --since is a usage error" 2 "$rc"
 
+mkdir -p "$WORK/nosleep"
+printf '#!/bin/sh\nexit 0\n' > "$WORK/nosleep/sleep"; chmod +x "$WORK/nosleep/sleep"
+: > "$WORK/SEEN"
+start_line PROJ-1-N10-wait "$fresh" > "$WORK/k.log"
+rc=0; out="$(PATH="$WORK/nosleep:$PATH" bash "$SUT" --since "$now" --chief lc-chief PROJ-1-N10-wait "$WORK/k.log" 2>&1)" || rc=$?
+check "(K1) the default window ends unconfirmed for a launcher still running" 1 "$rc"
+check "(K1) ... after 240s" yes "$(says "$out" 'LAUNCH-UNCONFIRMED PROJ-1-N10-wait the launcher had not finished within 240s')"
+rc=0; out="$(PATH="$WORK/nosleep:$PATH" bash "$SUT" --since "$now" --chief lc-chief --secs 3 PROJ-1-N10-wait "$WORK/k.log" 2>&1)" || rc=$?
+check "(K1) --secs still sets the window" yes "$(says "$out" 'LAUNCH-UNCONFIRMED PROJ-1-N10-wait the launcher had not finished within 3s')"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-confirm.sh"; exit 0; fi
 echo "FAIL - test-launch-confirm.sh ($fails failure(s))"; exit 1

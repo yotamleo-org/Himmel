@@ -57,5 +57,14 @@
   "scripts/ci/run-shell-tests.sh": {
     "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL", "HIMMEL_LEGACY_NAMES"],
     "internal_seams": ["HIMMEL_SUITE_SLOT_HELD"]
+  },
+  "scripts/t3/antigravity-profiles.sh": {
+    "seam_env_vars": ["T3_AP_REGISTRY", "T3_AP_PLUGIN_PROFILES", "T3_AP_BACKSTOP", "T3_AP_ADAPTER", "HIMMEL_AGY_SKILL_CACHE"]
+  },
+  "scripts/antigravity/install-antigravity-backstop.sh": {
+    "seam_env_vars": ["HIMMEL_PRIMARY_ROOT"]
+  },
+  "scripts/t3/provider-instances.sh": {
+    "seam_env_vars": ["T3_PI_RESOLVER", "T3_PI_PROFILES", "T3_PI_EMPTY_OK", "T3_PI_AGY_PROFILES", "HIMMEL_PROFILE_SETTINGS_DIR", "HIMMEL_PROFILE_REPO", "PLUGIN_PROFILES_REGISTRY", "PLUGIN_PROFILES_ADAPTERS"]
   }
 }

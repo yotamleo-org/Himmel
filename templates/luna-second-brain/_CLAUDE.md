@@ -8,8 +8,6 @@ instantiated from this repo, the operator should edit this file in
 place to fill the `{{PLACEHOLDER}}` fields below and tune sections to
 match their workflow.
 
----
-
 ## Section 0 — AI-First Vault Rule (read first, applies to every note)
 
 This vault is designed for **future-Claude** to read and reason over, not
@@ -40,49 +38,17 @@ knowledge.
    move must do the same by hand). Ask before any restructuring that
    relinks many notes at once.
 
----
-
 ## Retrieval Routing — which organ answers what
-
-The vault's knowledge graph is **off by default** (decision 449: graphify stays
-off the vault until it proves better than qmd for its cost). Use it only when
-its cadence is armed (himmel's `scripts/luna/graphmap-cadence.sh arm
---luna-only`, which registers the `HIMMEL-GraphMap-Luna` and
-`HIMMEL-GraphMapAst-Luna` rows) and himmel's
-`scripts/graphify/check-graph-freshness.sh --out
-~/.local/share/himmel/graphify/luna/graphify-out` reads it fresh (rc 0);
-otherwise use qmd only. When the graph is on, it lives **outside the vault**, at
-`~/.local/share/himmel/graphify/luna/graphify-out/` (`GRAPHIFY_LUNA_OUT_ROOT`
-overrides the root), because Obsidian hung on its churn inside the vault. Then
-route retrieval by question shape, not habit — text-search-only is the failure
-mode:
 
 - **Content lookup** ("find my notes on X", "what did I save about Y") →
   text/semantic search (qmd or your search tool) first.
 - **Structure & neighborhoods** ("how does X relate to Y", "what clusters
-  around Z", "map this theme") → the **graphify graph**:
-  `graphify query "<question>" --graph ~/.local/share/himmel/graphify/luna/graphify-out/graph.json`
-  (the graph path must be the `--graph` flag — a positional directory is
-  silently ignored and the query runs against the current directory's
-  graph), or the graphify MCP tools when connected, always passing
-  `project_path` set to `~/.local/share/himmel/graphify/luna` with the `~`
-  expanded to your home directory (the tools do not expand it; without
-  `project_path` the server uses its configured default graph, and a
-  `GRAPHIFY_OUT` override changes the out dir name). The curated entry
-  point is the graphify map note in `60-Maps/` (written by the graph
-  refresh).
+  around Z") → the graphify graph, but only when it is on and fresh. It is
+  **off by default**; how to turn it on, where it lives and how to query it:
+  [`docs/retrieval-routing.md`](docs/retrieval-routing.md). Otherwise use qmd only.
 - A **search miss is not evidence of absence** — structural connections
   often live only in the graph; when the graph is on and fresh, try graphify
   before concluding a relation doesn't exist.
-- Never `graphify path` — node IDs are file-scoped, so cross-file
-  traversal is structurally broken; join `graphify query` results
-  in-head instead.
-- Escalation (documented, not applied): if sessions keep defaulting to
-  text search only, `graphify install --project --strict` wires a hook
-  that blocks the first raw file read per session until one
-  `graphify query` runs.
-
----
 
 ## Tooling and provenance
 
@@ -90,21 +56,14 @@ mode:
   CLI (see Retrieval Routing above); write notes as plain files. No vault
   MCP server or claude-obsidian skill is loaded in a default session, so do
   not assume one is there. obsidian-second-brain is no longer part of himmel.
-- **Session capture:** a `SessionEnd` hook (`scripts/hooks/end-session-wiki.sh`)
-  writes eligible session notes under `sessions/YYYY/MM/` in the resolved
-  target vault. If the target key is rejected because another vault owns the
-  Local REST API port, the hook retries keys from other vaults, so the note
-  can land in the vault whose key succeeds. Sessions shorter than the
-  configured minimum are skipped (60s by default). It is on by default; opt out by setting the
-  `CLAUDE_END_SESSION_WIKI` env var to `0`, or `"enabled": false` in
+- **Session capture:** a himmel `SessionEnd` hook writes eligible session
+  notes under `sessions/YYYY/MM/` in the target vault. Opt out by setting
+  `CLAUDE_END_SESSION_WIKI=0`, or `"enabled": false` in
   `.claude/end-session-wiki.json`. Targeting, schema and every option:
   `docs/luna/end-session-wiki.md` in the himmel repo.
 - **Where the structure came from:** a custom PARA tree, the
   obsidian-second-brain manual pattern, and the claude-obsidian hot cache
-  (`hot.md`). Research: the luna structure note of 2026-10-23 under
-  `specs/research/` in the state repo bucket.
-
----
+  (`hot.md`).
 
 ## Vault Identity
 
@@ -113,8 +72,6 @@ mode:
 - **Primary purpose:** {{VAULT_PURPOSE}}
 - **Instantiated from:** [luna-brain](https://github.com/yotamleo/Himmel/tree/main/templates/luna-second-brain) skeleton <!-- leak-allow: hostname template doc pointing at the public skeleton repo -->
 - **Created:** {{CREATED_DATE}}
-
----
 
 ## Folder Map
 
@@ -133,15 +90,11 @@ mode:
 | `60-Maps/` | Maps of Content (MOCs) — high-level indexes and topic clusters |
 | `_Templates/` | Note templates — never modify during normal vault ops |
 
----
-
 ## Key Files
 
 - **Dashboard / Home:** `[[60-Maps/Home]]` — vault entry point, all navigation
-- **Vault index:** `[[index]]` — catalog of all notes, regenerated by `/obsidian-init`
+- **Vault index:** `[[index]]` — catalog of all notes; add a line when you create a note
 - **Activity log:** `[[log]]` — chronological log of all vault changes
-
----
 
 ## Active Context
 
@@ -149,8 +102,6 @@ mode:
 
 **Current top priority:** [update me]
 **Active projects:** See `[[10-Projects/_index]]`
-
----
 
 ## Auto-Save Rules
 
@@ -169,30 +120,20 @@ Claude should **ask before saving**:
 - Anything touching finances or private personal data
 - Anything that involves deleting or archiving an existing note
 
----
-
 ## Contradiction-Resolution Policy
 
-Contradiction-resolution runbooks (`/obsidian-reconcile` or any successor) are **propose-only** —
-never auto-merge. Two contradicting notes are not necessarily wrong: they may cover different
-contexts or phases, and auto-merging destroys the reasoning that made each right at the time.
+Resolving contradicting notes is **propose-only** — never auto-merge. They may cover different
+contexts or phases; auto-merging destroys the reasoning that made each right at the time.
 
 - **Clear winner found:** do NOT rewrite the outdated page. Write the proposed rewrite to
   `00-Inbox/Conflict (proposed) — <topic>.md` (`status: proposed`) with both sides, the evidence,
   and the full proposed text. The operator applies or rejects.
-- **Genuinely ambiguous:** write `00-Inbox/Conflict (open) — <topic>.md` (`status: open`)
-  documenting both sides.
-- `00-Inbox/` is the operator-triage queue — conflict notes land where the operator already looks.
-- Conflict notes carry the vault's base frontmatter (`date:`, `type: conflict`, `tags:` incl.
-  `conflict`, `ai-first: true`) plus the `status:` field above.
-- An explicit `--auto` argument lets the runbook rewrite the losing note in place instead of
-  proposing; without it, propose-only.
+- **Genuinely ambiguous:** write `00-Inbox/Conflict (open) — <topic>.md` (`status: open`).
+- Conflict notes carry the base frontmatter (`type: conflict`, `tags:` incl. `conflict`) plus
+  `status:`. Rewrite the losing note in place only when the operator asks for it.
 
-**Shared daily-note heading:** thinking-type passes (`/obsidian-challenge`, `/contra`) append to
-today's daily note under the exact H2 heading `## Thinking` — one heading, no per-command variants,
-which prevents heading drift.
-
----
+**Shared daily-note heading:** thinking-type passes such as `/contra` append to today's daily note
+under the exact H2 heading `## Thinking` — one heading, no per-command variants.
 
 ## Naming Conventions
 
@@ -201,8 +142,6 @@ which prevents heading drift.
 - Projects: descriptive title (e.g. `Launch Personal Site.md`)
 - People: full name (e.g. `Jane Smith.md`)
 - Resources: descriptive title with source context
-
----
 
 ## Frontmatter Requirements
 
@@ -219,88 +158,41 @@ ai-first: true
 
 Note types: `daily` | `weekly` | `project` | `area` | `resource` | `person` | `concept` | `book` | `decision` | `conflict`
 
-### Decision-shaped notes — premise frontmatter
-
-Standalone `type: decision` notes MUST carry, in addition to the base fields:
-
-```yaml
-claim: "<what the note asserts, one line>"
-assumption: "<what must be true for the claim to hold, one line>"
-```
-
-Both values MUST be quoted YAML strings (unquoted, a claim like `Adopt storage: use SQLite` breaks
-the frontmatter parse and a `#` preceded by a space silently truncates the value). Duplicate
-`claim:`/`assumption:` keys within one note are malformed — reject/repair the note before any
-contradiction pass consumes it (last-wins parsing would compare an unintended value).
-
-The body section `## The Critical Assumption` stays (nuance, confidence, recency); the frontmatter
-is the machine-tractable index that contradiction passes compare across notes. The producing layer
-is `[[_Templates/Decision]]` — instantiate the template, never freeform a decision note. Some
-external commands do not emit these fields, so a Claude session authoring a decision note directly
-must apply this contract itself.
-
----
-
-## Templates Available
-
-| Template | Use for |
-|----------|---------|
-| `[[_Templates/Daily-Note]]` | Daily journaling and focus |
-| `[[_Templates/Weekly-Review]]` | Weekly reflection and planning |
-| `[[_Templates/Project]]` | New active project |
-| `[[_Templates/Resource]]` | Reference material, concepts, articles |
-| `[[_Templates/Decision]]` | Decision record with claim/assumption premise frontmatter |
-
----
+A `type: decision` note also carries quoted `claim:` and `assumption:` fields and is made from
+`[[_Templates/Decision]]`. The template catalogue and the full decision contract:
+[`docs/note-templates.md`](docs/note-templates.md).
 
 ## Do Not Touch
 
-- `_Templates/` — Never modify templates during normal vault operations
+- `_Templates/` — Never modify templates during normal vault ops
 - `.pre-commit-config.yaml` + `scripts/` — repo infrastructure; treat
   edits the same as code changes (PR review, conventional commit).
 
----
-
 ## Repo conventions (inherited from luna-brain skeleton)
 
-- **Single-writer vaults:** if this vault has a `.single-writer` marker at
-  its root, it commits straight to `main` by design — the two bullets below
-  (PR workflow, worktree isolation) do not apply to it; delete them from your
-  copy if you like (the upgrade keeps a deletion).
-- **Git workflow:** all changes via PR. main is protected. Conventional
+- **Single-writer vaults:** a vault with a `.single-writer` marker at its root commits straight
+  to `main` by design; the two bullets below do not apply to it (deleting them survives upgrades).
+- **Git workflow:** all changes via PR; main is protected. Conventional
   commit format `type(scope): [TICKET-N ]message` is a convention, not
-  enforced by a hook (automated vault commits use their own subjects).
-- **Worktree isolation:** never edit on `main`. Pre-commit hook refuses
-  commits when `HEAD == main`. Create a worktree branch first
-  (`git switch -c feat/<slug>`).
+  enforced by a hook.
+- **Branch isolation:** never commit on `main`; the pre-commit hook refuses a commit when
+  `HEAD == main`. A branch is enough (`git switch -c feat/<slug>`); a worktree is not required.
 - **Force-push blocked:** `scripts/hooks/check-no-force-push.sh` refuses
   force-push to `main`. CR follow-ups must be new commits.
-- **Handover state:** scripts read/write handover state from
-  `<repo>/handovers/` (Mode A, default) or `$HANDOVER_DIR` (Mode B,
-  set in launching shell). See `scripts/lib/handover-path.sh`.
-
----
+- **Handover state:** `<repo>/handovers/` by default, or `$HANDOVER_DIR`
+  when set in the launching shell. See `scripts/lib/handover-path.sh`.
 
 ## pre-commit trap
 
 <!-- mem:49268e70dd6e -->
 <!-- mem:99f1b1f48ac5 -->
 - **Never `pre-commit install` for the pre-commit stage in this vault**
-  (`scripts/setup.sh` runs the framework installer only with
-  `--hook-type pre-push`). The pre-commit-stage hook stashes every
-  unstaged change before the hooks run and re-applies the stash after. With
-  Obsidian running, `.obsidian/plugins/*` files are rewritten mid-hook, the
-  re-apply fails ("patch does not apply"), and pre-commit rolls back,
-  reverting OTHER sessions' unstaged work on disk. The vault uses stash-free
-  hooks instead: run `bash scripts/hooks/install-nostash-hooks.sh` once per
-  clone (`.git/hooks` is not versioned); `pre-commit install` would replace
-  them. If a rollback already happened, pre-commit keeps the stashed patch in
-  its cache dir to recover from: `$PRE_COMMIT_HOME` if non-empty, else
-  `$XDG_CACHE_HOME/pre-commit/` if non-empty, else `~/.cache/pre-commit/`.
-- Other vault traps (commit STALLs, upgrade-withheld edits, clip audits,
-  search quirks): `docs/vault-troubleshooting.md`.
-
----
+  (`scripts/setup.sh` installs only `--hook-type pre-push`). The
+  pre-commit-stage hook stashes unstaged changes and, with Obsidian rewriting `.obsidian/plugins/*`
+  mid-hook, rolls back OTHER sessions' unstaged work. Run
+  `bash scripts/hooks/install-nostash-hooks.sh` once per clone instead.
+- Recovery from a rollback, and other vault traps (commit STALLs,
+  upgrade-withheld edits, clip audits, search quirks):
+  [`docs/vault-troubleshooting.md`](docs/vault-troubleshooting.md).
 
 *Generated by the luna-brain skeleton.*
-*Regenerate sections via `/obsidian-init` after installing obsidian-second-brain.*

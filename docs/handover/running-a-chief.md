@@ -302,6 +302,9 @@ setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile work
 bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
 
+Run the `launch-confirm.sh` call with a Bash tool timeout of at least 250000 ms: its window is 240 s, and the tool's
+default 120 s would end it first.
+
 The launcher writes the signal file itself once the launch passes its checks; a launch that cannot write it is refused with a `LAUNCH-REFUSED` line.
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
@@ -320,7 +323,8 @@ the real launch passes them too. The launcher opens each attempt with a `LAUNCH-
 and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
 the attempt that started at or after `--since`, the epoch taken just before
 the launch, so an earlier attempt or session never decides it. It waits up to
-60 s for that attempt to end `LAUNCH-OK` with a claude session named
+240 s by default (`--secs` sets it; the waiter's relaunch of a silent worker passes 60), since a managed launch
+runs two fleet admissions and each can wait its turn for the admission lock, for that attempt to end `LAUNCH-OK` with a claude session named
 `<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
 with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
 report a worker as running until it confirms.
@@ -975,7 +979,11 @@ the paginated files API.
 
 `check-write-hold.sh` denies a worker's write onto a file another live worker or an
 open PR holds. A write onto a free file outside the worker's `Writes` passes: it is
-claimed, recorded, and named on the PR's `outside-writes:` line for review. The
+claimed, recorded, and named on the PR's `outside-writes:` line for review. In a
+repo that carries `scripts/ci/ci-trust-paths.txt`, a free trust path is the
+exception: its first write is denied until a grant. The deny prints your grant
+command for a trust path, and says only the operator grants a settings file or CI
+workflow. The
 register is `holds.py`, under `~/.himmel/state/holds`.
 
 **`HOLD-ASK <path> <key>`** is a worker telling you the deny stopped it: `<key>` wants
