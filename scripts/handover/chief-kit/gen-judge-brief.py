@@ -226,7 +226,7 @@ def classify_delta(s):
     try:
         r = subprocess.run(['bash', os.path.join(HERE, 'delta-class.sh'), '--qid', qid, judged, s['head']],
                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
-        c = r.stdout.strip() if r.stdout.strip() in ('trust', 'finding', 'none') else 'trust'
+        c = r.stdout.strip() if r.returncode == 0 and r.stdout.strip() in ('trust', 'finding', 'none') else 'trust'
     except (OSError, subprocess.SubprocessError):
         c = 'trust'
     if c == 'none' and word == 'NO-GO':
