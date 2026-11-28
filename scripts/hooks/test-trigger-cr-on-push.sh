@@ -415,6 +415,91 @@ else
 fi
 export CR_TRIGGER_REPOS="$saved_allow"
 
+echo "TEST: an rtk-wrapped git push advancing an open PR's head -> POSTS and records the head"
+rtk_n=0
+for rtk_cmd in \
+    'rtk git push' \
+    'rtk git push origin HEAD 2>&1 | tail -3' \
+    'rtk git add -A && rtk git commit -q -m x && rtk git push' \
+    $'rtk git add -A\nrtk git push' \
+    'cd /tmp/x && rtk git push -u origin fix/x' \
+    'rtk proxy git push'
+do
+    rtk_n=$((rtk_n+1))
+    reset_state
+    FAKE_GH_PR_VIEW_JSON=$(pr_view_json 320 "sha-rtk-pos-$rtk_n" "OPEN" "https://github.com/acme/widget/pull/320")
+    export FAKE_GH_PR_VIEW_JSON
+    run_hook "$rtk_cmd"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 320 sha-rtk-pos-$rtk_n" "$LEDGER_PATH" 2>/dev/null; then
+        pass "posted and recorded the head for '$rtk_cmd'"
+    else
+        fail "expected rc=0, 1 post and the ledger row for '$rtk_cmd', got rc=$rc posted=$(posted_count)" "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
+    fi
+done
+
+echo "TEST: rtk text that runs no git push stays negative, with an OPEN PR at a fresh head"
+for rtk_neg in \
+    'echo "rtk git push"' \
+    'rtk git stash push' \
+    'rtkx git push' \
+    'myrtk git push'
+do
+    rtk_n=$((rtk_n+1))
+    reset_state
+    FAKE_GH_PR_VIEW_JSON=$(pr_view_json 321 "sha-rtk-neg-$rtk_n" "OPEN" "https://github.com/acme/widget/pull/321")
+    export FAKE_GH_PR_VIEW_JSON
+    run_hook "$rtk_neg"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 0 ]; then
+        pass "no post for '$rtk_neg'"
+    else
+        fail "expected rc=0 and 0 posts for '$rtk_neg', got rc=$rc posted=$(posted_count)" "out: $out"
+    fi
+done
+
+echo "TEST: an unwrapped git push (control) -> POSTS and records the head"
+reset_state
+FAKE_GH_PR_VIEW_JSON=$(pr_view_json 322 "sha-rtk-ctl" "OPEN" "https://github.com/acme/widget/pull/322")
+export FAKE_GH_PR_VIEW_JSON
+run_hook "git push"
+if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 322 sha-rtk-ctl" "$LEDGER_PATH" 2>/dev/null; then
+    pass "control: posted and recorded the head"
+else
+    fail "expected rc=0, 1 post and the ledger row, got rc=$rc posted=$(posted_count)" "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
+fi
+
+echo "TEST: a failing sed first on PATH -> rc 0 and the trigger still posts"
+FAILSED_DIR="$TMP_ROOT/failsed"
+mkdir -p "$FAILSED_DIR"
+printf '#!/bin/sh\nexit 1\n' > "$FAILSED_DIR/sed"
+chmod +x "$FAILSED_DIR/sed"
+reset_state
+FAKE_GH_PR_VIEW_JSON=$(pr_view_json 323 "sha-rtk-sed" "OPEN" "https://github.com/acme/widget/pull/323")
+export FAKE_GH_PR_VIEW_JSON
+saved_path="$PATH"
+export PATH="$FAILSED_DIR:$PATH"
+run_hook "git push"
+export PATH="$saved_path"
+if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 323 sha-rtk-sed" "$LEDGER_PATH" 2>/dev/null; then
+    pass "a failing sed kept the joined command: rc 0 and one post"
+else
+    fail "expected rc=0, 1 post and the ledger row with a failing sed, got rc=$rc posted=$(posted_count)" "out: $out"
+fi
+
+echo "TEST: the rtk step keys on the push matcher's own command-position class"
+step_line=$(grep -F 'rtk[[:space:]]+(proxy' "$HOOK" || true)
+match_line=$(grep -F 'git[[:space:]]+push' "$HOOK" || true)
+if [ -z "$step_line" ]; then
+    fail "rtk step not found in $HOOK"
+else
+    step_class=$(grep -oE '\(\^\|\[[^]]*\]\)' <<< "$step_line" | head -1 || true)
+    match_class=$(grep -oE '\(\^\|\[[^]]*\]\)' <<< "$match_line" | head -1 || true)
+    if [ -n "$step_class" ] && [ "$step_class" = "$match_class" ]; then
+        pass "the rtk step's class equals the push matcher's"
+    else
+        fail "the rtk step's class differs from the push matcher's" "step: $step_class; matcher: $match_class"
+    fi
+fi
+
 # Summary --------------------------------------------------------------------
 echo
 echo "===================================="

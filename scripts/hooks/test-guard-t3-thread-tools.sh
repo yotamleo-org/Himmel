@@ -128,6 +128,8 @@ run() {
 }
 
 T=mcp__t3-code__
+C=mcp__t3_code__
+D=mcp__t3_code_direct__
 LAUNCH_BAD='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}'
 LAUNCH_OK='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"codex","model":"gpt-5"}}}'
 LAUNCH_PLAIN='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"model":"claude-opus-5-5"}}}'
@@ -147,6 +149,49 @@ run "a launch onto a driver with no descriptor: refused" 2 '"gemini": its driver
 run "an Orchestrator thread launches a codex thread: allowed" 0 - "$(from_to orchestratorNeon codex)"
 run "create_threads across providers: allowed" 0 - \
     '{"tool_name":"'$T'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"claudeAgent"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+
+CX_LAUNCH_BAD='{"tool_name":"'$C't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}'
+CX_LIST='{"tool_name":"'$C't3_thread_list","tool_input":{}}'
+run "R1: a Codex-spelled launch on a bypass instance: refused" 2 '"claudeBypass": carries a himmel bypass flag (AGENTS_MD_OK)' "$CX_LAUNCH_BAD"
+run "R1: the Codex refusal names the Codex tool name" 2 'refused mcp__t3_code__t3_thread_launch on a provider instance' "$CX_LAUNCH_BAD"
+run "R1 control: a Codex-spelled t3_thread_list: silent allow" 0 - "$CX_LIST"
+run "R2: a Codex-spelled create_threads with a bypass target: refused" 2 '"claudeBypass": carries a himmel bypass flag' \
+    '{"tool_name":"'$C'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"claudeBypass"}}]}}'
+run "R2 control: a Codex-spelled create_threads across providers: allowed" 0 - \
+    '{"tool_name":"'$C'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"claudeAgent"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+run "R3: a direct-server delegate_task with a bypass target: refused" 2 '"claudeBypass": carries a himmel bypass flag' \
+    '{"tool_name":"'$D'delegate_task","tool_input":{"task":"x","target":{"providerInstanceId":"claudeBypass"}}}'
+run "R3 control: a direct-server delegate_task onto codex: allowed" 0 - \
+    '{"tool_name":"'$D'delegate_task","tool_input":{"task":"x","target":{"providerInstanceId":"codex"}}}'
+run "R3 control: a direct-server t3_thread_wait: silent allow" 0 - '{"tool_name":"'$D't3_thread_wait","tool_input":{"threadId":"t"}}'
+run "R4: a Codex-spelled rename to X-chief: refused" 2 'chief-shaped' \
+    '{"tool_name":"'$C't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}'
+run "R4 control: a Codex-spelled rename to a plain title: allowed" 0 - \
+    '{"tool_name":"'$C't3_thread_update","tool_input":{"action":"rename","title":"Plain title"}}'
+run "R6: the operator override allows a Codex-spelled bypass launch, on stderr" 0 'override: allowed' "$CX_LAUNCH_BAD" T3_THREAD_TOOLS_OK=1
+R7_NAMES="mcp__t3_code_other__launch mcp__t3_codex__launch mcp__t3-code-x__launch mcp__t3-code-direct__delegate_task"
+r7_payload() {
+    printf '{"tool_name":"%s","tool_input":{"title":"Work","task":"x","target":{"providerInstanceId":"claudeBypass"},"modelSelection":{"instanceId":"claudeBypass","model":"m"}}}' "$1"
+}
+for name in $R7_NAMES; do
+    run "R7: $name is not a T3 prefix: silent allow" 0 - "$(r7_payload "$name")"
+done
+N=$((N+1))
+i1_fail=""
+for body in 't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"m"}}}' \
+            't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}' \
+            't3_thread_list","tool_input":{}}'; do
+    i1_ref=""
+    for p in "$T" "$C" "$D"; do
+        i1_out=$(printf '{"tool_name":"%s%s' "$p" "$body" | bash "$HOOK" 2>&1 >/dev/null); i1_rc=$?
+        i1_got="$i1_rc:$(printf '%s' "$i1_out" | sed 's/mcp__t3[-_]code[a-z_]*__/PFX__/g')"
+        if [ -z "$i1_ref" ]; then i1_ref="$i1_got"
+        elif [ "$i1_got" != "$i1_ref" ]; then i1_fail="$i1_fail ${p}${body%%\"*}"; fi
+    done
+done
+if [ -z "$i1_fail" ]; then echo "ok   I1: the three prefixes get the same verdict and reason"
+else echo "FAIL I1: a verdict or reason differs from the $T one for:$i1_fail"; FAIL=$((FAIL+1)); fi
+
 run "a launch onto the built-in antigravity instance: allowed" 0 - "$(from_to claudeAgent antigravity)"
 run "a launch onto a grok instance: refused, its descriptor is incomplete" 2 \
     '"grokThread": its driver grok has an incomplete harness descriptor (grok.json)' "$(from_to codex grokThread)"
@@ -502,6 +547,17 @@ else
     if [ "$rc" = 2 ]; then echo "ok   row: a log path that is a pipe with no reader never hangs the refusal"
     else echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: rc=$rc (124 = the guard hung)"; FAIL=$((FAIL+1)); fi
 fi
+
+R5_ROWS="$TMP/r5.jsonl" R5C_ROWS="$TMP/r5c.jsonl" R7_ROWS="$TMP/r7.jsonl"
+run "R5: a Codex-spelled bypass launch still refuses" 2 '"claudeBypass"' "$CX_LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$R5_ROWS"
+check "R5: it writes one row naming the bypass-instance rule and the instance" \
+    '[ "$(row_count "$R5_ROWS")" = 1 ] && [ "$(jq -r "[.rule, .instance] | join(\"|\")" "$R5_ROWS")" = "bypass-instance|claudeBypass" ]'
+run "R5 control: a Codex-spelled t3_thread_list still allows" 0 - "$CX_LIST" HIMMEL_GUARD_REFUSALS_LOG="$R5C_ROWS"
+check "R5 control: it writes no row" '[ "$(row_count "$R5C_ROWS")" = 0 ]'
+for name in $R7_NAMES; do
+    run "R7: $name still allows with its own row log" 0 - "$(r7_payload "$name")" HIMMEL_GUARD_REFUSALS_LOG="$R7_ROWS"
+done
+check "R7: a name outside the three prefixes writes no row" '[ "$(row_count "$R7_ROWS")" = 0 ]'
 
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]

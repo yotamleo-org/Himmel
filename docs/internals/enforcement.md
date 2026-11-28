@@ -3290,7 +3290,9 @@ PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scrip
 ### `guard-t3-thread-tools.sh` — T3 instances and chief titles stay operator choices
 
 Fires on every T3 Code MCP tool (matcher `mcp__t3-code__.*`); any other tool
-exits at once. Each T3 provider instance carries its own environment variables,
+exits at once. Claude and Antigravity (after its adapter) send `mcp__t3-code__`;
+Codex sends `mcp__t3_code__` and `mcp__t3_code_direct__` through its `mcp__.*`
+chain, and the guard judges all three prefixes alike. Each T3 provider instance carries its own environment variables,
 so the operator can make an instance that carries a himmel bypass flag and pick
 it in the T3 UI. The T3 tools also let an agent pick the instance of a new or
 existing thread, and a T3 thread title ending in `-chief` or `-console` is the
@@ -3371,7 +3373,8 @@ A security fence: fails CLOSED on a missing `jq`, a payload that does not
 parse, and the unreadable files above. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
 `floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
 (`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
-matcher `mcp__t3-code__.*`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
+matcher `mcp__t3-code__.*`. On Codex it runs in the `.codex/hooks.json` `mcp__.*`
+chain, which sends `mcp__t3_code__` and `mcp__t3_code_direct__`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
 
 ### `require-quiet-run.sh` — bare test-suite bounce
 

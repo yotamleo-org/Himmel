@@ -2475,12 +2475,18 @@ brief_seed_tokens() (
     echo '#end'
 )
 
-# The nonces are the chief's: written by the chief, never read from the manifest; a live worker with no span, or a
-# well-formed NONCE-UNKNOWN span, gets the RETASK token of its brief, which the chief wrote, when its doc records no
-# SUCCESSION accepted.
+# The nonces are the chief's: never read from the manifest, or from the token record, whose values the chief's key
+# derives. A live worker with no span, or a well-formed NONCE-UNKNOWN span, gets @record when worker-token.sh gen reads
+# state=ok, else its brief's RETASK token, which the chief wrote, when its doc records no SUCCESSION accepted.
+record_usable() {
+    local out
+    out="$(HANDOVER_DIR="$root" bash "$HERE/../chief-kit/worker-token.sh" gen "$1" 2>/dev/null)" || return 1  # swallow-ok: any state but ok keeps today's NONCE-UNKNOWN or brief seed
+    case "$out" in *" state=ok") return 0 ;; esac
+    return 1
+}
 carry_live_workers() {
     local block="$1" rows="$2" whole="$3" letter="$4" label ldoc sess pid span spans where add="" first rest out="" token i
-    local p_label=() p_doc=() p_span=() p_where=() p_seed=() seed_docs=()
+    local p_label=() p_doc=() p_span=() p_where=() p_seed=() p_rec=() seed_docs=()
     while IFS=$'\t' read -r label ldoc sess pid; do
         [ -n "$label" ] || continue
         case " ${CHIEF_SEED_TEST_DROP:-} " in *" $label "*) continue ;; esac
@@ -2492,9 +2498,10 @@ carry_live_workers() {
         esac
         span="${spans%%$'\n'*}"
         i=${#p_label[@]}
-        p_label[i]="$label"; p_doc[i]="$ldoc"; p_span[i]="$span"; p_where[i]="$where"; p_seed[i]=0
+        p_label[i]="$label"; p_doc[i]="$ldoc"; p_span[i]="$span"; p_where[i]="$where"; p_seed[i]=0; p_rec[i]=0
         [ "$spans" = "$span" ] && [[ "$span" =~ $entry_re ]] && [[ "$span" == "\`$label:NONCE-UNKNOWN:"* ]] || continue
         [ "$where" = new ] || [ "$(printf '%s\n' "$rows" | cut -f1 | grep -cxF -- "$label")" -eq 1 ] || continue
+        if record_usable "$ldoc"; then p_rec[i]=1; continue; fi
         [ "$(worker_lock_state "$ldoc")" = held ] || continue
         if [ ! -r "$ldoc" ]; then
             printf 'next: %s kept NONCE-UNKNOWN: its doc could not be read\n' "$label" >&2
@@ -2514,13 +2521,19 @@ EOF
     fi
     for ((i = 0; i < ${#p_label[@]}; i++)); do
         label="${p_label[i]}"; span="${p_span[i]}"; token=""
-        if [ "${p_seed[i]}" -eq 1 ]; then
+        if [ "${p_rec[i]}" -eq 1 ]; then
+            token=@record
+        elif [ "${p_seed[i]}" -eq 1 ]; then
             token="$(printf '%s\n' "$out" | SEED_DOC="${p_doc[i]}" awk -F'\t' '$1 == ENVIRON["SEED_DOC"] { print $2; exit }')"
         fi
         if [ -n "$token" ]; then
             span="\`$label:$token:${span#"\`$label:NONCE-UNKNOWN:"}"
             [ "${p_where[i]}" != block ] || block="${block%%"${p_span[i]}"*}$span${block#*"${p_span[i]}"}"
-            printf "next: seeded %s from its brief's RETASK line\n" "$label" >&2
+            if [ "${p_rec[i]}" -eq 1 ]; then
+                printf 'next: %s reads its token from the token record (@record)\n' "$label" >&2
+            else
+                printf "next: seeded %s from its brief's RETASK line\n" "$label" >&2
+            fi
         fi
         case "${p_where[i]}:$add" in block:* | add:*"$span "*) ;; *) add="$add$span " ;; esac
     done

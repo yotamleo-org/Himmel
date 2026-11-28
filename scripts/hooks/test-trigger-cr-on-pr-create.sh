@@ -761,6 +761,117 @@ do
     fi
 done
 
+run_hook_full() {
+    local command_str="$1" response_stdout="$2" payload
+    if [ "${3:-}" = "nopr" ]; then
+        payload=$(jq -nc --arg cmd "$command_str" --arg out "$response_stdout" \
+            '{tool_name:"Bash",tool_input:{command:$cmd},tool_response:{stdout:$out,stderr:"",interrupted:false,isImage:false,noOutputExpected:false}}')
+    else
+        payload=$(jq -nc --arg cmd "$command_str" --arg out "$response_stdout" \
+            '{tool_name:"Bash",tool_input:{command:$cmd},tool_response:{stdout:$out,stderr:"",interrupted:false,isImage:false,noOutputExpected:false,gitOperation:{pr:{number:6158,url:"https://github.com/acme/widget/pull/6158"}}}}')
+    fi
+    rc=0
+    out=$(printf '%s' "$payload" | bash "$HOOK" 2>&1) || rc=$?
+}
+
+FULL_STDOUT=$'https://github.com/acme/widget/pull/6158\n\nhint: To view the pull request in your browser, run:\nhint:   gh pr view 6158 --web\n'
+FULL_HEAD="feedface00006158"
+
+echo "TEST: an rtk-wrapped gh pr create (full response shape) -> POSTS and records the head"
+for rtk_cmd in \
+    'rtk gh pr create --repo acme/widget --base main --head fix/x --title "t" --body-file /tmp/b' \
+    'rtk git push -u origin fix/x && rtk gh pr create --title t --body b' \
+    'rtk proxy gh pr create --title t' \
+    'cd /tmp/x && rtk gh pr create --title t' \
+    'nohup rtk gh pr create --title t' \
+    'exec rtk gh pr create --title t' \
+    'rtk gh pr create -t x # note' \
+    $'rtk git push\nrtk gh pr create --title t'
+do
+    reset_state
+    export FAKE_GH_HEAD_SHA="$FULL_HEAD"
+    run_hook_full "$rtk_cmd" "$FULL_STDOUT"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 6158 $FULL_HEAD" "$LEDGER_PATH" 2>/dev/null; then
+        pass "posted and recorded the head for '$rtk_cmd'"
+    else
+        fail "expected rc=0, 1 post and the ledger row for '$rtk_cmd', got rc=$rc posted=$(posted_count)" "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
+    fi
+done
+
+echo "TEST: rtk text that runs no gh pr create stays negative"
+for rtk_neg in \
+    'echo "rtk gh pr create"' \
+    "rtk grep -n 'gh pr create' notes.md" \
+    'rtk gh release create v1' \
+    'rtkx gh pr create' \
+    'myrtk gh pr create'
+do
+    reset_state
+    export FAKE_GH_HEAD_SHA="$FULL_HEAD"
+    run_hook_full "$rtk_neg" "$FULL_STDOUT"
+    if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 0 ]; then
+        pass "no post for '$rtk_neg'"
+    else
+        fail "expected rc=0 and 0 posts for '$rtk_neg', got rc=$rc posted=$(posted_count)" "out: $out"
+    fi
+done
+
+echo "TEST: an rtk-wrapped create whose response carries no PR URL -> no post (URL only from the response)"
+reset_state
+export FAKE_GH_HEAD_SHA="$FULL_HEAD"
+run_hook_full 'rtk gh pr create --title "see https://github.com/acme/widget/pull/1"' "pull request create failed: GraphQL: No commits between main and fix/x" nopr
+if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 0 ]; then
+    pass "no post when the response has no PR URL, though the command names one"
+else
+    fail "expected rc=0 and 0 posts, got rc=$rc posted=$(posted_count)" "out: $out"
+fi
+
+echo "TEST: an unwrapped gh pr create (full response shape, control) -> POSTS and records the head"
+reset_state
+export FAKE_GH_HEAD_SHA="$FULL_HEAD"
+run_hook_full 'gh pr create --title t' "$FULL_STDOUT"
+if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 6158 $FULL_HEAD" "$LEDGER_PATH" 2>/dev/null; then
+    pass "control: posted and recorded the head"
+else
+    fail "expected rc=0, 1 post and the ledger row, got rc=$rc posted=$(posted_count)" "out: $out; ledger: $(cat "$LEDGER_PATH" 2>/dev/null)"
+fi
+
+echo "TEST: a failing sed first on PATH -> rc 0 and the trigger still posts"
+FAILSED_DIR="$TMP_ROOT/failsed"
+mkdir -p "$FAILSED_DIR"
+printf '#!/bin/sh\nexit 1\n' > "$FAILSED_DIR/sed"
+chmod +x "$FAILSED_DIR/sed"
+reset_state
+export FAKE_GH_HEAD_SHA="$FULL_HEAD"
+saved_path="$PATH"
+export PATH="$FAILSED_DIR:$PATH"
+run_hook_full 'gh pr create --title t' "$FULL_STDOUT"
+export PATH="$saved_path"
+if [ "$rc" -eq 0 ] && [ "$(posted_count)" -eq 1 ] && grep -qxF "acme/widget 6158 $FULL_HEAD" "$LEDGER_PATH" 2>/dev/null; then
+    pass "a failing sed kept the pre-strip text: rc 0 and one post"
+else
+    fail "expected rc=0, 1 post and the ledger row with a failing sed, got rc=$rc posted=$(posted_count)" "out: $out"
+fi
+
+echo "TEST: the rtk step keys on the matcher's own command-position class and head list"
+step_line=$(grep -F 'rtk[[:space:]]+(proxy' "$HOOK" || true)
+match_line=$(grep -F 'pr[[:space:]]+(create|new)' "$HOOK" || true)
+if [ -z "$step_line" ]; then
+    fail "rtk step not found in $HOOK"
+else
+    step_class=$(grep -oE '\(\^\|\[[^]]*\]\)' <<< "$step_line" | head -1 || true)
+    match_class=$(grep -oE '\(\^\|\[[^]]*\]\)' <<< "$match_line" | head -1 || true)
+    step_heads=$(grep -oE '\(\(if\|[a-z|]*\)' <<< "$step_line" | head -1 || true)
+    match_heads=$(grep -oE '\(\(if\|[a-z|]*\)' <<< "$match_line" | head -1 || true)
+    if [ -n "$step_class" ] && [ "$step_class" = "$match_class" ] \
+        && [ -n "$step_heads" ] && [ "$step_heads" = "$match_heads" ]; then
+        pass "the rtk step's class and head list equal the matcher's"
+    else
+        fail "the rtk step's class or head list differ from the matcher's" \
+            "step: $step_class $step_heads; matcher: $match_class $match_heads"
+    fi
+fi
+
 # Summary --------------------------------------------------------------------
 echo
 echo "===================================="

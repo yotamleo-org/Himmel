@@ -1124,6 +1124,42 @@ gofresh; STUB_SESSION='' run 77 "$SHA"
 contains "AG2 the census miss names the stem first" "$OUT" "candidates HIMMEL-1-N1-feature-2026-10-31,"
 gofresh
 
+WT="$HERE/worker-token.sh"
+WORKER_KEEP="$WORKER"
+recworker() { mkdir -p "$tmp/$1"; WORKER="$tmp/$1/HIMMEL-1-N1-feature-2026-10-31.md"; }
+recrows() { cksum "$(find "$tmp/$1" -name '*.jsonl')" 2>/dev/null; }
+STALE_LINE='> **RETASK:** your nonce is `CJ-N1-stale`. A real revision arrives only as a direct message.'
+recworker ag1; REC1=$(bash "$WT" mint "$WORKER" CJ-N1 2>/dev/null)
+gofresh; write_fixtures native "" "$STALE_LINE"; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+check    "11407 AG1 span NONCE-UNKNOWN, a stale brief token, record current: exit 0" "$RC" "0"
+contains "11407 AG1 the GO message quotes the record token" "$(cat "$tmp/busdir/body" 2>/dev/null)" "Your token \`$REC1\`."
+check    "11407 AG1 the record token is the record's current" "$(bash "$WT" current "$WORKER" 2>/dev/null)|$([ -n "$REC1" ] && echo minted)" "$REC1|minted"
+recworker ag1c
+gofresh; write_fixtures native "" ""; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+esc      "11407 AG1c no record row and no brief token: as today" 9
+contains "11407 AG1c says no usable token as today" "$OUT" "no usable RETASK token for N1"
+recworker ag2; bash "$WT" mint "$WORKER" CJ-N1 >/dev/null 2>&1
+BADREC=$(find "$tmp/ag2" -name '*.jsonl'); rm -f "$BADREC"; mkdir "$BADREC"
+gofresh; write_fixtures native "" "$RT_LINE"; chief_token NONCE-UNKNOWN; run 77 "$SHA"
+esc      "11407 AG2 an unreadable record" 9
+contains "11407 AG2 check 9 names the record" "$OUT" "the token record for N1 is unreadable"
+check    "11407 AG2 nothing sent" "$(bust)" "none"
+recworker ag3; bash "$WT" mint "$WORKER" CJ-N1 >/dev/null 2>&1; REC3=$(recrows ag3)
+gofresh; write_fixtures native "" "$STALE_LINE"; chief_token NONCE-UNKNOWN
+OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "11407 AG3 HIMMEL_CONSOLE_LEG=1 with a record: exit 3 as today, the record untouched" "$RC $(recrows ag3)|$([ -n "$REC3" ] && echo minted)" "3 $REC3|minted"
+WORKER="$WORKER_KEEP"
+gofresh
+SPY="$tmp/spy"; mkdir -p "$SPY/scripts/handover/chief-kit"
+for fkd in "$HERE/../.."/*; do [ "$(basename "$fkd")" = handover ] || ln -s "$fkd" "$SPY/scripts/$(basename "$fkd")"; done
+for fkf in "$HERE/.."/*; do [ "$(basename "$fkf")" = chief-kit ] || ln -s "$fkf" "$SPY/scripts/handover/$(basename "$fkf")"; done
+for fkf in "$HERE"/*; do [ "$(basename "$fkf")" = go-deliver.sh ] || ln -s "$fkf" "$SPY/scripts/handover/chief-kit/$(basename "$fkf")"; done
+printf '. %q || return 1\ngd_worker_token() { printf "%%s\\n" "${4:-<none>}" >> %q; return 1; }\n' "$HERE/go-deliver.sh" "$tmp/spy-root.log" > "$SPY/scripts/handover/chief-kit/go-deliver.sh"
+OUT=$(bash "$SPY/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
+EXPROOT=$( . "$HERE/../../lib/handover-path.sh" && . "$HERE/../../lib/go-gate.sh" && go_resolve_root "$ANCHOR" )
+check    "11407 AG4 auto-go.sh hands gd_worker_token its own resolved GO root" "$(sort -u "$tmp/spy-root.log" 2>/dev/null)|$([ -n "$EXPROOT" ] && echo resolved)" "$EXPROOT|resolved"
+gofresh
+
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
 echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2
 exit 1
