@@ -551,7 +551,7 @@ s17_falls_back R14 "list file missing or altered" yes
 s17_fifo_row() {
     local label="$1" fifo="$2" wpid
     check "19 $label: the fixture is a FIFO" "$([ -p "$fifo" ] && echo yes)" "yes"
-    ( printf 'x' > "$fifo" ) 2>/dev/null &
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 300} tee "$fifo" < /dev/null > /dev/null 2>&1 &
     wpid=$!
     s17_at "$S17_H1"
     s17_falls_back "$label" "list file missing or altered" yes

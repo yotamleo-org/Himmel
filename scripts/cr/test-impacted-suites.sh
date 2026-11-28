@@ -1988,9 +1988,9 @@ for lx_c in "--check $lx_range" "--plan $lx_range" "--check $lx_range --record -
     "--check $lx_range --from-file $LXV" "--runner scripts/lanes/tests/plugins.test.mjs" "--runner-check" \
     "--selector-miss $lx_range --red-file $LS/red.txt" "--paths-file $LS/paths.txt $lx_range" "--red-file $LS/red.txt" \
     "--run scripts/test-lx-a.sh" "$lx_range" "--lister-id"; do
-    # shellcheck disable=SC2086  # each combination is a fixed word list
-    lx_o=$( cd "$LX" && bash "$IS" --lister-id $lx_c 2>/dev/null ); lx_x=$?
-    if [ "$lx_x" -ne 2 ] || [ -n "$lx_o" ]; then lx_combo_bad="$lx_combo_bad [$lx_c rc=$lx_x]"; fi
+    read -r -a lx_argv <<< "$lx_c"
+    ( cd "$LX" && bash "$IS" --lister-id "${lx_argv[@]}" > "$LS/is4a.out" 2>/dev/null ); lx_x=$?
+    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ]; then lx_combo_bad="$lx_combo_bad [$lx_c rc=$lx_x]"; fi
 done
 if [ -z "$lx_combo_bad" ]; then pass "IS4a --lister-id with any other flag or a range exits 2 with no id"; else fail "IS4a combinations:$lx_combo_bad"; fi
 lx_reset

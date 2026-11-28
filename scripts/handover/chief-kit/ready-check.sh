@@ -2713,13 +2713,11 @@ s17_body() {
     # merge-base(origin/main, SHA) itself and exits 2 when there is none.
     anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
 
-    # local proof: the newest ok `impacted` row at this head and branch
     branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || branch=""  # swallow-ok: an empty branch reads no row
     ledger="${common_dir:-}/cr-critic-scores.jsonl"
     : > "$d/lp"
     : > "$d/rs"
     if [ -n "$branch" ] && [ -n "${common_dir:-}" ] && [ -r "$ledger" ]; then
-        # item 16's reader: rows of this head, branch and PR, oldest first; the newest ok one is the proof
         o16_branch="$branch"; o16_ledger="$ledger"
         row=$(o16_ledger impacted 'select(.status == "ok") | tojson' | tail -n 1)
     fi
