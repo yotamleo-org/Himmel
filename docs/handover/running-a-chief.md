@@ -974,7 +974,9 @@ the paginated files API.
 
 `check-write-hold.sh` denies a worker's write onto a file another live worker or an
 open PR holds. A write onto a free file outside the worker's `Writes` passes: it is
-claimed, recorded, and named on the PR's `outside-writes:` line for review. The
+claimed, recorded, and named on the PR's `outside-writes:` line for review. A free
+trust path is the exception: its first write is denied until you or the operator
+grant it, and the deny names the grant command. The
 register is `holds.py`, under `~/.himmel/state/holds`.
 
 **`HOLD-ASK <path> <key>`** is a worker telling you the deny stopped it: `<key>` wants
