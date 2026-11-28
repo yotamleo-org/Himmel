@@ -3029,7 +3029,9 @@ c104_run() {
         bash "$DOC" --no-color --only C104 --root "$REPO_ROOT" 2>&1
 }
 c104_clean() {
-    if ! grep -q -v -x -E -e '--list' -e '--check --profile [A-Za-z0-9._-]+' "$c104_t/argv" && [ "$(c104_hash)" = "$c104_before" ]; then
+    local g
+    grep -q -v -x -E -e '--list' -e '--check --profile [A-Za-z0-9._-]+' "$c104_t/argv"; g=$?
+    if [ "$g" = 1 ] && [ "$(c104_hash)" = "$c104_before" ]; then
         pass "$1: only --list/--check, T3 home unchanged"
     else
         fail "$1: argv=$(tr '\n' '|' < "$c104_t/argv") home $([ "$(c104_hash)" = "$c104_before" ] && echo same || echo CHANGED)"
@@ -3089,7 +3091,7 @@ c104r_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c104r.XXXXXX")" || { echo "m
 mkdir -p "$c104r_t/home" "$c104r_t/t3"
 c104r_snap() { find "$c104r_t/home" "$c104r_t/t3" | sort | while IFS= read -r f; do ls -ld "$f"; done; }
 c104r_before="$(c104r_snap)"
-out="$(env -u HIMMEL_DOCTOR_AGY_PROFILES HOME="$c104r_t/home" T3CODE_HOME="$c104r_t/t3" bash "$DOC" --no-color --only C104 --root "$REPO_ROOT" 2>&1)"
+out="$(env -u HIMMEL_DOCTOR_AGY_PROFILES -u T3_AP_REGISTRY -u T3_AP_PLUGIN_PROFILES -u T3_AP_BACKSTOP -u T3_AP_ADAPTER -u HIMMEL_AGY_SKILL_CACHE -u HIMMEL_PRIMARY_ROOT HOME="$c104r_t/home" T3CODE_HOME="$c104r_t/t3" bash "$DOC" --no-color --only C104 --root "$REPO_ROOT" 2>&1)"
 if grepq "$out" -F 'INFO C104-agy-profiles: antigravity_design: not set up on this station' && [ "$(c104r_snap)" = "$c104r_before" ]; then
     pass "D-REAL -> INFO, HOME and T3 home unchanged"
 else

@@ -690,12 +690,14 @@ BS_KEY="scripts/antigravity/install-antigravity-backstop.sh"
 BS_SEAMS="HIMMEL_PRIMARY_ROOT"
 BS_SCAN="$HERE/../antigravity/install-antigravity-backstop.sh"
 seam_list() {
-    local label="$1" key="$2" fixed="$3" got n missing=""
+    local label="$1" key="$2" fixed="$3" got n scan rc missing=""
     shift 3
     got="$(jq -r --arg k "$key" '.[$k].seam_env_vars | sort | join(" ")' "$CHOKEPOINTS" 2>/dev/null)"
     expect_eq "S-LIST $label: $key equals the fixed list" "$got" "$fixed"
+    scan="$(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "$@")"; rc=$?
+    expect_eq "S-LIST $label: the scan read its sources and matched" "$rc" 0
     # shellcheck disable=SC2013 # one bare variable name per line, never spaces
-    for n in $(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "$@" | sed 's/^.*\${//' | sort -u); do
+    for n in $(printf '%s\n' "$scan" | sed 's/^.*\${//' | sort -u); do
         case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
     done
     expect_eq "S-LIST $label: every seam its script reads is in $key" "$missing" ""

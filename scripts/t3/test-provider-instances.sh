@@ -417,14 +417,16 @@ CSG_LIB="$HERE/../lib/chokepoint-seam-guard.sh"
 SEAM_EXCLUDE="T3_PI_BUILTIN_RELAY T3CODE_HOME"
 PI_KEY="scripts/t3/provider-instances.sh"
 PI_SEAMS="HIMMEL_PROFILE_REPO HIMMEL_PROFILE_SETTINGS_DIR PLUGIN_PROFILES_ADAPTERS PLUGIN_PROFILES_REGISTRY T3_PI_AGY_PROFILES T3_PI_EMPTY_OK T3_PI_PROFILES T3_PI_RESOLVER"
-PI_SCAN_SH="$GEN $HERE/../lanes/profile-settings.sh"
+PI_SCAN_SH=("$GEN" "$HERE/../lanes/profile-settings.sh")
 PI_SCAN_MJS="$HERE/../lanes/plugin-profiles.mjs"
 got="$(jq -r --arg k "$PI_KEY" '.[$k].seam_env_vars | sort | join(" ")' "$CHOKEPOINTS" 2>/dev/null)"
 expect_eq "S-LIST pi: $PI_KEY equals the fixed list" "$got" "$PI_SEAMS"
 missing=""
-# shellcheck disable=SC2086 # PI_SCAN_SH is a space-separated file list
-for n in $( { grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' $PI_SCAN_SH | sed 's/^.*\${//'
-              grep -oE 'process\.env\.PLUGIN_PROFILES_[A-Z_]*' "$PI_SCAN_MJS" | sed 's/^process\.env\.//'; } | sort -u); do
+scan_sh="$(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "${PI_SCAN_SH[@]}")"; rc_sh=$?
+scan_mjs="$(grep -oE 'process\.env\.PLUGIN_PROFILES_[A-Z_]*' "$PI_SCAN_MJS")"; rc_mjs=$?
+expect_eq "S-LIST pi: both scans read their sources and matched" "$rc_sh|$rc_mjs" "0|0"
+# shellcheck disable=SC2013 # one bare variable name per line, never spaces
+for n in $( { printf '%s\n' "$scan_sh" | sed 's/^.*\${//'; printf '%s\n' "$scan_mjs" | sed 's/^process\.env\.//'; } | sort -u); do
     case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
 done
 expect_eq "S-LIST pi: every seam it and its unregistered children read is in $PI_KEY" "$missing" ""
