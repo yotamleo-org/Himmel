@@ -1185,7 +1185,7 @@ headless_launch() {
         _hl_set "${tok%%=*}" "${tok#*=}"
     done
     # Only a launcher the operator started with the bypass hands it on; a
-    # daemon spawned from a bypass shell or a maintainer session (marker set) never does.
+    # daemon spawned from a bypass shell never does.
     val=""
     [ "${HIMMEL_HOOK_INTEGRITY_BYPASS_OK:-}" = "1" ] && [ -z "${HIMMEL_MAINTAINER_ACTION:-}" ] && val=1
     _hl_set HIMMEL_HOOK_INTEGRITY_BYPASS_OK "$val"

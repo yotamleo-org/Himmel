@@ -122,8 +122,8 @@ WI=$(bash "$PS" worker-impl); rc=$?
 mkdir -p "$TMP/stub-lanes"
 cp "$PS" "$TMP/stub-lanes/profile-settings.sh"
 printf '%s\n' 'console.log("{\"env\":");' > "$TMP/stub-lanes/plugin-profiles.mjs"
-O15=$(HIMMEL_PROFILE_SETTINGS_DIR="$TMP/stub-out" bash "$TMP/stub-lanes/profile-settings.sh" worker-impl 2>/dev/null); rc=$?
-[ "$rc" = 2 ] && [ -z "$O15" ] && ok "T15 an uncheckable resolver output fails closed (rc=2, no path)" || bad "T15 rc=$rc out=[$O15]"
+O15=$(HIMMEL_PROFILE_SETTINGS_DIR="$TMP/stub-out" bash "$TMP/stub-lanes/profile-settings.sh" worker-impl 2>"$TMP/e15"); rc=$?
+[ "$rc" = 2 ] && [ -z "$O15" ] && grep -q 'could not be checked for a maintainer grant' "$TMP/e15" && ok "T15 an uncheckable resolver output fails closed (rc=2, no path)" || bad "T15 rc=$rc out=[$O15]"
 
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"
