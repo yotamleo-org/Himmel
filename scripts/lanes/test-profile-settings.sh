@@ -108,5 +108,22 @@ for list in readiness,worker-impl worker-impl,readiness; do
     case "$E13" in *'cannot be composed'*) [ "$rc" = 2 ] && ok "T13 $list refuses to compose (rc=2)" || bad "T13 $list rc=$rc" ;; *) bad "T13 $list wrong refusal reason (rc=$rc): $E13" ;; esac
 done
 
+envof() { python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("env"), sort_keys=True))' "$1"; }
+for mode in '' --mcp-config; do
+    E14=$(bash "$PS" maintainer-hooks ${mode:+"$mode"} 2>&1 >/dev/null); rc=$?
+    case "$E14" in *'carries a maintainer grant'*) [ "$rc" = 4 ] && ok "T14 maintainer-hooks ${mode:-settings} refused rc=4" || bad "T14 ${mode:-settings} rc=$rc" ;;
+        *) bad "T14 maintainer-hooks ${mode:-settings} not refused (rc=$rc): $E14" ;; esac
+done
+written=$(find "$HIMMEL_PROFILE_SETTINGS_DIR" -name 'maintainer-hooks.*' 2>/dev/null)
+[ -z "$written" ] && ok "T14 no maintainer-hooks settings file written" || bad "T14 wrote $written"
+WI=$(bash "$PS" worker-impl); rc=$?
+[ "$rc" = 0 ] && [ "$(envof "$WI")" = null ] && ok "T14 worker-impl file carries no env block (control)" || bad "T14 worker-impl rc=$rc env=$(envof "$WI" 2>/dev/null)"
+
+mkdir -p "$TMP/stub-lanes"
+cp "$PS" "$TMP/stub-lanes/profile-settings.sh"
+printf '%s\n' 'console.log("{\"env\":");' > "$TMP/stub-lanes/plugin-profiles.mjs"
+O15=$(HIMMEL_PROFILE_SETTINGS_DIR="$TMP/stub-out" bash "$TMP/stub-lanes/profile-settings.sh" worker-impl 2>"$TMP/e15"); rc=$?
+[ "$rc" = 2 ] && [ -z "$O15" ] && grep -q 'could not be checked for a maintainer grant' "$TMP/e15" && ok "T15 an uncheckable resolver output fails closed (rc=2, no path)" || bad "T15 rc=$rc out=[$O15]"
+
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"
