@@ -191,6 +191,12 @@ run_watch_alert() {
     )
 }
 chief_case() { mkdir -p "$1/bridge/consoles"; : > "$1/bridge/consoles/$2.md"; }
+mk_author_repo() {
+    git init --quiet "$1" &&
+    git -C "$1" -c user.email=t@t -c user.name=t commit --allow-empty -m c1 --quiet --no-verify &&
+    git -C "$1" -c user.email=t@t -c user.name=t commit --allow-empty -m c2 --quiet --no-verify &&
+    printf '%s %s\n' "$(git -C "$1" rev-parse HEAD~1)" "$(git -C "$1" rev-parse HEAD)"
+}
 
 # --- 8. post-GO chief-worker red (MERGE_WATCH_POST_GO=1, set by
 #        merge-on-green) -> NO operator DM, one chief-inbox line (row a) ----
@@ -310,12 +316,106 @@ eq "14: no operator DM" 0 "$(count "$CASE/alerts.log")"
 #         the exit code. Case 8 is the control (same call, post-GO).
 new_case c15
 chief_case "$CASE" opsdesk
-HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
+HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" --red octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
 rc=$?
 eq "15: returns 0" 0 "$rc"
 eq "15: no chief-inbox line pre-GO" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 eq "15: no operator DM pre-GO" 0 "$(count "$CASE/alerts.log")"
 if grep -q 'MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/err"; then pass; else fail "15: the MERGE-BLOCKED line still prints on stderr for the worker"; fi
+
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_NAME MERGE_WATCH_POST_GO
+AREPO="$TMP/arepo"
+AREPO_SHAS=$(mk_author_repo "$AREPO") || { echo "  FAIL: mk_author_repo"; exit 1; }
+C1=${AREPO_SHAS% *}; C2=${AREPO_SHAS#* }
+author_watch() { local c="$1"; shift; ( cd "$AREPO" && run_watch_alert "$c" "$@" ); }
+author_rec() { printf '%s/sentinels/octo_demo__42__%s.author' "$1" "$2"; }
+has_author() { [ -f "$(author_rec "$1" "$2")" ] && echo present || echo absent; }
+
+new_case a1
+author_watch "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: x"
+eq "11274-author-watch: no DM" 0 "$(count "$CASE/alerts.log")"
+if grep -q "your own PR's watch: not sent" "$CASE/err"; then pass; else fail "11274-author-watch: stderr says not sent (got: $(cat "$CASE/err"))"; fi
+if grep -q -- '--red' "$CASE/err"; then fail "11274-author-watch: stderr carries --red"; else pass; fi
+eq "11274-author-watch: .author record" present "$(has_author "$CASE" "$C2")"
+if grep -q 'lane=unmarked' "$(author_rec "$CASE" "$C2")" 2>/dev/null; then pass; else fail "11274-author-watch: .author has lane=unmarked"; fi
+
+new_case a1b
+author_watch "$CASE" --red octo/demo 42 "$C1" "required check(s) FAILED: x"
+eq "11274-author-child: no DM" 0 "$(count "$CASE/alerts.log")"
+eq "11274-author-child: .author record" present "$(has_author "$CASE" "$C1")"
+
+new_case a1c
+chief_case "$CASE" opsdesk
+HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk author_watch "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: x"
+eq "11274-author-leg: no DM" 0 "$(count "$CASE/alerts.log")"
+eq "11274-author-leg: no chief-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+if grep -q 'lane=leg' "$(author_rec "$CASE" "$C2")" 2>/dev/null; then pass; else fail "11274-author-leg: .author has lane=leg"; fi
+
+new_case a1d
+(
+    cd "$AREPO" || exit 1
+    # shellcheck disable=SC1090
+    . "$LIB"
+    unset MERGE_BLOCK_ALERT_DIR
+    HIMMEL_TEST_FIXTURE=1 ALERT_LOG="$CASE/alerts.log" TELEGRAM_ACCESS_PATH="$ACCESS" \
+    merge_watch_alert --red octo/demo 42 "$C2" "required check(s) FAILED: x" 2>>"$CASE/err"
+)
+if grep -q "your own PR's watch: not sent" "$CASE/err"; then pass; else fail "11274-author-fixture-no-dir: the author path ran (got: $(cat "$CASE/err"))"; fi
+eq "11274-author-fixture-no-dir: no .author under the repo's own sentinel dir" 0 \
+    "$(set -- "$AREPO"/.git/himmel-merge-block-alert/*.author; if [ -e "$1" ]; then echo $#; else echo 0; fi)"
+
+new_case a1e
+author_watch "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: x"
+first_rec=$(cat "$(author_rec "$CASE" "$C2")" 2>/dev/null)
+HIMMEL_CONSOLE_LEG=1 author_watch "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: y"
+eq "11274-author-first-wins: a second author call keeps the first record (and its at=)" "$first_rec" "$(cat "$(author_rec "$CASE" "$C2")" 2>/dev/null)"
+case "$first_rec" in *at=*) pass ;; *) fail "11274-author-first-wins: the first record has an at= (got: $first_rec)" ;; esac
+
+OTHER=0123456789abcdef0123456789abcdef01234567
+new_case a2
+author_watch "$CASE" --red octo/demo 42 "$OTHER" "required check(s) FAILED: x"
+eq "11274-other-head: one DM" 1 "$(count "$CASE/alerts.log")"
+case "$(cat "$CASE/alerts.log")" in "555|MERGE-BLOCKED octo/demo#42 "*) pass ;; *) fail "11274-other-head: DM text starts MERGE-BLOCKED octo/demo#42 (got: $(cat "$CASE/alerts.log"))" ;; esac
+if grep -q -- '--red' "$CASE/alerts.log"; then fail "11274-other-head: the DM carries --red"; else pass; fi
+eq "11274-other-head: no .author" absent "$(has_author "$CASE" "$OTHER")"
+
+new_case a2b
+NOREPO_PARENT=$(cd "$TMP" && pwd -P)/norepo
+mkdir -p "$NOREPO_PARENT/sub"
+( cd "$NOREPO_PARENT/sub" && GIT_CEILING_DIRECTORIES="$NOREPO_PARENT" run_watch_alert "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: x" )
+eq "11274-no-repo: one DM" 1 "$(count "$CASE/alerts.log")"
+eq "11274-no-repo: no .author" absent "$(has_author "$CASE" "$C2")"
+
+new_case a2c
+C3=$(git -C "$AREPO" -c user.email=t@t -c user.name=t commit-tree -p "$C1" -m c3 "$C1^{tree}") && git -C "$AREPO" branch side "$C3"
+author_watch "$CASE" --red octo/demo 42 "$C3" "required check(s) FAILED: x"
+eq "11274-not-ancestor: HEAD stays at C2" "$C2" "$(git -C "$AREPO" rev-parse HEAD)"
+eq "11274-not-ancestor: one DM" 1 "$(count "$CASE/alerts.log")"
+eq "11274-not-ancestor: no .author" absent "$(has_author "$CASE" "$C3")"
+
+new_case a9
+run_alert "$CASE" octo/demo 42 ab/cd "rule"
+chief_case "$CASE" opsdesk
+MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 ab/cd "rule"
+eq "11274-slash-head: no DM" 0 "$(count "$CASE/alerts.log")"
+eq "11274-slash-head: no file created under the sentinel dir" 0 "$(find "$CASE/sentinels" -mindepth 1 2>/dev/null | wc -l | tr -d ' ')"
+eq "11274-slash-head: no chief-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+
+new_case a3
+MERGE_WATCH_POST_GO=1 author_watch "$CASE" --red octo/demo 42 "$C2" "required check(s) FAILED: x"
+eq "11274-author-post-go: one DM" 1 "$(count "$CASE/alerts.log")"
+eq "11274-author-post-go: no .author" absent "$(has_author "$CASE" "$C2")"
+
+new_case a3b
+author_watch "$CASE" octo/demo 42 "$C2" "required check(s) never reported within 60s: x"
+eq "11274-not-red: one DM" 1 "$(count "$CASE/alerts.log")"
+eq "11274-not-red: no .author" absent "$(has_author "$CASE" "$C2")"
+
+new_case a3c
+chief_case "$CASE" opsdesk
+HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) never reported within 60s: x"
+eq "11274-leg-pre-go-not-red: one DM" 1 "$(count "$CASE/alerts.log")"
+eq "11274-leg-pre-go-not-red: no chief-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 
 cat > "$TMP/bin/argc-sender" <<'EOF'
 #!/usr/bin/env bash
