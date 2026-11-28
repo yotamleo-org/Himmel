@@ -872,9 +872,6 @@ rs_ast_prove() {
             pwd -P
         ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
         while IFS= read -r pat; do
-            # compgen -G exits 1 on no match (accepted) and above 1 on an error or when missing,
-            # which fails the proof; ubuntu-latest CI's bash lists no dotfile from it under dotglob,
-            # so the shell's own expansion runs too; unsetting GLOBIGNORE turns dotglob off, so it is first
             ms=$(
                 unset GLOBIGNORE
                 cd -- "$d" && shopt -s dotglob nocaseglob nullglob && shopt -u failglob || exit 3
