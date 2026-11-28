@@ -1875,6 +1875,247 @@ else
     pass "TI10 SKIP: 247549974 / 608952484 are not reachable in this clone"
 fi
 
+LX="$(fixture_mktemp_dir)" || exit 1
+LT="$(fixture_mktemp_dir)" || exit 1
+LS="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$TV" "$TC" "$LX" "$LT" "$LS"' EXIT
+(
+    fixture_enter_git_init_dir "$LX" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+mkdir -p "$LX/scripts/lib" "$LX/docs"
+printf 'v1\n' > "$LX/scripts/lib/lx-lib.sh"
+printf '. scripts/lib/lx-lib.sh\n' > "$LX/scripts/test-lx-a.sh"
+printf '. scripts/lib/lx-lib.sh\n' > "$LX/scripts/test-lx-b.sh"
+printf 'doc\n' > "$LX/docs/lx.md"
+git -C "$LX" add -A
+git -C "$LX" commit -q -m "chore: base"
+lx_base=$(git -C "$LX" rev-parse HEAD)
+git -C "$LX" update-ref refs/remotes/origin/main "$lx_base"
+git -C "$LX" checkout -q -b lx-docs
+printf 'doc2\n' >> "$LX/docs/lx.md"
+git -C "$LX" commit -q -am "docs: only a doc"
+lx_docs=$(git -C "$LX" rev-parse HEAD)
+git -C "$LX" checkout -q -b lx-lib "$lx_base"
+printf 'v2\n' >> "$LX/scripts/lib/lx-lib.sh"
+git -C "$LX" commit -q -am "fix: change the lib"
+lx_head=$(git -C "$LX" rev-parse HEAD)
+lx_range="$lx_base..$lx_head"
+LXD="$LX/.git/impacted-lists"
+LXL="$LX/.git/cr-critic-scores.jsonl"
+LXV="$LS/verdicts.txt"
+printf 'SUITE scripts/test-lx-a.sh = PASS\nSUITE scripts/test-lx-b.sh = PASS\n' > "$LXV"
+: > "$LS/none.txt"
+lx_rec() {
+    local h="${1:-$lx_head}"
+    lx_err=$( cd "$LX" && bash "$IS" --check "$lx_base..$h" --from-file "${2:-$LXV}" --record --branch feat/lx --head "$h" 2>&1 >/dev/null ); lx_rc=$?
+}
+lx_row() { tail -n 1 "$LXL" 2>/dev/null; }
+lx_reset() { rm -rf "$LXD" "$LXL"; }
+lx_blob() { git hash-object --no-filters -- "$1" 2>/dev/null; }
+lx_old() {
+    local days="$1" e st; shift
+    e=$(( $(date +%s) - days * 86400 ))
+    st=$(date -d "@$e" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$e" +%Y%m%d%H%M.%S)
+    touch -h -t "$st" "$@"
+}
+lx_fresh() { [ -n "$(find "$1" -prune -mtime -1 2>/dev/null)" ]; }
+H40=0123456789abcdef0123456789abcdef01234567
+H40B=fedcba9876543210fedcba9876543210fedcba98
+
+( cd "$LX" && bash "$IS" "$lx_range" > "$LS/plain.txt" 2>/dev/null )
+lx_id=$(lx_blob "$LS/plain.txt")
+lx_mb=$(git -C "$LX" merge-base "$lx_base" "$lx_head")
+lx_lister=$( cd "$LX" && bash "$IS" --lister-id 2>/dev/null )
+lx_reset; lx_rec
+lx_r=$(lx_row)
+if [ "$lx_rc" -eq 0 ] && [ -s "$LS/plain.txt" ] && cmp -s "$LS/plain.txt" "$LXD/$lx_id.txt" \
+    && [ "$(printf '%s' "$lx_r" | jq -r .suites_blob)" = "$lx_id" ] \
+    && [ "$(printf '%s' "$lx_r" | jq -r .mb)" = "$lx_mb" ] \
+    && [ -n "$lx_lister" ] && [ "$(printf '%s' "$lx_r" | jq -r .lister)" = "$lx_lister" ] \
+    && [ "$(printf '%s' "$lx_r" | jq -r .impacted_n)" = 2 ]; then
+    pass "IS1 --record writes the plain listing's bytes to impacted-lists/<blob>.txt and the row names the blob, the merge-base and the lister id"
+else
+    fail "IS1 recorded list: rc=$lx_rc row=$lx_r files=$(ls -A "$LXD" 2>&1) err=$lx_err"
+fi
+lx_reset; lx_rec "$lx_docs" "$LS/none.txt"; lx_rc1=$lx_rc
+lx_rec "$lx_docs" "$LS/none.txt"
+lx_e=e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+if [ "$lx_rc1" -eq 0 ] && [ "$lx_rc" -eq 0 ] && [ -f "$LXD/$lx_e.txt" ] && [ ! -s "$LXD/$lx_e.txt" ] \
+    && [ "$(find "$LXD" -mindepth 1 | wc -l | tr -d ' ')" = 1 ] \
+    && [ "$(jq -r 'select(.kind == "impacted") | .suites_blob' "$LXL" | sort -u)" = "$lx_e" ] \
+    && [ "$(lx_row | jq -r .impacted_n)" = 0 ]; then
+    pass "IS1b an empty list is recorded as the empty blob, and a second record reuses that one file"
+else
+    fail "IS1b empty list: rc=$lx_rc1/$lx_rc files=$(ls -A "$LXD" 2>&1) rows=$(cat "$LXL" 2>&1)"
+fi
+mkdir -p "$LT/scripts/cr" "$LT/scripts/lib" "$LT/scripts/ci"
+cp "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$LT/scripts/cr/"
+cp "$REPO_ROOT/scripts/lib/review-default-base.sh" "$LT/scripts/lib/"
+cp "$REPO_ROOT/scripts/ci/tree-invariant-suites.txt" "$LT/scripts/ci/"
+lt_id() { ( cd "$LX" && bash "$LT/scripts/cr/impacted-suites.sh" --lister-id 2>/dev/null ); }
+lt1=$(lt_id)
+printf '%s\t%s\n' scripts/test-lt.sh '^lt$' >> "$LT/scripts/ci/tree-invariant-suites.txt"
+lt2=$(lt_id)
+printf 'x\n' > "$LT/scripts/cr/unrelated.txt"
+lt3=$(lt_id)
+if LC_ALL=C expr "$lt1" : '[0-9a-f]\{40\}$' >/dev/null && [ "$lt1" != "$lt2" ] && [ "$lt2" = "$lt3" ]; then
+    pass "IS2 --lister-id changes with tree-invariant-suites.txt beside the script, and not with an unrelated file"
+else
+    fail "IS2 lister id: $lt1 / $lt2 / $lt3"
+fi
+lt_out=$( cd "$LX" && bash "$IS" --lister-id 2>/dev/null ); lt_rc=$?
+if [ "$lt_rc" -eq 0 ] && [ "$(printf '%s\n' "$lt_out" | wc -l | tr -d ' ')" = 1 ] && LC_ALL=C expr "$lt_out" : '[0-9a-f]\{40\}$' >/dev/null; then
+    pass "IS4 --lister-id alone prints one hex line and exits 0"
+else
+    fail "IS4 --lister-id alone: rc=$lt_rc out=$lt_out"
+fi
+mv "$LT/scripts/lib/review-default-base.sh" "$LT/scripts/lib/review-default-base.sh.off"
+lt_err=$( cd "$LX" && bash "$LT/scripts/cr/impacted-suites.sh" --lister-id 2>&1 >/dev/null ); lt_rc=$?
+lt_out=$( cd "$LX" && bash "$LT/scripts/cr/impacted-suites.sh" --lister-id 2>/dev/null )
+mv "$LT/scripts/lib/review-default-base.sh.off" "$LT/scripts/lib/review-default-base.sh"
+if [ "$lt_rc" -eq 2 ] && [ -z "$lt_out" ] && grepq "$lt_err" -F 'review-default-base.sh'; then
+    pass "IS4b a missing lister input exits 2 and names it"
+else
+    fail "IS4b missing lister input: rc=$lt_rc out=$lt_out err=$lt_err"
+fi
+printf 'scripts/test-lx-a.sh\n' > "$LS/red.txt"
+printf 'scripts/lib/lx-lib.sh\n' > "$LS/paths.txt"
+lx_combo_bad=""
+lx_is4a() {
+    ( cd "$LX" && bash "$IS" --lister-id "$@" > "$LS/is4a.out" 2> "$LS/is4a.err" ); lx_x=$?
+    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ] || ! grep -qF 'is its own mode' "$LS/is4a.err"; then lx_combo_bad="$lx_combo_bad [$* rc=$lx_x]"; fi
+}
+lx_is4a --check "$lx_range"
+lx_is4a --plan "$lx_range"
+lx_is4a --check "$lx_range" --record --branch b --head "$lx_head"
+lx_is4a --shell "$lx_range"
+lx_is4a --check "$lx_range" --from-file "$LXV"
+lx_is4a --runner scripts/lanes/tests/plugins.test.mjs
+lx_is4a --runner-check
+lx_is4a --selector-miss "$lx_range" --red-file "$LS/red.txt"
+lx_is4a --paths-file "$LS/paths.txt" "$lx_range"
+lx_is4a --red-file "$LS/red.txt"
+lx_is4a --run scripts/test-lx-a.sh
+lx_is4a "$lx_range"
+lx_is4a --lister-id
+if [ -z "$lx_combo_bad" ]; then pass "IS4a --lister-id with any other flag or a range exits 2 with no id"; else fail "IS4a combinations:$lx_combo_bad"; fi
+lx_reset
+( cd "$LX" && bash "$IS" --check "$lx_range" --shell --from-file "$LXV" --record --branch feat/lx --head "$lx_head" >/dev/null 2>&1 )
+if [ ! -e "$LXD" ] && [ "$(lx_row | jq -r 'has("suites_blob")')" = false ]; then pass "IS3 --shell --record writes no list file and no suites_blob"; else fail "IS3 --shell: $(lx_row) $(ls -A "$LXD" 2>&1)"; fi
+lx_reset; lx_rec; lx_rc0=$lx_rc
+lx_reset; mkdir -p "$LS/elsewhere"; ln -s "$LS/elsewhere" "$LXD"
+lx_rec
+lx_r=$(lx_row)
+if [ "$lx_rc" -eq "$lx_rc0" ] && [ -z "$(ls -A "$LS/elsewhere")" ] && [ "$(printf '%s' "$lx_r" | jq -r 'has("suites_blob") or has("mb") or has("lister")')" = false ] \
+    && [ "$(printf '%s' "$lx_r" | jq -c .local_pass)" = '["scripts/test-lx-a.sh","scripts/test-lx-b.sh"]' ] \
+    && [ "$(printf '%s\n' "$lx_err" | grep -c 'impacted-lists')" = 1 ]; then
+    pass "IS5a a symlinked impacted-lists: nothing written through it, the row has no list fields, one stderr line, the same rc"
+else
+    fail "IS5a symlinked dir: rc=$lx_rc/$lx_rc0 row=$lx_r err=$lx_err elsewhere=$(ls -A "$LS/elsewhere")"
+fi
+rm -f "$LXD"
+lx_reset; printf 'keep\n' > "$LXD"
+lx_rec
+lx_r=$(lx_row)
+if [ "$lx_rc" -eq "$lx_rc0" ] && [ -f "$LXD" ] && [ "$(cat "$LXD")" = keep ] && [ "$(printf '%s' "$lx_r" | jq -r 'has("suites_blob")')" = false ] \
+    && [ "$(printf '%s\n' "$lx_err" | grep -c 'impacted-lists')" = 1 ]; then
+    pass "IS5e a regular file at impacted-lists is unchanged and the row has no list fields"
+else
+    fail "IS5e file at the dir path: rc=$lx_rc row=$lx_r err=$lx_err"
+fi
+rm -f "$LXD"
+lx_reset; lx_rec
+lx_old 13 "$LXD/$lx_id.txt"; lx_rec
+if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt"; then pass "IS5b(a) a 13-day-old list is reused and renewed"; else fail "IS5b(a) reuse: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
+chmod 444 "$LXD/$lx_id.txt"
+if [ -z "$(find "$LXD/$lx_id.txt" -perm 444)" ]; then fail "IS5b(b) setup: the old list is not mode 444"; fi
+lx_old 20 "$LXD/$lx_id.txt"; lx_rec
+if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt" && [ -n "$(find "$LXD/$lx_id.txt" -perm 600)" ]; then pass "IS5b(b) a 20-day-old list is pruned and written again (a new file, not the read-only old one renewed)"; else fail "IS5b(b) prune then write: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
+lx_reset; mkdir -p "$LXD"
+printf 'n\n' > "$LXD/notes.md"; printf 'n\n' > "$LXD/$H40.txt.bak"; printf 't\n' > "$LXD/.tmp-x"; printf 't\n' > "$LXD/.tmp-y"
+lx_old 20 "$LXD/notes.md" "$LXD/$H40.txt.bak"; lx_old 3 "$LXD/.tmp-x"
+lx_rec
+if [ -f "$LXD/notes.md" ] && [ -f "$LXD/$H40.txt.bak" ]; then pass "IS5c an old file with neither name pattern survives the prune"; else fail "IS5c unrelated files: $(ls -A "$LXD")"; fi
+if [ ! -e "$LXD/.tmp-x" ] && [ -f "$LXD/.tmp-y" ]; then pass "IS5g a 3-day-old temp file is pruned and one of today survives"; else fail "IS5g temp files: $(ls -A "$LXD" 2>&1)"; fi
+lx_reset; mkdir -p "$LXD"; printf 'scripts/forged.sh\n' > "$LXD/$lx_id.txt"
+lx_rec
+if [ "$lx_rc" -eq 0 ] && cmp -s "$LS/plain.txt" "$LXD/$lx_id.txt"; then pass "IS5d a list file with other bytes is replaced by the right ones"; else fail "IS5d forged list: $(cat "$LXD/$lx_id.txt" 2>&1)"; fi
+lx_reset; mkdir -p "$LXD/sub" "$LXD/$H40B.txt"; printf 'target\n' > "$LS/target.txt"
+ln -s "$LS/target.txt" "$LXD/$H40.txt"; printf 'deep\n' > "$LXD/sub/$H40.txt"; printf 'old\n' > "$LXD/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt"
+lx_old 20 "$LXD/$H40.txt" "$LXD/sub/$H40.txt" "$LXD/$H40B.txt" "$LS/target.txt" "$LXD/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt"
+lx_rec
+if [ -L "$LXD/$H40.txt" ] && [ "$(cat "$LS/target.txt")" = target ] && [ -f "$LXD/sub/$H40.txt" ] && [ -d "$LXD/$H40B.txt" ]; then
+    pass "IS5f a symlink, a depth-2 file and a directory named as list files survive the prune"
+else
+    fail "IS5f: $(ls -lAR "$LXD" 2>&1)"
+fi
+if [ ! -e "$LXD/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.txt" ]; then pass "IS5f the prune ran: a 20-day-old list file beside them is gone"; else fail "IS5f the old list file survived"; fi
+mkdir -p "$LS/shim-touch"
+printf '%s\n' '#!/usr/bin/env bash' \
+    'c=0; for a in "$@"; do [ "$a" = -c ] && c=1; done' \
+    'if [ "$c" = 1 ]; then for a in "$@"; do case "$a" in */impacted-lists/*) rm -f -- "$a" ;; esac; done; fi' \
+    "exec $(command -v touch) \"\$@\"" > "$LS/shim-touch/touch"
+chmod +x "$LS/shim-touch/touch"
+lx_reset; lx_rec
+PATH="$LS/shim-touch:$PATH" lx_rec
+lx_b=$(lx_row | jq -r .suites_blob)
+if [ "$lx_rc" -eq 0 ] && [ "$lx_b" = "$lx_id" ] && [ "$(lx_blob "$LXD/$lx_b.txt")" = "$lx_id" ]; then
+    pass "IS5h a reuse whose file a prune removed writes it again, so the row names a file that exists"
+else
+    fail "IS5h race: rc=$lx_rc blob=$lx_b files=$(ls -A "$LXD" 2>&1) err=$lx_err"
+fi
+lx_u=""
+for lx_l in C.UTF-8 en_US.UTF-8; do
+    if [ "$(LC_ALL="$lx_l" locale 2>/dev/null | sed -n 's/^LC_CTYPE=//p' | tr -d '"')" = "$lx_l" ]; then lx_u="$lx_l"; break; fi
+done
+if [ -z "$lx_u" ]; then
+    fail "IS6 control: neither C.UTF-8 nor en_US.UTF-8 is reported as LC_CTYPE by locale on this host"
+else
+    lx_i1=$( cd "$LX" && LC_ALL=C bash "$IS" --lister-id 2>/dev/null )
+    lx_i2=$( cd "$LX" && LC_ALL="$lx_u" bash "$IS" --lister-id 2>/dev/null )
+    if [ -n "$lx_i1" ] && [ -n "$lx_i2" ] && [ "$lx_i1" != "$lx_i2" ]; then pass "IS6 --lister-id differs between LC_ALL=C and $lx_u"; else fail "IS6 lister id under C / $lx_u: $lx_i1 / $lx_i2"; fi
+fi
+mkdir -p "$LS/shim-locale-2nd" "$LS/shim-locale-fail"
+printf '%s\n' '#!/usr/bin/env bash' \
+    "n=\$(cat '$LS/locale-calls' 2>/dev/null || echo 0); n=\$((n + 1)); echo \"\$n\" > '$LS/locale-calls'" \
+    'if [ "$n" -ge 2 ]; then printf "LC_CTYPE=\"is7_SECOND.UTF-8\"\nLC_COLLATE=\"is7_SECOND.UTF-8\"\n"; exit 0; fi' \
+    "exec $(command -v locale) \"\$@\"" > "$LS/shim-locale-2nd/locale"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$LS/shim-locale-fail/locale"
+chmod +x "$LS/shim-locale-2nd/locale" "$LS/shim-locale-fail/locale"
+rm -f "$LS/locale-calls"
+lx_reset; PATH="$LS/shim-locale-2nd:$PATH" lx_rec
+lx_r=$(lx_row)
+if [ "$lx_rc" -eq "$lx_rc0" ] && [ -n "$lx_r" ] && [ "$(printf '%s' "$lx_r" | jq -r 'has("suites_blob") or has("mb") or has("lister")')" = false ] \
+    && [ "$(printf '%s\n' "$lx_err" | grep -c 'lister')" = 1 ] && [ "$(cat "$LS/locale-calls" 2>/dev/null)" = 2 ]; then
+    pass "IS7 a lister change during the record: the row has no list fields, one stderr line, the same rc"
+else
+    fail "IS7 lister change: rc=$lx_rc calls=$(cat "$LS/locale-calls" 2>&1) row=$lx_r err=$lx_err"
+fi
+lx_reset; PATH="$LS/shim-locale-fail:$PATH" lx_rec
+lx_r=$(lx_row)
+if [ "$lx_rc" -eq "$lx_rc0" ] && [ "$(printf '%s' "$lx_r" | jq -r 'has("suites_blob")')" = false ] \
+    && [ "$(printf '%s' "$lx_r" | jq -c .local_pass)" = '["scripts/test-lx-a.sh","scripts/test-lx-b.sh"]' ] \
+    && [ "$(printf '%s\n' "$lx_err" | grep -c 'lister')" = 1 ]; then
+    pass "IS8 a failed lister read: the row keeps its local_pass, has no list fields, one stderr line, the same rc"
+else
+    fail "IS8 lister failure: rc=$lx_rc row=$lx_r err=$lx_err"
+fi
+mkdir -p "$LS/ci/scripts/cr" "$LS/ci/scripts/ci"
+cp "$REPO_ROOT/scripts/ci/impacted-selection.sh" "$REPO_ROOT/scripts/ci/ci-trust-paths.txt" "$REPO_ROOT/scripts/ci/tree-invariant-suites.txt" "$LS/ci/scripts/ci/"
+cp "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$LS/ci/scripts/cr/"
+lx_full=$( cd "$LX" && bash "$IS" "$lx_range" 2>/dev/null; echo "rc=$?" )
+lx_ci=$( cd "$LX" && bash "$LS/ci/scripts/cr/impacted-suites.sh" "$lx_range" 2>/dev/null; echo "rc=$?" )
+lx_fsh=$( cd "$LX" && bash "$IS" "$lx_range" --shell 2>/dev/null; echo "rc=$?" )
+lx_csh=$( cd "$LX" && bash "$LS/ci/scripts/cr/impacted-suites.sh" "$lx_range" --shell 2>/dev/null; echo "rc=$?" )
+if [ "$lx_ci" = "$lx_full" ] && [ "$lx_csh" = "$lx_fsh" ] && grepq "$lx_full" -Fx 'rc=0' && grepq "$lx_full" -Fx scripts/test-lx-a.sh; then
+    pass "IS9 a copy with no scripts/lib lists and --shell-lists exactly as the full tree"
+else
+    fail "IS9 CI shape: full=[$lx_full] ci=[$lx_ci] shell=[$lx_fsh]/[$lx_csh]"
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $failures case(s) failed"

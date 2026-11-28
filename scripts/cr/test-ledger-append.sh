@@ -1859,6 +1859,23 @@ check "T5b a missing list file is refused" "$(imp_rc --local-pass-file "$tmp/nop
 check "T5b one list flag without the other is refused" "$(imp_rc --local-pass-file "$LPF")" "2"
 check "T5b the refusals wrote nothing" "$(( $(wc -l < "$RS5" | tr -d ' ') - n_before ))" "1"
 
+L1L="$tmp/impacted-l1.jsonl"; : > "$L1L"
+printf 'scripts/a/test-a.sh\n' > "$LPF"; : > "$RSF"
+l1_rc() { CR_LEDGER="$L1L" bash "$LA" impacted --branch b --head "$A40" --impacted 3 --unverdicted 0 --skip 1 --rc 0 --local-pass-file "$LPF" --ruled-skip-file "$RSF" "$@" >/dev/null 2>&1; echo $?; }
+L1_GOLDEN='{"kind":"impacted","branch":"b","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","impacted_n":3,"unverdicted_n":0,"skip_n":1,"rc":0,"status":"ok","local_pass":["scripts/a/test-a.sh"],"ruled_skip":[]}'
+check "L1 no list flags: accepted" "$(l1_rc)" "0"
+check "L1 no list flags: the row equals main's golden row apart from ts" "$(tail -n 1 "$L1L" | jq -c 'del(.ts)')" "$L1_GOLDEN"
+D64=$(printf 'd%.0s' $(seq 64))
+check "L1 all three flags (40 and 64 hex): accepted" "$(l1_rc --suites-blob "$C40" --mb "$B40" --lister "$D64")" "0"
+check "L1 all three flags: the row carries them" "$(tail -n 1 "$L1L" | jq -c '[.suites_blob,.mb,.lister,.impacted_n,.local_pass]')" "[\"$C40\",\"$B40\",\"$D64\",3,[\"scripts/a/test-a.sh\"]]"
+l1_n=$(wc -l < "$L1L" | tr -d ' ')
+check "L1 one flag alone is refused" "$(l1_rc --suites-blob "$C40")" "2"
+check "L1 two flags without the third are refused" "$(l1_rc --suites-blob "$C40" --mb "$B40")" "2"
+check "L1 a short hex value is refused" "$(l1_rc --suites-blob "$C40" --mb "$B40" --lister abc123)" "2"
+check "L1 an upper-case hex value is refused" "$(l1_rc --suites-blob "$C40" --mb "$(printf '%s' "$B40" | tr b B)" --lister "$D64")" "2"
+check "L1 a path-shaped value is refused" "$(l1_rc --suites-blob ../x --mb "$B40" --lister "$D64")" "2"
+check "L1 the refusals wrote nothing" "$(wc -l < "$L1L" | tr -d ' ')" "$l1_n"
+
 # ── T1.45: security-audit rows (the verdict follows the counts) ──
 SA="$tmp/security-audit.jsonl"; : > "$SA"
 GCD="$(git rev-parse --path-format=absolute --git-common-dir)"
