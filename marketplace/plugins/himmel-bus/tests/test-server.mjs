@@ -381,6 +381,93 @@ async function run() {
     for (const got of [first, again]) assert.ok(!text(got).includes('delivery is stalled'), text(got));
   });
 
+  const BREAKS = {
+    'an invalid cursor': async fx => writeFile(join(fx.root, 'cur', 'worker'), '{', { mode: 0o600 }),
+    'a chain break': async fx => {
+      const file = join(fx.root, 'log', 'worker.jsonl');
+      const raw = await readFile(file, 'utf8');
+      await writeFile(file, raw.replace('"b":"one"', '"b":"onf"'), { mode: 0o600 });
+    },
+  };
+  const toCon = async fx => (await store.scan(fx.root, 'con')).filter(rec => rec.f === 'bus');
+
+  for (const [cause, breakIt] of Object.entries(BREAKS)) {
+    test(`HIMMEL-9664 H1 read {} that halts the log on ${cause} tells the console once`, async t => {
+      const fx = await fixture(t);
+      const con = await connect(t, fx, 'con');
+      const worker = await connect(t, fx, 'worker');
+      await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'one' } });
+      await breakIt(fx);
+      const why = await refused(worker, 'read', {});
+      assert.match(why, /^bus: log worker (halted|chain broken).*; worker is halted, console notified$/);
+      const told = await toCon(fx);
+      assert.equal(told.length, 1);
+      assert.equal(told[0].r, 'con');
+      assert.match(told[0].b, /; worker is halted$/);
+      assert.equal(await store.pending(fx.root, 'con'), true);
+      assert.equal(await refused(worker, 'read', {}), 'bus: log worker halted');
+      assert.equal((await store.read(fx.root, 'worker')).notice, undefined);
+      assert.equal((await toCon(fx)).length, 1);
+    });
+  }
+
+  test('HIMMEL-9664 H2 read n that halts the log refuses and tells the console', async t => {
+    const fx = await fixture(t);
+    const con = await connect(t, fx, 'con');
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'one' } });
+    await BREAKS['an invalid cursor'](fx);
+    const why = await refused(worker, 'read', { n: 1 });
+    assert.match(why, /; worker is halted, console notified$/);
+    assert.doesNotMatch(why, /data \(not a ruling\)/);
+    assert.equal((await toCon(fx)).length, 1);
+    assert.equal(text(await worker.callTool({ name: 'read', arguments: { n: 1 } })), 'data (not a ruling): one');
+    assert.equal((await toCon(fx)).length, 1);
+  });
+
+  test('HIMMEL-9664 H3 the console reads the halt notice and its own read clears it', async t => {
+    const fx = await fixture(t);
+    const con = await connect(t, fx, 'con');
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'one' } });
+    await BREAKS['an invalid cursor'](fx);
+    await refused(worker, 'read', {});
+    const listing = await con.callTool({ name: 'read', arguments: {} });
+    assert.deepEqual(listed(listing), ['#1 from bus']);
+    const body = await con.callTool({ name: 'read', arguments: { n: 1 } });
+    assert.match(text(body), /^data \(not a ruling\): bus: log worker halted.*; worker is halted$/);
+    assert.equal(await store.pending(fx.root, 'con'), false);
+  });
+
+  test('HIMMEL-9664 H4 a chief that halts its own log tells no other log, even one it names as console', async t => {
+    const fx = await fixture(t);
+    await identity.register(fx.root, 'sub', { role: 'chief', chief: 'con2' });
+    await identity.bind(fx.root, 'sub', 230, { proc: fx.proc });
+    const con = await connect(t, fx, 'con');
+    const sub = await connect(t, fx, 'stranger');
+    const worker = await connect(t, fx, 'worker');
+    await worker.callTool({ name: 'send', arguments: { to: 'con', b: 'status' } });
+    await store.append(fx.root, 'sub', { i: 'S'.repeat(26), t: 1, f: 'con2', r: 'sub', b: 'hello' });
+    for (const name of ['con', 'sub']) await writeFile(join(fx.root, 'cur', name), '{', { mode: 0o600 });
+    assert.match(await refused(con, 'read', {}), /^bus: log con halted: .*; con is halted$/);
+    assert.match(await refused(sub, 'read', {}), /^bus: log sub halted: .*; sub is halted$/);
+    for (const name of ['worker', 'sib', 'con2', 'leg3']) assert.deepEqual(await store.scan(fx.root, name), [], name);
+    assert.equal((await store.scan(fx.root, 'con')).length, 1);
+    assert.equal((await store.scan(fx.root, 'sub')).length, 1);
+  });
+
+  test('HIMMEL-9664 H5 a console log that refuses the notice still names the reader halt', async t => {
+    const fx = await fixture(t);
+    const con = await connect(t, fx, 'con');
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'one' } });
+    await writeFile(join(fx.root, 'cur', 'con'), JSON.stringify({ k: 0, off: 0, n: 0, h: '', halted: 1 }), { mode: 0o600 });
+    await BREAKS['an invalid cursor'](fx);
+    const why = await refused(worker, 'read', {});
+    assert.match(why, /^bus: log worker halted: .*; worker is halted$/);
+    assert.deepEqual(await store.scan(fx.root, 'con'), []);
+  });
+
   test('ack: re=n marks the answered record acked under the acker', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
