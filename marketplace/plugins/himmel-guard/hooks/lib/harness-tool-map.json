@@ -1,12 +1,18 @@
 {
   "version": 1,
   "tools": {
-    "run_terminal_command": { "claude": "Bash" },
-    "Shell": { "claude": "Bash" },
-    "read_file": { "claude": "Read", "keys": { "target_file": "file_path" } },
-    "grep": { "claude": "Grep" },
-    "search_replace": { "claude": "Edit" },
-    "write": { "claude": "Write" }
+    "run_terminal_command": { "claude": "Bash",
+      "allow": ["command", "description", "timeout", "run_in_background", "dangerouslyDisableSandbox"] },
+    "Shell": { "claude": "Bash", "empty": ["cwd"],
+      "allow": ["command", "cwd", "timeout", "description", "run_in_background", "dangerouslyDisableSandbox"] },
+    "read_file": { "claude": "Read", "keys": { "target_file": "file_path" },
+      "allow": ["target_file", "file_path", "offset", "limit", "pages"] },
+    "grep": { "claude": "Grep",
+      "allow": ["pattern", "glob", "path", "type", "output_mode", "-i", "-n", "-A", "-B", "-C", "context", "head_limit", "offset", "multiline"] },
+    "search_replace": { "claude": "Edit",
+      "allow": ["file_path", "old_string", "new_string", "replace_all"] },
+    "write": { "claude": "Write",
+      "allow": ["file_path", "content"] }
   },
   "mcp_servers": ["t3-code"],
   "events": { "preToolUse": "PreToolUse" }
