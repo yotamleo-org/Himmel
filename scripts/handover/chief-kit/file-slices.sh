@@ -24,21 +24,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-default_cli=""
-given_cli=0
-for a in "$@"; do
-    [ "$a" = --jira-cli ] && given_cli=1
-done
-if [ "$given_cli" = 0 ]; then
-    common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
-    [ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js"
-fi
 
-python3 -I - "$HERE" "$default_cli" "$@" <<'PY'
+python3 -I - "$HERE" "$@" <<'PY'
 import atexit, json, os, re, shutil, subprocess, sys, tempfile
 
 sys.stdout.reconfigure(encoding='utf-8')
-HERE, DEFAULT_CLI = sys.argv[1], sys.argv[2]
+HERE = sys.argv[1]
 REPO = os.path.realpath(os.path.join(HERE, '..', '..', '..'))
 POLICY = os.path.join(REPO, 'marketplace', 'plugins', 'himmel-ops', 'scripts', 'ticket-policy-cli.mjs')
 sys.path.insert(0, HERE)
@@ -55,11 +46,10 @@ def usage(msg=''):
     sys.exit(2)
 
 
-args = sys.argv[3:]
-plan = parent = version = None
+args = sys.argv[2:]
+plan = parent = version = cli = None
 skip = []
 apply = False
-cli = DEFAULT_CLI
 i = 0
 while i < len(args):
     a = args[i]
@@ -90,8 +80,11 @@ if not plan or not parent:
     usage()
 if not re.fullmatch(KEY_RE, parent):
     usage('--parent takes a ticket key, not ' + parent)
-if not cli:
-    usage('no default Jira CLI outside a git checkout: pass --jira-cli')
+if cli is None:
+    g = subprocess.run(['git', '-C', HERE, 'rev-parse', '--path-format=absolute', '--git-common-dir'], capture_output=True, text=True)
+    if g.returncode != 0:
+        usage('no default Jira CLI (%s): pass --jira-cli' % g.stderr.strip())
+    cli = os.path.join(os.path.dirname(g.stdout.strip()), 'scripts', 'jira', 'dist', 'index.js')
 try:
     text = open(plan, encoding='utf-8').read()
 except OSError as e:
