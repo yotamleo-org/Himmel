@@ -19,9 +19,9 @@
 # fast-path tokens; the two files stay double-post-safe because BOTH read and
 # write the SAME ledger (scripts/lib/coderabbit-trigger-ledger.sh) — whichever hook
 # runs first for a given head SHA wins, the other becomes a no-op. Hooks
-# under one PostToolUse matcher run sequentially, so there is no race between
-# a `git push && gh pr create` compound command hitting both hooks in one
-# dispatch.
+# under one PostToolUse matcher may run in parallel, so a `git push && gh pr
+# create` compound can hit both at once; the shared per-head ledger keeps
+# that race to at most one extra review comment.
 #
 # GitHub is the source of truth for "did the push land", not tool_response
 # exit-code sniffing: this hook always asks `gh pr view` what the PR's
@@ -38,6 +38,9 @@
 #   { "tool_name": "Bash",
 #     "tool_input": { "command": "git push ..." },
 #     "tool_response": { ... } }
+# A transcript sweep and a replay show that `tool_input.command` can
+# arrive as rewritten by rtk's PreToolUse hook (`rtk git push`), so this
+# hook strips that wrapper before matching.
 #
 # Fail-open policy: on this script's own bugs (missing jq/gh, malformed JSON,
 # no PR for the branch, ledger unreadable) we exit 0, optionally with a
@@ -119,6 +122,8 @@ cmd=${cmd//$'\r'/}
 # already normalised at the capture boundary above, so this only has to undo
 # the bare-LF continuation bash itself elides.
 cmd=${cmd//\\$'\n'/ }
+# shellcheck disable=SC2016  # literal $ inside the character class
+if _rtk_out=$(printf '%s\n' "$cmd" | sed -E 's/(^|[;&|`$(])([[:space:]]*)rtk[[:space:]]+(proxy[[:space:]]+)?/\1\2/g'); then cmd=$_rtk_out; fi
 
 # Anchored: `git push` only at a command position — same rationale and same
 # POSIX bracket classes (no `\s`/`\b` — BSD grep would silently never match)
