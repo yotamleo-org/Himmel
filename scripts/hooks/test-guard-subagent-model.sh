@@ -238,6 +238,31 @@ assert_rc "general-purpose + sonnet stays allowed (rc=0)" 0 "$RC29"
 RC30=$(run_hook gp-haiku-override "$(payload general-purpose haiku)" SUBAGENT_MODEL_OK=1)
 assert_rc "SUBAGENT_MODEL_OK=1 lets general-purpose + haiku through (rc=0)" 0 "$RC30"
 
+PROJ="$TMP/proj"; UHOME="$TMP/uhome"
+mkdir -p "$PROJ/.claude/agents" "$UHOME/.claude/agents"
+printf -- '---\nname: inherits-all\nmodel: haiku\n---\nbody\n' > "$PROJ/.claude/agents/inherits-all.md"
+printf -- '---\nname: lists-agent\ntools: Read, Agent\n---\nbody\n' > "$PROJ/.claude/agents/lists-agent.md"
+printf -- '---\nname: no-agent\ntools: Read, Bash\n---\nbody\n' > "$PROJ/.claude/agents/no-agent.md"
+printf -- '---\nname: drops-agent\ndisallowedTools: Agent\n---\nbody\n' > "$PROJ/.claude/agents/drops-agent.md"
+printf -- '---\nname: user-inherits\n---\nbody\n' > "$UHOME/.claude/agents/user-inherits.md"
+DEFS=(CLAUDE_PROJECT_DIR="$PROJ" HOME="$UHOME")
+
+RC31=$(run_hook def-inherits "$(payload inherits-all haiku)" "${DEFS[@]}")
+assert_rc "project agent with no tools line (inherits Agent) + haiku is DENIED (rc=2)" 2 "$RC31"
+assert_contains "inherited-Agent deny names the type" "inherits-all/haiku" "$(cat "$TMP/err-def-inherits")"
+RC32=$(run_hook def-lists "$(payload lists-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent whose tools list Agent + haiku is DENIED (rc=2)" 2 "$RC32"
+RC33=$(run_hook def-user "$(payload user-inherits claude-haiku-5-5)" "${DEFS[@]}")
+assert_rc "user-scope agent with no tools line + haiku is DENIED (rc=2)" 2 "$RC33"
+RC34=$(run_hook def-no-agent "$(payload no-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent whose tools omit Agent + haiku is allowed (rc=0)" 0 "$RC34"
+RC35=$(run_hook def-drops "$(payload drops-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent with disallowedTools Agent + haiku is allowed (rc=0)" 0 "$RC35"
+RC36=$(run_hook def-unknown "$(payload some-plugin:agent haiku)" "${DEFS[@]}")
+assert_rc "a type with no readable definition + haiku is allowed (rc=0)" 0 "$RC36"
+RC37=$(run_hook def-inherits-sonnet "$(payload inherits-all sonnet)" "${DEFS[@]}")
+assert_rc "project agent that inherits Agent + sonnet stays allowed (rc=0)" 0 "$RC37"
+
 echo ""
 echo "=== escape hatch ==="
 

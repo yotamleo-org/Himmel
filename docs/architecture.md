@@ -217,7 +217,8 @@ flowchart TD
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` and
 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`. Every himmel launcher sets them from
 `scripts/lib/subagent-caps.sh`: spawn depth 2 and concurrency 20. A session
-started any other way runs at the harness defaults (depth 3, concurrency 20).
+started any other way runs at the harness defaults (depth 3, concurrency 20)
+unless its own environment sets the two variables.
 Haiku is a leaf and never spawns: `guard-subagent-model.sh` refuses a Haiku
 dispatch on a type that keeps the Agent tool and points at `haiku-worker`, and
 a Haiku session starts with the Agent tool disallowed.

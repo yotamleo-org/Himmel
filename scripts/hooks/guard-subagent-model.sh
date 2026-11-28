@@ -26,12 +26,17 @@
 # DENY CONDITION 2, Haiku is a leaf (both must hold):
 #   1. tool_input.model names Haiku: haiku or claude-haiku, alone or followed
 #      by a non-alphanumeric (claude-haiku-5-5), any case.
-#   2. tool_input.subagent_type is absent, null, empty, "general-purpose" or
-#      "claude": the types that keep the Agent tool, so the Haiku child could
+#   2. tool_input.subagent_type keeps the Agent tool, so the Haiku child could
 #      spawn (and a built-in Explore it calls runs on the MAIN session's model,
-#      a tier up). The deny names haiku-worker (.claude/agents/haiku-worker.md,
-#      Agent disallowed). A typed agent with no Agent tool (edit-runner,
-#      Explore, haiku-worker) passes. A hook cannot see the CALLER's model, so
+#      a tier up): it is absent, null, empty, "general-purpose" or "claude", or
+#      it names an agent definition file, $CLAUDE_PROJECT_DIR/.claude/agents/
+#      <type>.md first, then $HOME/.claude/agents/<type>.md, whose frontmatter
+#      leaves Agent available (no `tools:` line, or one listing Agent or the old
+#      name Task, and no `disallowedTools:` naming it). The deny names
+#      haiku-worker (.claude/agents/haiku-worker.md, Agent disallowed). A type
+#      whose definition omits Agent (edit-runner, haiku-worker), and a type with
+#      no readable definition file (built-ins such as Explore, plugin agents,
+#      a name outside [A-Za-z0-9_-]), passes. A hook cannot see the CALLER's model, so
 #      a Haiku main session is the launcher's half: scripts/lib/subagent-caps.sh.
 #
 # Escape hatch (set in the shell that LAUNCHED Claude Code; session-sticky):
@@ -54,6 +59,25 @@
 set -uo pipefail
 
 warn() { echo "guard-subagent-model: $*" >&2; }
+
+agent_def_keeps_agent() {
+    local def="" root
+    case "$1" in *[!A-Za-z0-9_-]*) return 1 ;; esac
+    for root in "${CLAUDE_PROJECT_DIR:-}" "${HOME:-}"; do
+        if [ -n "$root" ] && [ -f "$root/.claude/agents/$1.md" ]; then
+            def="$root/.claude/agents/$1.md"
+            break
+        fi
+    done
+    [ -n "$def" ] || return 1
+    awk '
+        NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+        /^---[[:space:]]*$/ { done = 1; exit }
+        /^tools:/ { tools = 1; if ($0 ~ /(^tools:|[ ,])(Agent|Task)([ ,(]|$)/) listed = 1 }
+        /^disallowedTools:/ { if ($0 ~ /(^disallowedTools:|[ ,])(Agent|Task)([ ,(]|$)/) dropped = 1 }
+        END { exit !(done && !dropped && (!tools || listed)) }
+    ' "$def"
+}
 
 input=$(cat 2>/dev/null || true)
 
@@ -111,7 +135,7 @@ if [ -n "$model_trimmed" ]; then
     esac
     case "$subagent_type" in
         ''|general-purpose|claude) ;;
-        *) exit 0 ;;
+        *) agent_def_keeps_agent "$subagent_type" || exit 0 ;;
     esac
     shape="${subagent_type:-<no-subagent_type>}/$model_trimmed"
     deny_msg="guard-subagent-model: Haiku child on a spawning type DENIED ($shape) — a Haiku child is a leaf and never spawns (root CLAUDE.md Subagent policy), but subagent_type \"${subagent_type:-<none>}\" keeps the Agent tool, and a built-in Explore it calls runs on the MAIN session's model, a tier up. Use subagent_type \"haiku-worker\" (model haiku, Agent disallowed), or a typed agent with no Agent tool such as edit-runner. Deliberate override: relaunch with SUBAGENT_MODEL_OK=1 in the launching shell."

@@ -87,7 +87,7 @@ echo "=== 2. worker-claude-launcher.sh ==="
 STUB="$TMP/claude-stub"
 cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
-env > "$STUB_OUT.env"
+env | grep '^CLAUDE_CODE_MAX_' > "$STUB_OUT.env"
 printf '%s\n' "$@" > "$STUB_OUT.argv"
 EOF
 chmod 755 "$STUB"
@@ -135,7 +135,7 @@ EOF
 chmod 755 "$HA_STUBS/pgrep"
 cat > "$HA_STUBS/launcher" <<'EOF'
 #!/usr/bin/env bash
-env > "$(dirname "$0")/session.env"
+env | grep '^CLAUDE_CODE_MAX_' > "$(dirname "$0")/session.env"
 EOF
 chmod 755 "$HA_STUBS/launcher"
 REPO_FX="$TMP/repo"; mkdir -p "$REPO_FX" "$TMP/home"
@@ -148,7 +148,8 @@ run_headed_arm() {
         HEADED_ARM_UNAME=Linux HEADED_ARM_CLAUDE_CLI="$HA_STUBS/claude-cli" HEADED_ARM_LAUNCHER="$HA_STUBS/launcher" \
         KONSOLE_CMD="$HA_STUBS/konsole" PGREP_CMD="$HA_STUBS/pgrep" HEADED_ARM_REPO="$REPO_FX" \
         HEADED_ARM_LOCK_DIR="$HA_STUBS/locks" HEADED_ARM_PROC="$HA_STUBS/proc" \
-        bash "$HEADED_ARM" "$@" "HIMMEL-caps-worker" "some/handover-doc.md" "$HA_STUBS/signal-never" "$PAST" "$HA_STUBS/log"
+        ${HA_LAUNCHER_ENV:+HEADED_ARM_LAUNCHER_ENV="$HA_LAUNCHER_ENV"} \
+        bash "$HEADED_ARM" "$@" "HIMMEL-caps-worker" "some/handover-doc.md" "$HA_STUBS/signal-never" "$PAST" "$HA_STUBS/log" ${HA_MODEL:+"$HA_MODEL"}
 }
 dry="$(run_headed_arm --dry-run 2>&1)"
 has "headed: the dry-run env line carries the spawn depth" "$dry" "$DEPTH"
@@ -160,6 +161,14 @@ has "headed: the konsole tab argv carries the spawn depth" "$(cat "$HA_STUBS/rec
 sess="$(cat "$HA_STUBS/session.env" 2>/dev/null)"
 has "headed: the tab's session receives the spawn depth" "$sess" "$DEPTH"
 has "headed: the tab's session receives the concurrency cap" "$sess" "$CONC"
+rm -rf "$HA_STUBS/record" "$HA_STUBS/confirmable" "$HA_STUBS/session.env" "$HA_STUBS/locks"
+HA_LAUNCHER_ENV="CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=9" run_headed_arm > "$TMP/ha2.out" 2>&1
+n=0; while [ ! -s "$HA_STUBS/session.env" ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n + 1)); done
+check "headed: a launcher-env duplicate cannot override the spawn depth" \
+    "$(grep '^CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=' "$HA_STUBS/session.env" 2>/dev/null)" "$DEPTH"
+hdry="$(HA_MODEL=haiku run_headed_arm --dry-run 2>&1)"
+has "headed: a direct Haiku launch starts with the Agent tool disallowed" "$hdry" "--disallowedTools Agent --model haiku"
+lacks "headed: a non-Haiku launch keeps the Agent tool" "$dry" "--disallowedTools"
 
 echo ""
 echo "=== 3b. chief.sh's printed chief launch line ==="

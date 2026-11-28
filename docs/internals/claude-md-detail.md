@@ -91,14 +91,16 @@ chief.sh's printed chief line) sets them from `scripts/lib/subagent-caps.sh`:
 spawn depth **2** (main → child → grandchild; the measured nested-vs-flat
 overhead is 1.63-1.84×, against a harness default of 3) and concurrency **20**
 (the harness default, written out; no measurement supports a lower one). A
-session started any other way runs at the harness defaults. A `claude --cloud`
-session reads only its cloud environment's variables, so its caps are set there.
+session started any other way runs at the harness defaults unless its own
+environment sets the two variables. A `claude --cloud` session reads only its
+cloud environment's variables, so its caps are set there.
 **Haiku is a leaf and never spawns.** Haiku 5.5 is Anthropic's subagent tier
 under an Opus/Sonnet lead, not an orchestrator; orchestration is
 DEFER in the Haiku 5.5 eval; and the built-in Explore a child would call runs on
 the main conversation's model, so a Haiku spawn escalates cost upward. Fan out
 flat from the parent instead. `guard-subagent-model.sh` denies an Agent dispatch
-on model haiku whose type keeps the Agent tool (general-purpose, claude, untyped)
+on model haiku whose type keeps the Agent tool (general-purpose, claude, untyped,
+or a project or user agent definition that leaves Agent available)
 and names `haiku-worker` (`.claude/agents/haiku-worker.md`, Agent disallowed); a
 launcher whose session model is Haiku passes `--disallowedTools Agent`.
 [enforced: guard-subagent-model] **Single-writer** — many readers,
