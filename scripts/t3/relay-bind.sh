@@ -12,8 +12,13 @@
 # a threadId this script selected) ever reach T3; nothing here starts a thread. A thread title is never read or printed.
 #
 # prepare   path A, before the chief launches: writes <manifest dir>/<KEY>-N<k>-t3-<slug>-<UTC date>.md, adds a lane-t3
-#           lockless row with t3_thread: pending, prints the doc path and the command block for the brief.
-# attach    path A, after the launch: sets the row's t3_thread to the threadId the launch tool returned.
+#           lockless row with t3_thread: pending, prints the doc path and the command block for the brief. First it runs
+#           the native launch gate on the doc (brief-lint.sh --core-only --skip-bucket, resume_cwd the T3 project,
+#           HIMMEL_HOOK_INTEGRITY_BYPASS_OK removed). A refusal names the key and the missing record, removes the doc and
+#           exits 3; a pass writes a `> **Launch gate:** passed` line and a `> **Core gate:**` line for each bypass.
+# attach    path A, after the launch: sets the row's t3_thread to the threadId the launch tool returned. A listed doc with
+#           no `> **Launch gate:** passed` line, or whose ticket (from the doc name) and Writes line fail the gate, is
+#           refused, rc 3.
 # scan      path B: binds an idle (whitelisted status) unsettled thread on a `<id>_relay` instance whose base id is listed,
 #           sends the fixed notice, re-sends pending notices (at most 3 sends a row), unbinds a row whose thread left the
 #           list or settled for T3_RELAY_UNBIND_DAYS (default 3) with no READY/BLOCKED newest bullet, and keeps one owner
@@ -23,7 +28,8 @@
 # unbind    removes the row and records the tombstone in one write, so the thread is never bound again.
 #
 # Exit: 0 nothing new; 1 something was printed; 2 usage or config failure (also an unreadable owner status or a stuck
-# owner lock); 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
+# owner lock); 3 the launch gate refused prepare or attach, or attach found no gate record, no ticket in the doc name or
+# no Writes line; 4 `t3 thread list` failed or a field the pass reads is missing (stderr names it); 5 this manifest is not
 # the owner and the owner is live (its own re-sends and upkeep still ran), or a takeover ran out of pass time (nothing else ran; it retries next pass).
 # Env seams: T3_SEND_BIN, T3_SEND_PROJECT (as t3-send.sh), T3_RELAY_UNBIND_DAYS. Siblings are found beside this file.
 # Platform: Linux (util-linux flock, GNU timeout), bash 3.2+, jq.
@@ -113,8 +119,26 @@ mdir="${manifest%/*}"
 [ -d "$mdir" ] || die 2 "manifest directory missing: $mdir"
 today="$(date -u +%Y-%m-%d)"
 
+gate_out=""
+launch_gate() {
+    local rc=0
+    if ! [[ $2 =~ ^[A-Z]+-[0-9]+$ ]] || ! sed -n '/^# /{p;q;}' "$1" | grep -qE "^# $2( |$)"; then
+        echo "relay-bind: launch gate refused $2: the brief title does not carry it as an upper-case ticket key, so core-check would read no key" >&2
+        return 3
+    fi
+    gate_out="$(env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK JIRA_PROJECTS="$(printf '%s' "${2%%-*}" | tr '[:lower:]' '[:upper:]')" \
+        bash "$KIT/brief-lint.sh" --core-only --skip-bucket "$1" 2>&1)" || rc=$?
+    [ "$rc" -ne 0 ] || return 0
+    echo "relay-bind: launch gate refused $2; nothing was written or attached:" >&2
+    printf '%s\n' "$gate_out" >&2
+    case "$gate_out" in *HIMMEL_HOOK_INTEGRITY_BYPASS_OK*)
+        echo "relay-bind: a T3 thread has no T3 hook-bypass grant record: guard-t3-thread-tools.sh refuses a bypass instance to every agent and no per-grant T3 route exists, so launch a ticket that edits pinned guard files as a native bypass worker" >&2 ;;
+    esac
+    return 3
+}
+
 if [ "$verb" = prepare ]; then
-    [[ $ticket =~ ^[A-Za-z]+-[0-9]+$ ]] || die 2 "--ticket must look like ABC-123"
+    [[ $ticket =~ ^[A-Z]+-[0-9]+$ ]] || die 2 "--ticket must look like ABC-123 (an upper-case project key)"
     [[ $label =~ ^N[0-9]+[a-z]*$ ]] || die 2 "--label must look like N12 or N12b"
     [[ $slug =~ ^[a-z0-9-]{1,32}$ ]] || die 2 "--slug must match [a-z0-9-]{1,32}"
     case "$completes" in yes|no) ;; *) die 2 "--completes must be yes or no" ;; esac
@@ -124,13 +148,20 @@ if [ "$verb" = prepare ]; then
     [ ! -e "$doc" ] || die 2 "doc exists: $doc"
     tmp="$(mktemp "$mdir/.t3prep.XXXXXX")" || die 2 "mktemp failed"
     trap 'rm -f "$tmp"' EXIT
-    {
+    head_lines() {
         printf '# %s - a T3 thread bound to the chief - worker %s (t3)\n\n' "$ticket" "$label"
         printf '> **Writes:** %s\n\n' "${writes[*]}"
         printf '> **Completes ticket:** %s\n\n' "$completes"
-        printf '## Results (newest at the bottom)\n'
-    } > "$tmp" || die 2 "cannot write the doc"
+    }
+    { printf -- '---\nresume_cwd: %s\n---\n' "$PROJECT"; head_lines; } > "$tmp" || die 2 "cannot write the doc"
     ln "$tmp" "$doc" 2>/dev/null || die 2 "doc exists: $doc"
+    launch_gate "$doc" "$ticket" || { rm -f "$doc"; exit 3; }
+    {
+        head_lines
+        printf '> **Launch gate:** passed %s (brief-lint.sh --core-only: core-check, spec-check, guard-lib)\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '%s\n' "$gate_out" | sed -n 's/^brief-lint: \([A-Za-z0-9]*-[0-9]* bypass=.*\)$/> **Core gate:** \1\n/p'
+        printf '## Results (newest at the bottom)\n'
+    } | atomic_write "$doc" || { rm -f "$doc"; die 2 "cannot write the doc"; }
     fm add "$manifest" "$doc" --lane t3 --lockless || die 2 "fleet-manifest add failed"
     fm t3 set "$manifest" "$doc" --thread pending || die 2 "fleet-manifest t3 set failed"
     printf 'DOC %s\n' "$doc"
@@ -161,6 +192,17 @@ if [ "$verb" = attach ]; then
             *) die 2 "cannot read $f: nothing attached" ;;
         esac
     done
+    jq -e --arg d "$doc" 'any((.workers // [])[]; .doc == $d)' "$manifest" >/dev/null 2>&1 || die 2 "the doc is not listed in $manifest: nothing attached"
+    grep -Eq '^> \*\*Launch gate:\*\* passed( |$)' "$doc" 2>/dev/null \
+        || die 3 "$doc has no launch gate record (a '> **Launch gate:** passed' line that prepare writes once core-check, spec-check and the guard-lib rule pass): nothing attached; run relay-bind.sh prepare for the ticket"
+    [[ ${doc##*/} =~ ^([A-Z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
+    akey="${BASH_REMATCH[1]}"
+    wline="$(grep -m 1 -E '^> \*\*Writes:\*\* [A-Za-z0-9._/@+-]+( [A-Za-z0-9._/@+-]+)*$' "$doc")" \
+        || die 3 "$doc has no '> **Writes:**' line in the shape prepare writes (one or more paths, single spaces), so the pinned-guard check has nothing to read: nothing attached"
+    GATE_DIR="$(tmpdir)" || die 2 "mktemp failed"
+    trap 'rm -rf "$GATE_DIR"' EXIT
+    printf -- '---\nresume_cwd: %s\n---\n# %s - attach gate\n\n%s\n' "$PROJECT" "$akey" "$wline" > "$GATE_DIR/gate.md" || die 2 "cannot write the gate copy"
+    launch_gate "$GATE_DIR/gate.md" "$akey" || exit 3
     fm t3 set "$manifest" "$doc" --thread "$thread" || die 2 "fleet-manifest t3 set failed (is the doc listed?)"
     exit 0
 fi

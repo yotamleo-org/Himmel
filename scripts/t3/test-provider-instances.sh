@@ -224,6 +224,14 @@ cp "$A" "$T/artifact.after1"
 env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
 expect_ok "default instance: second apply is a no-op" cmp -s "$A" "$T/artifact.after1"
 
+MH="$T/maintainer.json"; printf '{"providerInstances":{}}' > "$MH"
+out="$(env T3_PI_RESOLVER= T3_PI_PROFILES="user,maintainer-hooks" bash "$GEN" --apply --settings-file "$MH" 2>&1)"; rc=$?
+expect_eq "maintainer profile in the list: apply still exits 0" "$rc" 0
+expect_eq "maintainer profile gets no T3 instance" "$(jq -r '.providerInstances|has("claudeAgent_maintainer-hooks")' "$MH")" false
+expect_eq "maintainer profile: the other profile's instance is written" "$(jq -r '.providerInstances|has("claudeAgent_user")' "$MH")" true
+expect_ok "maintainer profile: one stderr line names the skip" grep -q "^provider-instances: skip 'maintainer-hooks'" <<<"$out"
+expect_fail "maintainer profile is not printed as an allowlist id" grep -q '^claudeAgent_maintainer-hooks$' <<<"$out"
+
 U="$T/userargs.json"
 printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--model my-own"}}}}' > "$U"
 out="$(env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U" 2>&1)"; rc=$?
