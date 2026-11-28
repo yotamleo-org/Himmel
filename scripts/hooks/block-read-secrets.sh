@@ -723,20 +723,105 @@ rs_shift_glob_secret() {
     return 1
 }
 
-# rs_ast_proves_safe CMD: 0 only when the shfmt command-position model
-# (scripts/lib/bash-ast.sh) names every directory each glob in CMD can expand
-# in, every one resolves from this cwd, and no match there is a secret, so the
-# shifted directory is as visible as the cwd. Anything it cannot read (no
-# shfmt, an opaque command, an expansion, an unknown cd, a quoted or exotic
-# glob, a child render of guard_unwrap whose cwd is not ours) is not proved,
-# with the reason in RS_AST_WHY.
-rs_ast_proves_safe() {
-    local lib pos pats dirs chain d pat m ms
-    RS_AST_WHY=''
-    if [ "${GUARD_UNWRAP_CWD:-}" = unknown ]; then
-        RS_AST_WHY='a nested body runs after a cwd change this pass cannot see'
+RS_UNROLL_CAP=16
+RS_UNROLL_DENY_CAP=64
+RS_UNROLL_PROGS='["cd", "pushd", "ls", "cat", "grep", "head", "tail", "wc", "stat", "file", "echo", "true", ":"]'
+# shellcheck disable=SC2016 # the jq program's $names are jq variables
+RS_UNROLL_JQ='
+def rs_item: (.Parts | length) == 1 and .Parts[0].Type == "Lit"
+    and (.Parts[0].Value | test("^[A-Za-z0-9_.][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)*$") and (split("/") | index("..") == null));
+def rs_loop: type == "object" and .Type? == "ForClause" and ((.Select // false) | not) and .Loop.Type == "WordIter"
+    and ((.Loop.Items // []) | length) > 0 and all(.Loop.Items[]; rs_item);
+def rs_plain: (keys - ["Type", "Pos", "End", "Dollar", "Rbrace", "Short", "Param"]) == [];
+def rs_pe($n): type == "object" and .Type? == "ParamExp" and .Param.Value? == $n and rs_plain;
+def rs_unroll: walk(if rs_loop then . as $c | $c.Loop.Name.Value as $n
+    | {Type: "Block", Stmts: [$c.Loop.Items[] | .Parts[0].Value as $v
+        | $c.Do[] | walk(if rs_pe($n) then {Type: "Lit", Value: $v} else . end)]} else . end);
+def rs_copies: reduce (.. | select(rs_loop) | .Loop.Items | length) as $k (1; . * $k);
+def rs_closed:
+    all(.. | objects | select(has("Type")) | .Type;
+        IN("File", "CallExpr", "BinaryCmd", "Block", "Subshell", "ForClause", "WordIter",
+           "Lit", "SglQuoted", "DblQuoted", "ParamExp"))
+    and all(.. | objects | select(.Type? == "SglQuoted" or .Type? == "DblQuoted"); (.Dollar // false) | not)
+    and all(.. | objects | select(.Type? == "ParamExp"); rs_plain)
+    and all(.. | objects | select(.Type? == "CallExpr");
+        ((.Assigns // []) | length) == 0 and ((.Args // []) | length) > 0
+        and (.Args[0].Parts | length) == 1 and .Args[0].Parts[0].Type == "Lit"
+        and (.Args[0].Parts[0].Value | IN($progs[])))
+    and all(.. | objects | .Redirs? // empty | .[]; ((.N.Value? // "") | startswith("{")) | not);
+def rs_shaped($n):
+    all(.. | objects | select(has("Parts") and any(.Parts[] | ..; rs_pe($n)));
+        (any(.Parts[]; .Type == "Lit" and (.Value | test("[{}]"))) | not)
+        and ((.Parts[0].Type == "Lit" and (.Parts[0].Value | test("^[~=]"))) | not));
+def rs_norm: walk(if type == "object" then with_entries(select((.value | type) != "object" or ((.value | has("Offset")) | not)))
+        | if (.Parts | type) == "array" then .Parts |= reduce .[] as $p ([];
+            if $p.Type == "Lit" and (.[-1].Type? == "Lit") then .[-1].Value += $p.Value else . + [$p] end) else . end
+    else . end);
+if $mode == "same" then (.[0] | rs_norm) == (.[1] | rs_norm)
+elif $mode == "deny" then
+    if any(..; rs_loop) | not then null
+    else [limit(4; recurse(if any(..; rs_loop) and rs_copies <= $cap then rs_unroll else empty end))] | last
+        | if any(..; rs_loop) then "over" else . end end
+else [.. | select(type == "object" and .Type? == "ForClause")] as $fs
+    | if ($fs | length) != 1 or ($fs[0] | rs_loop | not) or (rs_closed | not) then null
+      else $fs[0].Loop.Name.Value as $n
+        | if ($n | test("^[a-z][a-z0-9_]*$") | not)
+             or ($n | IN("path", "cdpath", "fpath", "manpath", "mailpath", "module_path", "psvar", "fignore", "watch", "dirstack", "argv", "options"))
+             or (rs_shaped($n) | not) then null
+          elif ($fs[0].Loop.Items | length) > $cap then "over"
+          else rs_unroll end end end'
+rs_unroll() {
+    local mode=$1 cap=$RS_UNROLL_CAP max=4096 tb tmo tree out back
+    RS_UNROLLED='' RS_UNROLL_WHY=''
+    [ "$mode" = prove ] || { cap=$RS_UNROLL_DENY_CAP max=32768; }
+    case "$2" in *for*) ;; *) return 1 ;; esac
+    command -v shfmt >/dev/null 2>&1 && command -v jq >/dev/null 2>&1 || return 1
+    case "${BASH_SOURCE[0]}" in
+        */*) tb=${BASH_SOURCE[0]%/*}/../lib/timeout-bin.sh ;;
+        *) tb=../lib/timeout-bin.sh ;;
+    esac
+    # shellcheck source=../lib/timeout-bin.sh
+    tmo=$( { [ -r "$tb" ] && . "$tb"; } 2>/dev/null && printf '%s' "$_TIMEOUT_BIN") # swallow-ok: no bound means no loop render, so the command is judged as written
+    [ -n "$tmo" ] || return 1
+    tree=$(printf '%s' "$2" | "$tmo" 5 shfmt -ln bash --to-json 2>/dev/null) || return 1 # swallow-ok: a command shfmt cannot read is judged as written
+    out=$(printf '%s' "$tree" | "$tmo" 5 jq -c --arg mode "$mode" --argjson cap "$cap" --argjson progs "$RS_UNROLL_PROGS" "$RS_UNROLL_JQ" 2>/dev/null) || # swallow-ok: the failure sets RS_UNROLL_WHY, which denies
+        { RS_UNROLL_WHY='the loop could not be written out per item'; return 1; }
+    case "$out" in
+        '' | null) return 1 ;;
+        '"over"') RS_UNROLL_WHY=over; return 1 ;;
+    esac
+    RS_UNROLLED=$(printf '%s' "$out" | "$tmo" 5 shfmt -ln bash --from-json 2>/dev/null) || # swallow-ok: the failure sets RS_UNROLL_WHY, which denies
+        { RS_UNROLL_WHY='shfmt could not print the loop written out per item (it needs shfmt 3 with --from-json)'; return 1; }
+    [ "${#RS_UNROLLED}" -le "$max" ] || { RS_UNROLL_WHY=over; return 1; }
+    [ "$mode" = prove ] || return 0
+    if ! back=$(printf '%s' "$RS_UNROLLED" | "$tmo" 5 shfmt -ln bash --to-json 2>/dev/null) || # swallow-ok: a failed re-parse sets RS_UNROLL_WHY, which denies
+        ! printf '%s\n%s\n' "$out" "$back" | "$tmo" 5 jq -se --arg mode same --argjson cap 0 --argjson progs '[]' "$RS_UNROLL_JQ" >/dev/null 2>&1; then
+        RS_UNROLL_WHY='the loop written out per item does not parse back to itself'
         return 1
     fi
+}
+
+# rs_ast_proves_safe CMD: 0 only when the shfmt command-position model
+# (scripts/lib/bash-ast.sh) names every directory each glob in CMD (a literal
+# loop written out per item) can expand in, every one resolves from this cwd,
+# and no match there is a secret. Anything it cannot read (no shfmt, an opaque
+# command, an expansion, an unknown cd, a quoted or exotic glob) is not
+# proved, with the reason in RS_AST_WHY; a child render whose cwd is not ours
+# proves RS_AST_TOP_CMD, which must hold no nested shell body.
+rs_ast_proves_safe() {
+    RS_AST_WHY=''
+    if [ "${GUARD_UNWRAP_CWD:-}" = unknown ]; then
+        if [ -z "${RS_AST_TOP_CMD:-}" ]; then
+            RS_AST_WHY='a nested body runs after a cwd change this pass cannot see'
+            return 1
+        fi
+        rs_ast_prove "$RS_AST_TOP_CMD" top
+        return
+    fi
+    rs_ast_prove "$1" own
+}
+rs_ast_prove() {
+    local lib pos pats dirs chain d pat m ms src=$1
     case "${BASH_SOURCE[0]}" in
         */*) lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh ;;
         *) lib=../lib/bash-ast.sh ;;
@@ -746,14 +831,24 @@ rs_ast_proves_safe() {
         RS_AST_WHY="cannot load $lib"
         return 1
     fi
-    pos=$(bash_ast_positions "$1" 2>/dev/null) # swallow-ok: the rc is read next and every nonzero keeps the deny
+    if rs_unroll prove "$1"; then
+        src=$RS_UNROLLED
+    elif [ "$RS_UNROLL_WHY" = over ]; then
+        RS_AST_WHY="a loop over more than $RS_UNROLL_CAP items"
+        return 1
+    elif [ -n "$RS_UNROLL_WHY" ]; then
+        RS_AST_WHY=$RS_UNROLL_WHY
+        return 1
+    fi
+    pos=$(bash_ast_positions "$src" 2>/dev/null) # swallow-ok: the rc is read next and every nonzero keeps the deny
     case $? in
         0) ;;
         2) RS_AST_WHY='shfmt not on PATH (install it; a station install goes to a test VM first)'; return 1 ;;
         *) RS_AST_WHY='the model could not read the command'; return 1 ;;
     esac
-    RS_AST_WHY=$(printf '%s' "$pos" | jq -r '
-        [.[] | (.opaque // empty),
+    RS_AST_WHY=$(printf '%s' "$pos" | jq -r --arg mode "$2" '
+        [.[] | (select($mode == "top" and .body != null) | "a nested shell body in a command that changes the cwd"),
+               (.opaque // empty),
                (.argv[], (.redirs[] | .w // empty) | select(.t != "lit") | "the expansion " + .raw),
                ((.argv[], (.redirs[] | .w // empty)) | select(.t == "lit" and .g)
                 | select((.raw | test("^[A-Za-z0-9._/*?+@%,:-]+$") | not) or (.raw | contains("**")))
@@ -784,13 +879,13 @@ rs_ast_proves_safe() {
             pwd -P
         ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
         while IFS= read -r pat; do
-            # compgen -G exits 1 on no match, so a failed setup step or an rc above 1
-            # (a missing compgen is 127) fails the proof; bash 3.2 has no globstar to
-            # unset, and zsh ignores GLOBIGNORE, which would hide a match here
+            # compgen -G exits 1 on no match, so a failed setup step or an rc above 1 (a
+            # missing compgen is 127) fails the proof; bash 3.2 has no globstar. A set
+            # GLOBIGNORE hides a match, and unsetting it turns dotglob off, so it goes first
             ms=$(
+                unset GLOBIGNORE
                 cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob || exit 3
                 shopt -u globstar 2>/dev/null
-                unset GLOBIGNORE
                 compgen -G "$pat" || [ "$?" -le 1 ] || exit 3
                 exit 0
             ) || { RS_AST_WHY="the glob $pat could not be expanded in $d"; return 1; }
@@ -1982,6 +2077,33 @@ case "$tool" in
         rs_in=${RS_SKIP_CLAUSES:-}
         unset RS_SKIP_CLAUSES
 
+        if [ "$tool" = Bash ] && [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] && [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ] \
+            && [ "${RS_UNROLL_DEPTH:-0}" = 0 ]; then
+            if [ -n "${RS_AST_TOP_CMD+x}" ]; then
+                echo "⛔ block-read-secrets: refusing a call whose environment already sets RS_AST_TOP_CMD, which only this hook sets for its own child renders." >&2
+                exit 2
+            fi
+            export RS_AST_TOP_CMD="$cmd"
+        fi
+        if [ "$tool" = Bash ] && [ "${READ_SECRETS_OK:-0}" != 1 ]; then
+            if rs_unroll deny "$cmd"; then
+                _rs_child=$(jq -cn --arg c "$RS_UNROLLED" '{tool_name:"Bash",tool_input:{command:$c}}') || exit 2
+                if ! _rs_err=$(RS_UNROLL_DEPTH=$((${RS_UNROLL_DEPTH:-0} + 1)) "${BASH:-bash}" "${BASH_SOURCE[0]}" <<<"$_rs_child" 2>&1 >/dev/null); then
+                    printf '%s\n' "$_rs_err" >&2
+                    echo "    (denied in the form the loop runs: each item written in for the loop variable)" >&2
+                    exit 2
+                fi
+            elif [ "$RS_UNROLL_WHY" = over ]; then
+                echo "⛔ block-read-secrets: refusing a loop over more than $RS_UNROLL_DENY_CAP literal items, which this hook cannot write out per item. Split it into smaller loops." >&2
+                bypass_hint
+                exit 2
+            elif [ -n "$RS_UNROLL_WHY" ]; then
+                echo "⛔ block-read-secrets: refusing a loop over literal items: $RS_UNROLL_WHY." >&2
+                bypass_hint
+                exit 2
+            fi
+        fi
+
         # re-read the command with its variable expansions
         # removed, so a `${V:-}cat .env` is judged as the `cat .env` the shell
         # runs when V is empty. A must-run dependency: if it cannot be
@@ -2095,7 +2217,9 @@ EOF
         if [ "$block" != 1 ]; then
             _rs_skip=
             if [ "${#normalized}" -le 30000 ]; then _rs_skip="${GU_TOKENIZED:-0} $g4_interp"$'\n'$normalized; fi
-            RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
+            _rs_gee=$cmd
+            if [ "$tool" = Bash ] && rs_unroll prove "$cmd"; then _rs_gee=$RS_UNROLLED; fi
+            RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$_rs_gee" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
         fi
 
         if [ "$block" = "1" ]; then
