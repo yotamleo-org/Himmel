@@ -23,6 +23,7 @@ notstopped() { if [ -e "$B/judge-desk/STOP" ]; then fail "$1 (STOP written)"; el
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/judge-desk-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 export TZ=UTC HIMMEL_TEST_FIXTURE=1
+unset JUDGE_DESK_GEN JUDGE_DESK_LIVE JUDGE_DESK_NOW JUDGE_DESK_PREFLIGHT
 NOW="$(python3 -I -c 'from datetime import datetime, timezone; print(int(datetime(2026, 11, 28, 12, 0, 0, tzinfo=timezone.utc).timestamp()))')"
 SINCE=2026-11-28T00:00:00+00:00
 S0=11111111-1111-4111-8111-111111111111
@@ -518,6 +519,48 @@ cp "$REPO_ROOT/scripts/handover/chief-kit/write-verdict.sh" "$WORK/write-verdict
 # shellcheck disable=SC2016  # planted literal text
 printf '%s\n' 'cat "$B/judge-desk/judge-requests.jsonl"' >> "$WORK/write-verdict.sh"
 if [ -z "$(scan names 'judge-desk/(judge-requests|desk-runs|runs/|STOP)' "$WORK/write-verdict.sh")" ]; then fail "row 16: red control, a planted queue read in write-verdict.sh was not flagged"; else pass "row 16: red control, a planted queue read in write-verdict.sh is flagged"; fi
+
+if [ "${#tracked[@]}" -gt 0 ]; then pass "row 16: the tracked script list is not empty"; else fail "row 16: git ls-files listed no script, so every grep above was vacuous"; fi
+q="$(scan names 'judge-desk/(desk-runs|runs/)' "$REPO_ROOT/scripts/handover/chief-kit/judge-queue.sh")"
+eq "row 16: judge-queue.sh names neither desk-runs nor runs/" "$q" ""
+cp "$REPO_ROOT/scripts/handover/chief-kit/judge-queue.sh" "$WORK/judge-queue.sh"
+# shellcheck disable=SC2016  # planted literal text
+printf '%s\n' 'cat "$B/judge-desk/desk-runs.jsonl"' >> "$WORK/judge-queue.sh"
+if [ -z "$(scan names 'judge-desk/(desk-runs|runs/)' "$WORK/judge-queue.sh")" ]; then fail "row 16: red control, a planted desk-runs read in judge-queue.sh was not flagged"; else pass "row 16: red control, a planted desk-runs read in judge-queue.sh is flagged"; fi
+
+newcase
+HA=abcdef0000000000000000000000000000000001; HB=abcdef0000000000000000000000000000000002
+newrun 6139 "$HA" a; RA="$RUN"
+req 6139 "$HB"; spec "$C/spec-b.json" dsk6139b 6139 "$HB"
+D claim "$C/spec-b.json" >/dev/null 2>&1
+RB="$(rowf "$(RUNS)" claim - run last)"
+if [ "$RA" != "$RB" ] && [ "$RB" != norow ]; then pass "review: two heads of one PR sharing seven hex characters get distinct run ids ($RA, $RB)"; else fail "review: run id collision ($RA, $RB)"; fi
+
+dg_case "$DOCD/ready-later-live.md" GO
+touch "$B/judge-desk/STOP"
+out="$(D draft-go "$RUN" 2>&1)"; rc=$?
+eq "review: draft-go with STOP present is refused (rc 1)" "$rc" 1
+
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"if true; then $WV; fi\"},\"done\",0]"
+eq "review: a write-verdict.sh call inside an if is a stop (rc 3)" "$rc" 3
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"echo 'see; bash judge-dir.sh 1'\"},\"see; bash judge-dir.sh 1\",0]"
+eq "review: a quoted mention of judge-dir.sh is no call" "$out" "RECORDED $RUN GO"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"$WV\"},\"HIMMEL_CONSOLE_JUDGE_NOVERDICT is set (a judge desk writes no verdict) quoted\",0]"
+eq "review: the marker text in a successful result is no refusal (rc 3)" "$rc" 3
+
+newcase
+out="$(cd "$R" && bash "$SUT" wait --bucket "$B" --chief chief-fx --max-wait 0 2>&1)"; rc=$?
+eq "review: wait without --since is a usage error (rc 2)" "$rc" 2
+
+newcase; goff "$C/root/.locks/go/6139.$HEXG" $((NOW - 300)); mkdir -p "$B/verdicts/go-pr-6139/chief-go-$HEXG.md"
+stopcase "a chief-go path that is a directory is no record" "$C/root/.locks/go/6139.$HEXG"
+
+if [ "$(id -u)" != 0 ]; then
+    newcase; mkdir -p "$B/verdicts"; chmod 000 "$B/verdicts"
+    out="$(D wait --max-wait 0 2>&1)"; rc=$?
+    chmod 755 "$B/verdicts"
+    eq "review: an unreadable verdicts dir is a stop, not an empty one (rc 3)" "$rc" 3
+fi
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

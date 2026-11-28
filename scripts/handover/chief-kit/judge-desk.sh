@@ -291,17 +291,33 @@ class Transcript:
                             self.calls.append(c)
 
 
-SEPARATORS = re.compile(r'\|\||&&|[;|&\n]')
-SKIPPED = {'env', 'bash', 'sh', 'timeout', 'time', 'nice', 'exec', 'command', 'source', '.', 'sudo'}
+SKIPPED = {'env', 'bash', 'sh', 'timeout', 'time', 'nice', 'exec', 'command', 'source', '.', 'sudo',
+           'if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{'}
+PUNCT = re.compile(r'[;&|()]+')
+
+
+def command_segments(cmd):
+    try:
+        lex = shlex.shlex((cmd or '').replace('\n', ' ; '), posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        lex.commenters = ''
+        toks = list(lex)
+    except ValueError:
+        toks = (cmd or '').replace(';', ' ; ').replace('|', ' ; ').replace('&', ' ; ').split()
+    segs, cur = [], []
+    for t in toks:
+        if PUNCT.fullmatch(t):
+            segs.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    segs.append(cur)
+    return segs
 
 
 def command_heads(cmd):
     heads = []
-    for seg in SEPARATORS.split(cmd or ''):
-        try:
-            toks = shlex.split(seg)
-        except ValueError:
-            toks = seg.split()
+    for toks in command_segments(cmd):
         if toks and os.path.basename(toks[0]) in ('bash', 'sh') and '-c' in toks and toks.index('-c') + 1 < len(toks):
             heads += command_heads(toks[toks.index('-c') + 1])
             continue
@@ -326,7 +342,7 @@ def judge_facts(tr):
             heads = command_heads(inp.get('command', ''))
             if any(h in WRITE_SCRIPTS for h in heads):
                 f['attempted'] = True
-                if MARKER_TEXT in c['result']:
+                if MARKER_TEXT in c['result'] and (c['error'] or c['result'].startswith('Exit code')):
                     f['refused'] = True
                 else:
                     f['stops'].append('a judge write-verdict.sh or judge-call.sh call did not end in the marker refusal')
@@ -362,16 +378,13 @@ def desk_stop_reason(tr, chief):
 
 
 def header_session(path):
-    try:
-        with open(path, encoding='utf-8', errors='replace') as f:
-            for n, line in enumerate(f):
-                if n > 20:
-                    break
-                m = re.match(r'^writer-session: (.*?)\s*$', line)
-                if m:
-                    return m.group(1)
-    except OSError:
-        pass
+    with open(path, encoding='utf-8', errors='replace') as f:
+        for n, line in enumerate(f):
+            if n > 20:
+                break
+            m = re.match(r'^writer-session: (.*?)\s*$', line)
+            if m:
+                return m.group(1)
     return None
 
 
@@ -380,10 +393,17 @@ def stop_checks(d, tr_cache=None):
     since = d.since_ts()
     vdir = os.path.join(d.o.bucket, 'verdicts')
     sessions = d.registry()
-    try:
-        names = sorted(os.listdir(vdir))
-    except OSError:
-        names = []
+
+    def listing(path):
+        try:
+            return sorted(os.listdir(path)), None
+        except FileNotFoundError:
+            return [], None
+        except OSError:
+            return [], (path, 'cannot read this directory, so a stop check cannot run')
+    names, bad = listing(vdir)
+    if bad:
+        return bad
     for n in names:
         if n.startswith('dsk') and os.path.isdir(os.path.join(vdir, n)):
             return os.path.join(vdir, n), 'a verdicts/dsk* directory exists'
@@ -391,19 +411,24 @@ def stop_checks(d, tr_cache=None):
         qdir = os.path.join(vdir, n)
         if not os.path.isdir(qdir):
             continue
-        for fn in sorted(os.listdir(qdir)):
+        fns, bad = listing(qdir)
+        if bad:
+            return bad
+        for fn in fns:
             p = os.path.join(qdir, fn)
-            if not fn.endswith('.md') or not os.path.isfile(p) or os.path.getmtime(p) < since:
-                continue
-            s = header_session(p)
+            try:
+                if not fn.endswith('.md') or not os.path.isfile(p) or os.path.getmtime(p) < since:
+                    continue
+                s = header_session(p)
+            except OSError:
+                return p, 'a verdict record cannot be read, so a stop check cannot run'
             if s is not None and (s in ('unknown', 'invalid') or s in sessions):
                 return p, 'a verdict record written since the desk start has writer-session %s' % s
     godir = os.path.join(d.root, '.locks', 'go')
     t = now()
-    try:
-        gofiles = sorted(os.listdir(godir))
-    except OSError:
-        gofiles = []
+    gofiles, bad = listing(godir)
+    if bad:
+        return bad
     for fn in gofiles:
         m = re.fullmatch(r'(\d+)\.([0-9a-f]{40})', fn)
         p = os.path.join(godir, fn)
@@ -413,13 +438,13 @@ def stop_checks(d, tr_cache=None):
         if mtime <= since or t - mtime <= GRACE_SECONDS:
             continue
         rec = os.path.join(d.root, d.user, '*', 'verdicts', 'go-pr-%s' % m.group(1), 'chief-go-%s.md' % m.group(2))
-        if not glob.glob(rec):
+        if not any(os.path.isfile(r) for r in glob.glob(rec)):
             return p, 'a GO file has no chief-go record'
     pdir = d.desk_project_dir()
-    try:
-        transcripts = sorted(glob.glob(os.path.join(pdir, '*.jsonl')))
-    except OSError:
-        transcripts = []
+    pnames, bad = listing(pdir)
+    if bad:
+        return bad
+    transcripts = [os.path.join(pdir, n) for n in pnames if n.endswith('.jsonl')]
     for p in transcripts:
         if os.path.basename(p)[:-len('.jsonl')] not in sessions:
             return p, 'a desk transcript id is not in judge-desk/sessions'
@@ -427,7 +452,7 @@ def stop_checks(d, tr_cache=None):
         try:
             why = desk_stop_reason(Transcript(p), d.o.chief)
         except OSError:
-            why = None
+            return p, 'a desk transcript cannot be read, so a stop check cannot run'
         if why:
             return p, why
     return None
@@ -496,12 +521,15 @@ def cmd_next(o):
         if prior:
             c, end = prior
             r = run_cmd(['bash', os.path.join(HERE, 'delta-class.sh'), '--verdict-file', end.get('reply') or '', c['head'], head])
-            word = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else 'trust'
+            word = r.stdout.strip().splitlines()[-1] if r.stdout.strip() and r.returncode == 0 else 'trust'
             if word not in ('none', 'finding', 'trust'):
                 word = 'trust'
             if word == 'none' and end.get('outcome') == 'GO':
                 with d.locked():
-                    n = 1 + sum(1 for x in d.rows() if x.get('kind') in ('claim', 'noop') and x.get('pr') == pr and x.get('head') == head)
+                    rows = d.rows()
+                    if d.has_run(pr, head, rows):
+                        continue
+                    n = 1 + sum(1 for x in rows if x.get('kind') in ('claim', 'noop') and x.get('pr') == pr and str(x.get('head'))[:7] == head[:7])
                     d.append({'schema': 1, 'kind': 'noop', 'run': '%d-%s-%d' % (pr, head[:7], n), 'pr': pr, 'head': head,
                               'judged_head': c['head'], 'delta': 'none', 'at': iso_local(now())})
                 print('NOOP %d %s none' % (pr, head))
@@ -532,10 +560,10 @@ def cmd_claim(o):
     if not isinstance(spec, dict):
         die('the spec must be a JSON object')
     qid, pr, head = spec.get('qid'), spec.get('pr'), spec.get('head')
-    if not isinstance(qid, str) or not re.fullmatch(r'dsk[0-9]+[a-z]', qid):
-        die('the spec qid %r must be dsk<pr><letter>, the judge desk\'s prefix' % (qid,))
     if not isinstance(pr, int) or not isinstance(head, str) or not HEX40.fullmatch(head):
         die('the spec needs pr and a 40-hex head')
+    if not isinstance(qid, str) or not re.fullmatch(r'dsk%d[a-z]' % pr, qid):
+        die('the spec qid %r must be dsk<pr><letter> for PR %d, the judge desk\'s prefix' % (qid, pr))
     cls = spec.get('delta_class') or 'first'
     if cls not in ('first', 'trust', 'finding'):
         die('delta_class %r is not a class the desk judges (first, trust or finding)' % (cls,))
@@ -559,9 +587,11 @@ def cmd_claim(o):
         die('the brief names model %r but a %s judge is %s; nothing claimed' % (dispatch.get('model'), cls, want))
     with d.locked():
         rows = d.rows()
+        if os.path.exists(d.stop_file):
+            die('STOP is present; nothing claimed')
         if d.has_run(pr, head, rows):
             die('PR %d at %s already has a desk run; nothing claimed' % (pr, head))
-        n = 1 + sum(1 for x in rows if x.get('kind') in ('claim', 'noop') and x.get('pr') == pr and x.get('head') == head)
+        n = 1 + sum(1 for x in rows if x.get('kind') in ('claim', 'noop') and x.get('pr') == pr and str(x.get('head'))[:7] == head[:7])
         run = '%d-%s-%d' % (pr, head[:7], n)
         rdir = os.path.join(o.bucket, RUNS_DIR, run)
         os.makedirs(rdir, exist_ok=True)
@@ -629,10 +659,7 @@ def cmd_record(o):
     else:
         rest = '\n'.join(reply.strip().splitlines()[1:]).strip('\n')
         body = '## Verdict\n\n**%s** for head `%s`.\n\npr: %d\n\n%s\n' % (outcome, head, pr, rest)
-    os.makedirs(rdir, exist_ok=True)
     rpath = os.path.join(rdir, 'reply.md')
-    with open(rpath, 'w', encoding='utf-8') as f:
-        f.write(body)
     facts = judge_facts(tr)
     verdict_at = None
     if tr.reply_ts:
@@ -641,12 +668,20 @@ def cmd_record(o):
         except ValueError:
             pass
     row = {'schema': 1, 'kind': 'end', 'run': run, 'outcome': outcome, 'agent': o.agent, 'reply': rpath,
-           'reply_sha256': sha256_file(rpath), 'verdict_at': verdict_at, 'write_attempted': facts['attempted'],
-           'write_refused': True if facts['refused'] else None, 'prompt_matches': prompt_matches,
-           'cost_eq': cost_eq(tpath), 'late': late}
+           'reply_sha256': hashlib.sha256(body.encode('utf-8')).hexdigest(), 'verdict_at': verdict_at,
+           'write_attempted': facts['attempted'], 'write_refused': True if facts['refused'] else None,
+           'prompt_matches': prompt_matches, 'cost_eq': cost_eq(tpath), 'late': late}
     if facts['other_writes']:
         row['other_writes'] = facts['other_writes']
     with d.locked():
+        state = d.state(run, d.rows())
+        if state == 'done':
+            print('BLOCKED run %s already ended' % run)
+            return 3
+        row['late'] = state == 'lost'
+        os.makedirs(rdir, exist_ok=True)
+        with open(rpath, 'w', encoding='utf-8') as f:
+            f.write(body)
         d.append(row)
     if facts['stops']:
         return trip(d, tpath, facts['stops'][0])
@@ -667,6 +702,8 @@ def cmd_draft_go(o):
     d = Desk(o)
     if len(o.rest) != 1:
         die('draft-go takes <run>', 2)
+    if os.path.exists(d.stop_file):
+        die('STOP is present; nothing drafted')
     run = o.rest[0]
     rows = d.rows()
     claim = next((c for c in d.claims(rows) if c.get('run') == run), None)
@@ -709,6 +746,8 @@ def cmd_wait(o):
         die('wait takes no positional argument', 2)
     if not o.chief:
         die('wait needs --chief (the one recipient the desk may message)', 2)
+    if not o.since:
+        die('wait needs --since (the desk start)', 2)
     start = time.monotonic()
     while True:
         d.expire_leases()
@@ -718,23 +757,27 @@ def cmd_wait(o):
         hit = stop_checks(d)
         if hit:
             return trip(d, hit[0], hit[1])
-        if o.since:
-            subprocess.run(['bash', os.path.join(HERE, 'judge-queue.sh'), 'scan', '--bucket', o.bucket, '--since', o.since],
-                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+        scan = run_cmd(['bash', os.path.join(HERE, 'judge-queue.sh'), 'scan', '--bucket', o.bucket, '--since', o.since])
+        for line in scan.stdout.splitlines():
+            if line.startswith('QUEUE?'):
+                print(line, file=sys.stderr)
+        if scan.returncode != 0:
+            print('judge-desk: judge-queue.sh scan failed (rc %d): %s' % (scan.returncode, scan.stderr.strip()), file=sys.stderr)
         rows = d.rows()
         if any(not d.has_run(r.get('pr'), r.get('head'), rows) for r in d.requests()):
             print('REQUEST')
             return 0
-        open_n = len(d.open_claims(rows))
+        open_n = len([c for c in d.open_claims(rows) if c.get('desk_session') == o.session])
         if open_n:
             live = live_count(d)
             if live is not None and live < open_n:
                 print('ENDED')
                 return 0
-        if time.monotonic() - start >= o.max_wait:
+        remaining = o.max_wait - (time.monotonic() - start)
+        if remaining <= 0:
             print('TIMEOUT')
             return 0
-        time.sleep(o.tick)
+        time.sleep(min(o.tick, remaining))
 
 
 COMMANDS = {'wait': cmd_wait, 'next': cmd_next, 'claim': cmd_claim, 'record': cmd_record, 'draft-go': cmd_draft_go}
