@@ -72,6 +72,7 @@ export NEXT_DISPATCH_JIRA_CLI="$WORK/stub-jira/index.js"
 # empty, pool.fail makes the call fail with no output.
 cat > "$STUB/dispatch.sh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s %s\n' "${NEXT_DISPATCH_DEADLINE:-unset}" "$*" >> "$STUB/deadlines"
 case " $* " in
     *" --priority-pool-only "*)
         echo x >> "$STUB/calls"
@@ -726,11 +727,158 @@ mkdir -p "$WORK/t7b-quota"
 printf '#!/usr/bin/env bash\ncase "$*" in *rateLimit* | "api -i user"*) printf "HTTP/2.0 403 Forbidden\\r\\nX-Ratelimit-Remaining: 0\\r\\n\\r\\n"; exit 1 ;; esac\nexit 0\n' > "$WORK/gh-out"
 chmod +x "$WORK/gh-out"
 I="$(new_inbox t7b-real)"
-CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-out" HIMMEL_QUOTA_DIR="$WORK/t7b-quota" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 \
-    timeout 10 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/t7b-real.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(T7b) the real dispatcher paused on quota gives no underfill wake (rc 124)" "124" "$rc"
+CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-out" HIMMEL_QUOTA_DIR="$WORK/t7b-quota" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=300 \
+    timeout 30 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/t7b-real.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(T7b) the real dispatcher paused on quota wakes with stale rows (rc 0)" "0" "$rc"
+check "(T7b) the wake names the stale rows" "1" "$(grep -c '^WAKE underfilled capacity=UNDERFILLED:7 stale-gh rows=[1-9][0-9]* prs=none keys=' "$WORK/t7b-real.out")"
+check "(T7b) with exit reason wake-pool-ghpaused" "1" "$(grep -c 'exit=wake-pool-ghpaused$' "$I.wait")"
 check "(T7b) and no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
 check "(T7b) the real dispatcher's pause is read as paused" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
+I="$(new_inbox t7b-real-off)"
+NEXT_DISPATCH_STALE_BUDGET=0 CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-out" HIMMEL_QUOTA_DIR="$WORK/t7b-quota" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=300 \
+    timeout 10 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/t7b-real-off.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(t7b-real-off) with no stale pass the paused pool wakes nothing (rc 124)" "124" "$rc"
+check "(t7b-real-off) and is read as paused" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
+
+st_line='# gh-stall GH-STALL github read timed out after 80s token=main caller=next-dispatchable nothing-was-judged'
+st_paused() {
+    local k
+    {
+        printf '%s\n# stale-gh rows=%d skipped=open-prs,merged-prs,merge-rows,classify,resume,live-blockers prs=none\n' "$st_line" "$#"
+        for k in "$@"; do printf 'LOCAL?\tHIMMEL-%s\tMedium\tv1\tt\tfiles=a.sh\tstale-gh\n' "$k"; done
+    } > "$STUB/pool.paused"
+}
+st_arm() {
+    CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC="$4" arm "$1" "$WORK/$2.out" "$3"
+}
+st_old=$(( $(date +%s) - 2000 ))
+rm -f "$STUB/pool.rows"
+st_paused 9001 9002 9003
+I="$(new_inbox stale-wake)"
+st_arm "$I" stale-wake 15 300
+check "(stale-wake) an underfilled first sample with stale rows wakes (rc 0)" "0" "$rc"
+check "(stale-wake) the wake line" "WAKE underfilled capacity=UNDERFILLED:7 stale-gh rows=3 prs=none keys=HIMMEL-9001,HIMMEL-9002,HIMMEL-9003" "$(sed -n 1p "$WORK/stale-wake.out")"
+check "(stale-wake) the block lists the three rows" "3" "$(grep -c 'stale-gh$' "$WORK/stale-wake.out")"
+check "(stale-wake) no pool-unresolved wake and no dispatchable count" "0" "$(grep -cE '^WAKE pool-unresolved|dispatchable=' "$WORK/stale-wake.out")"
+check "(stale-exit) the exit reason is wake-pool-ghpaused" "1" "$(grep -c 'exit=wake-pool-ghpaused$' "$I.wait")"
+check "(stale-nomarker) no underfill marker" "no" "$([ -e "$I.wait.underfill" ] && echo yes || echo no)"
+check "(stale-nomarker) the pool-paused file reads exactly pool=paused" "pool=paused" "$(cat "$I.wait.poolpaused" 2>/dev/null)"
+st_c0="$(calls)"
+st_arm "$I" stale-once 4 300
+check "(stale-once) the same stale set does not wake again (rc 124)" "124" "$rc"
+check "(stale-once) read from the rows file, with no new probe" "$st_c0" "$(calls)"
+st_paused 9001 9002
+st_arm "$I" stale-shrink 4 0
+check "(stale-shrink) a shrunk set does not wake (rc 124)" "124" "$rc"
+st_paused 9001 9002 9004
+st_arm "$I" stale-grow 15 0
+check "(stale-shrink) a new key wakes" "0" "$rc"
+printf '%s\n' "$st_line" > "$STUB/pool.paused"
+st_arm "$I" stale-drop 4 0
+check "(stale-drop) a pause with no stale line deletes the rows file" "no" "$([ -e "$I.wait.ghpausedrows" ] && echo yes || echo no)"
+check "(stale-drop) and does not wake (rc 124)" "124" "$rc"
+
+I="$(new_inbox stale-kill)"
+st_paused 9001
+cp "$STUB/pool.paused" "$I.wait.ghpausedrows"; cp "$STUB/pool.paused" "$WORK/stale-kill.rows"
+touch -d "@$st_old" "$I.wait.ghpausedrows"  # gnu-ok: Linux-only kit
+rm -f "$STUB/pool.paused"; : > "$STUB/pool.slow"
+CHIEF_WAIT_DISPATCH_TIMEOUT=1 st_arm "$I" stale-kill 5 0
+rm -f "$STUB/pool.slow"
+check "(stale-kill-keeps) an outer kill keeps the rows file byte for byte" same "$(cmp -s "$I.wait.ghpausedrows" "$WORK/stale-kill.rows" && echo same || echo changed)"
+check "(stale-kill-keeps) and a rows file past the window does not wake (rc 124)" "124" "$rc"
+
+I="$(new_inbox stale-old)"
+st_paused 9001
+cp "$STUB/pool.paused" "$I.wait.ghpausedrows"; printf 'pool=paused\n' > "$I.wait.poolpaused"
+touch -d "@$st_old" "$I.wait.ghpausedrows"  # gnu-ok: Linux-only kit
+st_arm "$I" stale-old 4 300
+check "(stale-old-rows) a rows file older than the window wakes nothing (rc 124)" "124" "$rc"
+check "(stale-old-rows) and records no woken set" "no" "$([ -e "$I.wait.ghpausedwake" ] && echo yes || echo no)"
+touch "$I.wait.ghpausedrows" "$I.wait.poolpaused"
+st_arm "$I" stale-old-ctl 15 300
+check "(stale-old-rows) control: the same file, fresh, wakes (rc 0)" "0" "$rc"
+
+I="$(new_inbox stale-repool)"
+st_paused 9001 9002 9003
+printf 'HIMMEL-9001\n' > "$I.wait.underfill"; touch -d "@$st_old" "$I.wait.underfill"  # gnu-ok: Linux-only kit
+st_arm "$I" stale-repool 15 300
+check "(stale-repool) a paused repool probe with stale rows wakes (rc 0)" "0" "$rc"
+check "(stale-repool) with the stale line" "1" "$(grep -c '^WAKE underfilled capacity=UNDERFILLED:7 stale-gh rows=3 prs=none ' "$WORK/stale-repool.out")"
+check "(stale-repool) the underfill marker keeps its age" "$st_old" "$(stat -c %Y "$I.wait.underfill" 2>/dev/null)"  # gnu-ok: Linux-only kit
+check "(stale-repool) and its key set" "HIMMEL-9001" "$(sed -n 1p "$I.wait.underfill" 2>/dev/null)"
+
+I="$(new_inbox stale-good)"
+st_paused 9001
+st_arm "$I" stale-good1 15 300
+rm -f "$STUB/pool.paused"
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=0 run_to_wake "$WORK/stale-good2.out" /dev/null "$I" --workers N1.md
+check "(stale-good) after a stale wake the next good reading wakes" "0:1" "$rc:$(wakes "$WORK/stale-good2.out")"
+check "(stale-good) and removes the rows and woken-set files" "no no" "$([ -e "$I.wait.ghpausedrows" ] && echo yes || echo no) $([ -e "$I.wait.ghpausedwake" ] && echo yes || echo no)"
+rm -f "$STUB/pool.rows"
+
+st_paused 9001
+sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/tick.line.ok"
+cp "$STUB/tick.line" "$STUB/tick.line.saved"; cp "$STUB/tick.line.ok" "$STUB/tick.line"
+I="$(new_inbox stale-watch)"
+: > "$I.wait.pool"; touch -d "@$st_old" "$I.wait.pool"  # gnu-ok: Linux-only kit
+st_arm "$I" stale-watch 4 300
+check "(stale-watch) a stale pause on a full fleet stays quiet (rc 124)" "124" "$rc"
+cp "$STUB/tick.line.saved" "$STUB/tick.line"
+rm -f "$STUB/pool.paused" "$STUB/tick.line.ok" "$STUB/tick.line.saved"
+
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+st_deadline() { grep -- '--priority-pool-only' "$STUB/deadlines" 2>/dev/null | head -n 1 | cut -d' ' -f1; }
+st_first() {
+    local name="$1"; shift
+    : > "$STUB/deadlines"
+    I="$(new_inbox "$name")"
+    env "$@" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1  # gnu-ok: Linux-only kit
+    st_deadline
+}
+check "(stale-deadline-env) a first sample passes 400" "400" "$(st_first dl-first)"
+check "(stale-deadline-env) the second pass gets none" "unset" "$(grep -v -- '--priority-pool-only' "$STUB/deadlines" | head -n 1 | cut -d' ' -f1)"
+check "(stale-deadline-env) a smaller environment value wins" "10" "$(st_first dl-ten NEXT_DISPATCH_DEADLINE=10)"
+check "(stale-deadline-env) a zero in the environment is ignored" "400" "$(st_first dl-zero NEXT_DISPATCH_DEADLINE=0)"
+st_repool() {
+    : > "$STUB/deadlines"
+    I="$(new_inbox "$1")"
+    printf 'HIMMEL-9999\n' > "$I.wait.underfill"; touch -d "@$st_old" "$I.wait.underfill"  # gnu-ok: Linux-only kit
+    CHIEF_WAIT_REPOOL_TIMEOUT="$2" CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh" CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 timeout 15 bash "$WAIT" "$I" --workers N1.md > /dev/null 2>&1  # gnu-ok: Linux-only kit
+    st_deadline
+}
+check "(stale-deadline-env) a repool probe passes 100" "100" "$(st_repool dl-repool 120)"
+check "(stale-deadline-env) a one-second repool bound passes 1, never 0" "1" "$(st_repool dl-one 1)"
+check "(stale-deadline-env) an unbounded probe (bound 0) passes none" "unset" "$(st_repool dl-nobound 0)"
+rm -f "$STUB/pool.rows" "$STUB/deadlines"
+
+st_tag="cwf$$"
+cat > "$WORK/gh-files-stall" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in *rateLimit* | "api -i user"*) printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4000\r\n\r\n{}\n'; exit 0 ;; esac
+case "$*" in
+    */files*) exec -a "cw-files-$CW_TAG" sleep 60 ;;
+    *merged*) ;;
+    *headRefName*) printf '4601\tfix(x): an open change\tfix/q-open\n' ;;
+    "pr list"*) echo 4601 ;;
+esac
+exit 0
+EOF
+chmod +x "$WORK/gh-files-stall"
+mkdir -p "$WORK/stale-real-quota"
+I="$(new_inbox stale-repool-real)"
+printf 'HIMMEL-9999\n' > "$I.wait.underfill"; touch -d "@$st_old" "$I.wait.underfill"  # gnu-ok: Linux-only kit
+st_t0=$(date +%s)
+CW_TAG="$st_tag" CHIEF_WAIT_DISPATCH="$HERE/next-dispatchable.sh" NEXT_DISPATCH_GH_CMD="$WORK/gh-files-stall" HIMMEL_QUOTA_DIR="$WORK/stale-real-quota" \
+    CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1800 CHIEF_WAIT_PAUSED_REPROBE_SEC=300 CHIEF_WAIT_REPOOL_TIMEOUT=30 \
+    timeout 40 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet.json" > "$WORK/stale-repool-real.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+st_secs=$(( $(date +%s) - st_t0 ))
+check "(stale-repool-real) the waiter wakes (rc 0)" "0" "$rc"
+check "(stale-repool-real) with the stale line" "1" "$(grep -c '^WAKE underfilled capacity=UNDERFILLED:7 stale-gh rows=[1-9]' "$WORK/stale-repool-real.out")"
+check "(stale-repool-real) inside the repool bound (${st_secs}s)" yes "$([ "$st_secs" -le 30 ] && echo yes)"
+check "(stale-repool-real) the rows file holds the dispatcher's rows" yes "$(grep -q 'HIMMEL-.*stale-gh$' "$I.wait.ghpausedrows" 2>/dev/null && echo yes)"
+pkill -f "cw-files-$st_tag" 2>/dev/null
 
 # --- (lp) the plain current-version rows are pool rows: 2 labelled heads and 5 plain tickets fill 7 of 7 ----
 M="$WORK/mirror-lp/HIMMEL"; mkdir -p "$M"
