@@ -555,6 +555,8 @@ push_change_11() {
     git -C "$pusher11" push --quiet origin "HEAD:$defbranch11"
 }
 fake_home_11="$TMP/fake-home-test11"; mkdir -p "$fake_home_11/.himmel/state" "$TMP/lm11"
+mkdir -p "$fake_home_11/.local/share/himmel"
+ln -s "$CHECKOUT_DIR/marketplace/plugins/luna-mcp" "$fake_home_11/.local/share/himmel/luna-mcp"
 claude_ok_11="$TMP/claude-ok-test11"; make_claude_stub "$claude_ok_11" 0
 bin_11="$TMP/bin-test11"; mkdir -p "$bin_11"
 cat > "$bin_11/npm" <<'STUB'
@@ -595,14 +597,20 @@ run_11 yes 0
 assert_contains "luna_mcp lockfile change: builds" "luna-mcp|run build" "$calls_11"
 assert_contains "luna_mcp lockfile change: try-restarts" "try-restart luna-mcp.service" "$calls_11"
 
+push_change_11 marketplace/plugins/luna-mcp/tsconfig.json
+run_11 yes 0
+assert_contains "luna_mcp tsconfig change: builds" "luna-mcp|run build" "$calls_11"
+
 push_change_11 marketplace/plugins/luna-mcp/README.md
 run_11 yes 0
 assert_eq "luna_mcp README-only change: runs neither build nor restart" "" "$calls_11"
+assert_contains "luna_mcp README-only change: the pull landed" "pull  *updated" "$out_11"
 assert_not_contains "luna_mcp README-only change: no row" "luna_mcp  " "$out_11"
 
 push_change_11 docs/unrelated.md
 run_11 yes 0
 assert_eq "luna_mcp negative control (no luna-mcp change): runs neither build nor restart" "" "$calls_11"
+assert_contains "luna_mcp negative control: the pull landed" "pull  *updated" "$out_11"
 assert_not_contains "luna_mcp negative control: no row" "luna_mcp  " "$out_11"
 
 push_change_11 marketplace/plugins/luna-mcp/src/server.ts
@@ -618,6 +626,15 @@ assert_eq "luna_mcp failed build: the update still exits 0 (advisory step)" "0" 
 assert_contains "luna_mcp failed build: the build ran" "luna-mcp|run build" "$calls_11"
 assert_not_contains "luna_mcp failed build: never restarts" "try-restart" "$calls_11"
 assert_contains "luna_mcp failed build: the row says failed" "luna_mcp  *failed  *build failed" "$out_11"
+
+rm "$fake_home_11/.local/share/himmel/luna-mcp"
+mkdir -p "$TMP/elsewhere-11" && ln -s "$TMP/elsewhere-11" "$fake_home_11/.local/share/himmel/luna-mcp"
+push_change_11 marketplace/plugins/luna-mcp/src/server.ts
+run_11 yes 0
+assert_eq "luna_mcp unit serves another checkout: rc 0" "0" "$rc_11"
+assert_contains "luna_mcp unit serves another checkout: skip row" "luna_mcp  *skipped  .*not this checkout" "$out_11"
+assert_not_contains "luna_mcp unit serves another checkout: does not build" "run build" "$calls_11"
+assert_not_contains "luna_mcp unit serves another checkout: does not restart" "try-restart" "$calls_11"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

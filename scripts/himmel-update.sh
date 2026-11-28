@@ -1980,17 +1980,18 @@ update_config_ui() {
 }
 
 update_luna_mcp() {
-    local dir="$ROOT/marketplace/plugins/luna-mcp" unit="luna-mcp.service" from to changed="" log
+    local dir="$ROOT/marketplace/plugins/luna-mcp" unit="luna-mcp.service" from to changed="" log served
     [ -f "$dir/package.json" ] || return 0
     from="${PULL_HEAD_BEFORE:-}"
     to=$(git rev-parse HEAD 2>/dev/null) || to=""
     { [ -n "$from" ] && [ -n "$to" ] && [ "$from" != "$to" ]; } || return 0
-    changed=$(git diff --name-only "$from" "$to" -- marketplace/plugins/luna-mcp/src marketplace/plugins/luna-mcp/package.json marketplace/plugins/luna-mcp/package-lock.json 2>/dev/null) || changed=""
+    changed=$(git diff --name-only "$from" "$to" -- marketplace/plugins/luna-mcp/src marketplace/plugins/luna-mcp/package.json marketplace/plugins/luna-mcp/package-lock.json marketplace/plugins/luna-mcp/tsconfig.json 2>/dev/null) || changed=""
     [ -n "$changed" ] || return 0
     echo ""
     echo "==> luna-mcp rebuild (marketplace/plugins/luna-mcp/dist)"
-    if [ "$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null)" != "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
-        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="run from a linked worktree — $unit serves the primary checkout, so nothing was rebuilt; run the update there"
+    served=$(cd "$HOME/.local/share/himmel/luna-mcp" 2>/dev/null && pwd -P) || served=""
+    if [ "$served" != "$(cd "$dir" && pwd -P)" ]; then
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="$unit runs ~/.local/share/himmel/luna-mcp (${served:-absent}), not this checkout — nothing rebuilt or restarted"
         return 0
     fi
     if ! command -v systemctl >/dev/null 2>&1; then
@@ -1998,7 +1999,7 @@ update_luna_mcp() {
         return 0
     fi
     if ! systemctl --user cat "$unit" >/dev/null 2>&1; then
-        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="$unit is not installed — nothing rebuilt or restarted"
+        STATUS_luna_mcp="skipped"; DETAIL_luna_mcp="$unit is not installed (or the user bus did not answer) — nothing rebuilt or restarted"
         return 0
     fi
     if ! command -v npm >/dev/null 2>&1; then
