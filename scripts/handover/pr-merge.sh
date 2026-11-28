@@ -31,6 +31,12 @@
 #      build statuses on the head); also one operator DM (deduped per repo/PR/head)
 #   7  cannot read the PR head, so the merge cannot be bound to the vetted
 #      commit — refuses rather than merge unbound (both forges)
+#   8  a merge-gate library (review-merge-gate.sh or ci-green-gate.sh) cannot
+#      load, so a check would not run — refuses rather than merge unchecked (GitHub)
+#   9  the CR or CI gate could not reach a verdict (selector unresolved, or a
+#      "degraded" lookup note) — refuses rather than merge on an unknown state
+#      (GitHub); one operator DM. An explicit CR_MERGE_GATE_OK / CI_MERGE_GATE_OK
+#      bypass, a no_code_review profile and a check-less PR are exemptions, not unknowns.
 #
 # Environment overrides:
 #   FORGE / GH_CMD / BITBUCKET_CMD   Forge-seam overrides. The PR
@@ -75,6 +81,40 @@ _pm_alert() {
     local nwo
     nwo=$(git remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://[^/]+/)##; s#\.git$##') || nwo=""
     merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${vetted_head:-}" "$@"
+}
+
+_pm_require_gate() {
+    local lib="$SCRIPT_DIR/../lib/$1"
+    # shellcheck disable=SC1090
+    if ! ( [ -r "$lib" ] && . "$lib" && declare -F "$2" >/dev/null ) >/dev/null 2>&1; then
+        echo "ERR pr-merge: the $3 gate library $1 cannot load — refusing to merge without the $3 check." >&2
+        _pm_alert "$3 gate library $1 cannot load"
+        exit 8
+    fi
+    # shellcheck disable=SC1090
+    . "$lib"
+}
+
+_PM_GATE_VERDICT="" _PM_GATE_REASON=""
+_pm_run_gate() {
+    local label="$1" fn="$2" pr="$3" bypass="$4" errf rc=0 note unknown=""
+    errf=$(mktemp "${TMPDIR:-/tmp}/pr-merge-gate.XXXXXX") || exit 1
+    _PM_GATE_REASON=$("$fn" "$pr" 2>"$errf") || rc=$?
+    note=$(cat "$errf")
+    rm -f "$errf"
+    [ -z "$note" ] || printf '%s\n' "$note" >&2
+    if [ "$rc" = "2" ]; then _PM_GATE_VERDICT=refuse; return 0; fi
+    if [ "$rc" != "0" ]; then
+        unknown="gate returned $rc (the PR selector did not resolve or the gate failed)"
+    else
+        unknown=$(printf '%s\n' "$note" | awk '/degraded \(/ && !/\(checkless PR\?\)/ { print; exit }')
+    fi
+    if [ -n "$unknown" ]; then
+        echo "pr-merge: $label gate verdict unknown — $unknown. Refusing to merge on an unknown $label state; verify by hand, then set $bypass=1 in the launching shell for one run." >&2
+        _pm_alert "$label gate verdict unknown: $unknown"
+        exit 9
+    fi
+    _PM_GATE_VERDICT=pass
 }
 
 # GH_ADMIN_MERGE_OK is consumed by the github backend (gh_forge_pr_merge) — it
@@ -211,33 +251,19 @@ if [ "$forge" = "github" ]; then
         exit 7
     fi
 
-    # shellcheck disable=SC1091
-    if . "$SCRIPT_DIR/../lib/review-merge-gate.sh" 2>/dev/null; then
-        _gate_reason=""
-        _gate_rc=0
-        _gate_reason=$(cr_merge_gate "$pr_num") || _gate_rc=$?
-        if [ "$_gate_rc" = "2" ]; then
-            echo "pr-merge: CR gate: $_gate_reason" >&2
-            exit 5
-        fi
+    _pm_require_gate review-merge-gate.sh cr_merge_gate CR
+    _pm_require_gate ci-green-gate.sh ci_green_gate CI
+
+    _pm_run_gate CR cr_merge_gate "$pr_num" CR_MERGE_GATE_OK
+    if [ "$_PM_GATE_VERDICT" = "refuse" ]; then
+        echo "pr-merge: CR gate: $_PM_GATE_REASON" >&2
+        exit 5
     fi
-    # CI-green gate, same predicate as the PreToolUse hook's
-    # second gate, so machines without the plugin hook still require green CI
-    # on this path. Runs AFTER the CR gate (exit 5) and before the
-    # mergeability check; a CI-blocked merge fails fast (exit 6). pr-merge passes
-    # only the PR number (no --repo): a selector that fails to resolve is a
-    # plain fail-open rc=3 here — no cwd-branch re-anchor (this path already
-    # knows its PR via forge_pr_find_open).
-    # shellcheck disable=SC1091
-    if . "$SCRIPT_DIR/../lib/ci-green-gate.sh" 2>/dev/null; then
-        _ci_reason=""
-        _ci_rc=0
-        _ci_reason=$(ci_green_gate "$pr_num") || _ci_rc=$?
-        if [ "$_ci_rc" = "2" ]; then
-            echo "pr-merge: CI gate: $_ci_reason" >&2
-            _pm_alert "CI gate blocks the merge: $_ci_reason"
-            exit 6
-        fi
+    _pm_run_gate CI ci_green_gate "$pr_num" CI_MERGE_GATE_OK
+    if [ "$_PM_GATE_VERDICT" = "refuse" ]; then
+        echo "pr-merge: CI gate: $_PM_GATE_REASON" >&2
+        _pm_alert "CI gate blocks the merge: $_PM_GATE_REASON"
+        exit 6
     fi
 elif [ "$forge" = "bitbucket" ]; then
     vetted_head=$(forge_change_view "$pr_num" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(String(JSON.parse(s).head||""))})') || vetted_head=""
