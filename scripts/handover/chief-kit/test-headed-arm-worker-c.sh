@@ -791,10 +791,10 @@ rm -f "$tmp/env48-out"
 check "48s shim: WORKER_SESSION_CODE_MODE=1 sets the Code Mode var, drops the inherited entrypoint, argv unchanged" \
   "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=1 entry=unset"
 rm -f "$tmp/env48-out"
-(unset WORKER_SESSION_REMOTE_CONTROL WORKER_SESSION_CODE_MODE CLAUDE_CODE_EXPERIMENTAL_CODE_MODE; CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
+(unset WORKER_SESSION_REMOTE_CONTROL WORKER_SESSION_CODE_MODE; CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
   WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
   bash "$SHIM" --model claude-sonnet-5 "load doc") || true
-check "48t shim: WORKER_SESSION_CODE_MODE unset -> no Code Mode var, entrypoint untouched" \
+check "48t shim: WORKER_SESSION_CODE_MODE unset -> an inherited Code Mode var is dropped, entrypoint untouched" \
   "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=unset entry=sdk-ts"
 rm -f "$tmp/env48-out"; rc=0
 WORKER_SESSION_CODE_MODE=1 WORKER_SESSION_REMOTE_CONTROL=PROJ-9999-leg WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
@@ -813,12 +813,14 @@ check "48w dry-run --code-mode native --profile: exit 0" "$rc" "0"
 contains "48w dry-run --code-mode: reports code-mode=1" "$out" "code-mode=1"
 not_contains "48w dry-run --code-mode: no Remote Control" "$out" "remote-control="
 rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "48x dry-run without --code-mode: exit 0" "$rc" "0"
 not_contains "48x dry-run without --code-mode: no code-mode= (off by default)" "$out" "code-mode="
 for args48 in "--no-profile" "--lane claudex --profile worker-impl" "--headless --profile worker-impl" "--relay"; do
   rc=0
   # shellcheck disable=SC2086 # args48 is a deliberate word list
-  bash "$SCRIPT" --dry-run --code-mode $args48 PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log >/dev/null 2>&1 || rc=$?
+  out="$(bash "$SCRIPT" --dry-run --code-mode $args48 PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
   check "48y dry-run --code-mode $args48: refused (exit 2)" "$rc" "2"
+  contains "48y dry-run --code-mode $args48: refused by the Code Mode guard" "$out" "refusing --code-mode"
 done
 d48cm="$tmp/c48cm"; mk_launch_stubs "$d48cm" "PROJ-8320-cm"; mkdir -p "$tmp/repo48cm"
 rc=0

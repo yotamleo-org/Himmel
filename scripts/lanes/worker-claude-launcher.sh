@@ -311,6 +311,8 @@ if [ "${WORKER_SESSION_CODE_MODE:-}" = 1 ]; then
     esac
     export CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1
     unset -v CLAUDE_CODE_ENTRYPOINT
+else
+    unset -v CLAUDE_CODE_EXPERIMENTAL_CODE_MODE
 fi
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")
