@@ -171,6 +171,11 @@ mv "$F/wrapped2.md" "$F/wrapped.md"
     '' 'RED: `test-launch-guard-p-adopted.sh`: adopted mode passes.' '' 'Done:' '- the RED passes.' ''
   printf '%s\n' '## S3: the station items' '' 'Depends on: S2.' '' 'Writes:' '- the readers found by step 1' '- `adopt.sh`' '' \
     'RED: `test-station-items.sh`: the items move.' '' 'Done:' '- the RED passes.' ''; } > "$F/writes-shapes.md"
+{ header 1 1
+  slice S1 'the list' 'none.' 'scripts/himmelctl/lib/state.js' 'test-himmelctl-projects.sh'
+  printf '%s\n' '## S2: the adopted chain' '' 'Interfaces:' '' '```text' 'Depends on: S9.' 'Writes:' '- `scripts/lib/fenced-example.sh`' \
+    'RED: `test-fenced.sh`' '```' '' 'Depends on: S1.' '' 'Writes:' '- `scripts/lib/launch-guard-p.mjs` (adopted mode)' '' \
+    'RED: `test-launch-guard-p-adopted.sh`: adopted mode passes.' '' 'Done:' '- the RED passes.' ''; } > "$F/fenced.md"
 
 row r1; run "$F/base.md" --parent "$P"
 check "R1 the dry run exits 0" 0 "$RC"
@@ -339,7 +344,11 @@ has "R14 the first id links" "$c3" '"--blocked-by","HIMMEL-9001"'
 has "R14 the id on the continuation links" "$(nth link 1)" '"link","HIMMEL-9003","--blocked-by","HIMMEL-9002"'
 check "R14 S3 gets one link only" 1 "$(calls link)"
 lacks "R14 text after the first sentence is never linked" "$(cat "$R/argv.log")" 'HIMMEL-1"'
-has "R14 an if-it-exists id with no heading is dropped and noted" "$OUT" 'S3b'
+has "R14 an if-it-exists id with no heading is dropped and noted" "$OUT" 'NOTE S3: dropped S3b'
+row r14c; run "$F/fenced.md" --parent "$P"
+check "R14 a field line inside a fenced block is body, not a field" 0 "$RC"
+check "R14 the fenced Writes path never reaches the Writes line" 'Writes: scripts/lib/launch-guard-p.mjs' "$(body S2 | grep '^Writes:')"
+has "R14 the fenced Depends on never becomes a link" "$(body S2)" 'Edges: S1 (not filed yet) blocks S2 (hard)'
 row r14b; run "$F/tbd-dep.md" --parent "$P"
 check "R14 Depends on: TBD exits 1" 1 "$RC"; has "R14 Depends on: TBD is refused" "$OUT" 'REFUSED S2: Depends on names no slice'
 

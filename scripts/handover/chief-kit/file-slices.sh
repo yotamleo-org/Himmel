@@ -140,12 +140,12 @@ for k in range(start, len(lines)):
         if fm and fm.group(1)[0] == fence[0] and len(fm.group(1)) >= len(fence) and not line.strip()[len(fm.group(1)):].strip():
             fence = None
         if cur is not None:
-            cur['lines'].append(line)
+            cur['lines'].append('')
         continue
     if fm:
         fence = fm.group(1)
         if cur is not None:
-            cur['lines'].append(line)
+            cur['lines'].append('')
         continue
     if re.match(r'^#{1,2}\s', line):
         cur = None
