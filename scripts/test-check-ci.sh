@@ -287,10 +287,18 @@ if [ "$cmd" = "api" ]; then
                 json:*) printf '%s' "${GH_STUB_CLASSIC#json:}" | jq -r "$(_jq_arg "$@")" ;;
             esac
             exit 0 ;;
-        repos/octo/demo/commits/sha1/check-runs*)
+        repos/octo/demo/commits/${GH_STUB_HEAD_SHA:-sha1}/check-runs*)
             # the producer read. Raw check-runs JSON through the real
             # --jq expression; "fail" is an unreadable read; anything else keeps the
             # old empty payload every pre-3385 caller sees.
+            # GH_STUB_PRODUCERS_SEQ=<dir>: read n returns <dir>/<n>.json, or the
+            # highest-numbered file once n passes it.
+            if [ -n "${GH_STUB_PRODUCERS_SEQ:-}" ]; then
+                _pn=$(cat "$(dirname "$0")/producers-seq-count" 2>/dev/null); _pn=$(( ${_pn:-0} + 1 ))
+                echo "$_pn" > "$(dirname "$0")/producers-seq-count"
+                while [ "$_pn" -gt 1 ] && [ ! -f "$GH_STUB_PRODUCERS_SEQ/$_pn.json" ]; do _pn=$((_pn - 1)); done
+                jq -r "$(_jq_arg "$@")" < "$GH_STUB_PRODUCERS_SEQ/$_pn.json"; exit $?
+            fi
             case "${GH_STUB_PRODUCERS:-none}" in
                 fail) echo "HTTP 500: check-runs boom" >&2; exit 1 ;;
                 # real `gh api --jq` propagates a jq error() as gh's own
@@ -300,7 +308,7 @@ if [ "$cmd" = "api" ]; then
                 *) echo '{"check_runs":[]}' ;;
             esac
             exit 0 ;;
-        repos/octo/demo/commits/sha1/status\?*)
+        repos/octo/demo/commits/${GH_STUB_HEAD_SHA:-sha1}/status\?*)
             # the combined-status read that names which contexts are
             # published as commit STATUSES. Raw combined-status JSON through the real
             # --jq expression; "fail" is an unreadable read; none = no status at all.
@@ -312,7 +320,7 @@ if [ "$cmd" = "api" ]; then
         # CodeRabbit's REAL shape: a commit STATUS on the head SHA, carrying
         # creator identity. The list endpoint is newest-first.
         # 136622811 = coderabbitai[bot].
-        repos/octo/demo/commits/sha1/statuses*)
+        repos/octo/demo/commits/${GH_STUB_HEAD_SHA:-sha1}/statuses*)
             case "$GH_STUB_MODE" in
                 cr-absent)      echo '[]' ;;
                 cr-pending)     echo '[{"context":"CodeRabbit","state":"pending","created_at":"2026-07-16T19:08:46Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
@@ -670,7 +678,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
             exit 0 ;;
         *"--json title"*) echo "${GH_STUB_TITLE:-}"; exit 0 ;;
         *url,reviewDecision,headRefOid,baseRefName*)
-            head=sha1
+            head=${GH_STUB_HEAD_SHA:-sha1}
             if [ "${GH_STUB_HEAD:-stable}" = moving ]; then
                 h=$(cat "$GH_STUB_HEADC" 2>/dev/null); h=${h:-0}
                 echo $((h+1)) > "$GH_STUB_HEADC"; head="sha$((h+1))"
@@ -699,7 +707,7 @@ if [ "$cmd" = "pr" ] && [ "${2:-}" = "view" ]; then
                 echo $((h+1)) > "$GH_STUB_HEADC"
                 echo "sha$((h+1))"
             else
-                echo "sha1"
+                echo "${GH_STUB_HEAD_SHA:-sha1}"
             fi
             exit 0 ;;
         *) echo "https://github.com/octo/demo/pull/42|${GH_STUB_DECISION:-null}"; exit 0 ;;
@@ -1021,6 +1029,7 @@ ACCESS_OVERRIDE="$STUBDIR/access.json"
 # CLEAN at the watched head, so every pre-3473 case keeps its verdict.
 MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
 BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""; CORE_OVERRIDE=""
+HEAD_SHA_OVERRIDE=""; PRODUCERS_SEQ_OVERRIDE=""
 
 # --- no real sleeping, and no unbounded case -------------------
 #
@@ -1085,6 +1094,7 @@ run() {
     : > "$STUBDIR/reqrows-count"
     : > "$STUBDIR/msc"
     : > "$STUBDIR/rules-reads"
+    : > "$STUBDIR/producers-seq-count"
     rm -f "$STUBDIR/watch-started" "$STUBDIR/watch-ran"
     # alert state resets per run unless a case sets KEEP_ALERT_STATE=1
     # (the dedupe case runs the SAME head twice and must see ONE alert).
@@ -1116,6 +1126,8 @@ run() {
         GH_STUB_RULES="$RULES_OVERRIDE" \
         GH_STUB_CLASSIC="$CLASSIC_OVERRIDE" \
         GH_STUB_PRODUCERS="$PRODUCERS_OVERRIDE" \
+        GH_STUB_PRODUCERS_SEQ="$PRODUCERS_SEQ_OVERRIDE" \
+        GH_STUB_HEAD_SHA="$HEAD_SHA_OVERRIDE" \
         GH_STUB_STATUSCTX="$STATUSCTX_OVERRIDE" \
         GH_STUB_CHECKS="$CHECKS_OVERRIDE" \
         GH_STUB_CHECKS_AFTER="$CHECKS_AFTER_OVERRIDE" \
@@ -1160,6 +1172,7 @@ run() {
     KEEP_ALERT_STATE=0; ALERT_FAIL_OVERRIDE=""; ACCESS_OVERRIDE="$STUBDIR/access.json"
     MERGE_STATE_OVERRIDE=CLEAN; MERGE_HEAD_OVERRIDE=sha1
     BUDGET_PREFLIGHT_OVERRIDE=0; RL_PROBE_OVERRIDE=""; RL_ONCE_OVERRIDE=""; QUOTA_OVERRIDE=""; CORE_OVERRIDE=""
+    HEAD_SHA_OVERRIDE=""; PRODUCERS_SEQ_OVERRIDE=""
 }
 
 run_in_repo() {
@@ -3061,8 +3074,8 @@ run cr-completed --grace 0
 assert_rc 0 "3391-d control: the right app's check run still satisfies the requirement"
 
 # --- 3434: only the LATEST check-run of a name is judged, not any run ---------
-# The check-runs REST list returns EVERY run ever created for the sha, including
-# ones a re-run or a close/reopen superseded. `_required_status` must judge only
+# The check-runs REST list can hold more than one run of a name (its default: see required-checks.sh).
+# `_required_status` must judge only
 # the most recent one of a (name, app id) — ordered by check-run id alone
 # (strictly creation-order monotonic; started_at is not used, see 3434-h) —
 # not "any run ever failed". PR #1079 hit this for real: three
@@ -3596,7 +3609,101 @@ unset GH_STUB_EXC_SLEEP
 if [ "$RC" -ne 2 ] || ! grep -qF "DEADLINE-PENDING" <<<"$ERR"; then pass "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row goes RED (rc=$RC, no DEADLINE-PENDING wait)"; else fail "T3.23-d mutation check: with --fail-fast kept, the T3.23-a pending row still passed"; fi
 if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending context is never certified green (rc=$RC)"; else fail "T3.23-d with --fail-fast kept, a pending context was certified green (rc 0)"; fi
 
+_11274_repo() {
+    local d
+    d=$(mktemp -d "$STUBDIR/repo11274.XXXXXX") || return 1
+    git -C "$d" init --quiet && git -C "$d" -c user.email=t@t -c user.name=t commit --allow-empty -m seed --quiet --no-verify || return 1
+    printf '%s' "$d"
+}
+_11274_author() { [ -f "$STUBDIR/alert-sentinels/octo_demo__42__$1.author" ] && echo present || echo absent; }
+_11274_set='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"lint","integration_id":15368},{"context":"shell-unit (ubuntu-latest)","integration_id":15368}]}}]'
+_11274_set_su='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"shell-unit (ubuntu-latest)","integration_id":15368}]}}]'
+_11274_lint_ok_su_red='{"check_runs":[{"name":"lint","status":"completed","conclusion":"success","app":{"id":15368},"id":1},{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"failure","app":{"id":15368},"id":2}]}'
+_11274_both_red='{"check_runs":[{"name":"lint","status":"completed","conclusion":"failure","app":{"id":15368},"id":1},{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"failure","app":{"id":15368},"id":2}]}'
+_11274_rows=$'pass:lint\nfail:shell-unit (ubuntu-latest)'
+_11274_rows_red=$'fail:lint\nfail:shell-unit (ubuntu-latest)'
+_11274_seq() {
+    mkdir -p "$1" && printf '%s' "$2" > "$1/1.json" && printf '%s' "$3" > "$1/2.json"
+}
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="$_11274_rows"; PRODUCERS_OVERRIDE="json:$_11274_lint_ok_su_red"
+run_in_repo "$_r" cr-completed --grace 0
+assert_rc 1 "11274-author-watch-ci exit 1"
+if [ "$(alert_count)" = 0 ]; then pass "11274-author-watch-ci no DM"; else fail "11274-author-watch-ci no DM" "count=$(alert_count)"; fi
+assert_err_has "your own PR's watch: not sent" "11274-author-watch-ci stderr says not sent"
+assert_err_lacks "11274-author-watch-ci stderr has no --red" "stderr carries --red" -F -- "--red"
+if [ "$(_11274_author "$_h")" = present ]; then pass "11274-author-watch-ci .author record"; else fail "11274-author-watch-ci .author record" "absent"; fi
+
+RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="$_11274_rows"; PRODUCERS_OVERRIDE="json:$_11274_lint_ok_su_red"
+run cr-completed --grace 0
+assert_rc 1 "11274-author-red-other-checkout exit 1"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-red-other-checkout one DM"; else fail "11274-author-red-other-checkout one DM" "count=$(alert_count)"; fi
+if grep -qF "octo/demo#42" "$STUBDIR/alerts.log"; then pass "11274-author-red-other-checkout DM names octo/demo#42"; else fail "11274-author-red-other-checkout DM names octo/demo#42" "$(cat "$STUBDIR/alerts.log")"; fi
+if grep -qF -- "--red" "$STUBDIR/alerts.log"; then fail "11274-author-red-other-checkout DM has no --red" "$(cat "$STUBDIR/alerts.log")"; else pass "11274-author-red-other-checkout DM has no --red"; fi
+if [ "$(_11274_author sha1)" = absent ]; then pass "11274-author-red-other-checkout no .author"; else fail "11274-author-red-other-checkout no .author" "present"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set_su"; CHECKS_OVERRIDE="$_11274_rows"; PRODUCERS_OVERRIDE="json:$_11274_lint_ok_su_red"
+run_in_repo "$_r" cr-completed --grace 0
+assert_rc 1 "11274-author-lint-not-required exit 1"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-lint-not-required one DM"; else fail "11274-author-lint-not-required one DM" "count=$(alert_count)"; fi
+if [ "$(_11274_author "$_h")" = absent ]; then pass "11274-author-lint-not-required no .author"; else fail "11274-author-lint-not-required no .author" "present"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+_11274_seq "$STUBDIR/seq-t12" \
+    '{"check_runs":[{"name":"lint","status":"completed","conclusion":"success","app":{"id":15368},"id":1},{"name":"shell-unit (ubuntu-latest)","status":"in_progress","conclusion":null,"app":{"id":15368},"id":2}]}' \
+    "$_11274_lint_ok_su_red"
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="$_11274_rows"; PRODUCERS_SEQ_OVERRIDE="$STUBDIR/seq-t12"
+run_in_repo "$_r" red-probe
+assert_rc 1 "11274-author-watch-ci-watch exit 1"
+if [ "$(alert_count)" = 0 ]; then pass "11274-author-watch-ci-watch no DM"; else fail "11274-author-watch-ci-watch no DM" "count=$(alert_count)"; fi
+if [ "$(_11274_author "$_h")" = present ]; then pass "11274-author-watch-ci-watch .author record"; else fail "11274-author-watch-ci-watch .author record" "absent"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="pass:lint"
+PRODUCERS_OVERRIDE='json:{"check_runs":[{"name":"lint","status":"completed","conclusion":"success","app":{"id":15368},"id":1}]}'
+run_in_repo "$_r" cr-completed --grace 0
+assert_rc 5 "11274-author-never-reported-ci exit 5"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-never-reported-ci one DM"; else fail "11274-author-never-reported-ci one DM" "count=$(alert_count)"; fi
+if grep -qF "never reported" "$STUBDIR/alerts.log"; then pass "11274-author-never-reported-ci DM names never reported"; else fail "11274-author-never-reported-ci DM names never reported" "$(cat "$STUBDIR/alerts.log")"; fi
+if [ "$(_11274_author "$_h")" = absent ]; then pass "11274-author-never-reported-ci no .author"; else fail "11274-author-never-reported-ci no .author" "present"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="$_11274_rows_red"; PRODUCERS_OVERRIDE="json:$_11274_both_red"
+run_in_repo "$_r" cr-completed --grace 0
+assert_rc 1 "11274-author-billing-shaped exit 1"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-billing-shaped one DM"; else fail "11274-author-billing-shaped one DM" "count=$(alert_count)"; fi
+if [ "$(_11274_author "$_h")" = absent ]; then pass "11274-author-billing-shaped no .author"; else fail "11274-author-billing-shaped no .author" "present"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; PRODUCERS_OVERRIDE="json:$_11274_both_red"
+CHECKS_OVERRIDE="$_11274_rows_red"$'\npass:Socket Security: Project Report\npass:CodeRabbit'
+run_in_repo "$_r" cr-completed --grace 0
+assert_rc 1 "11274-author-billing-cr-pass exit 1"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-billing-cr-pass one DM"; else fail "11274-author-billing-cr-pass one DM" "count=$(alert_count)"; fi
+if [ "$(_11274_author "$_h")" = absent ]; then pass "11274-author-billing-cr-pass no .author"; else fail "11274-author-billing-cr-pass no .author" "present"; fi
+
+_r=$(_11274_repo) || { echo "FATAL: 11274 repo"; exit 1; }; _h=$(git -C "$_r" rev-parse HEAD)
+_11274_seq "$STUBDIR/seq-t13c" \
+    '{"check_runs":[{"name":"lint","status":"in_progress","conclusion":null,"app":{"id":15368},"id":1},{"name":"shell-unit (ubuntu-latest)","status":"in_progress","conclusion":null,"app":{"id":15368},"id":2}]}' \
+    "$_11274_both_red"
+HEAD_SHA_OVERRIDE="$_h"; RULES_OVERRIDE="json:$_11274_set"; CHECKS_OVERRIDE="$_11274_rows_red"; PRODUCERS_SEQ_OVERRIDE="$STUBDIR/seq-t13c"
+run_in_repo "$_r" red-probe
+assert_rc 1 "11274-author-billing-watch exit 1"
+if [ "$(alert_count)" = 1 ]; then pass "11274-author-billing-watch one DM"; else fail "11274-author-billing-watch one DM" "count=$(alert_count)"; fi
+if [ "$(_11274_author "$_h")" = absent ]; then pass "11274-author-billing-watch no .author"; else fail "11274-author-billing-watch no .author" "present"; fi
+
+_11274_seq "$STUBDIR/seq-t8" \
+    '{"check_runs":[{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"failure","app":{"id":15368},"id":10},{"name":"shell-unit (ubuntu-latest)","status":"in_progress","conclusion":null,"app":{"id":15368},"id":20}]}' \
+    '{"check_runs":[{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"failure","app":{"id":15368},"id":10},{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"success","app":{"id":15368},"id":20}]}'
+RULES_OVERRIDE="json:$_11274_set_su"; CHECKS_OVERRIDE="pass:shell-unit (ubuntu-latest)"; PRODUCERS_SEQ_OVERRIDE="$STUBDIR/seq-t8"
+run cr-completed
+assert_rc 0 "11274-newer-run-pending exit 0"
+if [ "$(alert_count)" = 0 ]; then pass "11274-newer-run-pending no alert"; else fail "11274-newer-run-pending no alert" "count=$(alert_count)"; fi
+if [ "$(cat "$STUBDIR/producers-seq-count" 2>/dev/null)" = 2 ]; then pass "11274-newer-run-pending two producer reads"; else fail "11274-newer-run-pending two producer reads" "reads=$(cat "$STUBDIR/producers-seq-count" 2>/dev/null)"; fi
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 274 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 274"; exit 1; fi
+if [ "$COUNT" -ne 283 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 283"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

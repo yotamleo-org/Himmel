@@ -29,8 +29,8 @@ _has_producer_ids() {
 # failed one does. An entry with no id matches by name over <rows> — already
 # latest-only, since `gh pr checks` reflects GitHub's own rollup, which judges
 # only the latest check suite per name. One with an id matches name AND app id
-# over <producer rows> — the raw check-runs API, which lists every run ever
-# created for the sha — so only the LATEST matching run is judged, not any run
+# over <producer rows> — the raw check-runs API, whose default lists the latest attempt's runs plus the
+# extra runs a same-head re-trigger created — so only the LATEST matching run is judged, not any run
 # that ever failed: a re-run or a close/reopen on an unchanged
 # head must be able to clear an earlier red, the same as GitHub's own merge
 # gate does. "Latest" is decided by `id` alone (always present, assigned
