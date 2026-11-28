@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# test-file-slices.sh: file-slices.sh turns a signed plan's `## S<id>:` sections into seven-section slice
-# tickets, a dry run by default, and with --apply files the NEW ones once, in dependency order, never twice.
-#
 # Every row passes --jira-cli with a stub node file in this suite's temporary directory: the script never
 # writes live Jira here. The stub logs each argv as one JSON line and answers from fixture files beside it.
 # Its answers copy real output:
@@ -16,8 +13,6 @@
 #          and `jira: OUTCOME UNKNOWN: the create request failed after it was sent (${msg}); the ticket may exist. Search for "${summary}" before filing again; create is not retried.`
 #          on stderr with exit 1 (scripts/jira/src/index.ts prints a thrown message with console.error, exit 1);
 #          a blocked-by step reads `linking ${by} to ${key}`.
-#
-# Run: bash scripts/handover/chief-kit/test-file-slices.sh
 # shellcheck disable=SC2016 # the backticks in fixture text are markdown code spans, never expansions
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"

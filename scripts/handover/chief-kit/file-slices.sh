@@ -17,16 +17,14 @@
 # Exit 0 ok | 1 refused, nothing written | 2 usage | 3 stopped after a write (FILED-SO-FAR, LINK-OWED, OUTCOME-UNKNOWN)
 #
 # A section is SKIP (--skip), else FILED (exactly one title under the parent ends ` (<id>)`), else NEW when its
-# Depends on, Writes, RED and Done parts parse and its body passes ticket-policy-cli.mjs, else REFUSED. Writes
-# paths come from holds.files_in (the dispatcher's own path pattern), so the body's one `Writes:` line is the
-# scope next-dispatchable.sh reads. The signed design is the file-slices spec under the state repo's specs/designs/.
+# Depends on, Writes, RED and Done parts parse and its body passes ticket-policy-cli.mjs, else REFUSED.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common="" # swallow-ok: with no git dir the default CLI is unknown and the script asks for --jira-cli
+common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
 default_cli=""
 [ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js"
 
