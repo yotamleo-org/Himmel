@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# Suite: a vendored skill never links a file that does not exist, and the
-# notes-search skill's allowed-tools is a space-separated list that names no
-# bare qmd call. A link left dangling by vendoring sends an agent to a dead end
-# mid-skill; a bare qmd pre-approval is one the block-bare-qmd-query hook refuses.
-#
-# Scope: every .md under marketplace/plugins/lean-skills/skills/ and
-# marketplace/plugins/qmd/skills/. Relative markdown links `[text](path)` are
-# resolved against the linking file's directory; URLs, `#anchors` and `mailto:`
-# are skipped, a `#fragment` or `?query` suffix is stripped, and links inside
-# fenced code blocks are template text, not links.
-#
 # Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/find/mktemp.
 #
 # Usage: bash scripts/docs/test-vendored-skill-links.sh
