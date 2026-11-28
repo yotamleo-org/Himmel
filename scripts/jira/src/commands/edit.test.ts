@@ -767,6 +767,17 @@ describe('edit: a remainder and a residual never share a ticket', () => {
     expect(state['HIMMEL-901']).toEqual(['standalone', 'concurrent', 'remainder']);
   });
 
+  it.each([
+    ['remainder on a residual ticket', ['residual', 'standalone'], 'remainder'],
+    ['residual on a remainder ticket', ['remainder', 'standalone'], 'residual'],
+    ['phase:build on a phase:design ticket', ['phase:design', 'standalone'], 'phase:build'],
+  ] as const)('a label named in both --remove-labels and --add-labels (%s) is refused before any request', async (_n, labels, both) => {
+    state['HIMMEL-901'] = [...labels];
+    await expect(run('HIMMEL-901', '--remove-labels', both, '--add-labels', both)).rejects.toThrow(/names .* in both --remove-labels and --add-labels/);
+    expect(mockRequest).not.toHaveBeenCalled();
+    expect(state['HIMMEL-901']).toEqual(labels);
+  });
+
   it('--add-labels remainder on a residual ticket is refused with no PUT', async () => {
     state['HIMMEL-901'] = ['residual', 'standalone'];
     await expect(run('HIMMEL-901', '--add-labels', 'remainder')).rejects.toThrow(/HIMMEL-901: the labels would hold remainder and a review residual label, which never share a ticket; nothing changed/);

@@ -56,6 +56,13 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
         '--remove-labels drops the named labels only (it combines with --add-labels in one update) — pick one.',
     );
   }
+  if (opts.removeLabels !== undefined && opts.addLabels !== undefined) {
+    const added = new Set(parseLabels(opts.addLabels));
+    const both = parseLabels(opts.removeLabels).filter((l) => added.has(l));
+    if (both.length > 0) {
+      throw new Error(`Edit names ${both.join(', ')} in both --remove-labels and --add-labels; name each label in one of them.`);
+    }
+  }
   if (opts.fixVersion !== undefined && opts.addFixVersion !== undefined) {
     throw new Error(
       'Edit --fix-version and --add-fix-version are mutually exclusive: --fix-version replaces ' +
@@ -399,7 +406,7 @@ export function registerEdit(program: Command): void {
     .option(
       '--remove-labels <labels>',
       'DROP these comma-separated labels without touching the others ' +
-        '(mutually exclusive with --labels; with --add-labels both go in one update, removes first)',
+        '(mutually exclusive with --labels; with --add-labels both go in one update, removes first, and no label may be named in both)',
     )
     .option(
       '--phase <p>',
