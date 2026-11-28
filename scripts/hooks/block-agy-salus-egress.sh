@@ -2,9 +2,6 @@
 # PreToolUse gate for Antigravity (agy) sessions: the network egress floor in a salus (patient-data) vault.
 # A security fence: it fails closed, and a scope it cannot decide counts as salus.
 #
-# No bypass variable, unlike the single-run bypass scripts/hooks/CLAUDE.md asks of a deny: egress-matrix.json
-# rules salus x * x * a hard deny ("No override exists"), and the adapter unsets every *_OK name anyway.
-#
 # Exit: 0 allow, 2 refuse (reason on stderr).
 set -u
 # shellcheck disable=SC2154  # rc is assigned by rc=$? inside the same trap string
