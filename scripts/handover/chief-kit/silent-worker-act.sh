@@ -75,7 +75,7 @@ last_words() {
         [ -n "$f" ] || continue
         title="$(head -n 20 "$f" 2>/dev/null | jq -rR 'fromjson? | select(.type == "custom-title" or .type == "agent-name") | .customTitle // .agentName // empty' 2>/dev/null)"  # swallow-ok: an unreadable or non-JSON start names no worker, so the file is skipped  # read-sink-ok: the start of a session file, to match it to this worker's names
         for n in $(printf '%s' "$cands" | tr ',' ' '); do
-            printf '%s\n' "$title" | grep -qxF -- "$n" || continue
+            case $'\n'"$title"$'\n' in *$'\n'"$n"$'\n'*) ;; *) continue ;; esac
             text="$(tail -c 1048576 "$f" 2>/dev/null | jq -nrR '[inputs | fromjson? | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text] | last // empty' 2>/dev/null)"  # swallow-ok: an unreadable tail gives no last words and the line stays as before  # read-sink-ok: the tail of this worker's own transcript, for its last assistant text
             text="$(oneline "$text" 300 | tr '"' "'")"
             text="${text% }"

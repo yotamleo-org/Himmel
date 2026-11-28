@@ -148,7 +148,8 @@ out="$(SILENT_ACT_NUDGE_GRACE_SECS=300 run N9 161)"
 check "9c. inside the nudge grace the next call waits" "SILENT-ACT N9 done" "$out"
 out="$(run N9 161)"
 check "9d. after the grace a live window is never ended or relaunched: it owes a named blocked step and quotes the worker's last words from its transcript" "SILENT-ACT N9 live-silent owed=o4 last=\"BLOCKED: every hook refuses every tool call. Run: git -C /w checkout tables.json\"" "$out"
-if tail -n1 "$CHIEF_DOC" | grep -qF 'last="BLOCKED: every hook refuses every tool call.'; then
+case "$(tail -n1 "$CHIEF_DOC")" in *'last="BLOCKED: every hook refuses every tool call.'*) bullet_ok=1 ;; *) bullet_ok=0 ;; esac
+if [ "$bullet_ok" -eq 1 ]; then
     check "9h. the chief doc bullet carries the last words" ok ok
 else
     check "9h. the chief doc bullet carries the last words" ok "$(tail -n1 "$CHIEF_DOC")"
