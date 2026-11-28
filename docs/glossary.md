@@ -501,8 +501,9 @@ Facts only; nothing here is a proposed change.
   an `Agent` call's `model` field, but split the job. `guard-agent-model`
   denies a blocked model (Fable) and a `judge` tier override, and
   allows a missing model. `guard-subagent-model` denies a missing model for
-  every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through)
-  and never reads the model's value.
+  every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through),
+  and a Haiku model on a type that keeps the Agent tool (general-purpose,
+  claude, untyped), pointing at `haiku-worker`.
 - The green-CI check runs in `block-unresolved-cr-merge` (on `gh pr merge`) and
   in `merge-on-green.sh` (on its own merge); they guard two entry points to one
   action.

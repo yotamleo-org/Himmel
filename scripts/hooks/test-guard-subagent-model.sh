@@ -196,6 +196,49 @@ assert_rc "fork with model field absent is allowed (rc=0)" 0 "$RC4C"
 RC4D=$(run_hook fork-with-model "$(payload fork opus)")
 assert_rc "fork with an explicit model is allowed (rc=0)" 0 "$RC4D"
 
+echo ""
+echo "=== haiku is a leaf (a Haiku child on a type that keeps the Agent tool) ==="
+
+RC20=$(run_hook gp-haiku "$(payload general-purpose haiku)")
+assert_rc "general-purpose + haiku is DENIED (rc=2)" 2 "$RC20"
+assert_contains "haiku deny points at haiku-worker" "haiku-worker" "$(cat "$TMP/err-gp-haiku")"
+assert_contains "haiku deny names the shape" "general-purpose/haiku" "$(cat "$TMP/err-gp-haiku")"
+assert_contains "haiku deny emits a structured deny decision" '"permissionDecision":"deny"' "$(cat "$TMP/out-gp-haiku")"
+
+RC21=$(run_hook gp-haiku-full-id "$(payload general-purpose claude-haiku-5-5)")
+assert_rc "general-purpose + claude-haiku-5-5 is DENIED (rc=2)" 2 "$RC21"
+
+RC22=$(run_hook claude-haiku "$(payload claude haiku)")
+assert_rc "claude + haiku is DENIED (rc=2)" 2 "$RC22"
+
+RC23=$(run_hook untyped-haiku "$(payload_no_subagent_field haiku)")
+assert_rc "no subagent_type + haiku is DENIED (rc=2)" 2 "$RC23"
+assert_contains "untyped haiku deny names the no-type shape" "<no-subagent_type>/haiku" "$(cat "$TMP/err-untyped-haiku")"
+
+RC24=$(run_hook empty-type-haiku "$(payload '' claude-haiku-5-5)")
+assert_rc "empty subagent_type + claude-haiku-5-5 is DENIED (rc=2)" 2 "$RC24"
+
+RC25=$(run_hook null-type-haiku "$(payload_subagent_null haiku)")
+assert_rc "subagent_type null + haiku is DENIED (rc=2)" 2 "$RC25"
+
+RC26=$(run_hook haiku-worker "$(payload haiku-worker haiku)")
+assert_rc "haiku-worker + haiku is allowed (rc=0)" 0 "$RC26"
+assert_empty "haiku-worker + haiku: no output" "$(combined_output haiku-worker)"
+
+RC27=$(run_hook edit-runner-haiku "$(payload edit-runner haiku)")
+assert_rc "edit-runner (no Agent tool) + haiku is allowed (rc=0)" 0 "$RC27"
+assert_empty "edit-runner + haiku: no output" "$(combined_output edit-runner-haiku)"
+
+RC28=$(run_hook fork-haiku "$(payload fork haiku)")
+assert_rc "fork + haiku is allowed (fork ignores model) (rc=0)" 0 "$RC28"
+
+RC29=$(run_hook gp-sonnet-leaf "$(payload general-purpose sonnet)")
+assert_rc "general-purpose + sonnet stays allowed (rc=0)" 0 "$RC29"
+
+RC30=$(run_hook gp-haiku-override "$(payload general-purpose haiku)" SUBAGENT_MODEL_OK=1)
+assert_rc "SUBAGENT_MODEL_OK=1 lets general-purpose + haiku through (rc=0)" 0 "$RC30"
+
+echo ""
 echo "=== escape hatch ==="
 
 RC5=$(run_hook override "$(payload general-purpose '')" SUBAGENT_MODEL_OK=1)

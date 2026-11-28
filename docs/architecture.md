@@ -215,8 +215,12 @@ flowchart TD
 
 **Caps that are not model-tuned.** Spawn depth and concurrency come from
 `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` and
-`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, so read the environment; unset means
-the harness default applies. Haiku does not spawn.
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`. Every himmel launcher sets them from
+`scripts/lib/subagent-caps.sh`: spawn depth 2 and concurrency 20. A session
+started any other way runs at the harness defaults (depth 3, concurrency 20).
+Haiku is a leaf and never spawns: `guard-subagent-model.sh` refuses a Haiku
+dispatch on a type that keeps the Agent tool and points at `haiku-worker`, and
+a Haiku session starts with the Agent tool disallowed.
 
 Every decision a change meets between dispatch and merge — the usage check,
 the fleet cap, the review-round cap, the ready-check, the judge, the GO file —

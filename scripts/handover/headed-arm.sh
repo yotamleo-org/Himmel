@@ -326,6 +326,12 @@ fi
 . "$(cd "$(dirname "$0")" && pwd)/../lib/dedupe-path.sh"
 # shellcheck source=../lib/prim.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "headed-arm: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+SUBAGENT_CAPS_ENV=()
+_caps_lib="$(cd "$(dirname "$0")" && pwd)/../lib/subagent-caps.sh"
+# shellcheck source=../lib/subagent-caps.sh
+if ! { [ -r "$_caps_lib" ] && . "$_caps_lib"; }; then
+    echo "WARN headed-arm: $_caps_lib did not load; this launch carries no subagent caps" >&2
+fi
 
 # The chief parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via an explicit [model].
@@ -832,8 +838,8 @@ unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 # claim lock, and konsole itself.
 if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: would exec: %s\n' "$(printf '%q ' "${LAUNCH_ARGV[@]}")"
-    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s\n' \
-        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
+    printf 'headed-arm: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR%s CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE=%s ARMAUTOMERGE=1%s%s%s\n' \
+        "${ROLE_ENV_UNSET:+ $ROLE_ENV_UNSET}" "$INIT" "${SUBAGENT_CAPS_ENV[0]:+ ${SUBAGENT_CAPS_ENV[*]}}" "${CHIEF_ENV[0]:+ ${CHIEF_ENV[*]}}" "${LAUNCHER_ENV:+ $LAUNCHER_ENV}"
     for _l in ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"}; do
         printf 'launcher-env-line: %s\n' "$_l"
     done
@@ -1159,7 +1165,7 @@ headless_fail() { # headless_fail <rc> <message>
     exit "$1"
 }
 headless_launch() {
-    local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair
+    local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair _cap
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_worker_var "$name" || continue
@@ -1171,6 +1177,9 @@ headless_launch() {
     _hl_set CLAUDE_CODE_FORCE_SESSION_PERSISTENCE 1
     _hl_set HIMMEL_INITIATIVE "$INIT"
     _hl_set ARMAUTOMERGE 1
+    for _cap in ${SUBAGENT_CAPS_ENV[@]+"${SUBAGENT_CAPS_ENV[@]}"}; do
+        _hl_set "${_cap%%=*}" "${_cap#*=}"
+    done
     set -f
     # The role's `env -u` removals, applied before the explicit env exactly as
     # the konsole branches order them.
@@ -1221,7 +1230,7 @@ headless_launch() {
     fleet_launch_commit || headless_fail 10 'fleet-paused: final commitment refused'
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
     env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET \
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${SUBAGENT_CAPS_ENV[@]+"${SUBAGENT_CAPS_ENV[@]}"} ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
 
@@ -1787,13 +1796,13 @@ if [ "$RECORDER" = "1" ]; then
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
     TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${SUBAGENT_CAPS_ENV[@]+"${SUBAGENT_CAPS_ENV[@]}"} ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
     TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR $ROLE_ENV_UNSET
-        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
+        CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${SUBAGENT_CAPS_ENV[@]+"${SUBAGENT_CAPS_ENV[@]}"} ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi
 

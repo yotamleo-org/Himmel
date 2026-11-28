@@ -38,8 +38,9 @@ Escalate, not top-down: an Opus parent spawns a Fable child for the one hard
 call; work above your tier is returned.
 
 Invariants: spawn depth and concurrency are capped by
-`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;
-haiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, which
+every himmel launcher sets (`scripts/lib/subagent-caps.sh`); haiku is a leaf and never
+spawns [enforced: guard-subagent-model]; single-writer (many readers, ONE writer); salus dev/impl
 work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,
 Copilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their
 lane descriptors are complete; never GLM. Salus PHI egress is governed by

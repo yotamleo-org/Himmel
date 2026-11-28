@@ -4813,7 +4813,13 @@ Denies (exit 2, structured `permissionDecision: deny`) any dispatch whose
 is no longer exempt: an unnamed model silently bills the parent tier. This
 hook owns "a model must be named"; `guard-agent-model.sh` owns "the named model
 must not be blocked" — neither repeats the other's check. The old
-`HIMMEL_REQUIRE_SUBAGENT_MODEL=1` opt-in is gone (deny is the default). Bypass:
+`HIMMEL_REQUIRE_SUBAGENT_MODEL=1` opt-in is gone (deny is the default). It
+also denies a Haiku child on a type that keeps the Agent tool:
+a `model` naming Haiku (`haiku`, `claude-haiku-5-5`, any case) with
+`subagent_type` `general-purpose`, `claude` or none, since that child could
+spawn and its Explore would run on the main session's model. The deny names
+`haiku-worker` (`.claude/agents/haiku-worker.md`, Agent disallowed); a typed
+agent with no Agent tool (`edit-runner`, `Explore`) passes. Bypass for both:
 `SUBAGENT_MODEL_OK=1` in the launching shell. Fails open on a missing `jq`,
 unparseable or empty stdin, a non-`Agent` tool, a non-object `tool_input` or a
 wrong-typed `model` / `subagent_type`. Not covered: a `Workflow` script's
