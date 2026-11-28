@@ -73,7 +73,7 @@ s17_list() {
     S17_SUITES_BLOB=$(git hash-object --no-filters -- "$1")
     mkdir -p "$S17R/.git/impacted-lists"
     cp "$1" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
-    S17_IMPACTED_N=$(wc -l < "$1" | tr -d ' ')
+    S17_IMPACTED_N=$(wc -l < "$1" | tr -d ' ')  # read-sink-ok: a test helper handed only this suite's own fixture lists
 }
 s17_at() {
     local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"

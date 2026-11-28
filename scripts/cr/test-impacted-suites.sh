@@ -1985,8 +1985,8 @@ printf 'scripts/test-lx-a.sh\n' > "$LS/red.txt"
 printf 'scripts/lib/lx-lib.sh\n' > "$LS/paths.txt"
 lx_combo_bad=""
 lx_is4a() {
-    ( cd "$LX" && bash "$IS" --lister-id "$@" > "$LS/is4a.out" 2>/dev/null ); lx_x=$?
-    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ]; then lx_combo_bad="$lx_combo_bad [$* rc=$lx_x]"; fi
+    ( cd "$LX" && bash "$IS" --lister-id "$@" > "$LS/is4a.out" 2> "$LS/is4a.err" ); lx_x=$?
+    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ] || ! grep -qF 'is its own mode' "$LS/is4a.err"; then lx_combo_bad="$lx_combo_bad [$* rc=$lx_x]"; fi
 }
 lx_is4a --check "$lx_range"
 lx_is4a --plan "$lx_range"
