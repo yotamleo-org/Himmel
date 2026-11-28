@@ -33,7 +33,7 @@ const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
 // `code` holds everything after the id, spaces removed: for approve the nonce and the code run
 // together ("K7QF123456"), the helper splitting the last six characters off as the code; for deny the nonce.
 export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
-export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
+export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean; reply_to_text?: string };
 export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
 export type HelperRun = (args: string[], stdin: string) => Promise<{ code: number; stdout: string }>;
 export type AfkSudoDeps = {
@@ -203,13 +203,13 @@ const idThenCode = (rest: string, id: string): boolean => new RegExp(`${id}\\d{6
 // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
 // anywhere in the text. Used only to decide a message must not be forwarded.
 const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
-// A reply to a bot message is held for six contiguous digits standing alone
-// (CODE_TOKEN) and for a text that is nothing but digits, spaces and hyphens
-// totalling six or seven ("123 456", "12 34 56", "1234567"). Numbers inside words
-// that are six digits only once spaces or hyphens are ignored ("do 8276 8277 next",
-// "ticket 123-456 is done") are ordinary text.
-const CODE_TOKEN = /(?<!\d)\d{6}(?!\d)/u;
 const CODE_ONLY = /^\d{6,7}$/u;
+const TAP_PROMPT_FIRST_LINE = /^(?:Approve|Deny) [a-z2-7]{8}: reply to this message with the 4-character nonce/;
+const CODE_FOR_PROMPT_LINE = /^Code for [a-z2-7]{8}:$/;
+const PAIR_IN_TEXT = /(?<![0-9A-Za-z])[0-9A-Za-z]{4}\s*\d{3}[\s-]?\d{3}(?!\d)/;
+const forgottenPromptReply = (msg: AfkSudoMsg): boolean => msg.reply_to_bot === true
+  && (TAP_PROMPT_FIRST_LINE.test(msg.reply_to_text ?? "") || CODE_FOR_PROMPT_LINE.test(msg.reply_to_text ?? ""));
+const holdWhilePromptWaits = (msg: AfkSudoMsg): boolean => msg.reply_to_bot !== true || PAIR_IN_TEXT.test(fold(msg.text));
 // Fold a text to ASCII digits before any code test: NFKC (fullwidth), every other Unicode decimal digit
 // (Arabic-Indic and the like, counted from its block's zero) and no format characters (zero-width).
 const asciiDigit = (d: string): string => {
@@ -222,7 +222,6 @@ const fold = (text: string): string => text.normalize("NFKC").replace(/\p{Cf}/gu
 const wholeCode = (text: string): boolean => CODE_ONLY.test(fold(text).replace(/[\s\p{Z}\p{P}−]/gu, ""));
 // A NONCE CODE pair, ignoring trailing punctuation.
 const pairCode = (text: string): boolean => CODE_REPLY.test(fold(text).replace(/[\s\p{P}]+$/u, ""));
-const heldAsCode = (text: string): boolean => CODE_TOKEN.test(fold(text)) || wholeCode(text);
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -289,18 +288,14 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
         }
         return true;
       }
-      // A message holding a code is still a code, wherever it sits in the text, and an
-      // inbox is readable by the sessions that can run the helper. Consume it, never
-      // pass it on: a reply to a bot message whose prompt is gone (the map is in
-      // memory, so a restart forgets it) when it holds a standalone six-digit token,
-      // whatever words surround it, or is only a spaced or hyphenated code, or any
-      // message sent while a prompt waits.
+      if (forgottenPromptReply(msg) && eligible(deps.access(), msg)) {
+        void deps.reply(msg.chat_id, "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed.").catch(() => {});
+        return true;
+      }
       if (CODE_RUN.test(fold(msg.text)) && eligible(deps.access(), msg)) {
         const waiting = prompts?.live(msg.chat_id) ?? [];
-        if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting.length > 0) {
-          void deps.reply(msg.chat_id, waiting.length > 0
-            ? `⚠️ afk-sudo: a code sent as a plain message is not taken, nothing ran. Reply to the "Approve ${waiting.join('" or "Approve ')}" prompt, or send: approve ${waiting.length === 1 ? waiting[0] : "<request id>"} <nonce> <code>`
-            : "⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed.").catch(() => {});
+        if (waiting.length > 0 && holdWhilePromptWaits(msg)) {
+          void deps.reply(msg.chat_id, `⚠️ afk-sudo: a code sent as a plain message is not taken, nothing ran. Reply to the "Approve ${waiting.join('" or "Approve ')}" prompt, or send: approve ${waiting.length === 1 ? waiting[0] : "<request id>"} <nonce> <code>`).catch(() => {});
           return true;
         }
       }

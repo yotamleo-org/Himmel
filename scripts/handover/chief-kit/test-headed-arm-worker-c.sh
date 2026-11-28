@@ -1479,6 +1479,40 @@ else
   dry53 blocked/gone
   cd "$cwd53" || exit 1
   refused53 q 'inaccessible path relative to worktrees'
+  locked53="$shaped53/locked53"
+  mkdir "$locked53" || exit 1
+  trap 'chmod 700 "$blocked53" "$locked53"; rm -rf "$tmp"' EXIT
+  chmod 000 "$locked53" || exit 1
+  ln -s "$shaped53" "$tmp53/via53" || exit 1
+  cd "$tmp53/via53" || exit 1
+  check "53r precondition: the caller's PWD names the symlink" "$PWD" "$tmp53/via53"
+  dry53 locked53/gone
+  refused53 r 'relative path from a symlinked caller'
+  dry53 ../r53/locked53/gone
+  refused53 s '.. from a symlinked caller back into the worktree folder'
+  cd "$cwd53" || exit 1
+  dry53 "$tmp53/via53/locked53/gone"
+  refused53 r 'absolute path through an unshaped symlink'
+  dry53 "$tmp53/via53/blocked/gone"
+  refused53 q 'link to an inaccessible folder reached through an unshaped symlink'
+  cd "$shaped53" || exit 1
+  dry53 ../../../blocked53/gone
+  cd "$cwd53" || exit 1
+  check "53s .. out of the worktree folder dry-run exits 0" "$rc53" 0
+  contains "53s .. out of the worktree folder leaves the session folder derived" "$out53" "$derived53"
+  cd "$shaped53" || exit 1
+  dry53 ../r53/locked53/gone
+  cd "$cwd53" || exit 1
+  refused53 s 'control: .. that stays in the worktree folder'
+  for path53 in "$blocked53/.cache/himmel/verdicts/q-wt//scratch" \
+    "$blocked53/.cache//himmel/verdicts/q-wt/scratch" \
+    "$tmp53/home53/.cache/himmel/verdicts/q-wt//scratch"; do
+    dry53 "$path53"
+    check "53t ${path53#"$tmp53"/} dry-run exits 0" "$rc53" 0
+    contains "53t ${path53#"$tmp53"/} leaves the session folder derived" "$out53" "$derived53"
+  done
+  chmod 700 "$locked53" || exit 1
+  trap 'chmod 700 "$blocked53"; rm -rf "$tmp"' EXIT
 fi
 chmod 700 "$blocked53" || exit 1
 trap 'rm -rf "$tmp"' EXIT

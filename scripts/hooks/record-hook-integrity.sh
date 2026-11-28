@@ -135,13 +135,15 @@ trap mark_done EXIT
 # scripts/hooks/bus-deliver-run.js checks against these pins before importing.
 # Comments stay OUT of the $( ) below: bash 3.2 (macOS /bin/bash) reads an
 # apostrophe in a comment there as an open quote and the recorder dies.
-pins_fresh="$(
+pins_at() {
+  local rev="$1" dir
   for dir in scripts/hooks scripts/guardrails scripts/lib scripts/handover marketplace/plugins/himmel-ops/hooks marketplace/plugins/himmel-bus/lib scripts/harnesses scripts/himmelctl/lib; do
-    git -C "$CLAUDE_PROJECT_DIR" ls-tree -r HEAD -- "$dir" 2>/dev/null
+    git -C "$CLAUDE_PROJECT_DIR" ls-tree -r "$rev" -- "$dir" 2>/dev/null
   done | jq -Rn '[inputs | select(if test("\\tscripts/(harnesses|himmelctl)/") then test("\\tscripts/(harnesses/([^/]+\\.json|registry\\.jq)|himmelctl/lib/bypass-flags\\.json)$") else (test("\\.sh$") or test("\\tmarketplace/plugins/himmel-bus/lib/[^/]+\\.mjs$") or test("\\tscripts/hooks/lib/harness-tool-(translate\\.js|map\\.json)$")) end) | split("\t") | select(length >= 2)
                   | {key: (.[1:] | join("\t")), value: (.[0] | split(" ") | .[2] // "")}
                   | select(.key != "" and .value != "")] | from_entries'
-)"
+}
+pins_fresh="$(pins_at HEAD)"
 jq -e . >/dev/null 2>&1 <<<"$pins_fresh" || pins_fresh='{}'
 
 # resolve_default_branch <dir> — the repo's default/integration branch name.
@@ -395,16 +397,21 @@ if [ "$existing_shape" = "v2" ]; then
         fi
     fi
 
+    pins_anchor="$(pins_at "$chosen_anchor")"
+    jq -e . >/dev/null 2>&1 <<<"$pins_anchor" || pins_anchor='{}'
+
     record="$(printf '%s' "$existing_json" | jq -c \
         --arg sid "$session_id" \
         --arg ts "$recorded_at" \
         --arg anchor "$chosen_anchor" \
         --argjson pf "$pins_fresh" \
+        --argjson pa "$pins_anchor" \
         --argjson lu "$lock_unverified_json" \
         '.session_id = $sid
          | .recorded_at = $ts
          | .anchor = $anchor
-         | .pins = ($pf * (.pins // {}))
+         | .pins = ((.pins // {}) as $old
+                    | ($pf | with_entries(select(.key as $k | ($old | has($k)) or $pa[$k] == .value))) * $old)
          | (if ($lu or (.lock_unverified == true))
             then .lock_unverified = true else . end)')"
 else
