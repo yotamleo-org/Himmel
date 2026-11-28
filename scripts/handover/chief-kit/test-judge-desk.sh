@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# test-judge-desk.sh - the judge desk kit (plan task B4): wait, next, claim, record, draft-go and
-# the automatic stop, on fixture buckets, fixture transcripts and a fixture git repo. It runs the
-# real gen-judge-brief.py --no-persist and the real delta-class.sh; usage-preflight.sh, the clock
-# and live-subagents.sh are stubbed through fixture-only seams. No go.sh call; no .locks/go file.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"

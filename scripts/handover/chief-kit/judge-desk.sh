@@ -12,30 +12,12 @@
 # --since <iso> (the desk start; default the first claim's time), --chief <name> (wait only: the one
 # recipient a desk SendMessage may name; a record's stop checks skip the recipient test without it).
 #
-# wait    ticks every --tick seconds (60) for at most --max-wait (3000): lapses leases, runs the stop
-#         checks, runs judge-queue.sh scan, and prints why it returned: REQUEST (a request has no desk
-#         run), ENDED (an open claim has no live judge), STOP, TIMEOUT, or BLOCKED <path> (exit 3).
-# next    prints REQUEST <pr> <head> <first|trust|finding> <snapshot>, STOP, or HOLD <why>. A later head
-#         of a PR the desk already judged goes through delta-class.sh on that run's reply.md: none after
-#         a GO appends a noop row and prints NOOP; none after a NO-GO is a finding delta.
-# claim   runs gen-judge-brief.py --dispatch-json --no-persist on the spec, checks the printed model is
-#         the class's, copies spec and dispatch into runs/<run>/, appends the claim row (20-minute
-#         lease) and prints the Agent input.
-# record  reads the judge's subagent transcript (by the claim's desk session and the agent id), writes
-#         runs/<run>/reply.md in the verdict-record shape and appends the end row; prints
-#         RECORDED <run> <outcome>.
-# draft-go  appends the draft row from the run's verdict and close-facts.sh doc_ready_head; writes no
-#         GO file and runs no GO script.
+# wait      prints why it returned: REQUEST, ENDED, STOP, TIMEOUT, or BLOCKED <path> (exit 3).
+# next      prints REQUEST <pr> <head> <first|trust|finding> <snapshot>, NOOP <pr> <head> none, STOP, or HOLD <why>.
+# claim     prints the Agent input.
+# record    prints RECORDED <run> <outcome>, or BLOCKED <why> (exit 3).
+# draft-go  prints GO-DRAFT <go.sh line>, HOLD-DRAFT or WAIT-DRAFT.
 #
-# The automatic stop (every wait tick and every record) writes <bucket>/judge-desk/STOP and prints
-# BLOCKED <path> and nothing else: a verdicts/dsk* dir, a verdicts/ record written since the desk start
-# whose writer-session is unknown, invalid or a desk session, a GO file with no chief-go record, a desk
-# transcript whose session id is not in judge-desk/sessions, a Write or judge-dir.sh call under
-# /tmp/claude-<uid>/j*, a SendMessage or t3-send.sh call the chief path does not own, and a judge
-# write-verdict.sh or judge-call.sh call that did not end in the marker's refusal. The verdicts/ part
-# reads directory names and the writer-session header line only.
-#
-# Every append holds flock on <bucket>/judge-desk/.lock; rows are appended, never edited.
 # Fixture-only seams, read under HIMMEL_TEST_FIXTURE=1: JUDGE_DESK_NOW (epoch seconds),
 # JUDGE_DESK_PREFLIGHT, JUDGE_DESK_GEN, JUDGE_DESK_LIVE (scripts standing in for usage-preflight.sh,
 # gen-judge-brief.py and live-subagents.sh).
@@ -354,7 +336,6 @@ def command_heads(cmd):
 
 
 def judge_facts(tr):
-    """What a judge did: write attempts, stop reasons, other writes."""
     f = {'attempted': False, 'refused': False, 'stops': [], 'other_writes': []}
     for c in tr.calls:
         name, inp = c['name'], c['input']
@@ -410,7 +391,6 @@ def header_session(path):
 
 
 def stop_checks(d, tr_cache=None):
-    """The first automatic-stop trigger as (path, why), or None. Reads names and header lines only."""
     since = d.since_ts()
     vdir = os.path.join(d.o.bucket, 'verdicts')
     sessions = d.registry()
