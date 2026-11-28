@@ -1163,7 +1163,7 @@ that `next --arm` printed and hand your live workers over by name.
 
 **Every numbered HANDOFF item carries its owed id.** A line `<n>.` or `<n>)` in the
 HANDOFF names the `o<N>` row it rides on, a row of the bucket's `owed.jsonl`
-(`owe.sh add` prints the id), or carries the mark `(closed)`. Free text with no row is lost
+(`owe.sh add` prints the id), or ends with the mark `(closed)`. Free text with no row is lost
 by the next chief. `chief.sh wrap`, and `next` on a HANDOFF that already
 exists, refuse (exit 11) and name each item that has neither, or a HANDOFF
 they cannot read. Write the row, put its id in the item, and retry.

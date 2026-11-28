@@ -582,7 +582,7 @@ EOS
 
 check_handoff_items_owed() {
     local unowed known check_ids=1
-    [ -e "$1" ] || return 0
+    [ -e "$1" ] || [ -L "$1" ] || return 0
     [ -f "$1" ] && [ -r "$1" ] || { err "refusing to hand over: cannot read $1"; return 1; }
     if known="$(bash "$HERE/../chief-kit/owe.sh" list --bucket "$2" --all)"; then
         known="$(printf '%s\n' "$known" | cut -f1 | tr '\n' ' ')"
@@ -593,7 +593,7 @@ check_handoff_items_owed() {
     unowed="$(KNOWN=" $known " CHECK_IDS="$check_ids" awk '
         function covered(s,   t, id) {
             t = tolower(s)
-            if (index(t, "(closed)")) return 1
+            if (t ~ /\(closed\)[ \t.]*$/) return 1
             while (match(t, /(^|[^a-z0-9_])o[1-9][0-9]*([^a-z0-9_]|$)/)) {
                 id = substr(t, RSTART, RLENGTH); gsub(/[^o0-9]/, "", id)
                 if (ENVIRON["CHECK_IDS"] != 1 || index(ENVIRON["KNOWN"], " " id " ")) return 1

@@ -213,7 +213,7 @@ write_gate_handoff() {
 gate_id="$(owe_row "$root/tester/owedgate" 'the second ticket live proof')"
 gate_ids="$(owe_row "$root/tester/owedgate" 'status page ask a') $(owe_row "$root/tester/owedgate" 'status page ask b')"
 write_gate_handoff "$gate_id" 'Operator asks still open: (a) status page "RESUME briefs (1634), newest 8 h old" looks like a bug; (b) "12 started, no one on it": bug or current work?; (c) launch a design leg' \
-    '9. Not closed; waiting for proof' '12. A proof not yet closed' '13. Merged as #6, closed.' '  10. An indented item with no row' '11. A row that is not in the ledger: o99'
+    '9. Not closed; waiting for proof' '12. A proof not yet closed' '13. Merged as #6, closed.' '14. Do not mark this (closed) until proof arrives' '  10. An indented item with no row' '11. A row that is not in the ledger: o99'
 rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
 check "5 next refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
 check "5 the refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: Operator asks still open')" "1"
@@ -222,6 +222,7 @@ check "5 items carrying o<N> or (closed) are not named" "$(printf '%s\n' "$out" 
 check "5 not closed is no closed mark" "$(printf '%s\n' "$out" | grep -c 'item 9: Not closed')" "1"
 check "5 not yet closed is no closed mark" "$(printf '%s\n' "$out" | grep -c 'item 12: A proof not yet closed')" "1"
 check "5 a plain closed word is no (closed) mark" "$(printf '%s\n' "$out" | grep -c 'item 13: Merged as #6, closed')" "1"
+check "5 a (closed) mid-sentence is no mark" "$(printf '%s\n' "$out" | grep -c 'item 14: Do not mark this')" "1"
 check "5 an item indented by two spaces is checked" "$(printf '%s\n' "$out" | grep -c 'item 10: An indented item')" "1"
 check "5 an o<N> the ledger does not hold is no owed id" "$(printf '%s\n' "$out" | grep -c 'item 11: A row that is not')" "1"
 check "5 the refused next writes no successor doc" "$([ -e "$gateB" ] && echo yes || echo no)" "no"
@@ -273,5 +274,9 @@ mkdir "${wdoc%.md}-HANDOFF.md"
 rc=0; out="$(wrap_gate "$wdoc" "$wtok")" || rc=$?
 check "5 wrap refuses a directory at the HANDOFF path (rc 11)" "$rc" "11"
 check "5 the directory refusal says it cannot read it" "$(printf '%s\n' "$out" | grep -c 'cannot read .*-HANDOFF.md')" "1"
+mk_wrap_doc danglinghandoff
+ln -s "$wg/no-such-handoff.md" "${wdoc%.md}-HANDOFF.md"
+rc=0; wrap_gate "$wdoc" "$wtok" >/dev/null || rc=$?
+check "5 wrap refuses a dangling HANDOFF symlink (rc 11)" "$rc" "11"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
