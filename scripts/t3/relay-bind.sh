@@ -13,14 +13,12 @@
 #
 # prepare   path A, before the chief launches: writes <manifest dir>/<KEY>-N<k>-t3-<slug>-<UTC date>.md, adds a lane-t3
 #           lockless row with t3_thread: pending, prints the doc path and the command block for the brief. First it runs
-#           the native launch gate on the doc: brief-lint.sh --core-only --skip-bucket, with resume_cwd the T3 project and
-#           HIMMEL_HOOK_INTEGRITY_BYPASS_OK removed (core-check, then spec-check for a CORE key, from the CLI and records
-#           only; the guard-lib rule refuses Writes naming a file the pinned guards run, since a T3 thread has no hook-bypass
-#           grant record). A refusal names the key and the missing record, removes the doc and exits 3; a pass writes a
-#           `> **Launch gate:** passed` line and a `> **Core gate:**` line for each bypass.
-# attach    path A, after the launch: sets the row's t3_thread to the threadId the launch tool returned; a listed doc with
-#           no `> **Launch gate:** passed` line is refused, rc 3, and the gate runs again on the ticket the doc name carries
-#           and its Writes line, so the records decide, never the line.
+#           the native launch gate on the doc (brief-lint.sh --core-only --skip-bucket, resume_cwd the T3 project,
+#           HIMMEL_HOOK_INTEGRITY_BYPASS_OK removed). A refusal names the key and the missing record, removes the doc and
+#           exits 3; a pass writes a `> **Launch gate:** passed` line and a `> **Core gate:**` line for each bypass.
+# attach    path A, after the launch: sets the row's t3_thread to the threadId the launch tool returned. A listed doc with
+#           no `> **Launch gate:** passed` line, or whose ticket (from the doc name) and Writes line fail the gate, is
+#           refused, rc 3.
 # scan      path B: binds an idle (whitelisted status) unsettled thread on a `<id>_relay` instance whose base id is listed,
 #           sends the fixed notice, re-sends pending notices (at most 3 sends a row), unbinds a row whose thread left the
 #           list or settled for T3_RELAY_UNBIND_DAYS (default 3) with no READY/BLOCKED newest bullet, and keeps one owner
