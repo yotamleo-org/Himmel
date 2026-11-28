@@ -841,7 +841,7 @@ rs_ast_prove() {
     esac
     RS_AST_WHY=$(printf '%s' "$pos" | jq -r --arg mode "$2" '
         [.[] | (select($mode == "top" and .body != null) | "a nested shell body in a command that changes the cwd"),
-               (select($mode == "top") | .argv[1:][] | select(.t == "lit") | .v | sub(".*/"; "")
+               (select($mode == "top") | .argv[] | select(.t == "lit") | .v | sub(".*/"; "")
                 | select(test("^(bash|sh|zsh|dash|ksh|mksh|ash|yash|posh)([.].*)?$") or IN("eval", "env"))
                 | "the word " + . + " in a command that changes the cwd, which can start a body this model does not read"),
                (.opaque // empty),

@@ -995,6 +995,10 @@ assert_rc "11536 control: a loop over a glob"               2 "$(run_in_shiftdir
 assert_rc "11536 control: the loop rebinds q to .env"       2 "$(run_in_shiftdir 'cd verdicts && for q in q1 q2; do q=.env; ls $q; grep -hiE '\''GO|NO-GO'\'' $q/*; done')"
 assert_rc "11536 control: bash -c child after a cd"         2 "$(run_in_shiftdir "cd empty && bash -c 'cat .en*'")"
 assert_rc "11536 control: env -S child after a cd"          2 "$(run_in_shiftdir "cd empty && env -S 'cat .en*'")"
+assert_rc "11536 bash --rcfile then -c after a cd"          2 "$(run_in_shiftdir "cd sub && bash --rcfile x -c 'cat .en*'")"
+assert_rc "11536 bash --init-file then -c after a cd"       2 "$(run_in_shiftdir "cd sub && bash --init-file x -c 'cat .en*'")"
+assert_rc "11536 yash -c after a cd"                        2 "$(run_in_shiftdir "cd sub && yash -c 'cat .en*'")"
+assert_rc "11536 posh -c after a cd"                        2 "$(run_in_shiftdir "cd sub && posh -c 'cat .en*'")"
 rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash "cd sub && fakeroot bash -c 'cat .en*'")" | bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 assert_rc "11536 an unlisted wrapper before bash -c after a cd" 2 "${rs_err##*rc=}"
 if command -v shfmt >/dev/null 2>&1; then
