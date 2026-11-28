@@ -152,9 +152,9 @@ describe('edit', () => {
     expect(buildEditFields({ addLabels: 'a,b' })).toEqual({});
   });
 
-  it('throws when --remove-labels is combined with --labels or --add-labels', () => {
+  it('throws when --remove-labels is combined with --labels, and accepts it with --add-labels', () => {
     expect(() => buildEditFields({ labels: 'a', removeLabels: 'b' })).toThrow(/mutually exclusive/);
-    expect(() => buildEditFields({ addLabels: 'a', removeLabels: 'b' })).toThrow(/mutually exclusive/);
+    expect(buildEditFields({ addLabels: 'a', removeLabels: 'b' })).toEqual({});
   });
 
   it('does not throw "nothing to edit" when only --remove-labels is given', () => {
@@ -719,6 +719,90 @@ describe('edit into a frozen version', () => {
     await edit('--priority', 'High');
     expect(puts()).toHaveLength(2);
     expect(ledger()).toEqual([]);
+  });
+});
+
+describe('edit: a remainder and a residual never share a ticket', () => {
+  let state: Record<string, string[]>;
+  const mockRequest = request as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    state = {};
+    mockRequest.mockImplementation(async (method: string, path: string, body?: { fields?: { labels?: string[] }; update?: { labels?: Array<{ add?: string; remove?: string }> } }) => {
+      if (path.startsWith('/project/')) return [{ name: 'v1.1.3', released: false, archived: false }];
+      const key = /^\/issue\/([A-Z]+-\d+)/.exec(path)?.[1];
+      if (key === undefined) return {};
+      if (method === 'GET') {
+        return { fields: { issuetype: { name: 'Task' }, labels: state[key] ?? [], parent: { key: 'HIMMEL-9' }, description: null, fixVersions: [], versions: [{ name: 'v1.1.3' }] } };
+      }
+      if (method === 'PUT') {
+        let labels = body?.fields?.labels ?? state[key] ?? [];
+        for (const op of body?.update?.labels ?? []) {
+          if (op.remove !== undefined) labels = labels.filter((l) => l !== op.remove);
+          if (op.add !== undefined) labels = [...labels, op.add];
+        }
+        state[key] = labels;
+      }
+      return {};
+    });
+  });
+
+  async function run(...args: string[]): Promise<void> {
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await p.parseAsync(['node', 'jira', 'edit', ...args]);
+  }
+  const puts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT');
+
+  it('--remove-labels residual --add-labels remainder is one PUT of both operations, with no fields.labels', async () => {
+    state['HIMMEL-901'] = ['residual', 'standalone', 'concurrent'];
+    await run('HIMMEL-901', '--remove-labels', 'residual', '--add-labels', 'remainder');
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0]![2]).toEqual({ update: { labels: [{ remove: 'residual' }, { add: 'remainder' }] } });
+    expect(state['HIMMEL-901']).toEqual(['standalone', 'concurrent', 'remainder']);
+  });
+
+  it.each([
+    ['remainder on a residual ticket', ['residual', 'standalone'], 'remainder'],
+    ['residual on a remainder ticket', ['remainder', 'standalone'], 'residual'],
+    ['phase:build on a phase:design ticket', ['phase:design', 'standalone'], 'phase:build'],
+  ] as const)('a label named in both --remove-labels and --add-labels (%s) is refused before any request', async (_n, labels, both) => {
+    state['HIMMEL-901'] = [...labels];
+    await expect(run('HIMMEL-901', '--remove-labels', both, '--add-labels', both)).rejects.toThrow(/names .* in both --remove-labels and --add-labels/);
+    expect(mockRequest).not.toHaveBeenCalled();
+    expect(state['HIMMEL-901']).toEqual(labels);
+  });
+
+  it('--add-labels remainder on a residual ticket is refused with no PUT', async () => {
+    state['HIMMEL-901'] = ['residual', 'standalone'];
+    await expect(run('HIMMEL-901', '--add-labels', 'remainder')).rejects.toThrow(/HIMMEL-901: the labels would hold remainder and a review residual label, which never share a ticket; nothing changed/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('--labels remainder,residual is refused with no PUT', async () => {
+    state['HIMMEL-901'] = ['standalone'];
+    await expect(run('HIMMEL-901', '--labels', 'remainder,residual,standalone')).rejects.toThrow(/the labels would hold remainder and a review residual label/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('--residual-of on a remainder ticket is refused, nothing written', async () => {
+    state['HIMMEL-900'] = [];
+    state['HIMMEL-901'] = ['remainder', 'standalone'];
+    await expect(run('HIMMEL-901', '--residual-of', 'HIMMEL-900')).rejects.toThrow(/HIMMEL-901 is a remainder of its parent, not a review residual; nothing changed/);
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('--residual-of on a residual ticket adds residual-depth-1, as before', async () => {
+    state['HIMMEL-900'] = [];
+    state['HIMMEL-901'] = ['residual', 'standalone'];
+    await run('HIMMEL-901', '--residual-of', 'HIMMEL-900');
+    expect(puts()).toHaveLength(1);
+    expect((puts()[0]![2] as { update: unknown }).update).toMatchObject({ labels: [{ add: 'residual-depth-1' }] });
   });
 });
 
