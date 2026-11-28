@@ -4165,7 +4165,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
                 pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
                 [ "$pool_parked_n" -gt 0 ] || { pool_parked_n=""; pool_owed_n=""; }
                 [ -z "$pool_owed_n" ] || [ "$pool_owed_n" -gt 0 ] || pool_owed_n=""
-                pool_unheld="$(printf '%s\n' "$pd_summary" | sed -n 's/^pool-unheld=//p' | head -n 1)"  # swallow-ok: no line means nothing unheld
+                pool_unheld="$(printf '%s\n' "$pd_summary" | sed -n 's/^pool-unheld=//p' | head -n 1)"
                 ;;
         esac
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
