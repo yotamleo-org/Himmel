@@ -32,9 +32,11 @@
 #      it names an agent definition, a *.md under $CLAUDE_PROJECT_DIR/.claude/
 #      agents/ first, then $HOME/.claude/agents/, whose frontmatter `name:`
 #      (the file name when it has none) is the type and leaves Agent available:
-#      no `tools:` key, or one listing Agent or the old name Task (inline,
-#      quoted or as YAML list items), and no `disallowedTools:` naming it (a
-#      trailing # comment is not read). The deny names
+#      no `tools:` key, or one listing Agent or the old name Task, and no
+#      `disallowedTools:` naming it. A key's value is its own line plus every
+#      indented or `- ` continuation line up to the next top-level key, so
+#      inline, quoted, flow, block-scalar and list forms all count; comments
+#      and blank lines are skipped. The deny names
 #      haiku-worker (.claude/agents/haiku-worker.md, Agent disallowed). A type
 #      whose definition omits Agent (edit-runner, haiku-worker), and a type with
 #      no readable definition file (built-ins such as Explore, plugin agents,
@@ -72,20 +74,24 @@ agent_def_keeps_agent() {
             rc=0
             awk -v want="$1" -v stem="$(basename "$f" .md)" '
                 function has_agent(v,   n, a, i, t) {
-                    sub(/[[:space:]]+#.*$/, "", v)
-                    sub(/^[[:space:]]*-[[:space:]]+/, "", v)
-                    gsub(/["'\''\[\]]/, " ", v)
+                    sub(/(^|[[:space:]])#.*$/, "", v)
+                    gsub(/["'\''\[\]{}>|]/, " ", v)
                     n = split(v, a, /[[:space:],]+/)
                     for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task") return 1 }
                     return 0
                 }
+                function take(v) {
+                    if (key == "tools" && has_agent(v)) listed = 1
+                    if (key == "drop" && has_agent(v)) dropped = 1
+                }
                 NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
                 /^---[[:space:]]*$/ { done = 1; exit }
-                /^[^[:space:]-]/ { key = "" }
+                /^[[:space:]]*(#|$)/ { next }
+                /^[[:space:]]/ || /^-([[:space:]]|$)/ { take($0); next }
+                { key = "" }
                 /^name:/ { v = $0; sub(/^name:/, "", v); sub(/[[:space:]]+#.*$/, "", v); gsub(/["'\''[:space:]]/, "", v); name = v }
-                /^tools:/ { tools = 1; key = "tools"; v = $0; sub(/^tools:/, "", v); if (has_agent(v)) listed = 1; next }
-                /^disallowedTools:/ { key = "drop"; v = $0; sub(/^disallowedTools:/, "", v); if (has_agent(v)) dropped = 1; next }
-                /^[[:space:]]*-[[:space:]]/ { if (key == "tools" && has_agent($0)) listed = 1; if (key == "drop" && has_agent($0)) dropped = 1 }
+                /^tools:/ { tools = 1; key = "tools"; v = $0; sub(/^tools:/, "", v); take(v); next }
+                /^disallowedTools:/ { key = "drop"; v = $0; sub(/^disallowedTools:/, "", v); take(v); next }
                 END {
                     if (!done || (name == "" ? stem : name) != want) exit 2
                     exit (dropped || (tools && !listed)) ? 1 : 0

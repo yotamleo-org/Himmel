@@ -4821,8 +4821,10 @@ definition (the `*.md` under `$CLAUDE_PROJECT_DIR/.claude/agents/`, then
 `$HOME/.claude/agents/`, whose frontmatter `name:`, or its file name when it has
 no `name:`, is that type) leaves Agent
 available, since that child
-could spawn and its Explore would run on the main session's model. A type with
-no readable definition (built-ins, plugin agents) passes. The deny names
+could spawn and its Explore would run on the main session's model. The
+`tools:` and `disallowedTools:` values are read across their indented
+continuation lines (flow, block-scalar and list forms; comments skipped). A
+type with no readable definition (built-ins, plugin agents) passes. The deny names
 `haiku-worker` (`.claude/agents/haiku-worker.md`, Agent disallowed); a typed
 agent with no Agent tool (`edit-runner`, `Explore`) passes. Bypass for both:
 `SUBAGENT_MODEL_OK=1` in the launching shell. Fails open on a missing `jq`,

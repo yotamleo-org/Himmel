@@ -289,6 +289,22 @@ assert_rc "project agent listing Agent as an unindented YAML list item + haiku i
 RC45=$(run_hook def-tab "$(payload tab-sep haiku)" "${DEFS[@]}")
 assert_rc "project agent with tab-separated tools naming Agent + haiku is DENIED (rc=2)" 2 "$RC45"
 
+printf -- '---\nname: wrapped-flow\ntools: [Read,\n  Agent]\n---\nbody\n' > "$PROJ/.claude/agents/wrapped-flow.md"
+printf -- '---\nname: wrapped-plain\ntools: Read,\n  Agent\n---\nbody\n' > "$PROJ/.claude/agents/wrapped-plain.md"
+printf -- '---\nname: block-scalar\ntools: >-\n  Read, Agent\n---\nbody\n' > "$PROJ/.claude/agents/block-scalar.md"
+printf -- '---\nname: comment-between\ntools:\n  - Read\n# a note\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/comment-between.md"
+printf -- '---\nname: dash-key\ndisallowedTools: Bash\n-notes:\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/dash-key.md"
+RC46=$(run_hook def-wrapped-flow "$(payload wrapped-flow haiku)" "${DEFS[@]}")
+assert_rc "a flow sequence wrapped over two lines naming Agent + haiku is DENIED (rc=2)" 2 "$RC46"
+RC47=$(run_hook def-wrapped-plain "$(payload wrapped-plain haiku)" "${DEFS[@]}")
+assert_rc "a plain scalar wrapped over two lines naming Agent + haiku is DENIED (rc=2)" 2 "$RC47"
+RC48=$(run_hook def-block-scalar "$(payload block-scalar haiku)" "${DEFS[@]}")
+assert_rc "a folded block scalar naming Agent + haiku is DENIED (rc=2)" 2 "$RC48"
+RC49=$(run_hook def-comment-between "$(payload comment-between haiku)" "${DEFS[@]}")
+assert_rc "a column-1 comment between tools items does not end the list: + haiku is DENIED (rc=2)" 2 "$RC49"
+RC50=$(run_hook def-dash-key "$(payload dash-key haiku)" "${DEFS[@]}")
+assert_rc "an Agent item under a later -notes: key does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC50"
+
 echo ""
 echo "=== escape hatch ==="
 
