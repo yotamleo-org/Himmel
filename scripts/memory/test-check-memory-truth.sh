@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Tests for scripts/memory/check-memory-truth.sh.
 # shellcheck disable=SC2016
 set -uo pipefail
 
