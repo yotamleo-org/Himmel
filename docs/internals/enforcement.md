@@ -4363,10 +4363,36 @@ after `/himmel-update` (marketplace re-sync) + a fresh session.
 
 Spec: `scripts/hooks/test-guard-chief-dispatch.sh`.
 
+### `block-unexpanded-file-path.sh` — a file-tool path the tools would change
+
+A PreToolUse hook, FIRST on the `Edit|Write|MultiEdit|NotebookEdit` and `Read|Grep`
+chains of `.claude/settings.json` and on the `edit_file`, `write_file` and `read_file`
+chains of `scripts/hooks/antigravity-hook-adapter.sh`, and a `MUST_RUN_CHAIN_MEMBERS`
+entry, so a timeout, kill or crash of it denies the chain. Claude Code rewrites a
+`file_path` or `notebook_path` (trim, `~` expansion, normalisation) before the hooks
+see it only when it is at most 4096 UTF-16 units, and a Grok, Cursor or Antigravity
+call gets no rewrite at all. A raw path then reaches the guards behind this one, while
+the tool still trims and expands it before it writes or reads.
+
+- It denies each present `file_path` and `notebook_path` that is not a string, is over
+  4096 UTF-8 bytes (`MAX_FILE_PATH_BYTES`), or is not in the form the tools leave
+  unchanged: a leading `~`, a first or last character from the JavaScript `trim()` set
+  (the 25 code points of `scripts/hooks/fixtures/js-trim-set.txt`), a U+0000, a `//`,
+  or a `.` or `..` segment.
+- A relative path in form and a trailing `/` are allowed: the guards behind it resolve
+  a relative path against the cwd themselves. A payload with neither field is allowed.
+- It fails closed: no `jq`, an unparseable payload or no verdict denies.
+
+Every deny names its class, the remedy and the bypass. Bypass (single run, operator
+only, set in the launching shell): `UNEXPANDED_FILE_PATH_OK=1`, tier `floor`. It also
+reopens the raw-path gap of every file guard behind this one. The Antigravity adapter
+strips every `*_OK` switch today, so the switch does not reach the guard in that lane
+until that strip is removed. Suite: `scripts/hooks/test-block-unexpanded-file-path.sh`.
+
 ### `guard-judge-write-scope.sh` — judge-ro write fence
 
-A PreToolUse hook, FIRST on the `Edit|Write|MultiEdit|NotebookEdit` chain and a
-`MUST_RUN_CHAIN_MEMBERS` entry. `judge-ro` carries the `Write` tool so it can record
+A PreToolUse hook, second on the `Edit|Write|MultiEdit|NotebookEdit` chain (after
+`block-unexpanded-file-path.sh`) and a `MUST_RUN_CHAIN_MEMBERS` entry. `judge-ro` carries the `Write` tool so it can record
 its own evidence file: a Bash heredoc, `printf` or `tee` of that evidence is refused by
 the Bash text guards, which read the body. The fence keys on the payload's
 `agent_type`, which Claude Code sends inside a subagent call.

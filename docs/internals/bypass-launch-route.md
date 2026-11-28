@@ -112,8 +112,11 @@ shell): `EDIT_LIVE_SETTINGS_OK` (a live settings edit outlives the launch),
 operator-chain row), `MAIN_REF_TRANSACTION_OK` (a commit on local main),
 `DOCKER_PRIVESC_OK` (root-equivalent), `READ_SECRETS_OK`, `ROGUE_SCHEDULE_OK`
 (arms a scheduler entry whose launch outlives this one), `HOOKSPATH_OK` (a wrong
-`core.hooksPath` silently skips every git hook) and `EDIT_ON_MAIN_OK` (edits the
-primary checkout, which holds the daemon and the live hooks). Six more floor rows
+`core.hooksPath` silently skips every git hook), `EDIT_ON_MAIN_OK` (edits the
+primary checkout, which holds the daemon and the live hooks) and
+`UNEXPANDED_FILE_PATH_OK` (it turns off the raw-path check every file guard behind
+it relies on, so a go would grant the other floor guards' targets by a padded
+path). Six more floor rows
 name switches outside the registry: `GH_ADMIN_MERGE_OK`,
 `GRAPHIFY_SALUS_LOCAL_OK` and the four offline-mode switches
 `SECURITY_REVIEW_NO_FETCH`, `PLATFORMS_TESTED_NO_FETCH`,
