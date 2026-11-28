@@ -67,7 +67,18 @@ export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'eme
 export type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
 import type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
 
+export interface GoProof {
+  answer: 'move-out';
+  update: number;
+  message_id: number;
+  ts: string;
+  asked: string;
+  code: string;
+  request_sha256: string;
+}
+
 export interface OperatorRow {
+  go?: GoProof;
   id: string;
   kind: OperatorKind;
   ts: string;

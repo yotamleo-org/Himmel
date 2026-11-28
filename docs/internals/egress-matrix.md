@@ -424,7 +424,8 @@ review, not a code edit.
   purpose `luna-mcp-read`, and for nothing else. Each of the seven non-salus qmd
   corpora (`luna-clippings`, `luna-personal`, `himmel-code`, `operator-repos`,
   `jira-mirror`, `roadmap-plan`, `skill-index`) has its own literal `allow+log`
-  row per provider, 14 in all, so the service must append a ledger line per call.
+  row per provider, 14 in all (the `gmail` corpus below adds a fifteenth, for Grokbot
+  only), so the service must append a ledger line per call.
   The purpose is read only: no write purpose is declared, and a write row waits
   for the stage that exercises it. `himmel-code × <provider> × *` is an explicit
   deny placed right after that provider's `luna-mcp-read` allow and ahead of the
@@ -442,6 +443,19 @@ review, not a code edit.
   `scripts/qmd/qmd-collection-corpus.json` also maps the optional `luna-pa`
   clean-notes collection to `luna-personal` and `luna-clippings`, so it is mapped
   before it joins an index; the gate refuses an unmapped collection.
+- **`gmail`** is the operator's Gmail archive as markdown (one file per email,
+  `~/Mail/gmail-md`), indexed by its own local-only qmd index (`qmd --index gmail`,
+  own daemon on loopback, own token), the same shape as salus. It is private mail,
+  not PHI. One cell is open: `gmail × xai-grokbot × luna-mcp-read` (`allow+log`,
+  operator ruling 2026-11-27: Grokbot reads it through the audited
+  read service, full result text leaves the machine, one ledger line per call).
+  `gmail × * × *` is an explicit deny placed after the hard
+  `* × google-gemini` deny and ahead of every other wildcard-corpus row, so
+  `* × ollama-cloud × extraction` cannot open it. `anthropic` and `openai-chatgpt`
+  stay denied. The
+  read service never includes `gmail` in a default search and refuses a search that
+  mixes it with another collection; `scripts/qmd/qmd-collection-corpus.json` maps
+  the collection `gmail` to the corpus `gmail`.
 - **qmd enforcement.** qmd's model config is per index, not per
   collection, so salus lives in its own index (`qmd --index salus`, own
   `salus.yml`/db/daemon port, local models). `scripts/qmd/qmd-jina-gate.mjs`

@@ -704,40 +704,75 @@ allow 'env -- printf "%s %s" "$(grep -c a qmd.sh)" "$(grep -c b qmd.sh)"'
 
 # The nested scan is linear: padding with shell words must not push the hook
 # past the chain's budget, where it would be skipped instead of deciding.
-# timed RC LABEL CMD — assert the exit code and a wall time under 1 s
-# (EPOCHREALTIME is bash 5; without it SECONDS ticks in whole seconds, and the
-# budget is five times wider: the quadratic cost this guards ran for minutes).
-timed() {
-    local want=$1 label=$2 input t0 t1 rc ms budget=${4:-1000}
-    [ -n "${EPOCHREALTIME:-}" ] || budget=$((budget * 5))
-    input=$(j_bash "$3")
+LOAD_FACTOR=3
+SLACK_MS=300
+WHOLE_SECOND_SLACK_MS=5000
+RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS=15000
+run_ms() {
+    local input t0 t1 rc
+    input=$(j_bash "$1")
     t0=${EPOCHREALTIME:-$SECONDS}
     rc=$(run_case "$input")
     t1=${EPOCHREALTIME:-$SECONDS}
-    assert_rc "$label" "$want" "$rc"
     if [ -n "${EPOCHREALTIME:-}" ]; then
-        ms=$(( (${t1/[.,]/} - ${t0/[.,]/}) / 1000 ))
+        echo "$rc $(( (${t1/[.,]/} - ${t0/[.,]/}) / 1000 ))"
     else
-        ms=$(( (t1 - t0) * 1000 ))
-        if [ "$ms" -le 1000 ]; then ms=0; fi
+        echo "$rc $(( (t1 - t0) * 1000 ))"
     fi
-    if [ "$ms" -lt "$budget" ]; then
-        echo "PASS $label in ${ms}ms"
+}
+within_bound_of_quarter_size_controls() {
+    local control1 padded1 control2 padded2 faster slower bound slack=$SLACK_MS
+    [ -n "${EPOCHREALTIME:-}" ] || slack=$WHOLE_SECOND_SLACK_MS
+    control1=$(run_ms "$2"); padded1=$(run_ms "$1"); control2=$(run_ms "$2"); padded2=$(run_ms "$1")
+    bound_rc=${padded1%% *}
+    [ "${padded2%% *}" = "$bound_rc" ] || bound_rc="$bound_rc then ${padded2%% *}"
+    control1=${control1#* } control2=${control2#* } faster=${padded1#* } slower=${padded2#* }
+    if [ "$slower" -lt "$faster" ]; then faster=$slower slower=${padded1#* }; fi
+    bound=$(( LOAD_FACTOR * (control1 + control2) + slack ))
+    bound_why="${faster}ms (slower run ${slower}ms of at most ${RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS}ms, controls ${control1}ms and ${control2}ms, bound ${bound}ms)"
+    [ "$faster" -le "$bound" ] && [ "$slower" -le "$RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS" ]
+}
+timed() {
+    local ok=0
+    within_bound_of_quarter_size_controls "$3" "$4" || ok=1
+    assert_rc "$2" "$1" "$bound_rc"
+    if [ "$ok" = 0 ]; then
+        echo "PASS $2 in $bound_why"
     else
-        echo "FAIL $label took ${ms}ms (budget ${budget}ms)"
+        echo "FAIL $2 took $bound_why"
         FAILED=$((FAILED + 1))
     fi
 }
 pad_sh=$(printf 'sh %.0s' $(seq 700))
+pad_shq=$(printf 'sh %.0s' $(seq 175))
 pad_w=$(printf 'w %.0s' $(seq 2000))
-timed 2 'deny: 700 sh words, then a nested -c' "echo ${pad_sh}; bash -ec \"qmd q\\\"uery\\\" x\""
-timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu\"ery x'"
-timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}"
-timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}"
-# This row holds a `$`, so guard_expansion_recheck re-feeds the
-# hook once on the stripped text (about 2x). Measured: 812ms idle locally,
-# 1809ms on the loaded CI shard (PR 2506, run 38363586521); budget = 2x CI.
-timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" 3600
+pad_wq=$(printf 'w %.0s' $(seq 500))
+timed 2 'deny: 700 sh words, then a nested -c' "echo ${pad_sh}; bash -ec \"qmd q\\\"uery\\\" x\"" "echo ${pad_shq}; bash -ec \"qmd q\\\"uery\\\" x\""
+timed 2 'deny: 700 sh words before a nested -c' "echo ${pad_sh}bash -c 'qmd \"qu\"ery x'" "echo ${pad_shq}bash -c 'qmd \"qu\"ery x'"
+timed 0 'allow: qmd status, then 700 sh words' "qmd status; echo ${pad_sh}" "qmd status; echo ${pad_shq}"
+timed 0 'allow: qmd status, then 2000 words' "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"
+timed 0 'allow: qmd status, bash -c and 2000 words' "qmd status; bash -c 'echo \$0' ${pad_w}" "qmd status; bash -c 'echo \$0' ${pad_wq}"
+QUADRATIC_SLOW_PATH_MS_AT_PAD_W=6000
+write_hook_run_three_times() {
+    printf '#!/usr/bin/env bash\nin=$(cat)\nfor _ in 1 2 3; do printf "%%s" "$in" | bash "%s"; rc=$?; done\nexit $rc\n' "$HOOK" >"$1"
+}
+write_hook_then_sleep_quadratic_in_input() {
+    printf '#!/usr/bin/env bash\nin=$(cat)\nprintf "%%s" "$in" | bash "%s"; rc=$?\nms=$(( ${#in} * ${#in} * %s / (%s * %s) ))\nsleep "$((ms / 1000)).$(printf %%03d $((ms %% 1000)))"\nexit $rc\n' "$HOOK" "$QUADRATIC_SLOW_PATH_MS_AT_PAD_W" "${#pad_w}" "${#pad_w}" >"$1"
+}
+STUBS=$(mktemp -d "${TMPDIR:-/tmp}/block-bare-qmd-stubs.XXXXXX") || exit 1
+trap 'rm -rf "$STUBS"' EXIT
+write_hook_run_three_times "$STUBS/three-x-slower-runner.sh"
+write_hook_then_sleep_quadratic_in_input "$STUBS/quadratic-slow-path.sh"
+HOOK=$STUBS/three-x-slower-runner.sh timed 0 'allow: qmd status, then 2000 words on a 3x slower runner' "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"
+if [ -z "${EPOCHREALTIME:-}" ]; then
+    echo "SKIP a slow path that grows with the input: whole-second clock, its slack hides 6 s"
+elif HOOK=$STUBS/quadratic-slow-path.sh within_bound_of_quarter_size_controls "qmd status; echo ${pad_w}" "qmd status; echo ${pad_wq}"; then
+    echo "FAIL a slow path that grows with the input passed the bound: $bound_why"
+    FAILED=$((FAILED + 1))
+else
+    assert_rc 'a slow path that grows with the input still allows' 0 "$bound_rc"
+    echo "PASS a slow path that grows with the input fails the bound: $bound_why"
+fi
 
 # Stdin-fed residuals. A shell option's argument (-o errexit,
 # -O extglob, --rcfile f) is no program operand, at/batch read their job from
@@ -1036,8 +1071,8 @@ run_case "$(j_bash "echo hi$pad_a; qmd query x")" >/dev/null
 t1=$(now_ms)
 deny "echo hi$pad_o; qmd query x"
 t2=$(now_ms)
-if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ]; then
-    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms)"; FAILED=$((FAILED + 1)); fi
+if [ $((t2 - t1)) -gt $(( (t1 - t0) * 3 + 500 )) ] || [ $((t2 - t1)) -gt "$RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS" ]; then
+    echo "FAIL open-paren run x16000 took $((t2 - t1))ms (control $((t1 - t0))ms, budget 3x + 500ms, at most ${RUN_HOOK_WITH_BASH_MEMBER_TIMEOUT_MS}ms)"; FAILED=$((FAILED + 1)); fi
 # A `(` or `)` inside the path must still reach the program name.
 deny '/tmp/a(b)/qmd query x'
 deny '"/tmp/a(b)/qmd" query x'
@@ -1376,7 +1411,7 @@ esac
 # --- a missing shfmt denies a command that names qmd and a search verb, and the
 # message names shfmt; a command that names no qmd never pays for it.
 NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-bare-qmd-nosh.XXXXXX") || exit 1
-trap 'rm -rf "$NOSH"' EXIT
+trap 'rm -rf "$NOSH" "$STUBS"' EXIT
 oifs=$IFS; IFS=:
 for d in $PATH; do
     for t in "$d"/*; do

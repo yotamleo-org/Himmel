@@ -16,6 +16,7 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
 - The paths come from `scripts/lanes/profile-settings.sh`: content-addressed, so a
   path stays valid after the registry changes. Re-run the script after a registry
   change; it updates `launchArgs` of the `claudeAgent_<profile>` ids it owns.
+- A change to a Claude instance's launch settings that changes its tool set (a deny entry, plugins, an MCP config) costs each live thread on that instance one full prompt-cache rewrite at its first turn after its next idle release, about 300k to 450k tokens per thread (figures: the T3 restart prompt-cache audit in the state repo's `specs/audits/`).
 - `operator` resolves to no settings file, so its `claudeAgent_operator` instance gets a
   settings file holding only the resolver's default for a profile that sets nothing: the
   Artifact tool denied. The built-in default instance, `providerInstances.claudeAgent`
@@ -36,6 +37,9 @@ One `providerInstances.claudeAgent_<profile>` entry per profile:
   `environment` list on the instance itself, beside `config` (checked in T3 0.1.10's
   schema); the scan reads that and the `config` copies. An instance whose `launchArgs`
   carry `--dangerously-skip-permissions` or `bypassPermissions` is refused the same way.
+  Separately, `scripts/hooks/guard-t3-thread-tools.sh` refuses agents any Claude instance
+  whose `launchArgs` are neither empty nor exactly this script's resolved-profile line (see
+  `docs/internals/enforcement.md`, "Own settings").
 - A malformed settings file is refused (rc 2) and left untouched.
 
 ## Antigravity profile instances
@@ -105,7 +109,8 @@ bash scripts/t3/provider-instances.sh --apply --settings-file ~/.t3/userdata/set
 The default `--dry-run` prints a diff and the ids to add to
 `.t3.instance_allowlist` in `~/.himmel/config.json` (the script never writes that
 file; `guard-t3-thread-tools.sh` no longer reads that key: it refuses bypass instances, ids off the optional
-`.t3.instance_narrow`, and every id when its config or T3's settings cannot be read; see `docs/internals/enforcement.md`).
+`.t3.instance_narrow`, a launch onto a driver with no complete `scripts/harnesses` descriptor, and every id when its config,
+T3's settings or the harness registry cannot be read; see `docs/internals/enforcement.md`).
 `--apply` first copies the file to `<file>.bak.<UTC stamp>`, then replaces it
 atomically. The live T3 settings file is fenced by `block-edit-live-settings`, so
 an agent applies it only through the update step:

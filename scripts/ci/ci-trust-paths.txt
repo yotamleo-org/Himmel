@@ -10,6 +10,9 @@
 # cannot shrink the list it is judged by. An unreadable, empty or invalid list
 # refuses. Blank lines and # comments are ignored; anchor every pattern.
 
+^scripts/guardrails/(phi-egress-lib\.sh|phi-list-paths\.cjs|phi_list_paths\.py|phi-dir-cases\.tsv|testlib-phi-dirs\.sh|test-phi-list-paths\.sh)$
+^marketplace/plugins/himmel-ops/hooks/phi-egress-lib\.sh$
+
 # CI definitions and every script CI runs outside a suite (H2).
 ^\.github/
 ^scripts/ci/
@@ -19,6 +22,7 @@
 ^scripts/cr/impacted-
 ^scripts/lib/
 ^scripts/hooks/lib/
+^scripts/harnesses/
 
 # The merge gate, its GO writer and every helper it runs or sources.
 ^scripts/handover/merge-on-green\.sh$
@@ -114,6 +118,7 @@
 ^scripts/jira/src/release/signer\.test\.ts$
 # The operator fence's ancestry walk: a marked ancestor or a bad stop refuses every operator verb.
 ^scripts/jira/src/release/fence-ancestry\.ts$
+^scripts/jira/src/release/(go-answer|operator-words-spawn|operator-acts)(\.test)?\.ts$
 # The bridge envelope: the permission mode, allow and deny lists and Bash sandbox of every bridge spawn.
 ^scripts/telegram/run\.ts$
 ^scripts/(telegram/operator-words|jira/src/release/bridge-words)(\.test)?\.ts$

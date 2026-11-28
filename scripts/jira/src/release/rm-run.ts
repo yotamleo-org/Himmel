@@ -328,6 +328,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   const lease = leaseAcquire(rctx, { expectEpoch: prior.epoch, doc, session: o.session ?? 'rm-run', pid: o.pid ?? process.pid, reclaim: true });
   const lines: string[] = reclaimNote(prior);
   const { stop, unlink } = linkStop(o.signal);
+  rctx.signal = stop.signal;
   const halt = () => { if (stop.signal.aborted) throw stopReason(stop.signal); };
   let failed: Error | undefined;
   let refused: JudgeReplyError | undefined;

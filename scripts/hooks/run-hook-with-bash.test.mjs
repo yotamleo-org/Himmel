@@ -1988,6 +1988,45 @@ test('watchdog drift: D3 — every *_DENY prefix is classified in DENY_PREFIX_CL
   }
 });
 
+function runnerLibRefs(loaderSources, translatorSource) {
+  const refs = new Set();
+  for (const text of loaderSources) {
+    for (const m of text.matchAll(/require\(\s*'\.\/(lib\/[^']+)'\s*\)/g)) refs.add(m[1]);
+  }
+  for (const m of translatorSource.matchAll(/path\.join\(\s*__dirname,\s*'([^']+)'\s*\)/g)) refs.add(`lib/${m[1]}`);
+  return [...refs].sort();
+}
+
+test('runner libs: D1 — RUNNER_LIBS is exactly the lib files the runner, wrapper and translator name', () => {
+  const read = (rel) => readFileSync(join(HERE, rel), 'utf8');
+  const loaders = [read('run-hook-with-bash.js'), read('guardrail-skip-in-himmel.js')];
+  const translator = read('lib/harness-tool-translate.js');
+  assert.ok(Array.isArray(hookIntegrity.RUNNER_LIBS), 'RUNNER_LIBS exported');
+  assert.deepEqual(runnerLibRefs(loaders, translator), [...hookIntegrity.RUNNER_LIBS].sort());
+  const extra = runnerLibRefs([...loaders, "require('./lib/extra.js')"], translator);
+  assert.ok(extra.includes('lib/extra.js') && !hookIntegrity.RUNNER_LIBS.includes('lib/extra.js'),
+    'the scan reports a require RUNNER_LIBS does not list');
+});
+
+test('runner libs: D2 — pathLocality reads local, foreign and an escaping symlink', () => {
+  const fs = require('node:fs');
+  const project = makeTmpDir('path-locality-project-');
+  const outside = makeTmpDir('path-locality-outside-');
+  try {
+    fs.mkdirSync(join(project, 'scripts', 'hooks'), { recursive: true });
+    writeFileSync(join(project, 'scripts', 'hooks', 'a.js'), '');
+    writeFileSync(join(outside, 'a.js'), '');
+    fs.symlinkSync(outside, join(project, 'scripts', 'hooks', 'lib'));
+    assert.equal(typeof hookIntegrity.pathLocality, 'function', 'pathLocality exported');
+    assert.equal(hookIntegrity.pathLocality(join(project, 'scripts', 'hooks', 'a.js'), project), 'local');
+    assert.equal(hookIntegrity.pathLocality(join(outside, 'a.js'), project), 'foreign');
+    assert.equal(hookIntegrity.pathLocality(join(project, 'scripts', 'hooks', 'lib', 'a.js'), project), 'escapes');
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
 test('watchdog drift: E(1) — a drifted look-alike filename keeps the deny', () => {
   const fx = watchdogFixture();
   try {
@@ -2049,6 +2088,462 @@ test('watchdog drift: G — a chained drifted watchdog still denies the chain', 
     assert.equal(res.status, 2, `exit ${res.status}; stderr: ${res.stderr}`);
     assert.match(res.stderr, /DENY/);
     assert.equal(existsSync(join(fx.canaries, 'ran-auto-arm-on-cap')), false);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+const CG_REL = 'scripts/hooks/guard-worker-context-handoff.sh';
+const CG_LIB = 'scripts/lib/qmd-bin.sh';
+const D5_LEAD = 'this session can still report while it is refused';
+
+function reportFixture({ projectName = 'proj' } = {}) {
+  const fs = require('node:fs');
+  const root = makeTmpDir('hook-report-');
+  const dir = join(root, projectName);
+  const pins = join(root, 'pins');
+  const canaries = join(root, 'canaries');
+  for (const d of [pins, canaries, ...['scripts/hooks', 'scripts/lib', 'scripts/handover/chief-kit', 'bucket'].map((rel) => join(dir, rel))]) {
+    fs.mkdirSync(d, { recursive: true });
+  }
+  const write = (rel, text) => writeFileSync(join(dir, ...rel.split('/')), text);
+  write(CG_REL, `. "$(dirname "$0")/../lib/qmd-bin.sh"\n: > "${canaries}/ran-context-guard"\nexit 0\n`);
+  write(CG_LIB, ':\n');
+  write('scripts/hooks/guard.sh', `. "$(dirname "$0")/../lib/other-lib.sh"\n: > "${canaries}/ran-guard"\nexit 0\n`);
+  write('scripts/lib/other-lib.sh', ':\n');
+  write('scripts/handover/chief-kit/append-results.sh', ':\n');
+  const pinMap = {};
+  for (const rel of [CG_REL, CG_LIB, 'scripts/hooks/guard.sh', 'scripts/lib/other-lib.sh']) {
+    pinMap[rel] = gitBlobSha1(readFileSync(join(dir, ...rel.split('/'))));
+  }
+  const doc = join(dir, 'bucket', 'T-N1-x.md');
+  const doc2 = join(dir, 'bucket', 'T-N2-y.md');
+  writeFileSync(doc, '# T-N1\n\n## Results (newest at the bottom)\n');
+  writeFileSync(doc2, '# T-N2\n\n## Results\n');
+  const transcript = join(root, 'transcript.jsonl');
+  const firstTurn = (text) => `${JSON.stringify({ type: 'user', message: { content: text } })}\n`;
+  writeFileSync(transcript, firstTurn(`load ${doc} and continue`));
+  return {
+    root,
+    dir,
+    pins,
+    canaries,
+    doc,
+    doc2,
+    transcript,
+    firstTurn,
+    path: (rel) => join(dir, ...rel.split('/')),
+    pin(sid = 's1') {
+      writeFileSync(join(pins, `${sid}.json`), JSON.stringify({ session_id: sid, pins: pinMap }));
+      writeFileSync(join(pins, `${sid}.recorder`), 'done');
+    },
+    drift(rel = CG_LIB) {
+      write(rel, 'echo drifted\n');
+    },
+    run(payload, { member = CG_REL, env = {} } = {}) {
+      const full = { session_id: 's1', transcript_path: transcript, hook_event_name: 'PreToolUse', ...payload };
+      const childEnv = {
+        ...process.env,
+        CLAUDE_PROJECT_DIR: dir,
+        HIMMEL_HOOK_INTEGRITY_DIR: pins,
+        HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '',
+        HIMMEL_CONSOLE_LEG: '1',
+        HIMMEL_CONSOLE_NAME: 'T-chief',
+        ...env,
+      };
+      for (const [key, value] of Object.entries(childEnv)) if (value === undefined) delete childEnv[key];
+      return spawnSync(process.execPath, [LAUNCHER, join(dir, ...member.split('/'))], {
+        input: JSON.stringify(full),
+        env: childEnv,
+        encoding: 'utf8',
+      });
+    },
+    cleanup() {
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
+function withDriftedGuard(fn, options) {
+  const fx = reportFixture(options);
+  try {
+    fx.pin();
+    fx.drift();
+    fn(fx);
+  } finally {
+    fx.cleanup();
+  }
+}
+
+const sendTo = (to) => ({ tool_name: 'SendMessage', tool_input: { to, summary: 's', message: 'm' } });
+const toolSearch = (query) => ({ tool_name: 'ToolSearch', tool_input: { query } });
+const listAgents = { tool_name: 'ListAgents', tool_input: {} };
+const bashCall = (command) => ({ tool_name: 'Bash', tool_input: { command } });
+const appendScript = (fx) => `${fx.dir}/scripts/handover/chief-kit/append-results.sh`;
+const appendCmd = (fx, { script = appendScript(fx), doc = `'${fx.doc}'`, text = "'BLOCKED — pin drift'" } = {}) =>
+  `bash ${script} ${doc} ${text}`;
+
+function assertReportPass(fx, res, kind, label) {
+  assert.equal(res.status, 0, `${label}: exit ${res.status}; stderr: ${res.stderr}`);
+  const lines = res.stderr.trim().split('\n');
+  assert.equal(lines.length, 1, `${label}: one stderr line, got: ${res.stderr}`);
+  assert.ok(lines[0].includes(`guard-worker-context-handoff.sh was NOT run on this ${kind} report call (${CG_LIB}: `), `${label}: ${lines[0]}`);
+  assert.equal(res.stdout, '', label);
+  assert.equal(existsSync(join(fx.canaries, 'ran-context-guard')), false, `${label}: the drifted guard never ran`);
+}
+
+function assertRefused(fx, res, label) {
+  assert.equal(res.status, 2, `${label}: exit ${res.status}; stderr: ${res.stderr}`);
+  assert.equal(res.stdout, '', label);
+  assert.ok(res.stderr.startsWith('run-hook-with-bash: DENY guard-worker-context-handoff.sh — '), `${label}: ${res.stderr}`);
+  assert.ok(res.stderr.includes(`(${CG_LIB})`), `${label}: names the drifted lib: ${res.stderr}`);
+  assert.equal(existsSync(join(fx.canaries, 'ran-context-guard')), false, label);
+}
+
+function assertRefusedWithReportLine(fx, res, label, chief = 'T-chief') {
+  assertRefused(fx, res, label);
+  assert.ok(res.stderr.includes(D5_LEAD), `${label}: report line missing: ${res.stderr}`);
+  assert.ok(res.stderr.includes(`SendMessage to ${chief};`), `${label}: names ${chief}: ${res.stderr}`);
+}
+
+test('report pass: control — under a drifted guard every other call stays refused and nothing runs', () => {
+  withDriftedGuard((fx) => {
+    for (const call of [
+      { tool_name: 'Read', tool_input: { file_path: fx.doc } },
+      { tool_name: 'Edit', tool_input: { file_path: fx.doc, old_string: 'a', new_string: 'b' } },
+      { tool_name: 'TaskStop', tool_input: {} },
+      bashCall('echo hi'),
+    ]) assertRefused(fx, fx.run(call), call.tool_name);
+  });
+});
+
+test('report pass: R1 — SendMessage to the chief passes', () => {
+  withDriftedGuard((fx) => assertReportPass(fx, fx.run(sendTo('T-chief')), 'SendMessage', 'R1'));
+});
+
+test('report pass: R1n — SendMessage to anyone else is refused', () => {
+  withDriftedGuard((fx) => assertRefusedWithReportLine(fx, fx.run(sendTo('T-other')), 'R1n'));
+});
+
+test('report pass: R2 — ToolSearch loading SendMessage passes', () => {
+  withDriftedGuard((fx) => {
+    for (const query of ['select:SendMessage', 'select:SendMessage,Monitor', ' select:Monitor, SendMessage ']) {
+      assertReportPass(fx, fx.run(toolSearch(query)), 'ToolSearch', query);
+    }
+  });
+});
+
+test('report pass: R2n — any other ToolSearch is refused', () => {
+  withDriftedGuard((fx) => {
+    for (const query of ['select:Bash', 'select:SendMessageX', 'send message', 'SendMessage']) {
+      assertRefusedWithReportLine(fx, fx.run(toolSearch(query)), query);
+    }
+  });
+});
+
+test('report pass: R2b — ListAgents passes', () => {
+  withDriftedGuard((fx) => assertReportPass(fx, fx.run(listAgents), 'ListAgents', 'R2b'));
+});
+
+test('report pass: R3 — a literal BLOCKED append on the own doc passes', () => {
+  withDriftedGuard((fx) => assertReportPass(fx, fx.run(bashCall(appendCmd(fx))), 'append-results', 'R3'));
+});
+
+test('report pass: R3d — a bare doc and a double-quoted text pass', () => {
+  withDriftedGuard((fx) => {
+    const variants = {
+      'bare doc': appendCmd(fx, { doc: fx.doc }),
+      'double-quoted text': appendCmd(fx, { text: '"BLOCKED — pin drift; see the log"' }),
+      'tabs and outer space': `  bash\t${appendScript(fx)}\t'${fx.doc}'  'BLOCKED — x'  `,
+    };
+    for (const [name, command] of Object.entries(variants)) {
+      assertReportPass(fx, fx.run(bashCall(command)), 'append-results', name);
+    }
+  });
+});
+
+test('report pass: R3n — every other append shape is refused', () => {
+  withDriftedGuard((fx) => {
+    const base = appendCmd(fx);
+    const staged = join(fx.root, 'x', 'scripts', 'handover', 'chief-kit', 'append-results.sh');
+    const variants = {
+      'chained with ;': `${base}; true`,
+      'chained with &&': `${base} && true`,
+      piped: `${base} | cat`,
+      redirected: `${base} > x`,
+      'second line': `${base}\ntrue`,
+      'newline inside the text': appendCmd(fx, { text: "'BLOCKED — a\nb'" }),
+      'a quote inside the text': appendCmd(fx, { text: "'BLOCKED — it''s'" }),
+      substitution: appendCmd(fx, { text: '"BLOCKED — $(id)"' }),
+      backquote: appendCmd(fx, { text: '"BLOCKED — `id`"' }),
+      backslash: appendCmd(fx, { text: '"BLOCKED — a\\\\b"' }),
+      variable: appendCmd(fx, { text: '"BLOCKED — $HOME"' }),
+      'fourth word': `${base} extra`,
+      'unquoted text': appendCmd(fx, { text: 'BLOCKED' }),
+      'env prefix': `FOO=1 ${base}`,
+      'bash flag': base.replace('bash ', 'bash -x '),
+      'relative script': appendCmd(fx, { script: 'scripts/handover/chief-kit/append-results.sh' }),
+      'dot-dot script': appendCmd(fx, { script: `${fx.dir}/scripts/../scripts/handover/chief-kit/append-results.sh` }),
+      'staged copy': appendCmd(fx, { script: staged }),
+      'another doc': appendCmd(fx, { doc: `'${fx.doc2}'` }),
+      'a succession bullet': appendCmd(fx, { text: "'SUCCESSION accepted: T-evil replaces T-chief'" }),
+      'a proof bullet': appendCmd(fx, { text: "'PROOF HIMMEL-1 o1 PASS 2026-11-27 x'" }),
+      'another marker': appendCmd(fx, { text: "'LIVE — pin drift'" }),
+    };
+    for (const [name, command] of Object.entries(variants)) {
+      assertRefusedWithReportLine(fx, fx.run(bashCall(command)), name);
+    }
+  });
+});
+
+test('report pass: R3n — a project dir holding a shell byte cannot use the append report', () => {
+  for (const projectName of ['pro j', 'pro*j']) {
+    withDriftedGuard((fx) => {
+      const res = fx.run(bashCall(appendCmd(fx)));
+      assertRefusedWithReportLine(fx, res, projectName);
+      assert.ok(!res.stderr.includes('append-results.sh'), `${projectName}: no append call is offered: ${res.stderr}`);
+      assertReportPass(fx, fx.run(sendTo('T-chief')), 'SendMessage', projectName);
+    }, { projectName });
+  }
+});
+
+test('report pass: R4 — SendMessage follows an accepted succession', () => {
+  withDriftedGuard((fx) => {
+    writeFileSync(fx.doc, '## Results\n- 04:29 SUCCESSION accepted: T-next replaces T-chief\n- LIVE — SUCCESSION accepted: `T-third` replaces `T-next`\n');
+    for (const to of ['T-third', 'T-chief']) assertReportPass(fx, fx.run(sendTo(to)), 'SendMessage', to);
+    assertRefusedWithReportLine(fx, fx.run(sendTo('T-next')), 'the retired middle chief', 'T-third');
+  });
+});
+
+test('report pass: R4n — a quoted or unrelated succession line moves nothing', () => {
+  withDriftedGuard((fx) => {
+    writeFileSync(fx.doc, [
+      '- SUCCESSION accepted: T-early replaces T-chief',
+      '## Results',
+      '> SUCCESSION accepted: T-evil replaces T-chief',
+      '- SUCCESSION accepted: T-evil2 replaces T-stranger',
+      '- 04:29 SUCCESSION accepted: T-evil3 replaces T-chief (quoted)',
+      '',
+    ].join('\n'));
+    for (const to of ['T-early', 'T-evil', 'T-evil2', 'T-evil3']) {
+      assertRefusedWithReportLine(fx, fx.run(sendTo(to)), to);
+    }
+  });
+});
+
+test('report pass: R5 — a refused call names the report calls after the base deny text', () => {
+  withDriftedGuard((fx) => {
+    for (const call of [{ tool_name: 'Read', tool_input: { file_path: fx.doc } }, bashCall('echo hi')]) {
+      const res = fx.run(call);
+      assertRefusedWithReportLine(fx, res, call.tool_name);
+      assert.ok(res.stderr.indexOf('DENY ') < res.stderr.indexOf(D5_LEAD), res.stderr);
+      assert.ok(res.stderr.includes(`bash ${appendScript(fx)} '${fx.doc}' 'BLOCKED — `), res.stderr);
+      assert.ok(res.stderr.includes('bypass queue'), res.stderr);
+    }
+  });
+});
+
+test('report pass: R6 — a missing record keeps the plain deny', () => {
+  const fx = reportFixture();
+  try {
+    fx.pin();
+    require('node:fs').unlinkSync(join(fx.pins, 's1.json'));
+    const res = fx.run(sendTo('T-chief'));
+    assert.equal(res.status, 2, res.stderr);
+    assert.match(res.stderr, /record is missing/);
+    assert.ok(!res.stderr.includes(D5_LEAD), res.stderr);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('report pass: R7 — outside a console leg there is no pass and no report line', () => {
+  withDriftedGuard((fx) => {
+    const variants = {
+      'leg unset': { HIMMEL_CONSOLE_LEG: undefined },
+      'leg 0': { HIMMEL_CONSOLE_LEG: '0' },
+      'no chief name': { HIMMEL_CONSOLE_NAME: '' },
+    };
+    for (const [name, env] of Object.entries(variants)) {
+      const res = fx.run(sendTo('T-chief'), { env });
+      assertRefused(fx, res, name);
+      assert.ok(!res.stderr.includes(D5_LEAD), `${name}: ${res.stderr}`);
+    }
+  });
+});
+
+test('report pass: R8 — another drifted guard is never skipped', () => {
+  const fx = reportFixture();
+  try {
+    fx.pin();
+    fx.drift('scripts/lib/other-lib.sh');
+    const res = fx.run(sendTo('T-chief'), { member: 'scripts/hooks/guard.sh' });
+    assertDeny(res);
+    assert.ok(!res.stderr.includes(D5_LEAD), res.stderr);
+    assert.equal(existsSync(join(fx.canaries, 'ran-guard')), false);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('report pass: R8b — a guard swapped for a link to the drifted context guard keeps the deny', () => {
+  const fs = require('node:fs');
+  withDriftedGuard((fx) => {
+    fs.unlinkSync(fx.path('scripts/hooks/guard.sh'));
+    fs.symlinkSync(fx.path(CG_REL), fx.path('scripts/hooks/guard.sh'));
+    const res = fx.run(sendTo('T-chief'), { member: 'scripts/hooks/guard.sh' });
+    assertDeny(res);
+    assert.ok(!res.stderr.includes(D5_LEAD), res.stderr);
+    assert.equal(existsSync(join(fx.canaries, 'ran-context-guard')), false);
+  });
+});
+
+test('report pass: R8c — the context guard path linked to a drifted guard keeps the deny', () => {
+  const fs = require('node:fs');
+  const fx = reportFixture();
+  try {
+    fx.pin();
+    fs.unlinkSync(fx.path(CG_REL));
+    fs.symlinkSync(fx.path('scripts/hooks/guard.sh'), fx.path(CG_REL));
+    fx.drift('scripts/hooks/guard.sh');
+    const res = fx.run(sendTo('T-chief'));
+    assertDeny(res);
+    assert.ok(!res.stderr.includes(D5_LEAD), res.stderr);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('report pass: R10 — only PreToolUse passes', () => {
+  withDriftedGuard((fx) => {
+    for (const hook_event_name of ['PostToolUse', undefined]) {
+      const res = fx.run({ ...sendTo('T-chief'), hook_event_name });
+      assertRefused(fx, res, String(hook_event_name));
+      assert.ok(!res.stderr.includes(D5_LEAD), res.stderr);
+    }
+  });
+});
+
+test('report pass: R11 — a transcript or doc fault refuses the append and keeps the doc-less calls', () => {
+  const fs = require('node:fs');
+  const faults = {
+    'transcript_path missing': () => ({ transcript_path: undefined }),
+    'transcript is a directory': (fx) => ({ transcript_path: fx.dir }),
+    'transcript is not JSON': (fx) => {
+      writeFileSync(fx.transcript, 'not json\n');
+      return {};
+    },
+    'a bad line before the first turn': (fx) => {
+      writeFileSync(fx.transcript, `not json\n${fx.firstTurn(`load ${fx.doc} and continue`)}`);
+      return {};
+    },
+    'the doc is a directory': (fx) => {
+      fs.unlinkSync(fx.doc);
+      fs.mkdirSync(fx.doc);
+      return {};
+    },
+    'the doc is a dangling link': (fx) => {
+      fs.unlinkSync(fx.doc);
+      fs.symlinkSync(join(fx.root, 'nowhere.md'), fx.doc);
+      return {};
+    },
+  };
+  for (const [name, inject] of Object.entries(faults)) {
+    withDriftedGuard((fx) => {
+      const extra = inject(fx);
+      assertRefusedWithReportLine(fx, fx.run({ ...bashCall(appendCmd(fx)), ...extra }), name);
+      assertReportPass(fx, fx.run({ ...sendTo('T-chief'), ...extra }), 'SendMessage', name);
+      assertReportPass(fx, fx.run({ ...toolSearch('select:SendMessage'), ...extra }), 'ToolSearch', name);
+    });
+  }
+});
+
+test('report pass: R11 — a malformed tool_input is refused', () => {
+  withDriftedGuard((fx) => {
+    const variants = {
+      'null tool_input': { tool_name: 'SendMessage', tool_input: null },
+      'numeric to': { tool_name: 'SendMessage', tool_input: { to: 7 } },
+      'array command': { tool_name: 'Bash', tool_input: { command: [appendCmd(fx)] } },
+      'object query': { tool_name: 'ToolSearch', tool_input: { query: { select: 'SendMessage' } } },
+    };
+    for (const [name, call] of Object.entries(variants)) {
+      assertRefusedWithReportLine(fx, fx.run(call), name);
+    }
+  });
+});
+
+test('report pass: R11d — with no readable doc the report line offers no append call', () => {
+  withDriftedGuard((fx) => {
+    writeFileSync(fx.transcript, 'not json\n');
+    const res = fx.run({ tool_name: 'Read', tool_input: { file_path: fx.doc } });
+    assertRefusedWithReportLine(fx, res, 'R11d');
+    assert.ok(!res.stderr.includes('append-results.sh'), res.stderr);
+    assert.ok(res.stderr.includes('no append report'), res.stderr);
+  });
+});
+
+const REPORT_TOOLS = ['ToolSearch', 'ListAgents', 'SendMessage'];
+function singleMember(command, root) {
+  const tail = command.slice(command.indexOf('run-hook-with-bash.js')).split(';')[0];
+  const found = /\$\{?CLAUDE_PROJECT_DIR\}?\/[^"'\s]+\.sh/.exec(tail);
+  return found ? found[0].replace(/\$\{?CLAUDE_PROJECT_DIR\}?/, root) : null;
+}
+
+function reportMembers(bench, settings, root) {
+  const members = new Set();
+  for (const row of bench.enumerateHooks(settings)) {
+    if (row.event !== 'PreToolUse' || !REPORT_TOOLS.some((tool) => bench.matcherMatches(row.matcher, tool))) continue;
+    if (!row.command.includes('run-hook-with-bash.js')) continue;
+    const chained = bench.chainMembers(row.command, root);
+    for (const member of chained || [singleMember(row.command, root)]) if (member) members.add(member);
+  }
+  return [...members];
+}
+
+function closureSize(file, root) {
+  const seen = new Set();
+  const queue = [file];
+  let found = 0;
+  while (queue.length) {
+    const next = queue.shift();
+    const { libs, unresolved } = hookIntegrity.sourcedClosure(next, root);
+    found += unresolved.length;
+    for (const lib of libs) {
+      if (seen.has(lib)) continue;
+      seen.add(lib);
+      queue.push(lib);
+      found += 1;
+    }
+  }
+  return found;
+}
+
+const CLOSURE_OK = ['guard-worker-context-handoff.sh', 'auto-arm-on-cap.sh'];
+const lockers = (members, root) =>
+  members.filter((m) => !CLOSURE_OK.some((n) => m.endsWith(`/${n}`)) && closureSize(m, root) > 0);
+
+test('report pass: R13 — only the context guard and the watchdog source anything on the report tools', async () => {
+  const fs = require('node:fs');
+  const bench = await import('./bench-hook-stack.mjs');
+  const root = join(HERE, '..', '..');
+  const wirings = ['.claude/settings.json', ...fs.readdirSync(join(root, 'marketplace', 'plugins'))
+    .map((plugin) => `marketplace/plugins/${plugin}/hooks/hooks.json`)
+    .filter((rel) => existsSync(join(root, rel)))];
+  const members = [...new Set(wirings.flatMap((rel) => reportMembers(bench, JSON.parse(readFileSync(join(root, rel), 'utf8')), root)))];
+  const sizeOf = (name) => {
+    const member = members.find((m) => m.endsWith(`/${name}`));
+    assert.ok(member, `${name} found among ${members.join(', ')}`);
+    return closureSize(member, root);
+  };
+  assert.ok(sizeOf('guard-worker-context-handoff.sh') > 0);
+  assert.ok(sizeOf('auto-arm-on-cap.sh') > 0);
+  assert.equal(sizeOf('guard-readiness-tools.sh'), 0);
+  assert.deepEqual(lockers(members, root), []);
+  const fx = reportFixture();
+  try {
+    const added = { hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js" "$CLAUDE_PROJECT_DIR/scripts/hooks/guard.sh"' }] }] } };
+    const extra = reportMembers(bench, added, fx.dir);
+    assert.deepEqual(lockers(extra, fx.dir), [fx.path('scripts/hooks/guard.sh')], 'a new sourcing member is named');
   } finally {
     fx.cleanup();
   }

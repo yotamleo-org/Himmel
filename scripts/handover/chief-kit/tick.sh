@@ -568,6 +568,10 @@ daily failure review (ci-cadence.sh review: a local read of the newest failure-r
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
+dependabot=<n>:<oldest>m:<newest>m:#<pr>[,#<pr>...] follows unowned-prs= and names every open Dependabot PR (an author containing "dependabot",
+any case, or a dependabot/ head; not drafts or forks) from the one PR read: the count, the largest and smallest age in whole minutes since the
+PR was opened, and the PRs by number. Such a PR is never in unowned-prs= and stays in prs=. Hidden when none is open; ? = the read failed or a
+creation time did not parse, never an all-clear. Absent, ? included, on a chief for another checkout.
 drift=<n|?> counts the actionable rows of the open nightly drift issue (label fork-drift; none open reads 0), its body re-read at most once an hour (TICK_DRIFT_TTL_MIN): its Needs-update rows plus the
 held rows whose 72 h buffer has cleared (drift-brief.py count; TICK_DRIFT_GH is the gh seam; DRIFT_NOW the clock seam). ? = the
 read or the count failed and never wakes; absent when the repo has no scripts/upstreams/pin-holds.json. In compact output a
@@ -601,6 +605,14 @@ Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a 
 line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
 matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
+held-hi=<KEY>,... names the keys the same snapshot holds on a `NEEDS-CHIEF-NOTE` line (no readable scope, or a merged
+PR with no remainder) that are High or above or operator-directed, in any version, or carry a fixVersion and were created
+TICK_HELD_OLD_DAYS (default 30) or more days ago; each has one `# held-hi <KEY> <class> prio=<p|?> age=<d>d ver=<v|->`
+line, sorted by priority then oldest first. A key whose mirror file is unreadable is kept as prio=?. `?` = the snapshot is
+stale, quota-paused or gh-stalled, never an all-clear; absent when the set is empty. The waiter wakes `held-priority`.
+close-cand=<KEY>,... names To Do blockers of the snapshot's drop reasons whose every ## Ticket coverage item in a commit of
+origin/main (last 60 days) is done, one `# close-candidate <KEY> blocks <K,...> done-in <sha7>` line each. At most the
+first 20 such blockers are checked. Only the run that rebuilds the snapshot reads git; every tick prints its cache.
 With --doc it also reads the per-version readiness record (readiness.sh read, release/<v>/readiness.jsonl, <v> from the snapshot's
 `# dropped from <v>:` line) and prints `# readiness <v> blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n>`, `# readiness-stale <KEY> <why>`
 per stale row and `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>[ why=in-progress]` per live c or d row (sorted by key; <age> is
@@ -2932,7 +2944,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 tick_deadline_off
 pr_refused="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-refused.XXXXXX" 2>/dev/null)" || pr_refused=""  # swallow-ok: no file means no named reason, prs=? still prints
-pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
+pr_out="$(cd "$pr_repo" 2>/dev/null && GH_READ_REFUSED_FILE="$pr_refused" GH_READ_NO_MAIN_FALLBACK=1 timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,createdAt,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), .createdAt, ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)"
 pr_list_rc=$?
 [ "$pr_list_rc" -eq 0 ] || { pr_out=""; pr_read_failed=1; }
 pr_stall_named=""
@@ -2991,13 +3003,28 @@ prs=""
 unowned_prs=""
 ext_prs=""
 crfirst_rows=""
-while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_head pr_labels; do
+dep_rows=""
+dep_bad=""
+while IFS=$'\t' read -r pr pr_branch pr_draft pr_author pr_fork pr_updated pr_red pr_head pr_created pr_labels; do
     case "$pr" in ''|*[!0-9]*) continue ;; esac
     prs="$(csv_add "$prs" "#$pr")"
     [ -n "$pr_branch" ] || continue
     if [ "$pr_fork" = true ]; then ext_prs="$(csv_add "$ext_prs" "#$pr")"; continue; fi
     [ "$pr_draft" = true ] && continue
     [ -z "$pr_head" ] || crfirst_rows="$crfirst_rows$pr	$pr_head	$pr_labels"$'\n'
+    if [ "$pr_repo" = "$REPO" ]; then
+        case "$pr_author:$pr_branch" in
+            *[Dd][Ee][Pp][Ee][Nn][Dd][Aa][Bb][Oo][Tt]*:*|*:dependabot/*)
+                if [ -n "$pr_created" ] && pr_born="$(date -d "$pr_created" +%s 2>/dev/null)"; then  # gnu-ok: Linux-only kit
+                    dep_age=$(( ($(date +%s) - pr_born) / 60 ))
+                    [ "$dep_age" -ge 0 ] || dep_age=0
+                    dep_rows="$dep_rows$pr $dep_age"$'\n'
+                else
+                    dep_bad=1
+                fi
+                continue ;;
+        esac
+    fi
     pr_key="$(ticket_key "$pr_branch")"
     if [ -n "$pr_key" ]; then
         case "$owner_keys" in *" $pr_key "*) continue ;; esac
@@ -3015,8 +3042,16 @@ done <<< "$pr_out"
 [ -n "$prs" ] || prs=none
 [ -n "$unowned_prs" ] || unowned_prs=none
 [ -n "$ext_prs" ] || ext_prs=none
+dependabot=""
+if [ -n "$dep_rows" ]; then
+    dependabot="$(printf '%s' "$dep_rows" | sort -n | awk 'NR == 1 { o = $2; w = $2 } { if ($2 + 0 > o + 0) o = $2; if ($2 + 0 < w + 0) w = $2; l = l (l == "" ? "" : ",") "#" $1 } END { printf "%d:%dm:%dm:%s", NR, o, w, l }')"
+fi
+[ -z "$dep_bad" ] || dependabot='?'
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
-[ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
+if [ -n "${pr_read_failed:-}" ]; then
+    prs='?'; unowned_prs='?'; ext_prs='?'
+    [ "$pr_repo" != "$REPO" ] || dependabot='?'
+fi
 relaunch=""
 [ -z "$held_read_failed" ] || relaunch='?'
 if [ -n "$held_tsv" ]; then
@@ -3937,6 +3972,76 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
 fi
 
+held_hi_read() {
+    python3 -I - "$1" "$2" "${TICK_HELD_OLD_DAYS:-30}" <<'PY'
+import datetime, os, re, sys
+rows = open(sys.argv[1], errors='replace').read().splitlines()
+if any(l.startswith(('# quota-pause ', '# gh-stall ')) for l in rows):
+    print('?')
+    sys.exit(0)
+mirror, old = sys.argv[2], int(sys.argv[3]) if sys.argv[3].isdecimal() else 30
+RANK = {'Highest': 0, 'Blocker': 0, 'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3, 'Lowest': 4}
+now = datetime.datetime.now(datetime.timezone.utc)
+held = {}
+for line in rows:
+    m = re.match(r'NEEDS-CHIEF-NOTE ([A-Z][A-Z0-9]*-\d+): (no readable scope|merged PR )', line)
+    if not m or m[1] in held:
+        continue
+    key, cls = m[1], 'no-scope' if m[2] == 'no readable scope' else 'merged-no-remainder'
+    try:
+        fm = re.match(r'---\n(.*?)\n---\n', open(os.path.join(mirror, key + '.md'), encoding='utf-8').read(), re.S)[1]
+    except (OSError, UnicodeError, TypeError):
+        fm = None
+    prio, age, vers, labels = '?', None, [], []
+    if fm is not None:
+        def val(name):
+            got = re.search(r'^%s: (.*)$' % name, fm, re.M)
+            return got[1] if got else ''
+        prio = val('priority').strip('"') or '?'
+        labels = re.findall(r'"([^"]+)"', val('labels'))
+        vers = re.findall(r'"([^"]+)"', val('fixVersions'))
+        try:
+            age = (now - datetime.datetime.strptime(val('created').strip('"'), '%Y-%m-%dT%H:%M:%S.%f%z')).days
+        except ValueError:
+            age = None
+    rank = RANK.get(prio, 5)
+    if fm is None or rank <= 1 or 'operator-directed' in labels or (vers and age is not None and age >= old):
+        text = '# held-hi %s %s prio=%s age=%sd ver=%s' % (
+            key, cls, prio.replace(' ', '_'), '?' if age is None else age, ','.join(v.replace(' ', '_') for v in vers) or '-')
+        held[key] = ((rank, -(age or 0), key), text)
+order = sorted(held, key=lambda k: held[k][0])
+print(','.join(order))
+for key in order:
+    print(held[key][1])
+PY
+}
+
+close_cand_py="$(cat <<'PY'
+import re, subprocess, sys
+rows, repo, lib = sys.argv[1:4]
+sys.path.insert(0, lib)
+from pr_remainder import coverage_done
+blocks = {}
+for line in open(rows, errors='replace'):
+    m = re.match(r'# disposition ([A-Z][A-Z0-9]*-\d+) blocker ([^;\n]+)', line)
+    if not m:
+        continue
+    for b, status in re.findall(r'([A-Z][A-Z0-9]*-\d+) \(([^)]*)\)', m[2]):
+        if status.split(',')[0] == 'To Do':
+            blocks.setdefault(b, []).append(m[1])
+for b in list(blocks)[:20]:
+    log = subprocess.run(['git', '-C', repo, 'log', 'origin/main', '--since=60.days', '-E', '--grep=%s([^0-9]|$)' % b,
+                          '--format=%H%x00%B%x01'], capture_output=True, text=True, errors='replace', timeout=20)
+    if log.returncode:
+        continue
+    for record in log.stdout.split('\x01'):
+        sha, _, body = record.strip('\n').partition('\x00')
+        if sha and coverage_done(body, b):
+            print('# close-candidate %s blocks %s done-in %s' % (b, ','.join(blocks[b]), sha[:7]))
+            break
+PY
+)"
+
 # The pool snapshot classifies every version ticket: 140 s on a 23-worker fleet,
 # longer than the waiter's whole tick budget. It runs detached under flock, at most once per
 # TICK_POOL_MIN_SECS (default 600), and the tick waits TICK_POOL_WAIT seconds (default 10)
@@ -3952,8 +4057,13 @@ pool_blocked=""
 pool_chiefsign=""
 pool_rowsstale=""
 pool_free=""
+held_hi=""
+held_hi_lines=""
+close_cand=""
+close_cand_lines=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
+    held_hi='?'
     pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
     pd_base="$pd_dir/tick-pool-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
     pd_age=999999999
@@ -3977,8 +4087,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # setsid: the waiter's timeout kills the tick's process group, never the snapshot.
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
-        pd_script='timeout -k 2 300 bash "$1" "${@:4}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2" && printf "%s\n" "$3" >"${2%.rows}.fp"; rm -f "$2.$$"'
-        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_script='cc="${2%.rows}.closecand"; if timeout -k 2 300 bash "$1" "${@:7}" >"$2.$$" 2>/dev/null && rm -f "$cc" && mv -f "$2.$$" "$2"; then printf "%s\n" "$3" >"${2%.rows}.fp"; timeout -k 2 60 python3 -I -c "$4" "$2" "$5" "$6" >"$cc.$$" 2>/dev/null && mv -f "$cc.$$" "$cc"; rm -f "$cc.$$"; fi; rm -f "$2.$$"'
+        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "$close_cand_py" "$pr_repo" "$HERE/../../lib" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         tick_now_s  # the poll forks only its sleep
@@ -3993,6 +4103,10 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
         pool_blocked='?'; pool_chiefsign='?'; pool_rowsstale='?'
+        if hh_out="$(held_hi_read "$pd_base.rows" "$nd_mirror")"; then
+            held_hi="${hh_out%%$'\n'*}"
+            case "$hh_out" in *$'\n'*) held_hi_lines="${hh_out#*$'\n'}" ;; esac
+        fi
         case "$pool_summary" in
             [0-9]*/*)
                 pd_rd_line="$(printf '%s\n' "$pd_summary" | sed -n 's/^# readiness [^ ][^ ]* \(blocked=[0-9][0-9]* chief-sign=[0-9][0-9]*\(:[0-9][0-9]*[mh]\)\{0,1\} rows-stale=[0-9][0-9]*\)$/\1/p' | head -n 1)"  # swallow-ok: no readiness line reads ?
@@ -4023,6 +4137,10 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
                 intake_age="$(( (ia_now - intake_age_first) / 3600 ))h"
             done
         fi
+    fi
+    if [ -r "$pd_base.closecand" ]; then
+        close_cand_lines="$(grep '^# close-candidate ' "$pd_base.closecand")"
+        close_cand="$(printf '%s\n' "$close_cand_lines" | awk 'NF { print $3 }' | paste -sd, -)"
     fi
 fi
 
@@ -5362,6 +5480,11 @@ if [ "$verbose" -eq 1 ]; then
     printf 'open PRs: %s\n' "$prs"
     printf 'ci-red issues: %s\n' "$cired_summary"
     printf 'unowned-prs: %s\n' "$unowned_prs"
+    case "$dependabot" in
+        '') ;;
+        '?') printf 'dependabot: ?\n' ;;
+        *) printf '%s\n' "$dependabot" | sed 's/^\([^:]*\):\([^:]*\):\([^:]*\):\(.*\)$/dependabot: \1 open, oldest \2, newest \3: \4/' ;;
+    esac
     printf 'ext-prs: %s\n' "$ext_prs"
     [ -z "$relaunch" ] || printf 'relaunch: %s\n' "$relaunch"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
@@ -5455,6 +5578,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'pool-stale: %s\n' "$pool_stale"
     [ -z "$pool_holds_f" ] || printf 'pool-holds: %s\n' "$pool_holds_f"
     printf 'pool-changed: %s\n' "$pool_changed"
+    [ -z "$held_hi" ] || printf 'held-hi: %s\n' "$held_hi"
+    [ -z "$close_cand" ] || printf 'close-cand: %s\n' "$close_cand"
     printf 'chains: %s\n' "$chains_summary"
     printf 'residual-unversioned: %s\n' "$residual_unversioned"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
@@ -5492,6 +5617,7 @@ else
     compact_field suites "$suites"
     compact_field prs "$prs"
     compact_field unowned-prs "$unowned_prs"
+    compact_field dependabot "$dependabot"
     compact_field ext-prs "$ext_prs"
     compact_field relaunch "$relaunch"
     compact_field dispatch "$dispatch_summary"
@@ -5541,6 +5667,8 @@ else
     compact_field blocked "$pool_blocked"
     compact_field chief-sign "$pool_chiefsign"
     compact_field rows-stale "$pool_rowsstale"
+    compact_field held-hi "$held_hi"
+    compact_field close-cand "$close_cand"
     compact_field supply "$supply"
     compact_field owed "$owed_summary"
     compact_field chains "$chains_summary"
@@ -5672,6 +5800,8 @@ else
         printf 'ACTION doc-over-read-limit=%s/%s: the whole doc will not read in one Read (25k tokens); move Results and queue and tracker history verbatim to %q (Current direction is shortened only by chief.sh next, never by hand)\n' "$doc_bytes" "$doc_read_budget" "${console_doc%/*}/specs/decisions/chief-history-$(date +%F).md"
     fi
 fi
+[ -z "$held_hi_lines" ] || printf '%s\n' "$held_hi_lines"
+[ -z "$close_cand_lines" ] || printf '%s\n' "$close_cand_lines"
 if [ "$emit_fp" -eq 1 ]; then
     printf 'board-fp=%s\n' "$board_fp"
 fi

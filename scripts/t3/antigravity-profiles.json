@@ -1,4 +1,5 @@
 {
+  "laneMcpServers": ["t3-code", "graphify"],
   "profiles": {
     "design": {
       "fromProfiles": ["design", "design-imagegen"],
@@ -13,6 +14,11 @@
         }
       },
       "optionalMcpServers": ["playwright"],
+      "mcpEnv": {
+        "playwright": {
+          "TMPDIR": "/tmp"
+        }
+      },
       "pinnedSkills": [
         {
           "repo": "https://github.com/google-gemini/demolab.git",

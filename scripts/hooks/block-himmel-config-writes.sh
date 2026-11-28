@@ -282,6 +282,7 @@ fi
 
 tool=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null) || tool=""
 CFG_REAL="${HOME:-/nonexistent}/.himmel/config.json"
+MAX_FILE_PATH_BYTES=4096
 # Caps on an apply_patch payload; see the apply_patch branch.
 MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
@@ -348,6 +349,14 @@ check_path() {
 
 case "$tool" in
     Write|Edit|MultiEdit|NotebookEdit)
+        plen=$(printf '%s' "$input" | jq -r '(.tool_input.file_path // .tool_input.notebook_path // "") | if type == "string" then utf8bytelength else 0 end') \
+            || deny "$tool: the file path length could not be read (fail-closed)"
+        case "$plen" in '' | *[!0-9]*) deny "$tool: the file path length could not be read (fail-closed)" ;; esac
+        if [ "$plen" -gt "$MAX_FILE_PATH_BYTES" ]; then
+            REMEDY="    Claude Code hands a hook a file path over $MAX_FILE_PATH_BYTES bytes unexpanded, so this
+    guard cannot check the path the tool would write. Use a shorter path."
+            deny "$tool file path is $plen bytes, over the $MAX_FILE_PATH_BYTES-byte limit"
+        fi
         p=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""' 2>/dev/null) || p=""
         check_path "$tool" "$p"
         exit 0

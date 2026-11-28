@@ -466,3 +466,13 @@ Edit both together.
   computed it. Limit: brief-template prose is the first layer; on its first
   drift, escalate to a structural check in `headed-arm-worker.sh` that refuses a
   surface ticket's launch without a lint-clean spec path.
+- (h) **A design leg's brief names the signing checks.** In a spec round it runs
+  `bun <himmel>/scripts/telegram/chief-route.ts sign-shape <spec> --lint`, in a
+  plan round `sign-shape <spec> --plan <plan> --lint`, before every critic
+  dispatch, and fixes what it refuses in the same writer round; a seal refused on
+  the lint is fixed and the critic runs again for the same round. After the last
+  round it runs `jira release sign-check` on the files it will name and ends with
+  this bullet, which `append-results.sh` checks with the same verb:
+  `LIVE — READY-TO-SIGN spec=<abs> plan=<abs> spec-return=<abs> plan-return=<abs> keys=<K[,K]> spec-sha=<64 hex> plan-sha=<64 hex>`
+  (`route=spec-review` optional), or `BLOCKED` with the `sign-check` refusal.
+  The commands are in minerva `SKILL.md` Stage 2, Stage 4 and Terminal.

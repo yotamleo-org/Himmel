@@ -12,7 +12,7 @@
 #                                profiles, tiers, MCP allowlist, the launch record)
 #   test-headed-arm-worker-b.sh  sections 29 to 41 (--headless, launcher-env, effort, re-dispatch refusal, resume_cwd
 #                                inside the handover root, the consult mode)
-#   test-headed-arm-worker-c.sh  sections 42 to 51 and 17r (worktree resume_cwd, pre-trust, bus, waker, memory cap, registered
+#   test-headed-arm-worker-c.sh  sections 42 to 53 and 17r (worktree resume_cwd, pre-trust, bus, waker, memory cap, registered
 #                                repos, Remote Control, single-writer, hook-loading guard, the launch-refusal ledger,
 #                                the readiness launcher render)
 #   test-headed-arm-worker-d.sh  section 17s (the readiness launch)

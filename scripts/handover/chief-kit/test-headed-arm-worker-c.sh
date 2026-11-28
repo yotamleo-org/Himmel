@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015,SC2154  # SC2015: A && B || C is intentional in check()/contains()/ends_with()/not_contains(), as in scripts/handover/test-headed-arm.sh; the rest: assigned in the sourced testlib
 # scripts/handover/chief-kit/test-headed-arm-worker-c.sh - the third part of the
 # headed-arm-worker.sh suite (see test-headed-arm-worker.sh for the four parts and
-# testlib-headed-arm-worker.sh for what they share): sections 42 to 51 and 17r - a resume_cwd that
+# testlib-headed-arm-worker.sh for what they share): sections 42 to 53 and 17r - a resume_cwd that
 # names a missing worktree, the session uuid, folder pre-trust, the himmel-bus register and env scrub,
 # the bus-idle-waker, the per-worker memory cap, registered adopter repos, Remote Control, the
 # single-writer barrier, the hook-loading guard, the launch-refusal ledger, and the readiness
@@ -16,6 +16,8 @@
 #   47. a doc whose resume_cwd is a worktree of a repo in the handover
 #       registry launches with that worktree as its cwd; an unregistered repo
 #       and an explicit WORKER_SESSION_REPO launch as before.
+#   52. The worker start signal is written and checked around launch.
+#   53. Other linked worktree layouts are selected and stale shaped paths refused.
 #
 # Platform guard: POSIX bash 3.2+, same as headed-arm.sh
 # itself (konsole is Linux/KDE-only).
@@ -1253,6 +1255,261 @@ rc=0; needs_out="$(NEEDS_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-ne
 check "9564-a a BYPASS-NEEDS-SPEC brief is refused at launch (exit 2)" "$rc" "2"
 contains "9564-b ... the refusal is relayed as 'refusing launch:'" "$needs_out" "refusing launch:"
 contains "9564-c ... and names the missing record" "$needs_out" "no spec-review record"
+
+init53() {
+  mkdir -p "$1" &&
+    git -C "$1" init -q &&
+    git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+}
+tmp53="${tmp:?missing fixture root}"
+case "$tmp53/" in
+  */worktrees/*|*-worktrees/*|*-wt/*) check "53 fixture outside shaped paths" "$tmp53" "unshaped directory" ;;
+esac
+r53="$tmp53/r53"; u53="$tmp53/u53"; s53="$tmp53/s53"
+p53="$tmp53/h53-wt/prim"; harness53="$tmp53/harness53"
+for repo53 in "$r53" "$u53" "$s53" "$p53" "$harness53"; do
+  init53 "$repo53" || exit 1
+done
+shaped53="$tmp53/t3-53/worktrees/r53"
+t3live53="$shaped53/t3-live"; t3gone53="$shaped53/t3-gone"
+feat53="$tmp53/else53/feat-live"; state53="$tmp53/else53/state-live"
+claude53="$s53/.claude/worktrees/fix+state-claude"; same53="$tmp53/else53h/same-live"
+override53="$tmp53/repo53x"; noanchor53="$tmp53/no-anchor53"
+mkdir -p "$shaped53/t3-plain" "$tmp53/poc53/here" "$override53" "$noanchor53" "$s53/.obsidian"
+: > "$s53/.single-writer"
+git -C "$r53" worktree add -q --detach "$t3live53" || exit 1
+git -C "$r53" worktree add -q --detach "$feat53" || exit 1
+git -C "$r53" worktree add -q --detach "$shaped53/t3-broken" || exit 1
+rm -rf "${r53:?}/.git/worktrees/t3-broken"
+for repo53 in "$r53" "$t3live53" "$feat53"; do
+  git -C "$repo53" read-tree HEAD || exit 1
+done
+git -C "$u53" worktree add -q --detach "$tmp53/t3-53/worktrees/u53/t3-unreg" || exit 1
+git -C "$s53" worktree add -q --detach "$state53" || exit 1
+git -C "$s53" worktree add -q --detach "$claude53" || exit 1
+mk_launcher_tree "$harness53"
+git -C "$harness53" worktree add -q --detach "$same53" || exit 1
+mkdir -p "$t3live53/sub" "$feat53/sub"
+reg53="$tmp53/reg53.json"; reg53none="$tmp53/reg53-none.json"
+printf '{"repos":{"r53":{"path":"%s"},"s53":{"path":"%s"},"p53":{"path":"%s"}}}\n' "$r53" "$s53" "$p53" > "$reg53"
+printf '{"repos":{}}\n' > "$reg53none"
+brief53="$tmp53/c53-doc.md"; script53="$harness53/scripts/handover/chief-kit/headed-arm-worker.sh"
+doc53() {
+  printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (fixture)\n%s\n' "$1" "${2:-}" > "$brief53"
+}
+dry53() {
+  doc53 "$1"
+  shift
+  rc53=0
+  out53="$(env "$@" HANDOVER_REGISTRY="$reg53" bash "$SCRIPT" --dry-run --no-profile PROJ-53-worker "$brief53" /tmp/nosig 99999999999 "$tmp53/c53.log" claude-sonnet-5 2>&1)" || rc53=$?
+}
+dry53u() {
+  dry53 "$1" -u UNGUARDED_LAUNCH_OK
+}
+real53() {
+  local stub="$1" name="$2" repo="$3"
+  mk_launch_stubs "$stub" "$name"
+  rc53=0
+  HANDOVER_REGISTRY="$reg53" some_doc="$brief53" RUN_WORKER_ARGS=--no-profile \
+    run_worker "$stub" "$repo" "$name" claude-sonnet-5 >"$stub/stdout" 2>&1 || rc53=$?
+  if [ "$rc53" = 0 ]; then wait_record "$stub" || true; fi
+}
+snap53() {
+  git -C "$r53" worktree list --porcelain &&
+    ls -R "$r53/.git/worktrees" &&
+    cksum "$r53/.git/config" "$r53/.git/index" "$r53"/.git/worktrees/*/gitdir \
+      "$r53"/.git/worktrees/*/HEAD "$r53"/.git/worktrees/*/commondir "$r53"/.git/worktrees/*/index &&
+    git -C "$r53" config --list --local &&
+    git -C "$r53" for-each-ref
+}
+refusal53="is not an existing git worktree"
+derived53='HEADED_ARM_REPO=<derived by headed-arm.sh>'
+before53="$(snap53)" || exit 1
+dry53 "$t3live53"
+check "53a shaped live worktree dry-run exits 0" "$rc53" 0
+contains "53a dry-run selects the shaped linked worktree" "$out53" "HEADED_ARM_REPO=$t3live53 "
+real53 "$tmp53/c53b" PROJ-53-b ""
+check "53b shaped live worktree launch exits 0" "$rc53" 0
+contains "53b launch uses the shaped linked worktree" "$(cat "$tmp53/c53b/record" 2>/dev/null)" "--workdir $t3live53"
+after53="$(snap53)" || exit 1
+check "53p fold leaves Git state unchanged" "$after53" "$before53"
+
+before53="$(snap53)" || exit 1
+dry53 "$t3gone53"
+check "53c gone worktree dry-run exits 2" "$rc53" 2
+contains "53c refusal gives the repo resume command" "$out53" 'bash scripts/worktree.sh resume <branch>'
+contains "53c refusal gives the fallback resume command" "$out53" '_new-worktree.sh <branch> --resume --no-install'
+for launch53 in c1 c2; do
+  repo53=""
+  if [ "$launch53" = c2 ]; then repo53="$override53"; fi
+  stub53="$tmp53/c53$launch53"; name53="PROJ-53-$launch53"
+  real53 "$stub53" "$name53" "$repo53"
+  check "53c $launch53 real launch exits 2" "$rc53" 2
+  contains "53c $launch53 real launch logs the refusal" "$(cat "$stub53/log" 2>/dev/null)" "LAUNCH-REFUSED $name53 the doc's resume_cwd ($t3gone53) $refusal53"
+  check "53c $launch53 leaves no launch record" "$([ -e "$stub53/record" ] && echo record || echo absent)" absent
+  check "53c $launch53 leaves the worktree absent" "$([ -e "$t3gone53" ] && echo exists || echo absent)" absent
+done
+after53="$(snap53)" || exit 1
+check "53p refusal leaves Git state unchanged" "$after53" "$before53"
+
+refused53() {
+  check "53$1 $2 exits 2" "$rc53" 2
+  contains "53$1 $2 reports the stale worktree" "$out53" "$refusal53"
+}
+for path53 in "$shaped53/t3-plain" "$shaped53/t3-broken" "$tmp53/h53-wt/x" "$tmp53/h53-worktrees/x" \
+  "$tmp53/h53b-wt" "$tmp53/h53-worktrees" "$tmp53/h53c/worktrees"; do
+  dry53 "$path53"
+  refused53 d "${path53#"$tmp53"/}"
+done
+cwd53="$PWD"
+cd "$tmp53" || exit 1
+dry53 t3-53/worktrees/r53/t3-gone
+cd "$cwd53" || exit 1
+refused53 d 'relative path'
+for var53 in WORKER_SESSION_REPO HEADED_ARM_REPO; do
+  dry53 "$t3gone53" "$var53=$override53"
+  refused53 d "$var53 override"
+  dry53 "$t3live53" "$var53=$override53"
+  check "53e $var53 override dry-run exits 0" "$rc53" 0
+  contains "53e explicit $var53 wins" "$out53" "HEADED_ARM_REPO=$override53 "
+done
+rc53=0
+doc53 "$t3gone53" '> **Tier:** opus — design: fixture'
+out53="$(HANDOVER_REGISTRY="$reg53" bash "$SCRIPT" --dry-run --judge PROJ-53-judge "$brief53" /tmp/nosig 99999999999 "$tmp53/c53.log" claude-sonnet-5 2>&1)" || rc53=$?
+refused53 d 'judge'
+doc53 "$t3live53"
+real53 "$tmp53/c53e" PROJ-53-e "$override53"
+check "53e real launch with override exits 0" "$rc53" 0
+contains "53e real launch uses the override" "$(cat "$tmp53/c53e/record" 2>/dev/null)" "--workdir $override53"
+
+dry53 "$feat53"
+check "53f unshaped live worktree dry-run exits 0" "$rc53" 0
+contains "53f dry-run selects the unshaped linked worktree" "$out53" "HEADED_ARM_REPO=$feat53 "
+for path53 in "$feat53/sub" "$r53" "$tmp53/t3-53/worktrees/u53/t3-unreg" "$state53" \
+  "$tmp53/poc53/missing" "$tmp53/poc53/here" "$tmp53/home53/.cache/himmel/verdicts/q-wt/scratch" \
+  "$tmp53/t3-53/worktrees/../poc53-dot/gone"; do
+  dry53 "$path53"
+  check "53g ${path53#"$tmp53"/} dry-run exits 0" "$rc53" 0
+  contains "53g ${path53#"$tmp53"/} leaves the session folder derived" "$out53" "$derived53"
+done
+
+consult53() {
+  doc53 "$1"
+  rc53=0
+  out53="$(HANDOVER_REGISTRY="$reg53" bash "$script53" --dry-run --consult --profile design-motion --chief PROJ-4014-chief PROJ-53-consult "$brief53" /tmp/nosig 99999999999 "$tmp53/c53.log" 2>&1)" || rc53=$?
+}
+consult53 "$feat53"
+check "53h consult on a live worktree exits 0" "$rc53" 0
+contains "53h consult leaves the session folder derived" "$out53" "$derived53"
+consult53 "$t3gone53"
+refused53 h 'consult on a stale worktree'
+
+dry53u "$claude53"
+check "53i .claude state worktree exits 18" "$rc53" 18
+contains "53i .claude state worktree hits the single-writer guard" "$out53" 'single-writer state repo'
+dry53u "$state53"
+check "53i other state worktree dry-run exits 0" "$rc53" 0
+contains "53i other state worktree leaves the session folder derived" "$out53" "$derived53"
+
+dry53u "$feat53"
+check "53j unguarded folded worktree exits 18" "$rc53" 18
+contains "53j guard refusal names the folded worktree" "$out53" "$feat53 does not load the himmel guard hooks"
+
+doc53 "$same53"
+stub53="$tmp53/c53k"; mk_launch_stubs "$stub53" PROJ-53-k
+rc53=0
+HANDOVER_REGISTRY="$reg53none" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" KONSOLE_CMD="$stub53/konsole" PGREP_CMD="$stub53/pgrep" \
+  HEADED_ARM_PROC="$stub53/proc" HEADED_ARM_LOCK_DIR="$stub53/locks" \
+  bash "$script53" --no-profile PROJ-53-k "$brief53" "$stub53/signal" "$PAST" "$stub53/log" claude-sonnet-5 >"$stub53/stdout" 2>&1 || rc53=$?
+wait_record "$stub53" || true
+check "53k same-repo unregistered worktree launch exits 0" "$rc53" 0
+contains "53k same-repo unregistered worktree is the session folder" "$(cat "$stub53/record" 2>/dev/null)" "--workdir $same53"
+
+dry53 "$root39/u/himmel/worktrees/x"
+check "53l handover root refusal takes precedence" "$rc53" 15
+contains "53l refusal names the handover root" "$out53" 'inside the handover root'
+not_contains "53l refusal omits the stale worktree text" "$out53" "$refusal53"
+dry53 "$t3live53/sub"
+refused53 m 'shaped worktree subfolder'
+dry53 "$p53"
+check "53n shaped primary checkout dry-run exits 0" "$rc53" 0
+contains "53n shaped primary leaves the session folder derived" "$out53" "$derived53"
+
+rc53=0
+HIMMEL_REPO="$noanchor53" bash "$HERE/../../lib/launch-guard-check.sh" --state-repo "$feat53" >/dev/null 2>&1 || rc53=$?
+check "53o precondition: state query exits 2 without an anchor" "$rc53" 2
+dry53 "$feat53" HIMMEL_REPO="$noanchor53" UNGUARDED_LAUNCH_OK=1
+check "53o indeterminate state query dry-run exits 0" "$rc53" 0
+contains "53o indeterminate state query leaves the session folder derived" "$out53" "$derived53"
+
+blocked53="$tmp53/blocked53"
+mkdir "$blocked53" || exit 1
+trap 'chmod 700 "$blocked53"; rm -rf "$tmp"' EXIT
+chmod 000 "$blocked53" || exit 1
+if (cd -P "$blocked53") 2>/dev/null; then
+  echo "SKIP - 53q permissions do not prevent entering the fixture"
+else
+  dry53 "$blocked53/worktrees/gone"
+  refused53 q 'inaccessible shaped path'
+  real53 "$tmp53/c53q" PROJ-53-q ""
+  check "53q inaccessible shaped path real launch exits 2" "$rc53" 2
+  contains "53q inaccessible shaped path logs the refusal" "$(cat "$tmp53/c53q/log" 2>/dev/null)" \
+    "LAUNCH-REFUSED PROJ-53-q the doc's resume_cwd ($blocked53/worktrees/gone) $refusal53"
+  check "53q inaccessible shaped path leaves no launch record" "$([ -e "$tmp53/c53q/record" ] && echo record || echo absent)" absent
+  dry53 "$blocked53/plain/gone"
+  check "53q inaccessible unshaped path dry-run exits 0" "$rc53" 0
+  contains "53q inaccessible unshaped path leaves the session folder derived" "$out53" "$derived53"
+  dry53 "$blocked53/.cache/himmel/verdicts/q-wt/scratch"
+  check "53q inaccessible judge scratch dry-run exits 0" "$rc53" 0
+  contains "53q inaccessible judge scratch leaves the session folder derived" "$out53" "$derived53"
+  dry53 "$blocked53/.cache/himmel/verdicts/q/worktrees/gone/scratch"
+  refused53 q 'inaccessible nested scratch path'
+  dry53 "$blocked53/worktrees/.cache/himmel/verdicts//scratch"
+  refused53 q 'inaccessible shaped scratch path with an empty qid'
+  ln -s "$blocked53" "$shaped53/blocked" || exit 1
+  cwd53="$PWD"
+  cd "$shaped53" || exit 1
+  dry53 blocked/gone
+  cd "$cwd53" || exit 1
+  refused53 q 'inaccessible path relative to worktrees'
+  locked53="$shaped53/locked53"
+  mkdir "$locked53" || exit 1
+  trap 'chmod 700 "$blocked53" "$locked53"; rm -rf "$tmp"' EXIT
+  chmod 000 "$locked53" || exit 1
+  ln -s "$shaped53" "$tmp53/via53" || exit 1
+  cd "$tmp53/via53" || exit 1
+  check "53r precondition: the caller's PWD names the symlink" "$PWD" "$tmp53/via53"
+  dry53 locked53/gone
+  refused53 r 'relative path from a symlinked caller'
+  dry53 ../r53/locked53/gone
+  refused53 s '.. from a symlinked caller back into the worktree folder'
+  cd "$cwd53" || exit 1
+  dry53 "$tmp53/via53/locked53/gone"
+  refused53 r 'absolute path through an unshaped symlink'
+  dry53 "$tmp53/via53/blocked/gone"
+  refused53 q 'link to an inaccessible folder reached through an unshaped symlink'
+  cd "$shaped53" || exit 1
+  dry53 ../../../blocked53/gone
+  cd "$cwd53" || exit 1
+  check "53s .. out of the worktree folder dry-run exits 0" "$rc53" 0
+  contains "53s .. out of the worktree folder leaves the session folder derived" "$out53" "$derived53"
+  cd "$shaped53" || exit 1
+  dry53 ../r53/locked53/gone
+  cd "$cwd53" || exit 1
+  refused53 s 'control: .. that stays in the worktree folder'
+  for path53 in "$blocked53/.cache/himmel/verdicts/q-wt//scratch" \
+    "$blocked53/.cache//himmel/verdicts/q-wt/scratch" \
+    "$tmp53/home53/.cache/himmel/verdicts/q-wt//scratch"; do
+    dry53 "$path53"
+    check "53t ${path53#"$tmp53"/} dry-run exits 0" "$rc53" 0
+    contains "53t ${path53#"$tmp53"/} leaves the session folder derived" "$out53" "$derived53"
+  done
+  chmod 700 "$locked53" || exit 1
+  trap 'chmod 700 "$blocked53"; rm -rf "$tmp"' EXIT
+fi
+chmod 700 "$blocked53" || exit 1
+trap 'rm -rf "$tmp"' EXIT
 
 # --- 17r. The readiness launcher (C0s cycle 1): worker-claude-launcher.sh is the ONE owner of the
 # final claude argv for the readiness role. Its real exec and its validation-only render (an env

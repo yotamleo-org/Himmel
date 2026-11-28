@@ -65,6 +65,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$HERE/../../lib/worker-tail-status.sh"
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/prim.sh
+. "$HERE/../../lib/prim.sh"
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 # shellcheck source=../../lib/worker-identity.sh
@@ -1921,13 +1923,10 @@ check_direction_companions() {
     return 1
 }
 
-# Refuse a handover whose `workers:` Live-state line carries no worker span while
-# the outgoing fleet manifest holds a non-lockless worker that holds a queue lock:
-# seeding it would hand the successor `workers: none` and relay-batch.sh no entries.
-# Every such worker is named with the live-state.sh command that fills the line (the
-# nonces are the chief's: never read from a worker doc or the manifest). A `<...>`
-# placeholder, an absent `workers:` line, an absent, unreadable or empty manifest, and
-# rows without a held lock (status other than 11/12) pass.
+# Refuse a handover whose `workers:` line has no worker span while a non-lockless manifest worker holds a queue lock,
+# so the successor never gets `workers: none`; each is named with the live-state.sh command the chief fills it with
+# (this check fills no nonce; carry_live_workers seeds a live worker that has no span or a well-formed NONCE-UNKNOWN span).
+# A `<...>` placeholder, an absent line, an absent, unreadable or empty manifest, and rows with no held lock (not 11/12) pass.
 # Args: outgoing doc, outgoing Live state.
 check_workers_listed() {
     local doc="$1" live="$2" key=workers value rows label ldoc rc named="" cmd="" NL=$'\n'
@@ -2358,6 +2357,9 @@ seeded_live_field() {
     '
 }
 
+# shellcheck disable=SC2016  # the backticks in the span pattern are literal
+entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
+
 # The `workers:` block `next` seeds: the worker spans whose label or doc stem the
 # successor's fleet manifest still lists (a wrapped worker is off it), plus each
 # `pool-disposition:` line, which the tick reads. The shift prose and the spans of
@@ -2368,8 +2370,6 @@ seeded_live_field() {
 # Args: workers block (as seeded_live_field prints it), manifest.
 open_legs_block() {
     local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
-    # shellcheck disable=SC2016  # the backticks in the span patterns are literal
-    local entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
     # a row with no label cannot be matched to its span: the open set is unknown, so the block stays whole
     names="$(jq -r "$JQ_W"'if any(W[]; (.label // "") == "") then error("row without a label") else W[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; "")) end' "$manifest" 2>/dev/null)" \
@@ -2446,20 +2446,84 @@ EOF
     printf '%s' "$rows"
 }
 
+worker_ever_relayed() {
+    local rc=0
+    awk '/^## Results/ { r = 1 } r && /SUCCESSION accepted/ { f = 1; exit } END { exit !f }' "$1" 2>/dev/null || rc=$?
+    [ "$rc" -ne 1 ]
+}
+
+label_spans() {
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    printf '%s\n' "$1" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -- "\`$2:" || :
+}
+
+brief_seed_tokens() (
+    letter="$1"; shift
+    # shellcheck source=/dev/null
+    . "$repo/scripts/handover/chief-kit/go-deliver.sh" || exit 1
+    for doc in "$@"; do
+        read_out="$(gd_brief_token "$doc" && printf '/ok' || printf '/no')"
+        case "$read_out" in
+            */ok) token="${read_out%/ok}"; token="${token%$'\n'}" ;;
+            */no) continue ;;
+            *) exit 1 ;;
+        esac
+        gd_token_usable "$token" || continue
+        case "$token" in "$letter"-*) continue ;; esac
+        printf '%s\t%s\n' "$doc" "$token"
+    done
+    echo '#end'
+)
+
+# The nonces are the chief's: written by the chief, never read from the manifest; a live worker with no span, or a
+# well-formed NONCE-UNKNOWN span, gets the RETASK token of its brief, which the chief wrote, when its doc records no
+# SUCCESSION accepted.
 carry_live_workers() {
-    local block="$1" rows="$2" whole="$3" label ldoc sess pid span add="" first rest
+    local block="$1" rows="$2" whole="$3" letter="$4" label ldoc sess pid span spans where add="" first rest out="" token i
+    local p_label=() p_doc=() p_span=() p_where=() p_seed=() seed_docs=()
     while IFS=$'\t' read -r label ldoc sess pid; do
         [ -n "$label" ] || continue
         case " ${CHIEF_SEED_TEST_DROP:-} " in *" $label "*) continue ;; esac
-        # shellcheck disable=SC2016  # the backticks are literal span delimiters
-        case "$block" in *'`'"$label:"*) continue ;; esac
-        # shellcheck disable=SC2016  # the backticks are literal span delimiters
-        span="$(printf '%s\n' "$whole" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`' | grep -F -m 1 -- "\`$label:")" || span=""
-        [ -n "$span" ] || span="\`$label:NONCE-UNKNOWN:$sess:$pid\`"
-        add="$add$span "
+        case "$block" in
+            *"\`$label:"*) where=block; spans="$(label_spans "$block" "$label")" ;;
+            *)
+                where=add; spans="$(label_spans "$whole" "$label")"
+                [ -n "$spans" ] || { where=new; spans="\`$label:NONCE-UNKNOWN:$sess:$pid\`"; } ;;
+        esac
+        span="${spans%%$'\n'*}"
+        i=${#p_label[@]}
+        p_label[i]="$label"; p_doc[i]="$ldoc"; p_span[i]="$span"; p_where[i]="$where"; p_seed[i]=0
+        [ "$spans" = "$span" ] && [[ "$span" =~ $entry_re ]] && [[ "$span" == "\`$label:NONCE-UNKNOWN:"* ]] || continue
+        [ "$where" = new ] || [ "$(printf '%s\n' "$rows" | cut -f1 | grep -cxF -- "$label")" -eq 1 ] || continue
+        [ "$(worker_lock_state "$ldoc")" = held ] || continue
+        if [ ! -r "$ldoc" ]; then
+            printf 'next: %s kept NONCE-UNKNOWN: its doc could not be read\n' "$label" >&2
+        elif worker_ever_relayed "$ldoc"; then
+            printf 'next: %s kept NONCE-UNKNOWN: its doc records a SUCCESSION accepted\n' "$label" >&2
+        else
+            p_seed[i]=1; seed_docs+=("$ldoc")
+        fi
     done <<EOF
 $rows
 EOF
+    if [ "${#seed_docs[@]}" -gt 0 ]; then
+        if ! out="$(brief_seed_tokens "$letter" "${seed_docs[@]}" </dev/null 2>/dev/null)" || [ "${out##*$'\n'}" != "#end" ]; then  # swallow-ok: library stderr could name a token; the failure is warned below
+            out=""
+            printf 'next: warning: go-deliver.sh failed; workers without a usable span are carried as NONCE-UNKNOWN\n' >&2
+        fi
+    fi
+    for ((i = 0; i < ${#p_label[@]}; i++)); do
+        label="${p_label[i]}"; span="${p_span[i]}"; token=""
+        if [ "${p_seed[i]}" -eq 1 ]; then
+            token="$(printf '%s\n' "$out" | SEED_DOC="${p_doc[i]}" awk -F'\t' '$1 == ENVIRON["SEED_DOC"] { print $2; exit }')"
+        fi
+        if [ -n "$token" ]; then
+            span="\`$label:$token:${span#"\`$label:NONCE-UNKNOWN:"}"
+            [ "${p_where[i]}" != block ] || block="${block%%"${p_span[i]}"*}$span${block#*"${p_span[i]}"}"
+            printf "next: seeded %s from its brief's RETASK line\n" "$label" >&2
+        fi
+        case "${p_where[i]}:$add" in block:* | add:*"$span "*) ;; *) add="$add$span " ;; esac
+    done
     [ -n "$add" ] || { printf '%s\n' "$block"; return 0; }
     add="${add% }"
     first="$(printf '%s\n' "$block" | sed -n 1p)"
@@ -2546,6 +2610,73 @@ $2
 EOF
 }
 
+move_manifest_rows() {
+    local pred="$1" staged="$2" succ="$3" docs="$4" moved="${1%.json}.moved.json" ldoc
+    local gone=()
+    while IFS= read -r ldoc; do
+        [ -z "$ldoc" ] || gone+=("$ldoc")
+    done <<EOF
+$docs
+EOF
+    local pend="$moved.pending" old="$moved" prior="$moved.pending" out
+    if [ "${#gone[@]}" -gt 0 ] || [ -f "$pend" ]; then
+        [ -f "$old" ] || old=/dev/null
+        [ -f "$prior" ] || prior=/dev/null
+        if ! { jq --arg d "$docs" --slurpfile q "$prior" "$JQ_W"'($d | split("\n")) as $c | [W[] | objects | select(.doc as $x | any($c[]; . == $x))] as $n | {schema: 1, workers: ($n + [($q[0].workers // [])[] | select(.doc as $x | any($n[]; .doc == $x) | not)])}' "$pred" > "$pend.tmp" \
+            && mv -f "$pend.tmp" "$pend" \
+            && jq --slurpfile o "$old" '.workers as $n | .workers = $n + [($o[0].workers // [])[] | select(.doc as $x | any($n[]; .doc == $x) | not)]' "$pend" > "$moved.tmp" \
+            && mv -f "$moved.tmp" "$moved" \
+            && out="$(jq --arg d "$docs" --slurpfile n "$pend" 'def resume: sub("\\.md$"; "-RESUME.md");
+                ($d | split("\n")) as $c | $n[0].workers as $p
+                | .workers = [(.workers // .legs)[] | . as $r
+                    | if type != "object" then $r
+                      else ($r.doc | resume) as $o
+                      | (first($p[] | select(.doc == $r.doc))
+                         // (if any($c[]; . == $r.doc) then empty
+                             elif any($c[]; . == $o) then (if any($p[]; .doc == $o) then $r else empty end)
+                             else $r end))
+                      end]
+                | [.workers[] | objects | .doc] as $s
+                | .workers += [$p[] | .doc as $x | select((any($c[]; . == $x) or any($s[]; . == $x or resume == $x)) | not)]
+                | del(.legs)' "$staged")" \
+            && printf '%s\n' "$out" > "$staged"; }; then
+            rm -f "$pend.tmp" "$moved.tmp"
+            err "could not save the outgoing rows of $pred to $moved; nothing was moved"
+            return 1
+        fi
+        repoint_resume_rows "$staged"
+        [ "${#gone[@]}" -eq 0 ] || bash "$kit/fleet-manifest.sh" remove "$pred" "${gone[@]}" >/dev/null \
+            || {
+                drop_listed_rows "$moved" "$pred" || err "warning: could not clear $moved of the rows $pred still lists"
+                if drop_listed_rows "$pend" "$pred" && jq -e '.workers == []' "$pend" >/dev/null; then rm -f "$pend"; fi
+                err "could not remove the carried rows from $pred; nothing was moved"
+                return 1
+            }
+    fi
+    if [ ! -d "$succ" ] && mv -f "$staged" "$succ"; then rm -f "$pend"; return 0; fi
+    err "could not write the successor's manifest $succ"
+    [ -f "$pend" ] || return 1
+    if ! restore_manifest_rows "$pred" "$pend"; then
+        err "could not put the rows back into $pred: they are in $pend"
+    elif ! { drop_listed_rows "$moved" "$pend" && rm -f "$pend"; }; then
+        err "put the rows back into $pred, but could not clear them from $moved and $pend"
+    fi
+    return 1
+}
+
+drop_listed_rows() {
+    local out
+    out="$(jq --slurpfile l "$2" '($l[0].workers // $l[0].legs // [] | map(.doc?)) as $has | .workers |= map(select(.doc as $x | any($has[]; . == $x) | not))' "$1")" \
+        && printf '%s\n' "$out" > "$1.tmp" && mv -f "$1.tmp" "$1"
+}
+
+restore_manifest_rows() (
+    # prim-ok: the manifest writers' own bounded lock on fd 9
+    exec 9>>"$1.lock" && flock -x -w 30 9 || exit 1
+    jq --slurpfile m "$2" '(.workers // []) as $cur | .workers = [$m[0].workers[] | select(.doc as $x | any($cur[]; .doc == $x) | not)] + $cur' "$1" > "$1.restore" \
+        && mv -f "$1.restore" "$1"
+)
+
 open_notes_age_text() {
     local at="$1" t now secs
     t="$(date -u -d "$at" +%s 2>/dev/null)" || t="$(date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$at" +%s 2>/dev/null)" || t=""  # swallow-ok: an unparseable date reads as an unknown age, said below
@@ -2611,7 +2742,7 @@ EOF_NOTES
 
 OPERATOR_DIRECTED_KEYS=""
 must_disposition_section() {
-    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 npr=0 nop=0
+    local pdoc="$1" pdir="$2" live="$3" dead="$4" smanifest="$5" rmanifest="${6:-$5}" prs line n branch title key found rows cap="${CHIEF_MUST_CAP:-30}" total=0 npr=0 nop=0
     local mirror f fm fv st created ver rest_ pstem pdate prio ttl fresh resume_rc
     printf '## Must disposition\n\n'
     printf 'Rule on each row (relaunch, GO, park or close) before dispatching.\n\n'
@@ -2646,7 +2777,7 @@ EOF_PRS
         if [ -n "${CHIEF_MUST_RESUME_ROWS:-}" ]; then
             rows="$(bash "$CHIEF_MUST_RESUME_ROWS" 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         else
-            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${smanifest:+--workers-from "$smanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
+            rows="$(timeout -k 2 90 bash "$kit/next-dispatchable.sh" --resume-only ${rmanifest:+--workers-from "$rmanifest"} 2>/dev/null)" || resume_rc=$?  # swallow-ok: the failure becomes a Must disposition row below
         fi
         if [ "$resume_rc" -ne 0 ]; then
             printf -- '- RESUME rows unavailable: next-dispatchable.sh --resume-only exited %s (124 is a timeout), so the In Progress tickets with no worker are not listed; re-run: bash %s --resume-only --workers-from %s\n' "$resume_rc" "$kit/next-dispatchable.sh" "$smanifest"
@@ -2753,7 +2884,7 @@ seed_live_fields() {
     if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then wkey=legs; fi
     workers="$(seeded_live_field "$live" "$wkey")"
     go="$(seeded_live_field "$live" "last GO")"
-    new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
+    new_legs="$(open_legs_block "$workers" "${5:-${doc%.md}.fleet.json}")"
     new_go="$(latest_go_only "$go")"
     [ "$CHAIN_RENAMED" -ne 1 ] || new_go="$(printf '%s\n' "$new_go" | sed -E 's/[;,] earlier [`#]?[0-9]+:[0-9a-f]{7,}.*$//')"
     if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
@@ -2770,7 +2901,7 @@ seed_live_fields() {
     LIVE_WORKER_ROWS=""
     if [ -n "${4:-}" ]; then
         LIVE_WORKER_ROWS="$(live_worker_rows "$4" "$(dirname "$4")")"
-        new_legs="$(carry_live_workers "$new_legs" "$LIVE_WORKER_ROWS" "$workers")"
+        new_legs="$(carry_live_workers "$new_legs" "$LIVE_WORKER_ROWS" "$workers" "${6:-}")"
     fi
     # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
@@ -3048,24 +3179,34 @@ cmd_next() {
     # An honest, explicit placeholder rather than an empty string: the
     # successor's own ACTION ZERO acquires and records it, exactly as the
     # chief-template's own instructions already tell it to.
-    # Carry the predecessor's fleet manifest to the successor's
-    # stem so its waiter can start with --workers-from and keep watching the same
-    # workers. A COPY, not a rename: the outgoing chief's waiter still reads
-    # its own until that chief releases. No manifest = no-op.
-    local predecessor_manifest successor_manifest manifest_note
+    local predecessor_manifest successor_manifest staged_manifest manifest_note carried_docs=""
     predecessor_manifest="$predecessor_dir/${predecessor_stem}.fleet.json"
     successor_manifest="${doc%.md}.fleet.json"
+    staged_manifest="$successor_manifest.staged"
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
         local carried carried_at
         carried_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
-        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$successor_manifest")"; then
-            printf '%s\n' "$carried" > "$successor_manifest"
+        trap 'rm -f "$doc" "$staged_manifest"' EXIT
+        cp "$predecessor_manifest" "$staged_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $staged_manifest"; exit 1; }
+        carried_docs="$(jq -r "$JQ_W"'W[]? | objects | .doc // empty' "$staged_manifest")" || { err "cannot read the rows of $predecessor_manifest"; exit 1; }
+        local kept_from=""
+        if [ -f "$successor_manifest" ]; then
+            kept_from="$(jq -r '.carried_from // empty' "$successor_manifest")" || { err "cannot read the leftover $successor_manifest; move it aside and run next again"; exit 1; }
+        fi
+        if [ "$kept_from" = "$predecessor_manifest" ]; then
+            if carried="$(jq --slurpfile e "$successor_manifest" '(.workers // .legs // []) as $w | .workers = $w + [($e[0].workers // $e[0].legs // [])[] | select(.doc as $x | any($w[]; .doc == $x) | not)] | del(.legs)' "$staged_manifest")"; then
+                printf '%s\n' "$carried" > "$staged_manifest"
+            else
+                err "could not keep the rows of $successor_manifest"; exit 1
+            fi
+        fi
+        if carried="$(jq --arg p "$predecessor_manifest" --arg t "$carried_at" '. + {carried_from: $p, carried_at: $t}' "$staged_manifest")"; then
+            printf '%s\n' "$carried" > "$staged_manifest"
         else
             err "warning: could not record the predecessor's manifest in $successor_manifest; ACTION ZERO will not carry a launch that lands after this copy"
         fi
-        repoint_resume_rows "$successor_manifest"
+        repoint_resume_rows "$staged_manifest"
         manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
     # One Read: the tracker line keeps its pinned head (decision 286) and the Current
@@ -3149,11 +3290,13 @@ cmd_next() {
         CARRIED_DIRECTION "$predecessor_direction" \
         MODEL "$model" \
         PROJECT "$project_doc_value"
-    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc"
-    if ! check_workers_carried "$doc" "$LIVE_WORKER_ROWS"; then rm -f "$successor_manifest"; exit 1; fi
+    local seed_manifest="" read_manifest="$successor_manifest"
+    if [ -f "$staged_manifest" ]; then seed_manifest="$staged_manifest"; read_manifest="$predecessor_manifest"; fi
+    seed_live_fields "$doc" "$predecessor_live_state" "$predecessor_stem" "$predecessor_doc" "$seed_manifest" "$successor_letter"
+    check_workers_carried "$doc" "$LIVE_WORKER_ROWS" || exit 1
     local dead_rows
     dead_rows="$(dead_manifest_rows "$predecessor_manifest")"
-    must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" > "$doc.must"
+    must_disposition_section "$predecessor_doc" "$(dirname "$predecessor_doc")" "$LIVE_WORKER_ROWS" "$dead_rows" "$successor_manifest" "$read_manifest" > "$doc.must"
     if grep -q '^- ' "$doc.must"; then
         if awk -v mf="$doc.must" '
             /^## Current direction/ && !d { while ((getline l < mf) > 0) print l; print ""; d = 1 }
@@ -3325,6 +3468,9 @@ cmd_next() {
     # refusal (exit 2) removes the claimed successor doc and a retry is not
     # blocked by "successor doc already exists".
     launch_line=$(launch_cmd "$session" "$doc") || exit $?
+    if [ -f "$staged_manifest" ]; then
+        with_lock "$predecessor_manifest.next.lock" move_manifest_rows "$predecessor_manifest" "$staged_manifest" "$successor_manifest" "$carried_docs" || exit 1
+    fi
     trap - EXIT
     local load_window=1000000 load_mode="$CHIEF_CONTEXT_RESOLVED_MODE" load_record
     load_record="${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs/$predecessor_stem.log"
@@ -3339,6 +3485,7 @@ cmd_next() {
         --reason "$REASON" --fill-percent "$fill_percent" --window "$load_window" \
         || err "warning: could not append the shift's load row to the load record in $state_dir"
     retire_manifest_rows "$predecessor_manifest" "$dead_rows"
+    retire_manifest_rows "${predecessor_manifest%.json}.moved.json" "$dead_rows"
     retire_manifest_rows "$successor_manifest" "$dead_rows"
     console_metadata "$inbox"
     echo "launch: $launch_line"

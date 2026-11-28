@@ -7,6 +7,7 @@ import type { Leave } from './leave.js';
 import type { Authority, Declaration, EventRow, IssueSnap, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb } from './types.js';
 import { appendWithdrawal, isRepair, ISSUE_KEY, placementOf } from './operator-acts.js';
 import { pointerOf, rmFence } from './request-queue.js';
+import { FILER_GATES, ownProject, readinessLabel, runReadiness } from '../readiness.js';
 import { type Ctx, f, type JiraPort, latestRequests, type Loaded, loadOrThrow, locked, readMirror, reduceLoaded, seq, ts, vName } from './engine-core.js';
 
 const OUTCOMES: Record<Verb, Record<string, Op['kind'][]>> = {
@@ -376,9 +377,13 @@ async function finishHalf(ctx: Ctx, l: Loaded, epoch: number, last: RulingRow, c
   return appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch, readback: 'ok' }));
 }
 
-export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['phase']; line: string; note?: string }> {
+type Applied = { phase: RulingRow['phase']; line: string; note?: string };
+
+type Settled = { verb: Verb; kind: Op['kind']; cls: PlacementClass; key: string; readback: string | undefined };
+
+export async function apply(ctx: Ctx, id: string): Promise<Applied> {
   let note: string | undefined;
-  return lockedAsync(ctx, async (l) => {
+  const { settled, ...done } = await lockedAsync(ctx, async (l): Promise<Applied & { settled?: Settled }> => {
     const lease = rmFence(ctx, l);
     const rows = readChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k);
     if (rows.bad.length) throw new Error(`release: rulings.jsonl does not verify (${rows.bad[0]})`);
@@ -474,8 +479,41 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         ?? await ctx.jira.addComment(last.key, `${marker} ${rulingLine(last)}\n\nAuthority: ${authority}. Audit copy; the release ledger is the record.`);
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'receipted', { comment_id: commentId }));
     }
-    return { phase: last.phase, line: rulingLine(last), ...(note ? { note } : {}) };
+    return {
+      phase: last.phase, line: rulingLine(last), ...(note ? { note } : {}),
+      settled: { verb: last.verb, kind: last.op.kind, cls: classOf(l.decl, last.op), key: last.key, readback: last.readback },
+    };
   });
+  const admitted = settled?.verb === 'INTAKE' && settled.kind === 'add' && settled.cls === 'current' && settled.readback === 'ok';
+  const warned = admitted ? await readinessAtAdmission(ctx, settled.key) : undefined;
+  return warned === undefined ? done : { ...done, note: [done.note, warned].filter(Boolean).join('; ') };
+}
+
+const READINESS_COMMENT = 'readiness-check:';
+
+async function readinessAtAdmission(ctx: Ctx, key: string): Promise<string | undefined> {
+  const notes: string[] = [];
+  let step = 'the check';
+  try {
+    const project = ownProject();
+    if (project === undefined || !key.startsWith(`${project}-`)) return undefined;
+    const got = await runReadiness({ key }, project, ctx.signal);
+    if (got.warning !== undefined) return `readiness check not run on ${key} (${got.warning})`;
+    const names = got.gates.filter((g) => FILER_GATES.has(g.name)).map((g) => g.name);
+    if (!names.length) return undefined;
+    const jira = ctx.jira as DoorJiraPort;
+    step = 'the readiness label';
+    const label = await readinessLabel();
+    if (jira.addLabels) await jira.addLabels(key, [label]);
+    else notes.push(`the ${label} label on ${key}: this Jira port cannot add labels`);
+    step = 'the readiness comment';
+    await withLockAsync(ctx.dir, async () => {
+      if ((await jira.findComment(key, READINESS_COMMENT)) === null) await jira.addComment(key, `${READINESS_COMMENT} needs ${names.join(', ')}`);
+    });
+  } catch (e) {
+    notes.push(`readiness on ${key}: ${step} failed: ${(e as Error).message}`);
+  }
+  return notes.length ? notes.join('; ') : undefined;
 }
 
 export type DoorJiraPort = JiraPort & {

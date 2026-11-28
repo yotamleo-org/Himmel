@@ -10,6 +10,8 @@ import {
 } from './engine.js';
 import { judgeOperatorRows } from './judge-input.js';
 import { doorJudge } from './door.js';
+import { ctxFor } from '../commands/release.js';
+import { makeNdStub } from '../operations/testlib-readiness-stub.js';
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as pinned from './pinned.js';
 import * as ledger from './ledger.js';
@@ -991,5 +993,52 @@ describe('rmRun with the door', () => {
     const lines = await rmRun(ctx(), door);
     expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-2 add backlog→v1 ADMIT current sector=Visibility — door:operator-ask: /));
     expect(lines).toContainEqual(expect.stringMatching(/^RULING .* INTAKE K-3 add backlog→v1 ADMIT current sector=Visibility — door:started: /));
+  });
+});
+
+describe('10944 rm-run and the readiness check at admission', () => {
+  const KEY = 'HIMMEL-2';
+  const admitCurrent: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const phaseOf = (id: string) => readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8').trim().split('\n')
+    .map((l) => JSON.parse(l) as RulingRow).filter((r) => r.id === id).at(-1)?.phase;
+  const queued = () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    request(ctx(), { verb: 'INTAKE', key: KEY, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  };
+
+  beforeEach(() => {
+    const conf = join(root, 'conf');
+    mkdirSync(conf, { recursive: true });
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_PROJECT_KEY=HIMMEL\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
+  });
+
+  it('10944 A7 a run stopped while the check runs leaves no check process, and the ruling is as without the check', async () => {
+    queued();
+    const stub = makeNdStub({ sleepMs: 20_000 });
+    vi.stubEnv('JIRA_READINESS_CHECK', stub.path);
+    const stop = new AbortController();
+    const run = rmRun(ctx(), admitCurrent, { signal: stop.signal });
+    await vi.waitFor(() => expect(stub.calls()).toHaveLength(1), { timeout: 5000 });
+    stop.abort(new Error('rm-run: stopped by SIGTERM'));
+    const lines = await run;
+    expect(lines).toContain(`PENDING R-R1-0001: readiness check not run on ${KEY} (the caller stopped it)`);
+    expect(phaseOf('R-R1-0001')).toBe('receipted');
+    await vi.waitFor(() => expect(stub.alive()).toBe(false));
+  });
+
+  it('10944 A7.mirror the check reads the dispatcher\'s mirror, not the one the release ctx holds', async () => {
+    queued();
+    const stub = makeNdStub();
+    vi.stubEnv('JIRA_READINESS_CHECK', stub.path);
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    vi.stubEnv('HIMMEL_JIRA_MIRROR', join(root, 'moved-mirror'));
+    const built = ctxFor('R1', join(root, 'other-mirror'));
+    await rmRun({ ...built, env: {}, jira }, admitCurrent);
+    const [call] = stub.calls();
+    expect(call!.argv[call!.argv.indexOf('--mirror') + 1]).toBe(join(root, 'moved-mirror'));
   });
 });

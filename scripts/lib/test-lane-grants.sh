@@ -191,6 +191,58 @@ for f in -q --quiet; do
 done
 accept 'net open default: arbitrary host, no host key' net-read "curl -q -g 'https://some-other.host.example:8443/p?q=1#f'"
 
+echo "== fetch host lists (HIMMEL-11410) =="
+hosts_cfg() { write_cfg "{\"lane_grants\":{\"codex\":[\"net-read\"]},\"lane_grants_hosts\":{\"codex\":$1}}"; }
+h_refuse() { refuse "$1 $2" "curl -q -g 'https://$2/a'"; }
+h_accept() { accept "$1 $2" net-read "curl -q -g 'https://$2/a'"; }
+reps() { printf '%*s' "$1" '' | tr ' ' a; }
+L63=$(reps 63)
+HOST254="$L63.$L63.$L63.$(reps 62)"
+HOST253="$L63.$L63.$L63.$(reps 61)"
+
+hosts_cfg '{"deny":["example.com"]}'
+for u in EXAMPLE.com example.com. example.com:8443; do h_refuse H6 "$u"; done
+hosts_cfg '{"deny":["EXAMPLE.com."]}'
+h_refuse H6 example.com
+hosts_cfg '{"deny":["*.Example.COM"]}'
+h_refuse H6 a.example.com
+hosts_cfg '{"deny":["127.0.0.1"]}'
+for u in 127.1 0x7f.0.0.1 0177.0.0.1 2130706433; do h_refuse H6 "$u"; done
+
+for l in none '{"deny":[]}'; do
+    if [ "$l" = none ]; then write_cfg '{"lane_grants":{"codex":["net-read"]}}'; else hosts_cfg "$l"; fi
+    for u in EXAMPLE.com example.com. example.com:8443 127.1 0x7f.0.0.1 0177.0.0.1 2130706433 \
+        'ex%61mple.com' example.com:x.y; do
+        h_accept "H7 $l" "$u"
+    done
+done
+
+hosts_cfg '{"deny":["other.example"]}'
+for u in 'ex%61mple.com' a_b.example.com example..com example.com.. "$HOST254" "$(reps 64).example" \
+    example.com:x.evil.example; do
+    h_refuse H8 "$u"
+done
+refuse 'H8 a UTF-8 host' $'curl -q -g \'https://\xc3\xa9xample.com/\''
+h_accept 'H8 253 characters' "$HOST253"
+hosts_cfg '{"allow":["*.example.com"]}'
+h_refuse H8 a_b.example.com
+
+for u in a.example.com a.b.example.com A.Example.COM.; do h_accept 'H9 wildcard allow' "$u"; done
+for u in example.com badexample.com; do h_refuse 'H9 wildcard allow' "$u"; done
+hosts_cfg '{"allow":["example.com"]}'
+h_refuse 'H9 a bare allow entry' a.example.com
+for u in EXAMPLE.com example.com. example.com:8443; do h_accept 'H9 canonical host' "$u"; done
+hosts_cfg '{"deny":["example.com"]}'
+h_accept 'H9 a bare deny entry' a.example.com
+hosts_cfg '{"allow":["example.com","*.example.com"]}'
+h_accept 'H9 both entries' example.com
+h_accept 'H9 both entries' a.example.com
+hosts_cfg '{"allow":["example.com"],"deny":["example.com"]}'
+h_refuse 'H9 deny wins' example.com
+hosts_cfg '{"allow":["Example.COM."]}'
+h_accept 'H9 canonical entry' example.com
+all_on
+
 echo "== shape refusals (every grant on) =="
 refuse 'push another branch' 'git push origin feat/y'
 refuse 'push another remote' 'git push upstream feat/x'
@@ -279,6 +331,14 @@ REC="$T/record"; : > "$REC"
     lane_grant_shape "$(payload 'git push origin feat/x' | jq -c 'del(.himmel_lane)')" >/dev/null || true
 )
 if [ ! -s "$REC" ]; then ok; else bad "check order: the config was read ($(cat "$REC"))"; fi
+write_cfg '{"lane_grants":{"codex":[]},"lane_grants_hosts":{"codex":{"deny":["e"]}}}'
+REC2="$T/record-host"; : > "$REC2"
+(
+    lane_net_host_ok() { echo host >> "$REC2"; }
+    lane_grant_shape "$(payload 'curl -q -g https://e/a')" >/dev/null || true
+)
+if [ ! -s "$REC2" ]; then ok; else bad "H-order: the host check ran before the grant"; fi
+all_on
 
 echo "== report: no read of the account home when HOME is redirected =="
 SENT="$T/sentinel/.himmel"; mkdir -p "$SENT"; printf '{}' > "$SENT/config.json"; chmod 000 "$SENT/config.json"

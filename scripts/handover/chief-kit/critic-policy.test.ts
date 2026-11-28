@@ -79,18 +79,18 @@ function check(fx: Fx, body: unknown, extra: string[] = [], env?: NodeJS.Process
 }
 
 test("round_owner_parity", async () => {
-  const a = fixture({ spec: 3 });
+  const a = fixture({ spec: 5 });
   put(`${a.spec}.critic-spec-renamed.md`, "Read it.\nSPEC FINDINGS 1\n");
   const budget = await route.readCriticBudget(a.spec, "spec");
-  expect(budget).toMatchObject({ count: 3, requestedRound: 4, allowed: false, cap: route.CRITIC_ROUND_CAP });
-  expect(budget.why).toBe(`${KEY} spec round 4 needs a blocking finding in round 3 of either kind; sign it under 848, its minors go to the build`);
-  put(`${a.spec}.critic-spec-r4.md`, "Round four.\nSPEC CLEAN\n");
-  await expect(route.refuseRoundPastCap(`${a.spec}.critic-spec-r4.md`, a.spec)).rejects.toThrow(budget.why!);
+  expect(budget).toMatchObject({ count: 5, requestedRound: 6, allowed: false, cap: route.CRITIC_ROUND_CAP });
+  expect(budget.why).toBe(`${KEY} spec round 6 needs a blocking finding in round 5 of either kind; sign it under 848, its minors go to the build`);
+  put(`${a.spec}.critic-spec-r6.md`, "Round six.\nSPEC CLEAN\n");
+  await expect(route.refuseRoundPastCap(`${a.spec}.critic-spec-r6.md`, a.spec)).rejects.toThrow(budget.why!);
 
-  const c = fixture({ spec: 3, blocking: true });
-  expect(await route.readCriticBudget(c.spec, "spec", 4)).toMatchObject({ count: 3, requestedRound: 4, allowed: true, why: null });
-  put(`${c.spec}.critic-spec-r4.md`, `CLOSURE-CHECK ${KEY} spec r3 ${route.returnSha(readFileSync(`${c.spec}.critic-spec-r3.md`, "utf8")).slice(0, 12)}\nRound four.\nSPEC CLEAN\n`);
-  await route.refuseRoundPastCap(`${c.spec}.critic-spec-r4.md`, c.spec);
+  const c = fixture({ spec: 5, blocking: true });
+  expect(await route.readCriticBudget(c.spec, "spec", 6)).toMatchObject({ count: 5, requestedRound: 6, allowed: true, why: null });
+  put(`${c.spec}.critic-spec-r6.md`, `CLOSURE-CHECK ${KEY} spec r5 ${route.returnSha(readFileSync(`${c.spec}.critic-spec-r5.md`, "utf8")).slice(0, 12)}\nRound six.\nSPEC CLEAN\n`);
+  await route.refuseRoundPastCap(`${c.spec}.critic-spec-r6.md`, c.spec);
 }, T);
 
 test("requested_round_exact_next", async () => {
@@ -103,28 +103,28 @@ test("requested_round_exact_next", async () => {
   expect(check(two, request(two, { requested_round: 3 })).code).toBe(0);
   for (const r of [2, 4]) expect(check(two, request(two, { requested_round: r })).code).toBe(4);
 
-  const three = fixture({ spec: 3 });
-  expect(check(three, request(three, { requested_round: 4 })).json).toMatchObject({ action: "operator-required", reasons: ["operator-required"] });
-  expect(check(three, request(three, { requested_round: 4 })).code).toBe(3);
-  for (const r of [3, 5]) expect(check(three, request(three, { requested_round: r })).code).toBe(4);
-  for (const bad of [0, -1, 1.5, "4", true, null]) expect(check(three, request(three, { requested_round: bad })).code).toBe(2);
+  const capped = fixture({ spec: 5 });
+  expect(check(capped, request(capped, { requested_round: 6 })).json).toMatchObject({ action: "operator-required", reasons: ["operator-required"] });
+  expect(check(capped, request(capped, { requested_round: 6 })).code).toBe(3);
+  for (const r of [5, 7]) expect(check(capped, request(capped, { requested_round: r })).code).toBe(4);
+  for (const bad of [0, -1, 1.5, "6", true, null]) expect(check(capped, request(capped, { requested_round: bad })).code).toBe(2);
 }, T);
 
-test("blocking_round_three_opens_exactly_round_four", async () => {
-  const fx = fixture({ spec: 3, blocking: true });
-  const ok = check(fx, request(fx, { requested_round: 4 }));
+test("blocking_round_five_opens_exactly_round_six", async () => {
+  const fx = fixture({ spec: 5, blocking: true });
+  const ok = check(fx, request(fx, { requested_round: 6 }));
   expect(ok.code).toBe(0);
-  expect(ok.json).toMatchObject({ action: "eligible", reasons: [], round: { observed_count: 3, requested: 4, next: 4, cap: 3, allowed: true } });
+  expect(ok.json).toMatchObject({ action: "eligible", reasons: [], round: { observed_count: 5, requested: 6, next: 6, cap: 5, allowed: true } });
 
-  const five = check(fx, request(fx, { requested_round: 5 }));
-  expect(five.code).toBe(4);
-  expect(five.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 3, requested: 5, next: 4, allowed: null } });
+  const seven = check(fx, request(fx, { requested_round: 7 }));
+  expect(seven.code).toBe(4);
+  expect(seven.json).toMatchObject({ action: "refused", reasons: ["round-mismatch"], round: { observed_count: 5, requested: 7, next: 6, allowed: null } });
   const six = check(fx, request(fx, { requested_round: 2 }));
   expect(six.json.round.allowed).toBeNull();
 
-  const bare = fixture({ spec: 3 });
-  operatorRecord(bare, 4);
-  expect(check(bare, request(bare, { requested_round: 4 })).code).toBe(3);
+  const bare = fixture({ spec: 5 });
+  operatorRecord(bare, 6);
+  expect(check(bare, request(bare, { requested_round: 6 })).code).toBe(3);
 }, T);
 
 test("source_and_artifact_hash_bound", async () => {
@@ -235,12 +235,12 @@ test("ledger_rounds_from_same_pass", async () => {
 }, T);
 
 test("check_exit_json", async () => {
-  const fx = fixture({ spec: 3 });
+  const fx = fixture({ spec: 5 });
   const eligible = fixture();
   const stale = request(fx, { requested_round: 2 });
   const branches: Array<[number, string, Run]> = [
     [0, "eligible", check(eligible, request(eligible))],
-    [3, "operator-required", check(fx, request(fx, { requested_round: 4 }))],
+    [3, "operator-required", check(fx, request(fx, { requested_round: 6 }))],
     [4, "refused", check(fx, stale)],
     [2, "malformed", check(fx, "{not json")],
   ];
@@ -265,11 +265,11 @@ test("check_exit_json", async () => {
 }, T);
 
 test("no_route_or_dispatch_fields", async () => {
-  const fx = fixture({ spec: 3 });
+  const fx = fixture({ spec: 5 });
   const eligible = fixture();
-  operatorRecord(fx, 4);
+  operatorRecord(fx, 6);
   const outputs = [
-    check(eligible, request(eligible)), check(fx, request(fx, { requested_round: 4 })), check(fx, request(fx, { requested_round: 9 })),
+    check(eligible, request(eligible)), check(fx, request(fx, { requested_round: 6 })), check(fx, request(fx, { requested_round: 9 })),
     check(fx, "{not json"), check(fx, request(fx, { model: "x" })),
   ].map(r => r.json);
   const FORBIDDEN = /model|agent|effort|tier|route|dispatch|prompt|budget|spend|lever|study|admission|launch|approval|grant/i;
@@ -474,10 +474,10 @@ test("no_model_or_approval_calls", async () => {
   expect(calls()).toContain("claude --print x");
   rmSync(log);
 
-  const three = fixture({ spec: 3 }); const none = fixture();
+  const three = fixture({ spec: 5 }); const none = fixture();
   const fixtureHashes = [treeHash(three.root), treeHash(none.root)];
   const exits = [
-    [0, check(none, request(none), [], env)], [3, check(three, request(three, { requested_round: 4 }), [], env)],
+    [0, check(none, request(none), [], env)], [3, check(three, request(three, { requested_round: 6 }), [], env)],
     [4, check(three, request(three, { requested_round: 9 }), [], env)], [2, check(three, "{not json", [], env)],
   ] as const;
   for (const [code, r] of exits) expect(r.code).toBe(code);

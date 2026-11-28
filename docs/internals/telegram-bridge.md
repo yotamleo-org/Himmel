@@ -255,10 +255,27 @@ Every message the harness sends to Telegram carries a kind, and `scripts/telegra
 | `cadence:grafana-Scheduled_eval_has_not_run_in_14_days` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has not run in 14 days. |
 | `cadence:grafana-Scheduled_eval_has_no_ledger_series` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has no ledger series. |
 | `cadence:grafana-DatasourceNoData` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: DatasourceNoData. |
+| `chief-status` | escalate | `docs/handover/running-a-chief.md` | A chief's status summary or merge report that needs no answer. |
+| `spec-cc` | escalate | `scripts/handover/chief-kit/spec-cc.sh` | The operator's copy of a core spec the chief signed, when no page could be sent. |
+| `spec-signer` | escalate | `scripts/handover/chief-kit/spec-signer-alert.sh` | Who now signs the specs of a scope, or that the operator's signature was recorded. |
+| `bridge-dispatch-failed` | escalate | `scripts/telegram/poller.ts` | Every dispatch for one session keeps failing with the same error. |
+| `chief-heartbeat-stale` | escalate | `scripts/telegram/poller.ts` | A running chief's wait heartbeat has gone stale. |
 
 A message with no kind is an `unclassified` escalate and goes to the operator chat. That is deliberate in one place: `chief-wait.sh` sends a denial page with no kind when it could not write the page record, so a page that could not be remembered is never made quiet. `bypass-launchd.sh` names a kind on every line it sends: `bypass-ask` for the go-or-no ask, `bypass-failed` for a failed launch, and `bypass-result` for every verdict and refusal.
 
 Every `monitor` row also carries an `on-alert` field that says what should happen when a line of that kind arrives. It is one of three entries: `{"do":"repair","verb":…}` runs a repair that already exists, and the verb comes from a two-entry allow-list (`doctor-fix`, `rerun:rollup`) with no free command; `{"do":"escalate","to":"chief"|"operator","reason":…}` hands the line to its owner with the reason no automatic repair is safe; `{"do":"info","why":…}` marks a success or report line that needs no action. A kind whose lines differ carries an ordered list instead: each entry has a `match` regex tried in order, and the last entry has no `match` and is the fallback, so no line of the kind is left unmapped. For `cadence:himmel-doctor` the list is applied to each finding id the line names; for every other kind it is applied to the line text. `test-message-classes.sh` fails a `monitor` row with no valid `on-alert`. Nothing reads the field yet: the alerts watcher that acts on it arrives in a later change.
+
+### Chats by group
+
+Every `escalate` row also names a `group`, which picks the chat for a line addressed to the operator's DM. `kindChat` in `chief-route.ts` decides it, both for `chief-route.ts reply` and for the poller's own notices.
+
+| Group | Chat | Kinds |
+|---|---|---|
+| `asks` | the operator's DM, always: the answers are read only there | `chief-reply`, `hold-ask-operator`, `hold-ask-stuck`, `denial-stuck`, `bypass-ask`, `version-approval`, `spec-cc`, `spec-signer` |
+| `alerts` | `TELEGRAM_ALERTS_CHAT_ID`, else the DM | `token-in-output`, `config-audit`, `merge-blocked`, `recover-failed`, `monitor-chat-down`, `cadence:security-audit`, `cadence:snyk-scan`, `cadence:graph-key-*`, `bypass-failed`, `bridge-dispatch-failed`, `chief-heartbeat-stale` |
+| `status` | `TELEGRAM_STATUS_CHAT_ID`, else the DM | `chief-status`, `afk-grant-expired` |
+
+The two keys are read from `himmel.conf.local`, then `himmel.conf`, and never from the process environment. A valid value is a negative group id that is not in access.json `groups`; anything else goes to the DM. For a value that is set but not valid, the route log records `operator-fallback:<group>` (a re-routed line is `group:<group>`). A conf file that exists but cannot be read, and every layer under it, sets no group. A kind group is never in the access list, so nothing sent there reaches a chief. A line with no kind or an unlisted kind, a line addressed to another chat, a line that names salus, an owed send and a file all stay where they were addressed. When Telegram does not take a re-routed line, the poller queues it to the DM with the prefix `(the alerts group did not take this)` or the status one. `bun scripts/telegram/chief-route.ts kind-groups [--json]` shows each group's key, value, state and chat. Routing in `chief-route.ts` takes effect at the next send; the poller's fallback and notices take effect after a bridge restart.
 
 
 ## Ops runbook

@@ -39,10 +39,12 @@ unclosed	label-set	enter	60	unclosed	absent
 OWED	unreceipted-doc-keys	enter	0	owed-undelivered	delivered-receipt
 rm-lease	dead-holder-aged	enter	60	rmlease	free-live-fresh-or-takeover
 INTAKE	positive-underfilled-6h	enter	360	intake	zero
+held-hi	keys	enter	60	heldhi	zero
 capacity	underfilled-successful-probe	positive	30	underfill	full-or-paused
 station	BEHIND	enter	60	station	absent-or-current
 repair	off:unreviewed,lost,unavailable,unread	enter	0	repair	absent-or-running
 rm-queue	older-than-2x-rmrun-gap	positive	60	rmqueue	zero-or-young
 rm-blocked	whole-retain-unknown	change	0	key	absent
 mon-down	down-since	enter	0	mon	confirmed-ok
+dependabot	pr-set-settled:5	enter	1440	dependabot	absent
 # Other tick fields are observations and never enter the action key.

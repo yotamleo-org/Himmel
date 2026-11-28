@@ -536,6 +536,34 @@ mv "$WORK/w/refusals.jsonl" "$WORK/w/home/.himmel/state/guard-refusals.jsonl"
 OUT=$(REFUSALS_AT=default HOME="$WORK/w/home" sweep_env 2>"$WORK/w/err")
 check "refusal: with no override the path comes from the ledger registry" "$WAKE_AG" "$OUT"
 
+world; set_tail "- 10:05 READY #101 $H1 GREEN"
+sweep
+has "ds-r1: a #-prefixed READY is go-owed" "DUTY go-owed 101@$H7_1" "$OUT"
+world; set_tail "- 10:05 READY br-x abc1234"
+sweep
+hasnt "ds-r2: a br- READY has no PR row" "go-owed" "$OUT"
+world; set_tail "- 10:05 READY 101 ${H1:0:12}"
+sweep
+hasnt "ds-r3: a short sha at a full head is a mismatch" "go-owed" "$OUT"
+world; set_tail "- 10:05 READY 101 $H1 GREEN
+- 10:10 LIVE — no longer holding at READY 101 $H1"
+sweep
+hasnt "ds-r4: a negated hold line clears the READY" "go-owed" "$OUT"
+world; set_tail "- **READY 101 $H1 GREEN**"
+sweep
+has "ds-r5: a bold READY is read" "DUTY go-owed 101@$H7_1" "$OUT"
+world; printf '[{"number":7,"headRefName":"feat/himmel-9100-thing","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$H1" > "$WORK/w/prs.json"
+set_tail "- 10:05 READY 7 $H1"
+sweep
+hasnt "ds-r5: a one-digit READY id is dropped" "go-owed" "$OUT"
+world; set_tail "- 10:05 READY 101 $H1 GREEN"; mkdir -p "$WORK/w/hd/.locks/go"
+touch -d "@$((NOW - 660))" "$WORK/w/hd/.locks/go/101.$H1"
+OUT=$(HANDOVER_DIR="$WORK/w/hd" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_PRS="$WORK/w/prs.json" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/seam-gh" \
+    CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" \
+    bash "$SWEEP" --doc "$CHIEF" --workers-from "$WORK/w/fleet.json" --bucket "$B" 2>"$WORK/w/err")
+has "ds-r6: the GO root resolves through the library" "DUTY merge-owed 101@$H7_1" "$OUT"
+
 check "no gh call outside the seam" "" "$(cat "$STUB/path-gh-calls")"
 
 bash "$SWEEP" >/dev/null 2>&1; check "usage: no args exits 2" 2 "$?"

@@ -1,5 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { request, projectKey } from '../client.js';
+import type { ADFDocument } from '../adf-render.js';
+import { renderIssue, type MirrorIssue } from '../commands/mirror.js';
+import { FILER_GATES, ownProject, readinessLabel, runReadiness } from '../readiness.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { browseLine } from '../browse-line.js';
 import { markdownToAdf } from '../adf.js';
@@ -228,6 +233,83 @@ function proposalIntake(options: CreateOptions, rules: RulesPlacement | undefine
   return { ...base, proposal: true, proposedVersion: proposed, evidence: { ...base.evidence, rule: rules.ground } };
 }
 
+type PlannedLinks = NonNullable<MirrorIssue['fields']['issuelinks']>;
+
+function plannedLinks(options: CreateOptions): PlannedLinks {
+  const out = (key: string, outward: string, inward: string) => ({ type: { outward, inward }, outwardIssue: { key } });
+  const relates = (key: string) => out(key, 'relates to', 'relates to');
+  const parentKey = options.residualOf ?? options.followUpOf;
+  return [
+    ...(parentKey ? [relates(parentKey)] : []),
+    ...options.blocks.map((key) => out(key, 'blocks', 'is blocked by')),
+    ...(options.splitFrom ? [relates(options.splitFrom)] : []),
+    ...(options.blockedBy ? [{ type: { outward: 'blocks', inward: 'is blocked by' }, inwardIssue: { key: options.blockedBy } }] : []),
+  ];
+}
+
+export function readinessIssue(type: string, adf: unknown, fields: Record<string, unknown>, links: PlannedLinks, project: string): MirrorIssue {
+  return {
+    key: `${project}-0`,
+    fields: {
+      ...fields,
+      issuetype: { name: type },
+      status: { name: 'To Do', statusCategory: { name: 'To Do' } },
+      description: adf as ADFDocument | undefined,
+      issuelinks: links,
+    } as MirrorIssue['fields'],
+  };
+}
+
+const SCOPELESS = 'jira: refused: the dispatcher reads no write scope, so this ticket would never reach a worker. '
+  + 'In ## Agent detail add a line "Writes: <repo path>, <repo path>" or "Writes: none (no code)".';
+
+function declaredCurrent(project: string): string | undefined {
+  try {
+    return declaredFor(project)?.current;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readinessGate(
+  type: string, adf: unknown, fields: Record<string, unknown>, links: PlannedLinks, project: string,
+  filing: { backlog: boolean; intakeTo: string | undefined },
+): Promise<{ refuse?: string; label?: string; warning?: string }> {
+  if (!/^(bug|task|story)$/i.test(type)) return {};
+  let dir: string | undefined;
+  try {
+    if (project !== ownProject()) return {};
+    const key = `${project}-0`;
+    dir = mkdtempSync(join(tmpdir(), 'jira-readiness-'));
+    const bodyFile = join(dir, `${key}.md`);
+    writeFileSync(bodyFile, renderIssue(readinessIssue(type, adf, fields, links, project), []));
+    const got = await runReadiness({ key, bodyFile }, project);
+    if (got.warning !== undefined) return { warning: got.warning };
+    const scopeless = got.gates.find((g) => g.name === 'no-scope');
+    if (scopeless) return { refuse: `${SCOPELESS} (gate: ${scopeless.detail})` };
+    for (const line of got.lines.filter((l) => l.startsWith(`GATE ${key} `))) console.error(line);
+    if (filing.backlog || !got.gates.some((g) => FILER_GATES.has(g.name))) return {};
+    const current = declaredCurrent(project);
+    const versions = (fields['fixVersions'] as Array<{ name: string }> | undefined)?.map((v) => v.name) ?? [];
+    return current !== undefined && (versions.includes(current) || filing.intakeTo === current) ? { label: await readinessLabel() } : {};
+  } catch (e) {
+    return { warning: (e as Error).message };
+  } finally {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function applyReadiness(
+  options: CreateOptions, adf: unknown, fields: Record<string, unknown>, project: string,
+  intake: { proposal?: boolean; proposedVersion?: string },
+): Promise<void> {
+  const ready = await readinessGate(options.type, adf, fields, plannedLinks(options), project,
+    { backlog: options.backlog === true, intakeTo: intake.proposal ? intake.proposedVersion : undefined });
+  if (ready.refuse !== undefined) throw new CreateRefused(ready.refuse);
+  if (ready.warning !== undefined) console.error(`jira: warning: readiness check not run (${ready.warning}); filed without it`);
+  if (ready.label !== undefined) fields['labels'] = [...new Set([...((fields['labels'] as string[] | undefined) ?? []), ready.label])];
+}
+
 export async function runCreate(options: CreateOptions, run: { check?: boolean } = {}): Promise<CreateResult> {
   if (!run.check) refuseTestJiraPost('create');
   checkFlagCombinations(options);
@@ -293,6 +375,7 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
   const intake = proposalIntake(options, rules, parentFacts);
   preflightIntake(intake, fields, title, testProject);
   if (options.checkDuplicates && !testProject) await refuseOpenDuplicate(project, title, options);
+  await applyReadiness(options, body.adf, fields, project, intake);
   if (run.check) return { disposition: 'checked' };
 
   const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited: inherited ?? closedParent?.fixVersion, residual, bugDefault, rules: rules?.target !== undefined });

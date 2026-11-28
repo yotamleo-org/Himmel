@@ -1457,13 +1457,13 @@ printf '%s\n' '{"kind":"spec","keys":["HIMMEL-437"],"spec_path":"'"$bk"'/specs/d
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-439-nomd.critic-spec-r1.md"
 : > "$bk/specs/designs/HIMMEL-440-empty.md.critic-spec-r1.md"
 printf '\377\376 not utf-8\n' > "$bk/specs/designs/HIMMEL-441-binary.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r3.md"
-printf '%s\n' '# critic' 'SPEC FINDINGS 9' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r2.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r5.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 9' > "$bk/specs/designs/HIMMEL-434-capped.md.critic-spec-r4.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-underway.md.critic-spec-r4.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r3.md"
+printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r5.md"
 seed "$bk"
 printf '%s\n' '# handoff' '## Open operator items' '' 'Answer the paid-step ask' '## Wrapped' 'none' > "$bk/HIMMEL-nextleg-x-chief-HANDOFF.md"
 printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off of the spend grant | third || prior shift queue: HIMMEL-438 operator sign-off long finished | HIMMEL-434 operator words old ask' \
@@ -1475,9 +1475,9 @@ c9611="$(grep -F 'data-section="chief-owes"' "$v9611out")"
 a9611="$w9611$c9611"
 contains 'Waiting on you counts only the handoff item and the chief lines' "$w9611" 'data-count="3"'
 contains 'the Chief owes group counts the three unsigned specs' "$c9611" 'data-count="3"'
-contains 'a spec past the round cap with no spec row is chief-owed' "$c9611" 'HIMMEL-434-capped.md: latest critic round 3'
+contains 'a spec past the round cap with no spec row is chief-owed' "$c9611" 'HIMMEL-434-capped.md: latest critic round 5'
 contains 'a spec whose latest critic reads SPEC CLEAN with no spec row is chief-owed' "$c9611" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
-contains 'a past-cap spec whose last line is no verdict says so, never prints that line' "$c9611" 'HIMMEL-438-noverdict.md: latest critic round 3 reads no verdict line'
+contains 'a past-cap spec whose last line is no verdict says so, never prints that line' "$c9611" 'HIMMEL-438-noverdict.md: latest critic round 5 reads no verdict line'
 not_contains 'an unsigned non-critical spec is not under Waiting on you' "$w9611" 'HIMMEL-435-clean.md'
 not_contains 'a spec with a spec row is not owed' "$a9611" 'HIMMEL-437-signed'
 not_contains 'a spec under the cap with findings is not owed' "$a9611" 'HIMMEL-436-underway'
@@ -1616,9 +1616,9 @@ printf '%s\n' '# spec' 'OPERATOR-CRITICAL: spend-grant' > "$bk/specs/designs/HIM
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-452-grant.md.critic-spec-r1.md"
 printf '%s\n' '# critic' '- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat' '' 'SPEC FINDINGS 1' > "$bk/specs/designs/HIMMEL-453-seat.md.critic-spec-r2.md"
 printf '%s\n' '# critic' 'SPEC FINDINGS 4' > "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r3.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r5.md"
 seed "$bk"
-rm "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r3.md"
+rm "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r5.md"
 v9611render --owed-dir "$bk"
 w9687="$(grep -F 'data-section="waiting"' "$v9611out")"
 c9687="$(grep -F 'data-section="chief-owes"' "$v9611out")"
@@ -1627,7 +1627,7 @@ contains 'R7-tracker: a marker naming no operator-critical class is chief-owed' 
 contains 'R7-tracker: control: a marker naming spend-grant is under Waiting on you' "$w9687" 'HIMMEL-452-grant.md: latest critic round 1'
 contains 'R19-tracker: an open operator-critical finding under the cap is under Waiting on you, naming its id and class' "$w9687" 'o1 (spend-grant)'
 not_contains 'R19-tracker: a spec under the cap with findings is not an unsigned spec' "$w9687$c9687" 'HIMMEL-453-seat.md: latest critic'
-contains 'a key at ledger round 3 is owed though no round-3 critic file is on disk' "$c9687" 'HIMMEL-454-moved.md: latest critic round 3 reads SPEC FINDINGS 4'
+contains 'a key at ledger round 5 is owed though no round-5 critic file is on disk' "$c9687" 'HIMMEL-454-moved.md: latest critic round 5 reads SPEC FINDINGS 4'
 t=453
 printf '%s\n' "Operator, on HIMMEL-$t: sign it as it stands, the paid seat is approved." > "$bk/specs/decisions/verbatim-decision-901-seat.txt"
 o="$(HIMMEL_CONSOLE=1 bun "$ROUTE" round-critical "HIMMEL-$t" --finding o1 --decision 901 --quote 'sign it as it stands, the paid seat is approved' --no-round --specs "$bk/specs" 2>&1)" \

@@ -1441,6 +1441,54 @@ function sourcedClosure(file, root) {
   return { libs: [...libs], unresolved };
 }
 
+const RUNNER_LIBS = ['lib/harness-tool-translate.js', 'lib/harness-tool-map.json'];
+
+function verifyRunnerLibs(runnerDir, sessionId) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR;
+  if (!projectDir) return { ok: true };
+  const runnerForeign = pathLocality(runnerDir, projectDir) === 'foreign';
+  const realRunnerDir = normalize(resolveReal(runnerDir));
+  for (const rel of RUNNER_LIBS) {
+    const file = path.join(runnerDir, rel);
+    if (runnerForeign && pathLocality(file, projectDir) === 'foreign') continue;
+    let verdict = verifyOneFile(file, sessionId, true);
+    const resolved = normalize(resolveReal(file));
+    if (verdict.ok && resolved !== normalize(path.join(realRunnerDir, rel))) {
+      verdict = { ok: false, relPath: normalize(path.relative(resolveReal(projectDir), file)), reason: `${SOURCED_DENY}it resolves through a link to ${resolved}, not to its place beside the runner` };
+    }
+    if (!verdict.ok && process.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK === '1' && honourBypass(file, sessionId)) verdict = { ok: true };
+    if (!verdict.ok) return verdict;
+  }
+  return { ok: true };
+}
+
+const GUARD_DATA = /^scripts\/(?:harnesses\/(?:[^/]+\.json|registry\.jq)|himmelctl\/lib\/bypass-flags\.json)$/;
+const GUARD_DATA_DIRS = ['scripts/harnesses', 'scripts/himmelctl/lib'];
+const guardDataVerdicts = new Map();
+
+function verifyGuardData(sessionId) {
+  if (guardDataVerdicts.has(sessionId)) return guardDataVerdicts.get(sessionId);
+  const projectDir = process.env.CLAUDE_PROJECT_DIR;
+  const pins = recordPins(loadIntegrityRecord(sessionId)) || {};
+  const rels = new Set(Object.keys(pins).filter((rel) => GUARD_DATA.test(rel)));
+  for (const dir of GUARD_DATA_DIRS) {
+    let names = [];
+    try {
+      names = fs.readdirSync(path.join(projectDir, dir));
+    } catch (_e) {
+      continue;
+    }
+    for (const name of names) if (GUARD_DATA.test(`${dir}/${name}`)) rels.add(`${dir}/${name}`);
+  }
+  let verdict = { ok: true };
+  for (const rel of [...rels].sort()) {
+    verdict = verifyOneFile(path.join(projectDir, rel), sessionId, true);
+    if (!verdict.ok) break;
+  }
+  guardDataVerdicts.set(sessionId, verdict);
+  return verdict;
+}
+
 function verifyIntegrityUnbypassed(scriptPath, sessionId) {
   const member = verifyOneFile(scriptPath, sessionId, false);
   if (!member.ok || !member.walk) return member;
@@ -1476,7 +1524,14 @@ function verifyIntegrityUnbypassed(scriptPath, sessionId) {
       queue.push(lib);
     }
   }
-  return { ok: true };
+  return verifyGuardData(sessionId);
+}
+
+function pathLocality(scriptPath, projectDir) {
+  const resolvedScript = normalize(resolveReal(scriptPath));
+  const resolvedProject = normalize(resolveReal(projectDir));
+  if (resolvedScript.toLowerCase().startsWith(`${resolvedProject.toLowerCase()}/`)) return 'local';
+  return normalize(scriptPath).toLowerCase().startsWith(`${normalize(projectDir).toLowerCase()}/`) ? 'escapes' : 'foreign';
 }
 
 // One file's check. `walk` on the result says a pin record exists and the file
@@ -1488,21 +1543,18 @@ function verifyOneFile(scriptPath, sessionId, strict) {
   if (!projectDir) return { ok: true };
   const resolvedScript = normalize(resolveReal(scriptPath));
   const resolvedProject = normalize(resolveReal(projectDir));
-  if (!resolvedScript.toLowerCase().startsWith(`${resolvedProject.toLowerCase()}/`)) {
-    // Resolves outside the project. A path that never claimed to be inside it is
-    // simply foreign (not this check's business); one that spelled itself
-    // `<project>/…` but leaves it via `..` or a link is neither project-local nor
-    // vouched for by any pin, so it is refused, and the bypass cannot rescue it
-    // (honourBypass wants the resolved script inside the worktree).
-    if (!normalize(scriptPath).toLowerCase().startsWith(`${normalize(projectDir).toLowerCase()}/`)) {
+  switch (pathLocality(scriptPath, projectDir)) {
+    case 'foreign':
       if (strict) return { ok: false, relPath: normalize(scriptPath), reason: `${SOURCED_DENY}a sourced lib outside the project` };
       return { ok: true };
-    }
-    return {
-      ok: false,
-      relPath: normalize(scriptPath).slice(normalize(projectDir).length + 1),
-      reason: `${ESCAPES_PROJECT_DENY}resolves to ${resolvedScript}, outside the project`,
-    };
+    case 'escapes':
+      return {
+        ok: false,
+        relPath: normalize(scriptPath).slice(normalize(projectDir).length + 1),
+        reason: `${ESCAPES_PROJECT_DENY}resolves to ${resolvedScript}, outside the project`,
+      };
+    default:
+      break;
   }
   const relPath = resolvedScript.slice(resolvedProject.length + 1);
   const loaded = loadRecordAcrossPublish(sessionId);
@@ -1721,12 +1773,16 @@ function isPinDrift(reason) {
 // Exact and case-sensitive, on both sides: the path as wired names the watchdog
 // (so a guard swapped for a link to the watchdog keeps its deny) AND the file it
 // resolves to is the watchdog (so the watchdog path linked elsewhere keeps it).
-function isWatchdogMember(scriptPath) {
+function isProjectMember(scriptPath, rel) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR;
   if (!projectDir || !scriptPath) return false;
-  const lexical = normalize(path.resolve(scriptPath)) === `${normalize(path.resolve(projectDir))}/${WATCHDOG_REL}`;
-  const resolved = normalize(resolveReal(scriptPath)) === `${normalize(resolveReal(projectDir))}/${WATCHDOG_REL}`;
+  const lexical = normalize(path.resolve(scriptPath)) === `${normalize(path.resolve(projectDir))}/${rel}`;
+  const resolved = normalize(resolveReal(scriptPath)) === `${normalize(resolveReal(projectDir))}/${rel}`;
   return lexical && resolved;
+}
+
+function isWatchdogMember(scriptPath) {
+  return isProjectMember(scriptPath, WATCHDOG_REL);
 }
 
 // Once per session, like takeUnvouchedNotice but with its own flag: `text` to
@@ -1753,6 +1809,7 @@ module.exports = {
   LOCK_MAX_WAIT_MS,
   LOCK_POLL_MS,
   PIN_DIRS,
+  RUNNER_LIBS,
   SAFE_SESSION_ID,
   acquireRecordLock,
   denyIntegrityMismatch,
@@ -1760,9 +1817,11 @@ module.exports = {
   hookIntegrityDir,
   integrityRecordPath,
   isPinDrift,
+  isProjectMember,
   isV2Record,
   isWatchdogMember,
   loadIntegrityRecord,
+  pathLocality,
   persistIntegrityRecord,
   reclaimIfDead,
   releaseRecordLock,
@@ -1770,4 +1829,5 @@ module.exports = {
   takeUnvouchedNotice,
   takeWatchdogSkipNotice,
   verifyProjectHookIntegrity,
+  verifyRunnerLibs,
 };

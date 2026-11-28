@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-05",
+  "updated": "2026-11-27",
   "doc": "docs/internals/egress-matrix.md",
   "semantics": {
     "evaluation": "first-match-wins over `rules`, then `default`. '*' matches any value.",
@@ -31,7 +31,8 @@
     "peer-jobs": "typed peer-bridge envelopes (slice B): signed four-line messages that jobs.ts, the poller and runner.ts build from resolved values. Every field is a closed enum, a bounded integer, a resolved commit SHA, a hex value the receiver compares or a suite path on a public repo; no free text. Each also passes the bridge's own envelope policy (schema re-check, content rules on line 3, line 4 verified as our signature)",
     "chief-tell": "the one line of text scripts/peer-bridge/tell.ts was given by a station Claude session that is not a peer desk and not peer-tainted, after the bridge content rules. tell.ts is refused when the transcript names a salus or PHI path or phi-read-mark.sh marked the session when a tool touched one; a path neither sees (one a command builds at run time) is the residual, the same deliberate-evasion class as a same-user process that writes the bridge spool directly",
     "peer-pairing": "our own pairing card, built by the poller from self.stationName and the current public station key; no free text, and the fingerprint is never in it",
-    "skill-index":"the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
+    "skill-index":"the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills",
+    "gmail": "the operator's Gmail archive as markdown, one file per email (~/Mail/gmail-md), indexed by the separate local-only qmd index `gmail` (own qmd server, own token); private mail, not PHI"
   },
   "providers": {
     "local-ollama": { "region": "local", "note": "zero egress; includes qmd local GGUF embeddings" },
@@ -167,6 +168,16 @@
       "corpus": "*", "provider": "google-gemini", "purpose": "*",
       "verdict": "deny", "hard": true,
       "why": "gemini de-listed; GEMINI/GOOGLE keys stay unset (621/622 P.7)"
+    },
+    {
+      "corpus": "gmail", "provider": "xai-grokbot", "purpose": "luna-mcp-read",
+      "verdict": "allow+log",
+      "why": "Operator-ratified read policy (operator ruling 2026-11-27): Grokbot (xai-grokbot) may search and read gmail through the audited qmd MCP read service, scoped per key by the service's allowed collections; the service searches gmail on its own index and never as part of a default search. Full result text leaves the machine, so the executing service MUST append a ledger line per call. Read only: no write purpose is declared. Placed ahead of the gmail wildcard deny below and of every wildcard-corpus row except the hard google-gemini deny, which is a different provider."
+    },
+    {
+      "corpus": "gmail", "provider": "*", "purpose": "*",
+      "verdict": "deny",
+      "why": "Every other cell for the mail archive stays closed; mail stays on local models. Placed after the hard `* x google-gemini` deny and before every other wildcard-corpus row (the `* x ollama-cloud x extraction` allow below would otherwise open it). Not hard: a future operator decision may widen it by editing one cell"
     },
     {
       "corpus": "adopter-repo", "provider": "anthropic", "purpose": "extraction",

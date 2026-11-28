@@ -469,7 +469,9 @@ not_contains 'a fork PR is not unowned' "$own_out" '#3005:'
 contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
 contains 'a worker whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
-contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
+failed_read="$(STUB_PR_FAIL=1 bash "$SUT")"
+contains 'a failed gh read is unowned-prs=?, not an all-clear' "$failed_read" ' unowned-prs=? '
+contains 'a failed gh read is ext-prs=?, not an all-clear' "$failed_read" ' ext-prs=? '
 contains 'a failed gh read is prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
 if [ -n "$_TIMEOUT_BIN" ]; then
     # The deadline cuts the list to its 1 s floor. Without that bound the stub answers after 5 s with its rows.
@@ -499,6 +501,34 @@ not_contains 'a pending or green orphan is not dispatch-owed' "$red_out" '#3012:
 not_contains 'a red PR owned by a held lock is not flagged' "$red_out" '#3013:'
 not_contains 'a red draft is not flagged' "$red_out" '#3014:'
 contains '--verbose names the dispatch-owed PR' "$(STUB_PR_ROWS="$rows_6358" bash "$SUT" --verbose)" 'unowned-prs: #3011:125m:dispatch-owed'
+dep_row() { printf '%s\t%s\t%s\t%s\t%s\t%s\t0\tsha%s\t%s\t\\n' "$1" "$2" "$3" "$4" "$5" "$6" "$1" "$7"; }
+dep_one="$(dep_row 3101 dependabot/pip/x/foo-1.2.3 false app/dependabot false "$(iso_ago 20)" "$(iso_ago 20)")"
+dep_out="$(STUB_PR_ROWS="$dep_one" bash "$SUT")"
+contains 'D1 an open Dependabot PR is named in dependabot= with its ages' "$dep_out" ' dependabot=1:20m:20m:#3101 '
+not_contains 'D2 a Dependabot PR is not unowned' "$(printf '%s\n' "$dep_out" | grep -oE 'unowned-prs=[^ ]*')" '#3101'
+contains 'D2 a Dependabot PR stays in prs=' "$dep_out" ' prs=#3101 '
+dep_not="$(dep_row 3112 feat/himmel-1-dependabot-docs false me false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3113 dependabot/npm/d true app/dependabot false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3114 dependabot/npm/f false app/dependabot true "$(iso_ago 20)" "$(iso_ago 20)")"
+not_contains 'D3 a key branch, a draft and a fork PR print no dependabot=' "$(STUB_PR_ROWS="$dep_not" bash "$SUT")" ' dependabot='
+dep_two="$(dep_row 3110 dependabot/npm/y false me false "$(iso_ago 20)" "$(iso_ago 20)")$(dep_row 3111 feat/x false app/Dependabot false "$(iso_ago 20)" "$(iso_ago 20)")"
+contains 'D3 a dependabot/ head and a mixed-case dependabot author count' "$(STUB_PR_ROWS="$dep_not$dep_two" bash "$SUT")" ' dependabot=2:20m:20m:#3110,#3111 '
+contains 'D4 a failed gh read is dependabot=?' "$(STUB_PR_FAIL=1 bash "$SUT")" ' dependabot=? '
+dep_pair="$(dep_row 3102 dependabot/npm/b false app/dependabot false "$(iso_ago 3)" "$(iso_ago 3)")$(dep_row 3101 dependabot/npm/a false app/dependabot false "$(iso_ago 300)" "$(iso_ago 300)")"
+contains 'D5 the PRs sort by number and the ages go by value' "$(STUB_PR_ROWS="$dep_pair" bash "$SUT")" ' dependabot=2:300m:3m:#3101,#3102 '
+contains 'D6 --verbose prints the dependabot line' "$(STUB_PR_ROWS="$dep_pair" bash "$SUT" --verbose)" 'dependabot: 2 open, oldest 300m, newest 3m: #3101,#3102'
+jq -n --arg old "$(iso_ago 40)" --arg new "$(iso_ago 20)" '[
+  {number: 3101, headRefName: "dependabot/npm/a", isDraft: false, author: {login: "app/dependabot"}, isCrossRepository: false, updatedAt: $new, statusCheckRollup: [], headRefOid: "a1", createdAt: $new, labels: []},
+  {number: 3102, headRefName: "dependabot/npm/b", isDraft: false, author: {login: "app/dependabot"}, isCrossRepository: false, updatedAt: $old, statusCheckRollup: [], headRefOid: "b2", createdAt: $old, labels: [{name: "dependencies"}]}
+]' > "$W/dep-prs.json"
+contains 'D7 the real filter gives each unlabelled and labelled PR its age' "$(STUB_PR_JSON="$W/dep-prs.json" bash "$SUT")" ' dependabot=2:40m:20m:#3101,#3102 '
+for dep_bad_at in '' garbled; do
+    contains "D8 a createdAt of '$dep_bad_at' is dependabot=?" "$(STUB_PR_ROWS="$(dep_row 3101 dependabot/npm/a false app/dependabot false "$(iso_ago 20)" "$dep_bad_at")" bash "$SUT")" ' dependabot=? '
+done
+dep_proj="$(STUB_PR_ROWS="$dep_one" TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
+not_contains 'D9 a project chief gets no dependabot=' "$dep_proj" ' dependabot='
+contains 'D9 a project chief still lists the PR as unowned' "$dep_proj" 'unowned-prs=#3101:20m'
+dep_proj="$(STUB_PR_FAIL=1 TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
+not_contains 'D9 a project chief with a failed read gets no dependabot=' "$dep_proj" ' dependabot='
+
 mkdir -p "$W/cloudbucket"
 printf '%s\n' '# chief' > "$W/cloudbucket/chief.md"
 printf '%s\t%s\t%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" HIMMEL-999 session_x 'claude --teleport session_x' > "$W/cloudbucket/cloud-sessions.tsv"
@@ -551,10 +581,11 @@ contains '10716 a decision file not yet present has not fired' "$(STUB_PR_ROWS="
 : > "$W/heldbucket/decision.txt"
 contains '10716 a decision file present fires' "$(STUB_PR_ROWS="$rows_5542" held_tick)" ' relaunch=#3002:/h/r.md '
 held_doc "#3002 HELD wake=pr:3001 resume=/h/a.md | #3006 HELD waits on 3001"
-printf '[{"number":3002,"headRefName":"feat/himmel-999-orphan"},{"number":3006,"headRefName":"feat/himmel-222-ready-worker"}]\n' > "$W/held-prs.json"
+printf '[{"number":3002,"headRefName":"feat/himmel-999-orphan"},{"number":3006,"headRefName":"feat/himmel-222-ready-worker"},{"number":3007,"headRefName":"feat/himmel-995-x","author":{"login":"app/Dependabot"}},{"number":3008,"headRefName":"dependabot/npm/z","author":{"login":"me"}}]\n' > "$W/held-prs.json"
 mkdir -p "$W/held-state"
 opc_unowned="$(ORPHAN_PR_CHECK_PRS="$W/held-prs.json" TICKET_STATUS_STATE_DIR="$W/held-state" bash "$HERE/orphan-pr-check.sh" --doc "$W/heldbucket/chief.md" | awk '{ print $2 }' | paste -sd, -)"
-tick_unowned="$(STUB_PR_ROWS="$rows_5542" held_tick | grep -oE 'unowned-prs=[^ ]*' | tr ',' '\n' | grep -oE '#(3002|3006):' | tr -d '#:' | paste -sd, -)"
+rows_agree="$rows_5542$(dep_row 3007 feat/himmel-995-x false app/Dependabot false "$(iso_ago 125)" "$(iso_ago 125)")$(dep_row 3008 dependabot/npm/z false me false "$(iso_ago 125)" "$(iso_ago 125)")"
+tick_unowned="$(STUB_PR_ROWS="$rows_agree" held_tick | grep -oE 'unowned-prs=[^ ]*' | tr ',' '\n' | grep -oE '#(3002|3006|3007|3008):' | tr -d '#:' | paste -sd, -)"
 if [ "$opc_unowned" = 3006 ] && [ "$tick_unowned" = "$opc_unowned" ]; then
     pass '10716 orphan-pr-check.sh and tick.sh read the same HELD entries as unowned'
 else
@@ -1832,6 +1863,142 @@ if grep -Fq 'red-main' <<< "$out"; then fail 'a failing probe printed a postmort
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes"\nexit 124\n' > "$W/redmain-late"
 out="$(TICK_REDMAIN_PROBE="$W/redmain-late" bash "$SUT")"
 contains 'a probe killed after it printed keeps its lines' "$out" 'ACTION red-main-postmortem red-main run 900 #102 scripts/test-b.sh suite in its impacted list: yes'
+
+hh="$W/hh10944"; hh_kit="$hh/scripts/handover/chief-kit"
+mkdir -p "$hh_kit" "$hh/mirror/HIMMEL"
+for hh_f in "$HERE"/*; do ln -s "$hh_f" "$hh_kit/${hh_f##*/}"; done
+for hh_f in "$HERE"/../*; do [ "${hh_f##*/}" = chief-kit ] || ln -s "$hh_f" "$hh/scripts/handover/${hh_f##*/}"; done
+for hh_f in "$HERE"/../../*; do [ "${hh_f##*/}" = handover ] || ln -s "$hh_f" "$hh/scripts/${hh_f##*/}"; done
+rm -f "$hh_kit/next-dispatchable.sh"
+# shellcheck disable=SC2016  # the stub expands its own variable
+printf '#!/usr/bin/env bash\ncat "$HH_ND_ROWS"\n' > "$hh_kit/next-dispatchable.sh"
+cp -r "$W/repo" "$hh/repo"
+hh_doc="$W/handover/hh-chief.md"
+unset TICK_HELD_OLD_DAYS
+printf '%s\n' '# HH — CHIEF' '' '## Results' > "$hh_doc"
+hh_same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$3' got '$2')"; fi; }
+hh_issue() {
+    printf '%s\n' '---' "key: \"$1\"" 'type: "Bug"' 'status: "To Do"' 'statusCategory: "To Do"' "priority: \"$2\"" "labels: [$3]" "fixVersions: [$4]" "created: \"$(date -u -d "-$5 days" +%Y-%m-%dT%H:%M:%S.000+0000)\"" '---' '' "# $1: t" '' '## Description' '' 'x' > "$hh/mirror/HIMMEL/$1.md"
+}
+hh_scope() { printf 'NEEDS-CHIEF-NOTE %s: no readable scope: its description names no file, needs a chief note before it is dispatched\n' "$1"; }
+hh_tick() {
+    local state="$hh/state-$1" rows="$2"
+    shift 2
+    env NEXT_DISPATCH_MIRROR="$hh/mirror/HIMMEL" TICK_STATE_DIR="$state" HH_ND_ROWS="$rows" REPO="$hh/repo" TICK_POOL_WAIT=60 TOKEN='' \
+        bash "$hh_kit/tick.sh" "$@" --doc "$hh_doc" 2>/dev/null
+    for hh_lock in "$state"/tick-pool-*.lock; do
+        [ ! -e "$hh_lock" ] || flock -w 60 "$hh_lock" true
+    done
+}
+hh_one() {
+    hh_scope "$2" > "$hh/$1.rows"
+    hh_tick "$1" "$hh/$1.rows"
+}
+hh_issue HIMMEL-1 High '' '' 2
+out="$(hh_one t1 "$KP-1")"
+contains '(10944 T1) a held High no-scope key is on the tick line' "$out" ' held-hi=HIMMEL-1'
+contains '(10944 T1) and has its section line' "$out" '# held-hi HIMMEL-1 no-scope prio=High age=2d ver=-'
+hh_issue HIMMEL-2 Medium '' '' 10
+out="$(hh_one t2 "$KP-2")"
+not_contains '(10944 T2) a Medium versionless key 10 days old prints no held-hi' "$out" 'held-hi'
+contains '(10944 T2) control: the snapshot was read' "$out" ' pool='
+hh_issue HIMMEL-3 Medium '' '"v1"' 40
+out="$(hh_one t3 "$KP-3")"
+contains '(10944 T3) a Medium key with a fixVersion 40 days old is held' "$out" '# held-hi HIMMEL-3 no-scope prio=Medium age=40d ver=v1'
+out="$(TICK_HELD_OLD_DAYS=60 hh_one t3b "$KP-3")"
+not_contains '(10944 T3) TICK_HELD_OLD_DAYS raises the age bound' "$out" 'held-hi'
+hh_issue HIMMEL-4 Low '"operator-directed"' '' 1
+out="$(hh_one t4 "$KP-4")"
+contains '(10944 T4) an operator-directed versionless key is held' "$out" ' held-hi=HIMMEL-4'
+out="$(hh_one t5 "$KP-5")"
+contains '(10944 T5) a key whose mirror file is missing is held with prio=?' "$out" '# held-hi HIMMEL-5 no-scope prio=? age=?d ver=-'
+hh_one t6 HIMMEL-1 > /dev/null
+touch -d '2 hours ago' "$hh"/state-t6/tick-pool-*.rows
+out="$(TICK_POOL_MIN_SECS=999999 hh_tick t6 "$hh/t6.rows")"
+contains '(10944 T6) a stale snapshot prints held-hi=?' "$out" ' held-hi=?'
+not_contains '(10944 T6) and no section line' "$out" '# held-hi '
+printf '# quota-pause QUOTA-PAUSE x\n' > "$hh/t7.rows"
+out="$(hh_tick t7 "$hh/t7.rows")"
+contains '(10944 T7) a quota-paused snapshot prints held-hi=?' "$out" ' held-hi=?'
+printf '# gh-stall GH-STALL x\n' > "$hh/t7b.rows"
+out="$(hh_tick t7b "$hh/t7b.rows")"
+contains '(10944 T7) a stalled snapshot prints held-hi=?' "$out" ' held-hi=?'
+printf 'NEEDS-CHIEF-NOTE HIMMEL-1: merged PR #7 has no Remaining: line and no deferred line under ## Ticket coverage, needs a chief note before it is dispatched\n' > "$hh/t9.rows"
+out="$(hh_tick t9 "$hh/t9.rows")"
+contains '(10944 T9) a merged PR with no remainder is class merged-no-remainder' "$out" '# held-hi HIMMEL-1 merged-no-remainder prio=High'
+hh_issue HIMMEL-6 Highest '' '' 1
+hh_issue HIMMEL-7 High '' '' 9
+{ hh_scope HIMMEL-1; hh_scope HIMMEL-7; hh_scope HIMMEL-6; } > "$hh/sort.rows"
+out="$(hh_tick sort "$hh/sort.rows")"
+contains '(10944) the set is sorted by priority, then oldest first' "$out" ' held-hi=HIMMEL-6,HIMMEL-7,HIMMEL-1'
+hh_prio="$(python3 -I -c 'import ast,re,sys; print("\n".join("%s %d" % kv for kv in ast.literal_eval(re.search(r"^PRIO = (\{.*\})$", open(sys.argv[1]).read(), re.M)[1]).items()))' "$HERE/next-dispatchable.sh")"
+: > "$hh/t10.rows"; hh_n=100; hh_want=()
+while read -r hh_name hh_rank; do
+    hh_n=$((hh_n + 1))
+    hh_issue "HIMMEL-$hh_n" "$hh_name" '' '' 3
+    hh_scope "HIMMEL-$hh_n" >> "$hh/t10.rows"
+    [ "$hh_rank" -gt 1 ] || hh_want+=("HIMMEL-$hh_n")
+done <<< "$hh_prio"
+out="$(hh_tick t10 "$hh/t10.rows")"
+hh_got="$(printf '%s\n' "$out" | tr ' ' '\n' | sed -n 's/^held-hi=//p' | tr ',' '\n' | LC_ALL=C sort | tr '\n' ' ')"
+hh_same "(10944 T10) the tick's priority set is the dispatcher's rank 1 or better" "$hh_got" "$(printf '%s\n' "${hh_want[@]}" | LC_ALL=C sort | tr '\n' ' ')"
+mkdir -p "$hh/t8-mirror/HIMMEL" "$hh/t8-workers"
+cp "$hh/mirror/HIMMEL/HIMMEL-1.md" "$hh/t8-mirror/HIMMEL/"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$hh/gh-empty"; chmod +x "$hh/gh-empty"
+mkdir -p "$hh/t8-git" "$hh/t8-jira"
+git -C "$hh/t8-git" init -q -b main
+GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/t8-git" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m init
+cat > "$hh/t8-jira/index.js" <<'STUB'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUB
+NEXT_DISPATCH_JIRA_CLI="$hh/t8-jira/index.js" NEXT_DISPATCH_GIT_DIR="$hh/t8-git" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_BODY_CACHE=off \
+    NEXT_DISPATCH_MIRROR="$hh/t8-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$hh/gh-empty" bash "$HERE/next-dispatchable.sh" --dispositions --top 1000 --workers-dir "$hh/t8-workers" --no-classify > "$hh/t8.rows" 2>/dev/null
+contains '(10944 T8) control: the real dispatcher holds the key' "$(cat "$hh/t8.rows")" 'NEEDS-CHIEF-NOTE HIMMEL-1: no readable scope'
+out="$(hh_tick t8 "$hh/t8.rows")"
+contains '(10944 T8) the tick reads the real dispatcher line' "$out" ' held-hi=HIMMEL-1'
+git init -q -b main "$hh/repo"
+printf '# disposition HIMMEL-101 blocker HIMMEL-103 (In Progress, live), HIMMEL-102 (To Do, live)\n# disposition HIMMEL-104 blocker HIMMEL-102 (To Do); blocker-unknown HIMMEL-109\n# disposition HIMMEL-105 blocker HIMMEL-10 (To Do)\n' > "$hh/c.rows"
+GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/repo" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m "$(printf 'feat: x\n\n## Ticket coverage\n- %s-102 the thing: done\n- %s-103 the other: done\n- %s-100 not ten: done\n' "$KP" "$KP" "$KP")"
+hh_sha="$(git -C "$hh/repo" log -1 --format=%H | cut -c1-7)"
+out="$(hh_tick c3 "$hh/c.rows")"
+not_contains '(10944 C3) with no origin/main there is no close candidate' "$out" 'close-cand'
+contains '(10944 C3) control: the tick ran' "$out" 'TICK '
+git -C "$hh/repo" update-ref refs/remotes/origin/main HEAD
+mkdir -p "$hh/shim"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) echo x >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh/gitlog" "$(command -v git)" > "$hh/shim/git"
+chmod +x "$hh/shim/git"
+PATH="$hh/shim:$PATH" hh_tick c1 "$hh/c.rows" > /dev/null
+hh_calls="$(grep -c . "$hh/gitlog" 2>/dev/null)"
+out="$(PATH="$hh/shim:$PATH" TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
+contains '(10944 C1) a done-but-open blocker is listed with its dependants, by a tick that does not rebuild' "$out" "# close-candidate HIMMEL-102 blocks HIMMEL-101,HIMMEL-104 done-in $hh_sha"
+hh_same '(10944 C1) the tick line lists it; an In Progress blocker and a longer key are not' "$(printf '%s\n' "$out" | tr ' ' '\n' | grep '^close-cand=')" 'close-cand=HIMMEL-102'
+hh_same '(10944 C1) exactly one candidate' "$(printf '%s\n' "$out" | grep -c '^# close-candidate ')" '1'
+hh_same '(10944 C4) the rebuild ran git log and the second tick ran none' "$([ "${hh_calls:-0}" -gt 0 ] && echo ran):$(grep -c . "$hh/gitlog" 2>/dev/null)" "ran:${hh_calls:-0}"
+mkdir -p "$hh/shim-order" "$hh/shim-dead"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c6/tick-pool-*.rows" > /dev/null; then echo published; else echo held-back; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/order" "$(command -v git)" > "$hh/shim-order/git"
+# shellcheck disable=SC2016  # the stub expands its own variable
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) echo x >> "%s"; kill -TERM "$PPID"; exit 1 ;; esac\nexec "%s" "$@"\n' "$hh/killed" "$(command -v git)" > "$hh/shim-dead/git"
+chmod +x "$hh/shim-order/git" "$hh/shim-dead/git"
+PATH="$hh/shim-order:$PATH" hh_tick c6 "$hh/c.rows" > /dev/null
+hh_same '(10944 C6) the snapshot rows are published before the git scan starts' "$(LC_ALL=C sort -u "$hh/order" 2>/dev/null)" 'published'
+mkdir -p "$hh/shim-old"
+printf '#!/usr/bin/env bash\ncase "$*" in *--grep=*) if compgen -G "%s/state-c1/tick-pool-*.closecand" > /dev/null; then echo old-cache; else echo no-cache; fi >> "%s" ;; esac\nexec "%s" "$@"\n' "$hh" "$hh/during" "$(command -v git)" > "$hh/shim-old/git"
+chmod +x "$hh/shim-old/git"
+PATH="$hh/shim-old:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows" > /dev/null
+hh_same '(10944 C8) no older cache is readable beside new rows while the scan runs' "$(LC_ALL=C sort -u "$hh/during" 2>/dev/null)" 'no-cache'
+PATH="$hh/shim-dead:$PATH" TICK_POOL_MIN_SECS=0 TICK_POOL_MAX_SKIP_SECS=0 hh_tick c1 "$hh/c.rows" > /dev/null
+out="$(TICK_POOL_MIN_SECS=999999 hh_tick c1 "$hh/c.rows")"
+not_contains '(10944 C7) a scan that dies leaves no older candidate beside the new rows' "$out" 'close-cand'
+contains '(10944 C7) control: the rows were still published' "$out" ' pool=3/'
+hh_same '(10944 C7) control: the killed scan really ran' "$([ -s "$hh/killed" ] && echo ran)" 'ran'
+GIT_CONFIG_GLOBAL=/dev/null git -C "$hh/repo" -c user.name=t -c user.email=t@e.x commit -q --allow-empty -m "$(printf 'feat: y\n\n## Ticket coverage\n- APP2-10 the thing: done\n')"
+git -C "$hh/repo" update-ref refs/remotes/origin/main HEAD
+printf '# disposition APP2-11 blocker APP2-10 (To Do)\n' > "$hh/c9.rows"
+hh_tick c9 "$hh/c9.rows" > /dev/null
+out="$(TICK_POOL_MIN_SECS=999999 hh_tick c9 "$hh/c9.rows")"
+contains '(10944 C9) a blocker of a project key holding a digit is listed with its dependant' "$out" '# close-candidate APP2-10 blocks APP2-11 done-in '
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

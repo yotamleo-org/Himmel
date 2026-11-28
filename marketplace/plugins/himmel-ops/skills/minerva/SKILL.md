@@ -260,11 +260,17 @@ dispositions. Never skip it, and in `autonomous`
 mode the gate still applies (the answers go to ASSUMPTIONS, the record path stays
 in the spec). The critic reads the estimate record and may challenge sigma.
 
+**Lint before every dispatch.** Before every spec critic dispatch run `bun
+<himmel>/scripts/telegram/chief-route.ts sign-shape <spec> --lint`, and fix what
+it refuses in the same writer round. The seal runs the same trace lint: a seal it
+refuses writes no row, so fix the bytes and run the critic again for the same
+round.
+
 Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
 the written spec file; never let it inherit the parent's tier (CLAUDE.md
 subagent policy). Loop
-fix → re-critic until it returns clean, **cap 3 rounds per spec**, then at most
-one closure check. Rounds 1 to 3 read the whole file.
+fix → re-critic until it returns clean, **cap 5 rounds per spec**, then at most
+one closure check. Rounds 1 to 5 read the whole file.
 
 **Rounds are counted per ticket, in the round ledger.** Each seal through
 `critic-seal.sh` records the return in `specs/ledgers/spec-rounds/<KEY>.jsonl`,
@@ -276,22 +282,22 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
 
 | Round | Allowed when | What the critic reads |
 |---|---|---|
-| 1 to 3 | always | the whole file |
-| 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it | the closure pack only |
-| 5 and on | only the operator's words open it: a `round-critical` record with `--decision` and `--quote` | the closure pack only |
+| 1 to 5 | always | the whole file |
+| 6 | round 5 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it | the closure pack only |
+| 7 and on | a `round-critical` record with `--decision` and `--quote` (under decision 1418 the decision file is the chief's own) | the closure pack only |
 
-- **Round 4 is a closure check.** Build the critic's input with
+- **Round 6 is a closure check.** Build the critic's input with
   `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan> --specs <bucket>/specs`:
   a `CLOSURE-CHECK` marker line, the open blocking findings, the sha of each file
-  round 3 sealed and the diff of each since. The critic gets the pack and the
-  charter's Closure mode, never the whole file. The seal refuses a round-4 return
-  without the marker line, or one that reads a file round 3 did not seal.
+  round 5 sealed and the diff of each since. The critic gets the pack and the
+  charter's Closure mode, never the whole file. The seal refuses a round-6 return
+  without the marker line, or one that reads a file round 5 did not seal.
 - **Minors and mediums never buy a round.** The ledger keeps every finding, and
   the build brief gets the ones no later round answered, through `fold-list`, as
   `## Folded critic findings`. Coverage is kind-scoped: `spec:F1` and `plan:F1`
-  are separate. After a minors-only round 3, use the signing route below: do not
-  ask for round 4.
-- **Past round 4.** Ask the operator one plain line, write the verbatim-decision file,
+  are separate. After a minors-only round 5, use the signing route below: do not
+  ask for round 6.
+- **Past round 6.** Write the verbatim-decision file and
   run `round-critical <KEY> --decision <d> --quote "<operator words>" --closure [--round <spec|plan>:<n>] --specs <bucket>/specs`
   (`--round` opens a lagging critic's own round). Under standing decision 1418 the chief asks no one: it
   writes that decision file itself, quoting 1418 and giving its reason.
@@ -421,10 +427,10 @@ A refused seal names its cause, and each has one next step:
   again and type it once more.
 - `last line`: append the verdict line as above, then type it once more.
 - `already seals`: that file is done; go on to the next.
-- `needs a blocking finding in round 3`: round 3 left no blockers; use the
+- `needs a blocking finding in round 5`: round 5 left no blockers; use the
   frozen nonblocking carry route below if eligible.
 - `is a closure check`: the return lacks the pack's marker line, or read a file
-  round 3 did not seal; dispatch the critic again with `closure-pack`.
+  round 5 did not seal; dispatch the critic again with `closure-pack`.
 - `needs a round-critical record with the operator's words`: stop; see At the cap.
 - anything else: report it; the page stays refused.
 
@@ -477,22 +483,21 @@ while signatures depend on it: file bytes, ledger, manifest, decision mtime or
 decision filename selection drift can stale them. Carry each residual into the build
 brief and give each kind-scoped id its own Ticket coverage disposition.
 
-**At the cap.** Once a critic has had round 3, whatever its verdict, the files it
-read change only to answer an open blocking finding, and only the files round 3
-sealed: round 4 checks exactly that diff. When round 3 of either kind left no
+**At the cap.** Once a critic has had round 5, whatever its verdict, the files it
+read change only to answer an open blocking finding, and only the files round 5
+sealed: round 6 checks exactly that diff. When round 5 of either kind left no
 blocking finding, they are not edited at all: use the signing route above, and the
 minors go to the build. Stages 3 and 4 still run on a frozen spec, because
 `send-file --sign` refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
-at its own round 3 in the ledger. The plan alone may still be fixed while its
+at its own round 5 in the ledger. The plan alone may still be fixed while its
 critic is under the cap. send-file lists the findings in a `FINDINGS` return and
 every open operator-critical finding. Whatever else wants an edit it cannot have,
 an agreed panel finding or a Terminal lint gap, goes to the operator in a plain
 message with the page, and a lint gap also stops the hand-off. If the edit was
-made, put the sealed bytes back. A round past round 4 needs a
+made, put the sealed bytes back. A round past round 6 needs a
 `round-critical` record carrying the operator's quoted
-words (under decision 1418 the chief's own decision file); the operator is asked in a plain message, since no page of the edited spec
-can be sent. A spec edit voids the plan critic's seal too; a blocking finding of
-either kind opens round 4 for both, so the plan gets its own closure check.
+words (under decision 1418 the chief's own decision file). A spec edit voids the plan critic's seal too; a blocking finding of
+either kind opens round 6 for both, so the plan gets its own closure check.
 
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
 its contents into the subagent prompt verbatim. Do NOT inline a second copy here
@@ -503,7 +508,7 @@ copies is the instructional-not-structural drift root `CLAUDE.md` warns against)
 critic round, run the free-cloud critic panel over the SAME spec as an advisory
 second opinion — it catches the same-family popularity trap (Claude reviewing
 Claude). The Claude critic stays the GATE; the panel only feeds its next round.
-It does not run at a closure round (round 4 and on): that round reads only the
+It does not run at a closure round (round 6 and on): that round reads only the
 closure pack. Resolve paths from the himmel checkout (minerva runs inside it):
 
 ```bash
@@ -555,8 +560,8 @@ Optional readiness check: the marked paragraph before Stage 2 applies here with 
 
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
-fix → re-critic until clean, **cap 3 rounds**, counted per ticket in the same
-round ledger and capped by the same table as Stage 2. A plan round 4 is a closure
+fix → re-critic until clean, **cap 5 rounds**, counted per ticket in the same
+round ledger and capped by the same table as Stage 2. A plan round 6 is a closure
 check too: build its input with `closure-pack <KEY> plan --specs <bucket>/specs`.
 
 Save each return as Stage 2 does, beside the **spec** (not the plan):
@@ -566,7 +571,10 @@ Save each return as Stage 2 does, beside the **spec** (not the plan):
 Resolve `$S` with the resolver from the Mode section, then run
 `bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>` once before the first
 plan dispatch, so a plan-side fix spends no plan round. The lint needs the plan, so it cannot run earlier, and a
-spec-side fix it asks for is a spec edit. The files under review here are the plan
+spec-side fix it asks for is a spec edit. Then before every plan critic dispatch
+run `bun <himmel>/scripts/telegram/chief-route.ts sign-shape <spec> --plan <plan>
+--lint` and fix what it refuses in the same writer round; a seal refused on the
+lint is handled as in Stage 2. The files under review here are the plan
 and the spec, with no page. Add the Stage 2 words after the charter, without what
 they say about a page, and seal each return with `critic-seal.sh` as Stage 2 does,
 one command per file.
@@ -618,6 +626,18 @@ Do not hand off until it prints `ok`, in either mode. After the last
 dispositions are written, re-run the gate on the spec too: `bash
 "$S/minerva-spec-gate.sh" <spec-file>`, so a residual line the signer cannot
 read is fixed before the signing.
+
+**Sign check before READY-TO-SIGN.** A design leg that hands its files to the
+chief for signing runs the signer's byte checks after the last round, on the files
+it will name (`JIRA_PROJECT_KEY` set; add `--route spec-review` when that verb
+records it): `node <himmel>/scripts/jira/dist/index.js release sign-check --keys
+<K[,K]> --spec <spec> --plan <plan> --verdict <spec return> --verdict <plan
+return>`. It ends with a worker-doc bullet that `append-results.sh` checks the
+same way, quoting the two shas `sign-check` printed: `LIVE — READY-TO-SIGN
+spec=<abs> plan=<abs> spec-return=<abs> plan-return=<abs> keys=<K[,K]>
+spec-sha=<64 hex> plan-sha=<64 hex>` (plus `route=spec-review` for that route).
+When `sign-check` refuses, write `BLOCKED` with its text instead, in words that
+do not contain the upper-case ready token.
 
 - If mode is `autonomous` (Stage 0) **AND** the output contains `execute`: do NOT
   stop — **invoke `lean-skills:subagent-driven-development`** on the hardened plan

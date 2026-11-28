@@ -1861,6 +1861,18 @@ settings.json, a hook-wiring change (the "three places" rule in
 PR — the operator no longer hand-edits `.claude/settings.json` inside each
 worker's worktree for every hook-wiring change.
 
+The **live harness registry** is fenced the same way: a file-tool or Bash write
+under the `scripts/harnesses/` of the primary checkout the running hook belongs
+to is refused (found from the hook's own `.git`, so a worktree session is held
+to it too); a worktree's own copy stays editable.
+
+`block-read-secrets.sh` takes each harness's login-token paths from the
+`token_paths` of those descriptors, and refuses every call it is matched on
+while the registry does not load (`READ_SECRETS_OK=1` in the launching shell is
+the operator route). The codex and gemini token paths and
+T3's `userdata/providers/` token rule also stay in the hook, so no descriptor
+edit unfences them.
+
 **`env -S` text.** The Bash arm decodes GNU `env -S` escapes
 (`\c \f \n \r \t \v \# \$ \_ \\ \' \"`, `${NAME}`) and judges the decoded
 words. Anything it does not fully model stays denied: an unknown escape, `\c`,
@@ -2389,7 +2401,9 @@ tool call writes no file, so the extra arm is a no-op for it. Runs
 `scripts/lint/hook-parse-check.sh` — the `[parse]` (`bash -n`) and
 `[quote-break]` checks — against a written file whose path is under
 `scripts/hooks/` and ends in `.sh`; exits 2 with the finding on stderr,
-otherwise 0.
+otherwise 0. A written `scripts/harnesses/*.json` or `registry.jq` (not
+`fixtures/`) is run through the harness registry loader instead, because both
+guards that load it refuse while it does not load.
 
 WHY IT IS A WRITE-TIME HOOK and not another commit gate: a file under
 `scripts/hooks/` is LIVE the instant it is saved — the next tool call executes
@@ -3295,9 +3309,35 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   `bypassPermissions`. A hook bypass is granted per session, by the operator
   choosing that instance in the T3 UI, never to every thread T3 starts. An id
   with no entry (a T3 built-in such as `claudeAgent` or `codex`) carries no
-  variables and is allowed. If the settings file or the registry is missing,
+  variables, so this rule allows it. If the settings file or the registry is missing,
   unreadable or malformed, every instance id is denied, since the guard cannot
   tell. A null value counts as absent; any other non-string value denies.
+- **Own settings.** A Claude instance (driver `claudeAgent`, or no driver and an
+  id of `claudeAgent` or `claudeAgent_*`) is denied, rule `own-settings-instance`,
+  unless each of its `launchArgs` and `config.launchArgs` is empty or exactly the
+  line `scripts/t3/provider-instances.sh` writes: `--settings <D>/<h>/<n>.json`,
+  optionally followed by `--mcp-config <D>/mcp-<h2>/<n2>.mcp.json --strict-mcp-config`.
+  Inline settings JSON, a hand-pointed file, an extra flag or a file outside `<D>`
+  denies. `<D>` is `${HIMMEL_PROFILE_SETTINGS_DIR:-$HOME/.himmel/launch-profiles}`,
+  matched as a string prefix and usable only when canonical (absolute,
+  `[A-Za-z0-9._/-]`, no `//`, no trailing `/`, no `.` or `..` segment). For each
+  named id the files must be readable regular files whose sha256 starts with
+  their `<h>` / `<h2>`, so a file edited in place denies. A non-canonical `<D>`
+  or no sha256 tool denies under `own-settings-unverifiable`. A file named
+  `maintainer-hooks` or `maintainer-billed` (any case) makes the instance a
+  maintainer instance, whatever its id. A refusal line prints a value only when
+  it is a path, never inline JSON, a file's content or a flag's value.
+- **Harness registry.** `scripts/harnesses/<id>.json` describes one coding
+  harness each, loaded by `scripts/harnesses/registry.jq`. An id outside
+  `delegatedFrom` must resolve to a T3 driver (the settings entry's `driver`, or
+  the descriptor naming the id as a built-in) whose descriptor is complete:
+  `complete` is true and the hook config, event map, deny dialect, adapter,
+  egress provider, lane and quota source are set (`pending` counts). An unknown
+  driver or an incomplete descriptor denies; `grok` and `cursor` ship
+  incomplete. A malformed descriptor, or a missing one for a harness listed in
+  `harness.schema.json`, denies every instance id. A launch that names no
+  instance is not judged. A new harness joins by adding a descriptor and an
+  adapter.
 - **Optional narrowing.** `.t3.instance_narrow` in `~/.himmel/config.json`, an
   array of strings, limits the allowed ids further; it never lets a bypass
   instance through. An absent file or key narrows nothing; a malformed file, a
@@ -4414,7 +4454,7 @@ operator whether Codex gets the fetch grant.
 |---|---|
 | `git-push-branch` | `git push origin B`, `git push -u origin B` or `git push --set-upstream origin B`; `B` is the cwd's current branch and not protected |
 | `gh-pr-create` | `gh pr create` with `--head B`, and at most once each: `--title`, `--body`, `--base`, `--draft`, `--fill` (or their short forms); `origin` is the only remote |
-| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Every host is allowed; there is no host allow or deny list yet |
+| `net-read` | one `https://` URL to stdout: `curl -q -g` plus only `-sSfg`, `--silent`, `--show-error`, `--fail`, `--compressed`, `-m N`; or `wget --no-config --max-redirect=0` with `-O -` (or its joined forms), optionally `-q`. No `-L`. Hosts: see Fetch host lists below |
 
 The command must be one simple command of literal words: no expansion,
 operator, redirect, glob or continuation. Push and PR need `origin` to have
@@ -4425,6 +4465,38 @@ naming the pinned repo, no `remote.origin.push` and no mirror mode.
 the checkout holding `.codex` for Codex (the himmel checkout, or a
 himmel-adopter project). The payload cwd and `CLAUDE_PROJECT_DIR` must resolve
 to the same primary checkout.
+
+**Fetch host lists** narrow `net-read` for one lane:
+
+```json
+{
+  "lane_grants": { "codex": ["net-read"] },
+  "lane_grants_hosts": {
+    "codex": {
+      "allow": ["docs.example.org", "*.githubusercontent.com"],
+      "deny": ["tracker.example.org"]
+    }
+  }
+}
+```
+
+The default is open: with no list set, every host passes. A lane's list is set
+when it has an `allow` key, or a `deny` key with at least one entry; `{}` and
+`{"deny": []}` are not set, and `{"allow": []}` is set and lets the lane fetch
+nothing. A deny match refuses, even for a host the allow list also holds; with an
+`allow` list, every host it does not match is refused. `example.com` matches only
+`example.com`; `*.example.com` matches hosts under it but not `example.com`; list
+both to cover both. With a list set, the URL's host must be a DNS name or a
+dotted-quad IPv4 address (upper case and one trailing dot are accepted and
+normalised) and a port, if any, 1 to 5 digits: `127.1`, hex or integer
+addresses, `%` escapes, underscores and non-ASCII (IDN) hosts are refused, so
+list and fetch the `xn--` form. A malformed list (a value that is not an object,
+a key other than `allow` and `deny`, a list that is not an array, or an entry
+that is not a host or `*.host`) fails closed: a malformed list for one lane stops
+only that lane fetching; a `lane_grants_hosts` that is not an object stops every
+lane. A deny list names hosts, not servers (another name or the address of the
+same server passes), so the allow list is the narrowing that holds; a proxy or
+resolver in the lane's environment is the runtime steering ceiling below.
 
 ```mermaid
 flowchart LR
@@ -4457,9 +4529,10 @@ for its structural fix. A granted
 push, PR or fetch can publish whatever the lane can read, including in a URL.
 
 **Doctor** (`C102-lane-grants`) lists what each lane holds with its wiring
-state, and warns on each config problem. When `HOME` is not the account home it
-reads only the `$HOME` config and never the account-home file: it warns if that
-file holds `lane_grants`, and otherwise reports that grants were not checked.
+state and each lane's host lists, and warns on each config problem. When `HOME`
+is not the account home it reads only the `$HOME` config and never the
+account-home file: it warns if that file holds `lane_grants`, and otherwise
+reports that grants were not checked.
 
 ### `block-worker-write-fence.sh` — dispatched-worker write fence
 
@@ -6613,6 +6686,16 @@ on-disk bytes differ from HEAD, but that blob is not the one that would be
 found by walking `anchor_ref`'s history — still denies. That is the intended
 degrade: only a change that genuinely reached the trusted branch re-pins;
 worktree drift or a not-yet-merged hook edit does not.
+
+**Re-running the recorder adds a pin only for a file that is on main.** The
+recovery path that re-runs `record-hook-integrity.sh` for a session that
+already has a v2 record keeps every existing pin as it is. A path that has no
+pin yet is added only when its HEAD blob is the blob at the record's anchor,
+`origin/<default branch>`. So a new file committed only on the branch, such as
+a new `scripts/harnesses/<id>.json` descriptor, gets no pin from a re-run, and
+the launcher's own check still refuses it. A new descriptor must land on main
+before a session trusts it. Suite: `scripts/hooks/test-record-hook-integrity.sh`
+rows H8 and H9.
 
 **New worker-lane fence — the anchor-tamper class in
 `block-worker-write-fence.sh`.** Re-pinning off `origin/<default>` makes

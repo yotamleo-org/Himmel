@@ -203,9 +203,6 @@ cp_crgate_deps() { # cp_crgate_deps <dest-lib-dir>
   for _d in coderabbit-signal coderabbit-body-findings coderabbit-available review-ledger-evidence review-merge-gate nwo timeout-bin critics-config resolve-node; do
     cp "$SCRIPT_DIR/../lib/$_d.sh" "$1/"
   done
-  # The frozen red-control hooks source the old library path: a one-line shim to the real library. # old-term-ok
-  # shellcheck disable=SC2016 # the shim body is expanded when sourced, not here
-  printf '%s\n' '. "${BASH_SOURCE[0]%/*}/review-merge-gate.sh"' > "$1/cr-merge-gate.sh" # old-term-ok
   mkdir -p "$1/../cr"
   cp "$SCRIPT_DIR/../cr/critics.json" "$1/../cr/"
 }
@@ -878,8 +875,6 @@ cp_crgate_deps "$RED_NOTB_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$RED_NOTB_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$RED_NOTB_ROOT/scripts/lib/handover-path.sh"
 cp "$SCRIPT_DIR/../lib/go-gate.sh" "$RED_NOTB_ROOT/scripts/lib/go-gate.sh"
-# the frozen pre-fix hook still calls go-gate.sh's old console_leg name
-printf 'console_leg() { chief_worker; }\n' >> "$RED_NOTB_ROOT/scripts/lib/go-gate.sh"
 cp "$SCRIPT_DIR/../lib/timeout-bin.sh" "$RED_NOTB_ROOT/scripts/lib/timeout-bin.sh"
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-himmel-3585.sh" \
     "$RED_NOTB_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
@@ -1023,7 +1018,8 @@ RESOLVE_ROOT_PRE_OUT="$TMP/resolve-root-pre-out"; RESOLVE_ROOT_PRE_ERR="$TMP/res
     bash scripts/hooks/block-unresolved-cr-merge.sh < "$RESOLVE_ROOT_PAYLOAD" \
     > "$RESOLVE_ROOT_PRE_OUT" 2>"$RESOLVE_ROOT_PRE_ERR" )
 resolve_root_pre_rc=$?
-if [ "$resolve_root_pre_rc" -eq 2 ]; then
+if [ "$resolve_root_pre_rc" -eq 2 ] && grep -q "has no chief GO" "$RESOLVE_ROOT_PRE_ERR" \
+    && ! grep -q "cannot load scripts/lib/go-gate.sh" "$RESOLVE_ROOT_PRE_ERR"; then
     pass=$((pass+1)); echo "ok   red-control-resolve-root-pre-fix-false-refuses"
 else
     fail=$((fail+1)); echo "FAIL red-control-resolve-root-pre-fix-false-refuses rc=$resolve_root_pre_rc (want 2) err=$(cat "$RESOLVE_ROOT_PRE_ERR")"
@@ -1160,6 +1156,25 @@ else
     fi
 fi
 rm -f "$GOROOT/.locks/go/42.abc123"
+
+fixture_no_go_row() {
+    local root="$TMP/no-go-$1" err="$TMP/no-go-$1.err" rc
+    mkdir -p "$root/scripts/hooks" "$root/scripts/lib"
+    cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.$1.sh" \
+        "$root/scripts/hooks/block-unresolved-cr-merge.sh"
+    cp_crgate_deps "$root/scripts/lib"
+    cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$SCRIPT_DIR/../lib/go-gate.sh" "$SCRIPT_DIR/../lib/handover-path.sh" "$root/scripts/lib/"
+    HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-no-go-$1.log" bash "$root/scripts/hooks/block-unresolved-cr-merge.sh" < "$RESOLVE_ROOT_PAYLOAD" >/dev/null 2>"$err" # old-term-ok: the frozen fixture reads this name
+    rc=$?
+    if [ "$rc" -eq 2 ] && grep -q "has no chief GO" "$err"; then
+        pass=$((pass+1)); echo "ok   red-control-$1-fixture-reaches-go-gate"
+    else
+        fail=$((fail+1)); echo "FAIL red-control-$1-fixture-reaches-go-gate rc=$rc (want 2, 'has no chief GO' on stderr) err=$(< "$err")"
+    fi
+}
+fixture_no_go_row pre-pin
+fixture_no_go_row pre-rc127-fix
+fixture_no_go_row pre-rc4-fix
 
 # ── THIRD RED control — both callers tested
 # `[ "$go_rc" = "2" ]`, enumerating go_gate's one documented refusal code
@@ -1489,8 +1504,6 @@ HOOK="$TRUST_ANCHOR/scripts/hooks/block-unresolved-cr-merge.sh"
 # RED control first: the base hook (e902b6c8, before this ticket) lets both
 # trust-path merges through — the gap this ticket closes.
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-himmel-3910.sh" "$HOOK"
-# the frozen pre-fix hook still calls go-gate.sh's old console_leg name
-printf 'console_leg() { chief_worker; }\n' >> "$TRUST_ANCHOR/scripts/lib/go-gate.sh"
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t red-control-3910-pre-fix-worker-ordinary-go-allowed 0 Bash "$PIN"
@@ -1694,6 +1707,19 @@ t bb-text-mention-grep-not-denied 0 Bash "git grep -n forge_pr_merge scripts"
 t bb-text-mention-commit-not-denied 0 Bash "git commit -m bitbucket pr merge notes"
 t bb-pr-view-not-denied 0 Bash "node /x/scripts/bitbucket/dist/index.js pr get 7"
 t bb-pr-merge-sh-not-denied 0 Bash "bash scripts/handover/pr-merge.sh"
+
+shim_libs=$(find "$TMP" -name cr-merge-gate.sh) # old-term-ok: the retired name is the input under test
+if [ -n "$(find "$TMP" -name review-merge-gate.sh | head -n 1)" ] && [ -z "$shim_libs" ]; then
+    pass=$((pass+1)); echo "ok   no-fixture-lib-dir-holds-a-retired-gate-shim"
+else
+    fail=$((fail+1)); echo "FAIL no-fixture-lib-dir-holds-a-retired-gate-shim: $shim_libs"
+fi
+shim_fns=$(find "$TMP" -name go-gate.sh -exec grep -l '^console_leg()' {} +) # old-term-ok: the retired name is the input under test
+if [ -n "$(find "$TMP" -name go-gate.sh | head -n 1)" ] && [ -z "$shim_fns" ]; then
+    pass=$((pass+1)); echo "ok   no-fixture-go-gate-defines-the-retired-function"
+else
+    fail=$((fail+1)); echo "FAIL no-fixture-go-gate-defines-the-retired-function: $shim_fns"
+fi
 
 # guard against reintroducing extraction of a historical
 # commit's blob via `git show <sha>:<path>` — the class of fragility this

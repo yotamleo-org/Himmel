@@ -147,16 +147,15 @@ const issue = (kind: 'spec' | 'plan', round: number, findings: string[], extra: 
   reads: kind === 'spec' ? ['spec', ESTIMATE] : ['spec', 'plan', ESTIMATE], ...extra });
 const SPEC_LINE = 'The fixture contract names every member.';
 const SPEC_CHANGED = 'The fixture contract names each member and its owner.';
-// The real five-return spec run that reaches the cap: three full returns with a major in the last, a closure return holding a regression
-// (its quoted line changed by the rewrite), one override that opens the next return, and a closure return that ends CLEAN. Its finding ids differ from the later epoch's.
-const fiveReturnRun = (specOf: (line: string) => string, extra: Partial<Return> = {}) => ({
+const cappedRun = (specOf: (line: string) => string, extra: Partial<Return> = {}) => ({
   returns: [
-    issue('spec', 1, ['- **A1** (minor) a wording note'], extra), issue('spec', 2, ['- **A2** (minor) another wording note'], extra),
-    issue('spec', 3, ['- **M1** (major) the contract omits a member'], extra),
-    issue('spec', 4, [`- **R1** (major; regression) the line \`${SPEC_LINE}\` regressed`], { ...extra, closure: true, rewrite: { spec: specOf(SPEC_CHANGED) } }),
-    issue('spec', 5, [], { ...extra, closure: true }),
+    ...[1, 2, 3].map(round => issue('spec', round, [`- **A0${round}** (minor) an early wording note`], extra)),
+    issue('spec', 4, ['- **A2** (minor) another wording note'], extra),
+    issue('spec', 5, ['- **M1** (major) the contract omits a member'], extra),
+    issue('spec', 6, [`- **R1** (major; regression) the line \`${SPEC_LINE}\` regressed`], { ...extra, closure: true, rewrite: { spec: specOf(SPEC_CHANGED) } }),
+    issue('spec', 7, [], { ...extra, closure: true }),
   ],
-  steps: [{ after: 3, step: 'override' as const, findings: ['R1'], why: 'fixture override of the closure round', chief: 'fixture-chief' }],
+  steps: [{ after: 5, step: 'override' as const, findings: ['R1'], why: 'fixture override of the closure round', chief: 'fixture-chief' }],
 });
 const RESET_QUOTE = 'start this ticket over from scratch';
 
@@ -168,7 +167,7 @@ export async function buildGroupFixture(scratchRoot: string, opts: GroupOptions 
   const keys = [...GROUP_KEYS]; const anchor = keys[0]; const tickets = `[${keys.join(', ')}]`;
   const specOf = (title: string) => (line: string) => specDocument(tickets, title, line, opts.citation);
   const plan = planDocument(`${anchor} group plan`, 'Task 1: build the fixture.');
-  const current = [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind =>
+  const current = [1, 2, 3, 4, 5].flatMap(round => (['spec', 'plan'] as const).map(kind =>
     issue(kind, round, [kind === 'spec' ? '- **F1** (medium; Fact overlap) the group contract overlaps an owner' : '- **P1** (minor) a plan wording note'])));
   const base = { scratchRoot, key: anchor, specText: specOf(`${anchor} group fixture`)(SPEC_LINE), planText: plan, declarations: false };
   const decision = reset === 'none' ? null : join(await realpath(scratchRoot), 'specs', 'decisions', 'verbatim-decision-990-fixture.txt');
@@ -176,14 +175,14 @@ export async function buildGroupFixture(scratchRoot: string, opts: GroupOptions 
   if (reset === 'in-place') {
     // Reuse nonblocking returns so the negative isolates path reuse without an independently admitted closure.
     const returns = [...current.filter(r => r.kind === 'spec'), ...current.filter(r => r.kind === 'plan')];
-    const f = await buildRoundFixture({ ...base, returns, steps: [{ after: 2, step: 'reset-in-place', decision: '990', quote: RESET_QUOTE }] });
+    const f = await buildRoundFixture({ ...base, returns, steps: [{ after: 4, step: 'reset-in-place', decision: '990', quote: RESET_QUOTE }] });
     return { ...f, keys, anchor, members: keys.slice(1), earlier: [], decision };
   }
-  const run = fiveReturnRun(specOf(`${anchor} group fixture`));
+  const run = cappedRun(specOf(`${anchor} group fixture`));
   const documents = { specStem: `${anchor}-group-epoch1`, specText: specOf(`${anchor} group fixture epoch 1`)(SPEC_LINE), planText: plan };
   const f = await buildRoundFixture({ ...base, returns: [...run.returns, ...current],
-    steps: [...run.steps, { after: 4, step: 'reset', decision: '990', quote: RESET_QUOTE, documents }] });
-  return { ...f, keys, anchor, members: keys.slice(1), earlier: f.verdicts.slice(0, 5), decision };
+    steps: [...run.steps, { after: 6, step: 'reset', decision: '990', quote: RESET_QUOTE, documents }] });
+  return { ...f, keys, anchor, members: keys.slice(1), earlier: f.verdicts.slice(0, 7), decision };
 }
 
 const PLAN_LINE = 'Task 1: build the known-single fixture.';
@@ -193,28 +192,37 @@ export async function buildKnownSingleFixture(scratchRoot: string, opts: KnownSi
   if (!opts || !KNOWN_VARIANTS.includes(opts.variant)) throw new Error(`fixture known-single variant must be one of ${KNOWN_VARIANTS.join(', ')}`);
   const key = fixtureKey(9811);
   const specOf = (line: string) => specDocument(`${key} (a partial merge owes proof by default)`, `${key} known single`, line, opts.citation);
-  const run = fiveReturnRun(specOf, { quote: 'sha-path-two-space' });                    // two-space quotes in the spec return, legacy quotes in the plan return
+  const run = cappedRun(specOf, { quote: 'sha-path-two-space' });
   const legacy = { quote: 'legacy-path-sha' as const };
-  const plans = [1, 2, 3].map(round => issue('plan', round, [`- **P${round}** (minor) a plan note`], legacy));
-  const four = opts.variant === 'refusedCap' ? [issue('plan', 4, ['- **P4** (minor) a closure note', '- **P5** (minor) another closure note'], { ...legacy, closure: true })]
-    : opts.variant === 'overrideAdmitted' ? [issue('plan', 4, [`- **PR1** (major; regression) the line \`${PLAN_LINE}\` regressed`], { ...legacy, closure: true, rewrite: { plan: planDocument(`${key} known single plan`, PLAN_CHANGED) } })] : [];
+  const plans = [1, 2, 3, 4, 5].map(round => issue('plan', round, [`- **P${round}** (minor) a plan note`], legacy));
+  const four = opts.variant === 'refusedCap' ? [issue('plan', 6, ['- **P6** (minor) a closure note', '- **P7** (minor) another closure note'], { ...legacy, closure: true })]
+    : opts.variant === 'overrideAdmitted' ? [issue('plan', 6, [`- **PR1** (major; regression) the line \`${PLAN_LINE}\` regressed`], { ...legacy, closure: true, rewrite: { plan: planDocument(`${key} known single plan`, PLAN_CHANGED) } })] : [];
   const admitted = opts.variant === 'overrideAdmitted';
-  const returns = admitted ? [...run.returns.slice(0, 4), ...plans, ...four, run.returns[4]] : [...run.returns, ...plans, ...four];
-  const steps = admitted ? [{ ...run.steps[0], after: 7, findings: ['R1', 'PR1'] }] : run.steps;
+  const returns = admitted ? [...run.returns.slice(0, 6), ...plans, ...four, run.returns[6]] : [...run.returns, ...plans, ...four];
+  const steps = admitted ? [{ ...run.steps[0], after: 11, findings: ['R1', 'PR1'] }] : run.steps;
   return buildRoundFixture({ scratchRoot, key, specText: specOf(SPEC_LINE), planText: planDocument(`${key} known single plan`, PLAN_LINE),
     declarations: false, returns, steps });
 }
 
 export async function buildFreshSingleFixture(scratchRoot: string): Promise<RoundFixture> {
   const key = fixtureKey(9821);
-  const returns = [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => issue(kind, round, [kind === 'spec' ? `- **F${round}** (minor) a wording note` : `- **P${round}** (minor) a plan note`])));
+  const returns = [1, 2, 3, 4, 5].flatMap(round => (['spec', 'plan'] as const).map(kind => issue(kind, round, [kind === 'spec' ? `- **F${round}** (minor) a wording note` : `- **P${round}** (minor) a plan note`])));
   return buildRoundFixture({ scratchRoot, key, specText: specDocument(key, `${key} fresh single`, SPEC_LINE), planText: planDocument(`${key} fresh single plan`, 'Task 1: build the fixture.'),
     declarations: false, returns });
 }
 
+async function lintUnavailableForSignerOnlyCitation(scratchRoot: string): Promise<void> {
+  const dir = join(scratchRoot, 'no-lint-bin');
+  await mkdir(dir);
+  await writeFile(join(dir, 'bash'), `#!/bin/sh\ncase "$*" in *minerva-trace-lint.sh*) echo 'fixture: the citation is for the signing root' >&2; exit 2;; esac\nexec '${Bun.which('bash')}' "$@"\n`, { mode: 0o755 });
+  process.env.PATH = `${dir}:${process.env.PATH}`;
+}
+
 if (import.meta.main) {
-  const input = JSON.parse(await Bun.stdin.text()) as RoundFixtureRequest | SelectorRequest;
+  const raw = await Bun.stdin.text();
+  const input = JSON.parse(raw) as RoundFixtureRequest | SelectorRequest;
   const { builder, scratchRoot, ...options } = input as { builder?: string; scratchRoot: string };
+  if (/(?:branch|primary)-only\//.test(raw)) await lintUnavailableForSignerOnlyCitation(scratchRoot);
   const fixture = builder === undefined ? await buildRoundFixture(input as RoundFixtureRequest)
     : builder === 'group' ? await buildGroupFixture(scratchRoot, options as GroupOptions)
     : builder === 'known-single' ? await buildKnownSingleFixture(scratchRoot, options as KnownSingleOptions)

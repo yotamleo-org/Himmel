@@ -73,6 +73,9 @@
 # Plain settings that once rode along in .env
 # TELEGRAM_CHAT_ID=0
 # TELEGRAM_GROUP_CHAT_ID=0
+# A negative Telegram group id for each; anything else goes to your DM. Never add the group to the bridge access list.
+# TELEGRAM_ALERTS_CHAT_ID=0
+# TELEGRAM_STATUS_CHAT_ID=0
 # Jira sends credentials to this trusted station URL. Process env, .local and the
 # selected profile outrank this default; .env is a one-release fallback.
 # Agent writes to station config and profiles are guarded; project.conf cannot set this URL.

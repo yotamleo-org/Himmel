@@ -1,0 +1,33 @@
+{
+  "id": "grok",
+  "complete": false,
+  "t3": { "driver": "grok", "instance_ids": ["grok"] },
+  "hook_config": null,
+  "tool_map": {
+    "mcp_prefix": "<server>__<tool>",
+    "tools": {
+      "run_terminal_command": { "claude": "Bash",
+        "allow": ["command", "description", "timeout", "run_in_background", "dangerouslyDisableSandbox"] },
+      "read_file": { "claude": "Read", "keys": { "target_file": "file_path" },
+        "allow": ["target_file", "file_path", "offset", "limit", "pages"] },
+      "grep": { "claude": "Grep",
+        "allow": ["pattern", "glob", "path", "type", "output_mode", "-i", "-n", "-A", "-B", "-C", "context", "head_limit", "offset", "multiline"] },
+      "search_replace": { "claude": "Edit",
+        "allow": ["file_path", "old_string", "new_string", "replace_all"] },
+      "write": { "claude": "Write",
+        "allow": ["file_path", "content"] }
+    }
+  },
+  "event_map": { "PreToolUse": "PreToolUse" },
+  "deny_dialect": null,
+  "adapter": "scripts/hooks/lib/harness-tool-translate.js",
+  "token_paths": [
+    "~/.grok/auth.json",
+    "~/.grok/mcp_credentials.json",
+    "~/.himmel/profiles/grok/*/auth.json",
+    "~/.himmel/profiles/grok/*/mcp_credentials.json"
+  ],
+  "egress_provider": null,
+  "lane": null,
+  "quota_source": null
+}

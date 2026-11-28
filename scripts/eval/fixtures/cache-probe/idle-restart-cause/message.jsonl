@@ -1,0 +1,9 @@
+{"type":"api-request-shape","shapeHash":"s1","shape":{"system":[{"type":"text","text":"s"}],"tools":[{"name":"Read"},{"name":"Artifact"}]}}
+{"type":"api-request","querySource":"sdk","id":"r1","shapeHash":"s1","tail":["h0"]}
+{"type":"assistant","timestamp":"2026-01-01T00:00:00.000Z","entrypoint":"t3-code","message":{"id":"m1","usage":{"input_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":100000,"cache_creation":{"ephemeral_1h_input_tokens":100000}}}}
+{"type":"api-request","querySource":"sdk","id":"r2","shapeHash":"s1","tail":["h1","h2"],"base":"r1","keep":1}
+{"type":"assistant","timestamp":"2026-01-01T00:02:00.000Z","entrypoint":"t3-code","message":{"id":"m2","usage":{"input_tokens":2,"cache_read_input_tokens":100000,"cache_creation_input_tokens":500,"cache_creation":{"ephemeral_1h_input_tokens":500}}}}
+{"type":"attachment","timestamp":"2026-01-01T00:06:00.000Z","attachment":{"type":"hook_success","hookName":"SessionStart:resume"}}
+{"type":"api-request","querySource":"sdk","id":"r3","shapeHash":"s1","tail":["h0","hX","h2","h3"]}
+{"type":"attachment","timestamp":"2026-01-01T00:06:01.000Z","attachment":{"type":"thinking_drop","newlyDropped":{"reason":"prefix_mismatch","blockCount":26,"first":{"messageIndex":3}}}}
+{"type":"assistant","timestamp":"2026-01-01T00:06:05.000Z","entrypoint":"t3-code","message":{"id":"m3","usage":{"input_tokens":2,"cache_read_input_tokens":30000,"cache_creation_input_tokens":75000,"cache_creation":{"ephemeral_1h_input_tokens":75000}}}}

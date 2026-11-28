@@ -1417,7 +1417,7 @@ rc=0; out_c=$(dg_close "$DG_SID") || rc=$?
 contains "digest-c: the second close still reports digest=ok" "$out_c" "digest=ok fails="
 check "digest-c: the second close adds no eval-runs row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER")" "1"
 check "digest-c: the second close adds no worker-failures row" "$(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N"
-bf_out=$(python3 "$LD/worker_ledger.py" backfill --since 2026-10-01 --projects "$DG_PROJ" --state-dir "$WORKER_SESSION_DIGEST_STATE_DIR" 2>&1)
+bf_out=$(HOME="$W/bf-home" python3 "$LD/worker_ledger.py" backfill --since 2026-10-01 --projects "$DG_PROJ" --state-dir "$WORKER_SESSION_DIGEST_STATE_DIR" 2>&1)
 contains "digest-c: backfill sees the closed session as already done" "$bf_out" "already=1 failures+=0 eval+=0"
 check "digest-c: backfill adds no row" "$(dg_rows "$HIMMEL_EVAL_RUNS_LEDGER") $(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "1 $DG_N"
 

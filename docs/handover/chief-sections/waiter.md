@@ -9,7 +9,8 @@ with Monitor `timeout_ms: 1800000`, `--workers-from <manifest>` and
 services pending READY/cleanup through worker-event between full ticks and
 continues while the chief is busy. It reconciles existing READY at startup;
 replay never authorizes a second GO. Ambiguous exact-head GO delivery requires
-chief reconciliation before any resend.
+chief reconciliation before any resend. Stream mode also needs `renudge_step`
+before it is switched on.
 
 `WAKE#<seq>` names the saved block in `out=`; service continues while you
 handle it. A WAKE may add an `absorbed since last wake:` wraps/merges line.
@@ -92,7 +93,7 @@ are still owed. Offline fixtures do not establish them.
 
 Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
 entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
-RM queue older than twice its launch gap, and `mon-down` once per down streak.
+RM queue older than twice its launch gap, `mon-down` once per down streak, and a settled new Dependabot PR set, once per set, with a 24 h reminder.
 Open-count/residual-cap and persistent underfill retain their existing semantics.
 `rm-blocked=` is a plain key field: one wake per distinct set of blocked unfinished
 rulings, `?` keeps the last known set, and the wake is the shared `WAKE tick` line
@@ -101,6 +102,23 @@ silent on a waiter's baseline: with no saved key, or a saved key taken under dif
 tick args or manifest worker set, the first sample only records what is on the line,
 so a chief that starts or takes over reads the tick line for `rm-blocked=` (the
 release-manager section, "A blocked ruling wakes you").
+
+**`WAKE held-priority n=<n> <first 10 keys> [+<m> more]`.** The tick's `held-hi=` names
+the tickets the dispatcher holds (no readable scope, or a merged PR with no remainder)
+that are High or above or `operator-directed`, in any version, or carry a fixVersion and
+are `TICK_HELD_OLD_DAYS` (30) or more days old. A key new to the set wakes on the next
+sample, a standing set again every 60 minutes (`CHIEF_WAIT_HELDHI_REWAKE_MIN`), at any
+capacity, and never through the housekeeping digest. The wake prints one fix line per
+class present; clear each key by that fix. `held-hi=?` (the pool snapshot is stale,
+quota-paused or stalled) neither wakes nor resets the set; no field clears it.
+
+`close-cand=<keys>` names To Do tickets that block others although every coverage item
+naming them in a commit of `origin/main` is done. Each new value adds one
+`close-candidate <keys>` housekeeping line, never a wake of its own (nothing is queued
+with `HOUSEKEEPING_DIGEST_SECS=0`). It is look-only: read the tick's
+`# close-candidate <key> blocks <keys> done-in <sha>` line and that commit, then close the
+ticket only if nothing remains.
+
 The detailed one-shot behavior below remains the default without `--stream`.
 In one-shot mode a printed `WAKE owed-actions` also leaves its notification
 open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
@@ -143,7 +161,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     housekeeping digest**, printing one block: `WAKE telegram` plus the operator's line(s), or
     `WAKE tick changed=<fields> usage=<verdict>` plus the tick line, or
     `WAKE budget-recovered from=<word> usage=PROCEED` once when the last decisive usage verdict flips from `SKIPPED-BANK` or `SKIPPED-FLEET` to `PROCEED`, a reset included (a `BANK-STALE` or `BANK-UNKNOWN` read in between counts for neither side); live workers on the `--workers-from` manifest were nudged, one token-free bus record each (`budget-nudge.sh`, one `BUS-NUDGE` / `BUS-NUDGE-FAIL` / `UNRESOLVED` line per worker under the wake): confirm each one resumed, and relaunch or message any that did not, or
-    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; `dispatchable` is one meaning in the tick and the waiter: the LOCAL, CLOUD, RESUME and DESIGN rows of the pool and a series' tickets (`tick.sh --pool-dispositions` prints them as `# pool-dispatchable <KEY>`), so a pool of only RESUME rows reads above zero; parked rows stay in that count and are named by `# pool-parked <KEY>` (`# pool-chief-owed <KEY>` when the line names a proof, signature, critic round or go code), and the tick carries `pool-parked=<n>`, `chief-owed=<m>` and `supply=SHORT:<free>` beside `capacity=UNDERFILLED:<slack>` when fewer unparked rows than slots remain; a short pool runs the second pass only when no release is declared (no `# dropped from <version>:` line): a declared release offers no row of another version, and the wake prints `# rows left in <version>` with a `# pool-left-out <KEY> <reason>` line for every other open ticket of that version; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; when the version's readiness record (`release/<version>/readiness.jsonl`) holds a live c or d row, this wake and `WAKE pool-unresolved` print `# readiness rows in <version>` after the unresolved lines, then one `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>` line per row, and no wake fires because of those lines; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); when you run it by hand, run it as one command, alone, with output to a file, and read its status in the same command line right after it (`bash .../next-dispatchable.sh ... > <file> 2>&1; echo "rc=$?"`), never through a pipe, because the station shell is zsh, where `${PIPESTATUS[0]}` is empty and a pipe's status is the last command's (the shape is the one in `docs/internals/enforcement.md`, "block-tail-pipe-on-gates.sh"); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake; plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
+    `WAKE underfilled capacity=UNDERFILLED:<slack>` (with `dispatchable=<n> keys=<KEY>,...` when the count is above 0, on this wake and on `WAKE pool-unresolved` alike, and ` backlog=unread` when the second pass failed, which then never prints `dispatchable=0`; `dispatchable` is one meaning in the tick and the waiter: the LOCAL, CLOUD, RESUME and DESIGN rows of the pool and a series' tickets (`tick.sh --pool-dispositions` prints them as `# pool-dispatchable <KEY>`), so a pool of only RESUME rows reads above zero; parked rows stay in that count and are named by `# pool-parked <KEY>` (`# pool-chief-owed <KEY>` when the line names a proof, signature, critic round or go code), and the tick carries `pool-parked=<n>`, `chief-owed=<m>` and `supply=SHORT:<free>` beside `capacity=UNDERFILLED:<slack>` when fewer unparked rows than slots remain; a short pool runs the second pass only when no release is declared (no `# dropped from <version>:` line): a declared release offers no row of another version, and the wake prints `# rows left in <version>` with a `# pool-left-out <KEY> <reason>` line for every other open ticket of that version; a carried `pool-disposition:` line does not silence this wake while the pool lists a row: those keys are the set to dispatch or disposition from a fresh read, never a carried pool list; when the version's readiness record (`release/<version>/readiness.jsonl`) holds a live c or d row, this wake and `WAKE pool-unresolved` print `# readiness rows in <version>` after the unresolved lines, then one `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>` line per row, and no wake fires because of those lines; `next-dispatchable.sh --doc <doc> --workers-from <fleet manifest> --why` prints a `# why <KEY> listed <lane> tier <n>` line per key, and without `--priority-pool-only` it can list keys the wake lacks when more tickets qualify than free slots (it lists up to 50 rows when no `--top` is given); when you run it by hand, run it as one command, alone, with output to a file, and read its status in the same command line right after it (`bash .../next-dispatchable.sh ... > <file> 2>&1; echo "rc=$?"`), never through a pipe, because the station shell is zsh, where `${PIPESTATUS[0]}` is empty and a pipe's status is the last command's (the shape is the one in `docs/internals/enforcement.md`, "block-tail-pipe-on-gates.sh"); on the streak's first sample, and again once each time the pool's key set changes: it is re-probed every 30 min, `CHIEF_WAIT_UNDERFILL_REPOOL_SEC`, each probe cut at `CHIEF_WAIT_REPOOL_TIMEOUT` (120 s), and a pool that grows from empty counts, while a pool that empties or a failed probe does not wake (the one exception is a paused probe that carries stale rows, `<inbox>.wait.ghpausedrows`, `<inbox>.wait.ghpausedwake`, exit `wake-pool-ghpaused`, under "A paused pool wakes only on stale rows" below); plus the tick line and `next-dispatchable.sh --priority-pool-only`'s
     ranked list (the pool: the `priority:` line in Live state, labels `ps3-blocker` / `must-<current version>` (the earliest unreleased version) / `operator-directed`, High+ bugs, security and data-integrity; per tier its `RESUME` rows, In Progress with no worker and no open PR, lead the To Do rows (up to half of the slots left when the tier starts, rounded up; the tier's other RESUME rows follow its To Do rows, before the next tier), only when a worker source (`--owners` / `--workers-from`) is given, and they are kept in `--priority-pool-only` by design (operator decision 29: drain In Progress work with no worker first): the waiter passes its own `--workers-from` file when it was started with one, and no `--owners`;
     a closing `# pool=<rows>/<slack>` line, `,LOW` when the pool fills fewer slots than the slack, and `POOL-EMPTY` when it has nothing, followed by the next tier (tier-4 To Do rows in rank order) as `NEXT-TIER` rows: then unblock collisions, draft specs for the next priority items, or fill from the NEXT-TIER rows when the operator has ruled so); dispatch it with `gen-briefs.py`; both refuse Windows/WSL work per `chief-kit/platform-dropped.re` unless the ticket is labelled `windows-removal` / the worker sets `platform_removal` and its title says remove/drop/delete/retire/sweep/clean), or
     `WAKE tick-usage rc=2 <line>` on the first sample whose tick exited 2, never batched: the status check
@@ -526,11 +544,25 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     out=<file>` (or `disposition=STALLED`) the second: a slow read is reported, never
     hidden. One sample checks one head at most.
 
-    **An underfill wake never rests on a paused pool.** When the dispatcher answers the pool probe with
-    `# quota-pause` or `# gh-stall`, or the probe's outer timeout kills it, the waiter wakes nothing, writes
+    **A paused pool wakes only on stale rows.** When the dispatcher answers the pool probe with
+    `# quota-pause` or `# gh-stall`, or the probe's outer timeout kills it, the waiter writes
     no pool marker and leaves `<inbox>.wait.poolpaused` (`pool=paused`) until a good probe removes it, so
     the next good reading wakes once. While that file is younger than `CHIEF_WAIT_PAUSED_REPROBE_SEC`
     (default 300) the pool is not probed again. A real empty pool still wakes as before.
+
+    The one exception is an underfilled fleet whose paused answer carries stale rows: line 2 reads
+    `# stale-gh rows=<n>` with n above 0. The waiter keeps that answer in `<inbox>.wait.ghpausedrows` and
+    prints `WAKE underfilled capacity=<cap> stale-gh rows=<n> prs=snapshot:<age>s|none keys=<KEYS>` with
+    the rows, on the streak's first sample and on a repool (exit `wake-pool-ghpaused`). Each row is a
+    **hint, not a launch order**: it was read from the Jira mirror while GitHub was paused, and with
+    `prs=none` no open PR was checked, so check GitHub for the key before you launch it. The same key set
+    wakes once (`<inbox>.wait.ghpausedwake`; a set that only shrinks is not new). This wake leaves the
+    underfill marker alone and sends no pool-unresolved wake, and a full fleet stays quiet. A rows file
+    older than `CHIEF_WAIT_PAUSED_REPROBE_SEC` wakes nothing; a pause with no stale rows deletes it, a
+    probe its outer timeout killed leaves it, and a good probe deletes both files. Each probe passes the
+    dispatcher a `NEXT_DISPATCH_DEADLINE` below its own bound (the bound minus 20 s above 40 s, else half,
+    never under 1), so the stale pass fits inside it: 400 on the first sample, 100 on a repool probe. A
+    smaller non-zero value in the waiter's environment wins. The second backlog pass is given none.
 
     **A gate refused at quota out wakes you once when quota is back.** `go.sh`,
     `ready-check`, `cr-disposition` and `check-ci` leave a marker when GitHub refuses
@@ -572,6 +604,24 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     earlier wake itself count as named (`<inbox>.wait.markerwoke`): the same head or
     bullet never wakes twice, and a successor's new inbox wakes once more (a tails= move
     never names a request). Read the worker's doc and act as on its message.
+
+    **A worker still owed a GO or an answer wakes you every 30 minutes.** A
+    `WAKE worker-renudge` line means a worker has waited `waited=` minutes and this is the
+    `n`-th reminder; there is no cap, and one wake per 30-minute slot of your inbox carries
+    every due worker. Read its doc and answer as on the first wake:
+    - **`go-owed`:** run `chief-duty-sweep.sh` first, and run `go.sh` only if the head is
+      the PR's current one and judged. For an `id=br-…` or a short `head=`, ask the worker
+      for a full `READY <pr> <head40> GREEN`. For `t3=ask`, answer through `t3-send.sh`,
+      then record the keyed hold below and close it at the thread's next marker.
+    - **`answer-owed`:** send a message the worker records with `RESOLVED` or a new marker.
+    - **A relaunch** from its RESUME doc: the reminders stop once the new session writes a
+      marker that changes the item.
+    - **`fleet-manifest.sh remove`** when you take the work over.
+    - **A hold on purpose**, for example while the item waits on the operator: run
+      `owe.sh add --bucket <dir> --chief <you> --kind ruling --text "<what it waits for>" --metadata '{"source_label":"<label>","source_id":"<hold id>"}'`.
+      When you answer, run `owe.sh close --bucket <dir> --id <oN> --key <hold id>`.
+
+    It repeats until one of these is true.
 
     **A manifest row that reads no doc wakes you once per path.** A row whose doc does
     not exist wakes `WAKE worker-doc-missing <label> <path>`; a row naming a `-RESUME`
@@ -711,7 +761,7 @@ recorded included. An ask on settings or `.github/`
 
     **A classifier-refused native worker.** The `DENIAL-PAGE` Telegram names the Remote Control session to open (the worker's session name) when that worker runs with `--remote-control`: the operator answers from the Claude app, in the worker's own window. A native plain-worker `--profile` launch carries the flag by default; claudex (the shim refuses the flag on a lane launcher), a judge, a relay, a release manager, a consult and a headless session never do. For a native worker that lacks it, `bash <kit>/enable-remote-control.sh [--relaunch] <session-name> <signal-file> <deadline-epoch> <log>` reports it (exit 5 plans the relaunch and ends nothing; `--relaunch` runs the launcher `--dry-run` first and ends nothing if that fails (exit 7), then ends that session and relaunches the same name on the same doc, model, profile, owning chief and `WORKER_SESSION_EFFORT`, destroying its context window; the profile comes from the launch record line whose `session_id` is the live session's own; a consult, judge, relay, release manager, A/B-arm or context-mode launch is refused, exit 4, since a relaunch would not restore it).
 
-**Chief duties: what the chief still owes.** The waiter wakes the chief on a change, so a duty that woke a busy chief once and was not acted on does not come back. `bash <kit>/chief-duty-sweep.sh --doc <chief doc> --workers-from <manifest>` reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the verdicts, the dispatcher's dispositions with the Jira mirror, and `owed.jsonl`, and prints one `DUTY <kind> <id> :: <why> :: next: <command>` line per owed action, or nothing when none is. The waiter runs it on each sample; run it by hand only to see it now. Apart from its two acts (a CI rerun and a judge spec write, below) it only reads; the one `gh pr list` it makes is cached 5 min, and the dispatcher's dispositions are refreshed in the background. A copy older than 1800 s, a copy carrying `open PRs unknown` or `core-check failed`, or no copy yet prints `DUTY? pool unread` and lists no `dispatch-owed` item. The kinds:
+**Chief duties: what the chief still owes.** The waiter wakes the chief on a change, and re-surfaces a standing `go-owed` or `answer-owed` every 30 minutes as `WAKE worker-renudge`; the other kinds still wake once. `bash <kit>/chief-duty-sweep.sh --doc <chief doc> --workers-from <manifest>` reads the fleet manifest, the worker docs' Results tails, the open PRs, the CI runs cache, the verdicts, the dispatcher's dispositions with the Jira mirror, and `owed.jsonl`, and prints one `DUTY <kind> <id> :: <why> :: next: <command>` line per owed action, or nothing when none is. The waiter runs it on each sample; run it by hand only to see it now. Apart from its two acts (a CI rerun and a judge spec write, below) it only reads; the one `gh pr list` it makes is cached 5 min, and the dispatcher's dispositions are refreshed in the background. A copy older than 1800 s, a copy carrying `open PRs unknown` or `core-check failed`, or no copy yet prints `DUTY? pool unread` and lists no `dispatch-owed` item. The kinds:
 
 - `go-owed`: a standing READY (no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED after it) at the PR's current head with no GO file. A PR with a `judge-owed` item lists only the judge, which comes first.
 - `merge-owed`: the GO file is 10 min old or more, the PR is open at that head, and the lane is not `native` (a native worker merges itself; `silent-go-merge.sh` covers its silence).

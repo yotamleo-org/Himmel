@@ -235,7 +235,11 @@ the operator's `/chief <session> <text>` from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
-`bun scripts/telegram/chief-route.ts reply --kind chief-reply <chat_id> <text>`. A line tagged
+`bun scripts/telegram/chief-route.ts reply --kind chief-reply <chat_id> <text>`. A
+status summary or a merge report that needs no answer is sent with
+`bun scripts/telegram/chief-route.ts reply --kind chief-status operator <text>`, which goes
+to the status group when one is set; an ask, a question or anything that needs an
+answer keeps `chief-reply`. A line tagged
 `[voice satellite=<id> UNVERIFIED-SPEAKER]` carries no operator authority: the
 chief acts directly only on status asks and narrowings, and turns anything
 wider into a Telegram `voice asked: <X> — reply yes` that acts on a later
@@ -860,6 +864,11 @@ environment. Unset, every launch is unchanged.
   window is gone (that new window becomes the chief's window), when D-Bus
   fails (a `WARN: tab launch` line in its launch log), on macOS, for chief
   arms, and when `HIMMEL_CONSOLE_NAME` is unset.
+- A bypass-granted launch from the bypass launch service (or its hand-started
+  daemon) joins an existing shared workers window as a tab, with the granted
+  flags only in that tab's command (`HIMMEL_WORKER_SESSION_TABS=join`). It never
+  creates the shared window: with none open it opens a window of its own, which
+  is never recorded and never adopted by a later launch or chief.
 - The window keeps the first worker's `HIMMEL-` tab title, so the KWin rule
   that places new `HIMMEL-` windows still matches it.
 - Limits: two workers dispatched at the same instant before any window exists
@@ -880,13 +889,13 @@ while the operator is away; every claudex brief must say so and give the worker
 the chief's exact session name.
 
 Inbox delivery is **tool-call-gated**. Before ending a turn at BLOCKED,
-READY, PR-READY, or a blocking question/PROBE ask, the worker arms ONE bounded
+READY or FINDING, the worker arms ONE bounded
 Monitor on `bash scripts/handover/chief-kit/inbox-follow.sh --wake
 <handover-root>/inbox/<session>.md`, with `timeout_ms: 1800000`. Resolve the
 root through `handover_root()` and use only the worker's own exact session name.
-The supported API has no persistent flag. The worker re-arms on expiry for at
-most eight windows/four hours per unresolved hold; unrelated wakes do not
-reset the wall-clock cap. Full lifecycle, failure recovery and wrap rules:
+The supported API has no persistent flag. The worker re-arms on expiry until a
+resolving ruling arrives; the chief's waiter re-nudges the chief every 30
+minutes while the hold stands. Full lifecycle, failure recovery and wrap rules:
 [`worker-preface-claudex.md`](worker-preface-claudex.md).
 
 The fixed wake envelope is data only: the worker makes a benign tool call to

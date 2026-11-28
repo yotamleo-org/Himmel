@@ -19,7 +19,18 @@ LL="${WORKER_LEDGER_PY:-$HERE/worker_ledger.py}"
 EVR="$HERE/../lib/eval_runs.py"
 FX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/worker-ledger-test.XXXXXX")" || { echo "test-worker-ledger: mktemp -d failed" >&2; exit 1; }
-trap 'rm -rf "$TMP"' EXIT
+PHI_HOMES=()
+cleanup() {
+  local h
+  for h in ${PHI_HOMES[@]+"${PHI_HOMES[@]}"}; do phi_dirs_restore "$h"; done
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
+# shellcheck source=../../guardrails/testlib-phi-dirs.sh
+. "$HERE/../../guardrails/testlib-phi-dirs.sh"
+export HOME="$TMP/home"
+mkdir -p "$HOME"
+unset CLAUDE_GLM_CONFIG_DIR
 # No case reads this checkout's real hook-chain logs: both point at an absent file unless a case overrides them.
 export RUN_HOOK_CHAIN_SKIP_LOG="$TMP/no-chain-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/no-chain-runs.jsonl"
 # Never the live ledgers, whatever a case forgets to pass.
@@ -152,6 +163,25 @@ mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'
 check "a usage error exits 2" 'python3 "$LL" backfill >/dev/null 2>&1; [ $? = 2 ]'
+echo "6b. every PHI list state of phi-dir-cases.tsv, through backfill, with one session cwd under the fixture root"
+PHIS=4670b000-0000-4000-8000-0000000000c1
+for id in $(phi_dirs_cases); do
+  case "$id" in C8|C9|C12|C13|C14|C17|C22|C23) if [ "$(id -u)" -eq 0 ]; then echo "  skip $id: chmod 000 takes nothing away from root"; continue; fi ;; esac
+  d="$TMP/phi-$id"; h="$d/home"; PHI_HOMES+=("$h")
+  phi_dirs_build "$id" "$h" || { bad "$id: the fixture builds"; continue; }
+  mkdir -p "$d/p/proj"
+  { title HIMMEL-1-N9-phi "$PHIS"; sed "s#\"sessionId\"#\"cwd\": \"$h/phi-root-fixture/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$d/p/proj/$PHIS.jsonl"
+  rcp=0
+  ( phi_dirs_enter "$id" "$h" && python3 "$LL" backfill --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s" ) >"$d/out" 2>&1 || rcp=$?
+  if [ "$id" = C22 ]; then chmod 755 "$h/work"; fi
+  case "$(phi_dirs_expect "$id" reader)" in
+    covered*) check "PHI $id: the session under a listed root is salus and refused" '[ "$rcp" = 0 ] && grep -q "salus=1" "$d/out"' ;;
+    unreadable) check "PHI $id: an unreadable list fails closed, nothing written" '[ "$rcp" != 0 ] && [ ! -s "$d/e.jsonl" ]' ;;
+    *) check "PHI $id: no new refusal" '[ "$rcp" = 0 ] && grep -q "salus=0" "$d/out"' ;;
+  esac
+  if [ "$(phi_dirs_expect "$id" rc_roots)" = 2 ]; then check "PHI $id: the error names the dir it cannot prove" 'grep -q "cannot be proven: " "$d/out"'; fi
+done
+check "PHI module that cannot be loaded: _roots raises, it never reads as no list" '! python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger as w; w.PHI_LIST_PATHS_MODULE = sys.argv[2]; w._roots(\"phi-roots\")" "$HERE" "$TMP/no-such-module.py" >/dev/null 2>&1'
 # Lane labels can name codex; check the subprocess call and its argv instead.
 check "the writer spawns only bun, never a model CLI" 'python3 -c "import ast,sys; t=ast.parse(open(sys.argv[1]).read()); calls=[n for n in ast.walk(t) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and isinstance(n.func.value,ast.Name) and n.func.value.id==\"subprocess\"]; assert len(calls)==1 and calls[0].func.attr==\"run\" and isinstance(calls[0].args[0],ast.Name) and calls[0].args[0].id==\"cmd\"; assignments=[n for n in ast.walk(t) if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id==\"cmd\" for x in n.targets)]; assert len(assignments)==1 and isinstance(assignments[0].value,ast.List) and assignments[0].value.elts[0].value==\"bun\"" "$LL"'
 

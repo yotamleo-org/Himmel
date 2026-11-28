@@ -374,7 +374,7 @@ token6a="$(token_of "$out6a")"
 # (the stub PR set above is just #5); a WRAPPED worker naming a closed PR is not.
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
-printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
+printf '{"schema":1,"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
 out6next="$(chief next --bucket nextrepo)"
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
 # The outgoing chief is told, once, what its tail is: relay, wait for LIVE with no waiter, wrap, stop.
@@ -1705,7 +1705,7 @@ awk -v workers_line="$fixture60_workers" -v marker="$marker60" '
 
 leg60="$root/tester/livestatesrc/DEMO-leg60-N9.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$leg60"
-printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
 leg60tok="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$leg60" 2>/dev/null)")"
 
 rc60=0
@@ -1750,7 +1750,7 @@ awk -v workers_line="$fixture60w" '
     skip { next }
     { print }
 ' "$doc60wA" > "$doc60wA.new" && mv "$doc60wA.new" "$doc60wA"
-printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60wA%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60wA%.md}.fleet.json"
 rc60w=0
 chief next --bucket wlivedst --doc "$doc60wA" >/dev/null 2>&1 || rc60w=$?
 check "60w next succeeds against a doc with a workers: Live state line" "$rc60w" "0"
@@ -1777,7 +1777,7 @@ awk -v workers_line="$fixture60l" -v workers_line2="$fixture60l2" '
     skip { next }
     { print }
 ' "$doc60lA" > "$doc60lA.new" && mv "$doc60lA.new" "$doc60lA"
-printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60lA%.md}.fleet.json"
+printf '{"schema":1,"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60lA%.md}.fleet.json"
 rc60l=0
 chief next --bucket llivedst --doc "$doc60lA" >/dev/null 2>&1 || rc60l=$?
 check "60l next succeeds against a doc with a legs: Live state line" "$rc60l" "0"
@@ -1796,7 +1796,7 @@ token6w="$(token_of "$out6w")"
 handoff6wA="$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/wnextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/wnextrepo/DEMO-2-N8-closed.md"
-printf '{"workers":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/wnextrepo/DEMO-1-N9-wrapped.md" "$root/tester/wnextrepo/DEMO-2-N8-closed.md" > "$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
+printf '{"schema":1,"workers":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/wnextrepo/DEMO-1-N9-wrapped.md" "$root/tester/wnextrepo/DEMO-2-N8-closed.md" > "$root/tester/wnextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
 chief next --bucket wnextrepo >/dev/null
 check "60w handoff carries a WRAPPED worker with an open PR from a workers manifest" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6wA")" "1"
 check "60w handoff omits a WRAPPED worker whose PR is closed, from a workers manifest" "$(grep -c '^- PR #77' "$handoff6wA")" "0"
@@ -3028,7 +3028,7 @@ for i in $(seq 1 30); do
     printf '%s\n' '# worker' '## Results' "- 10:00 LIVE — $(printf 'x%.0s' $(seq 1 180))" > "$root/tester/cap82/DEMO-leg82-N$i.md"
     legs82="$legs82${legs82:+,}{\"label\":\"N$i\",\"doc\":\"$root/tester/cap82/DEMO-leg82-N$i.md\"}"
 done
-printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-chief.fleet.json"
+printf '{"schema":1,"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-chief.fleet.json"
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
 go82="last GO: \`82:abc\` KEEP-82-GO$(printf ', prior 8:abcdef12%.0s' $(seq 1 150))"
 awk -v go="$go82" '/^last GO:/ { print go; next } /^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
@@ -3124,7 +3124,7 @@ mk85() { # <bucket>
     local b="$1" d="$root/tester/$1"
     chief new --bucket "$b" >"$tmp/out85-$b"
     printf '%s\n' '# worker' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$d/DEMO-85-N1.md"
-    printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$d/DEMO-85-N1.md" > "$d/DEMO-nextleg-${today}A-chief.fleet.json"
+    printf '{"schema":1,"legs":[{"label":"N1","doc":"%s"}]}\n' "$d/DEMO-85-N1.md" > "$d/DEMO-nextleg-${today}A-chief.fleet.json"
 }
 mk85 cap85x
 mk85 cap85y
@@ -3743,7 +3743,7 @@ awk -v workers="$legs94" -v go="$go94" '
     /^workers:/ { print workers; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
     /^last GO:/ { print go; next }
     { print }' "$doc94A" > "$doc94A.new" && mv "$doc94A.new" "$doc94A"
-printf '{"workers":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
 rc94=0
 chief next --bucket trim94dst --doc "$doc94A" >/dev/null 2>&1 || rc94=$?
 live94="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc94B" 2>/dev/null)"
@@ -3785,7 +3785,7 @@ seed94() {
     if ! chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1; then echo "FAIL - seed94 $b: chief next failed"; fails=$((fails+1)); fi
     HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
 }
-man94="{\"workers\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
+man94="{\"schema\":1,\"workers\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 
 # 94c: a manifest jq cannot read refuses next and spills nothing.
 tok94c="$(token_of "$(chief new --bucket trim94c)")"
@@ -3799,7 +3799,7 @@ check "94c a malformed manifest writes no successor doc" "$([ -e "$root/tester/t
 check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
 
 # 94f: a manifest row with no label cannot be matched to its span, so the block stays whole.
-seed94 trim94f "$legs94" "{\"workers\":[{\"doc\":\"$root/x/DEMO-1-N1-worker.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
+seed94 trim94f "$legs94" "{\"schema\":1,\"workers\":[{\"doc\":\"$root/x/DEMO-1-N1-worker.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 doc94fB="$root/tester/trim94fdst/DEMO-nextleg-${today}B-chief.md"
 check "94f a manifest row with no label seeds the complete workers block" "$(grep -Fxc "$legs94" "$doc94fB" 2>/dev/null)" "1"
 
@@ -3835,9 +3835,9 @@ mk94g() {
     rows="{\"label\":\"N1\",\"doc\":\"$w1\"},{\"label\":\"N2\",\"doc\":\"$w2\"}"
     case "$kind" in
         none) rm -f "${A%.md}.fleet.json" ;;
-        empty) printf '{"workers":[]}\n' > "${A%.md}.fleet.json" ;;
-        lockless) printf '{"workers":[{"label":"N1","doc":"%s","lockless":true},{"label":"N2","doc":"%s","lockless":true}]}\n' "$w1" "$w2" > "${A%.md}.fleet.json" ;;
-        *) printf '{"workers":[%s]}\n' "$rows" > "${A%.md}.fleet.json" ;;
+        empty) printf '{"schema":1,"workers":[]}\n' > "${A%.md}.fleet.json" ;;
+        lockless) printf '{"schema":1,"workers":[{"label":"N1","doc":"%s","lockless":true},{"label":"N2","doc":"%s","lockless":true}]}\n' "$w1" "$w2" > "${A%.md}.fleet.json" ;;
+        *) printf '{"schema":1,"workers":[%s]}\n' "$rows" > "${A%.md}.fleet.json" ;;
     esac
     case "$kind" in locked|lockless)
         t1="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w1" 2>/dev/null)")"
@@ -4245,7 +4245,8 @@ check "10877 Must disposition lists the RESUME doc of the wrapped worker" "$(pri
 check "10877 Must disposition lists the open PR of the wrapped worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #77')" "1"
 check "10877 Must disposition leaves out the open PR of a live worker" "$(printf '%s\n' "$must10877" | grep -c 'PR #78')" "0"
 check "10877 next retires the dead manifest row from the successor manifest" "$(jq -r '[.workers[].label] | join(",")' "${B10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
-check "10877 next retires the dead manifest row from the predecessor manifest" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
+check "10877 next leaves no carried row in the predecessor manifest" "$(jq -er '[.workers[].label] | "labels=" + join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "labels="
+check "10877 next retires the dead manifest row from the predecessor's moved rows" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
 h10877="$root/tester/m10877/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 check "10877 the HANDOFF lists the two workers that hold a lock off the manifest" "$(grep -cE '^- N[67]: .*lock only' "$h10877")" "2"
 rel10877
@@ -4292,7 +4293,7 @@ Ak10877="$root/tester/k10877/DEMO-nextleg-${today}A-chief.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' '- 10:30 BLOCKED — waits on the chief' > "$root/tester/k10877/DEMO-51-N51-worker.md"
 printf '{"schema":1,"workers":[{"label":"N51","doc":"%s"}]}\n' "$root/tester/k10877/DEMO-51-N51-worker.md" > "${Ak10877%.md}.fleet.json"
 chief next --bucket k10877dst --doc "$Ak10877" >/dev/null 2>&1
-check "10877 a worker with a BLOCKED bullet and no lock keeps its manifest row" "$(jq -r '[.workers[].label] | join(",")' "${Ak10877%.md}.fleet.json" 2>/dev/null)" "N51"
+check "10877 a worker with a BLOCKED bullet and no lock keeps its manifest row" "$(jq -r '[.workers[].label] | join(",")' "$root/tester/k10877dst/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)" "N51"
 HANDOVER_DIR="$root" bash "$QL" release "$Ak10877" "$tokk10877" >/dev/null 2>&1
 
 check "10877 Must disposition no longer promises a tick listing" "$(grep -c 'The tick lists a row' "$B10877")" "0"
@@ -4509,4 +4510,395 @@ if [ -r "$logf11266" ]; then
 fi
 chmod 644 "$logf11266"
 HANDOVER_DIR="$root" bash "$QL" release "$Af11266" "$tokf11266" >/dev/null 2>&1
+
+fm10728="$fixture_repo/scripts/handover/chief-kit/fleet-manifest.sh"
+cp "$fm10728" "$fm10728.real"
+cat > "$fm10728" <<'STUB'
+#!/usr/bin/env bash
+state() {
+    local s=no both=0
+    if [ -f "$FM10728_S" ]; then
+        s=yes
+        both="$(jq -s '[.[0].workers[].doc] as $p | [.[1].workers[].doc | select(. as $d | any($p[]; . == $d))] | length' "$FM10728_P" "$FM10728_S")"
+    fi
+    echo "$1 $2 $3 succ=$s both=$both" >> "$FM10728_LOG"
+}
+[ -z "${FM10728_LOG:-}" ] || state before "$1" "$2"
+if [ -n "${FM10728_PAUSE:-}" ] && [ "$1" = remove ] && [ "$2" = "$FM10728_PAUSE_ON" ] && [ ! -e "$FM10728_PAUSE.ran" ]; then
+    pause="$FM10728_PAUSE"
+    : > "$pause.ran"
+    unset FM10728_PAUSE
+    # hold this removal until the second next either waits on the hand-over lock or has finished
+    bash "$pause" >/dev/null 2>&1 &
+    tries=0
+    while [ ! -e "$pause.waiting" ] && [ ! -e "$pause.done" ] && [ "$tries" -lt 600 ]; do sleep 0.2; tries=$((tries + 1)); done
+fi
+bash "$0.real" "$@"; rc=$?
+[ -z "${FM10728_LOG:-}" ] || state after "$1" "$2"
+if [ -n "${FM10728_NEWER:-}" ] && [ "$1" = remove ]; then bash "$0.real" add "$2" "$FM10728_NEWER" --lane native --arm 400k >/dev/null 2>&1; fi
+exit "$rc"
+STUB
+mk10877 mv10728
+B10728="$root/tester/mv10728dst/DEMO-nextleg-${today}B-chief.md"
+late10728="$W10877/DEMO-30-N30-late.md"
+printf '%s\n' '# worker' '## Results' > "$late10728"
+printf '#!/usr/bin/env bash\nbash "%s" add "%s" "%s" --lane native --pending >/dev/null 2>&1\nbash "%s" add "%s" "%s" --lane unknown --arm 200k >/dev/null 2>&1\necho "== STUB action-zero"\n' \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" "$late10728" \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" "$W10877/DEMO-1-N1-worker.md" > "$tmp/az10728.sh"
+rc10728=0
+FM10728_P="${A10877%.md}.fleet.json" FM10728_S="${B10728%.md}.fleet.json" FM10728_LOG="$tmp/fm10728.log" \
+    ACTION_ZERO_SCRIPT="$tmp/az10728.sh" chief next --bucket mv10728dst --doc "$A10877" >/dev/null 2>"$tmp/10728.err" || rc10728=$?
+check "10728 next with live workers exits 0" "$rc10728" "0"
+check "10728 the successor's manifest lists every carried live worker" "$(jq -r '[.workers[].label] | join(",")' "${B10728%.md}.fleet.json" 2>/dev/null)" "N1,N2,N3,N4,N5"
+check "10728 the outgoing manifest lists no carried worker, and keeps the row the successor does not carry" "$(jq -r '[.workers[].label] | join(",")' "${A10877%.md}.fleet.json" 2>/dev/null)" "N30"
+check "10728 the outgoing rows are removed while the successor's manifest does not exist yet" \
+    "$(grep -m 1 "^before remove ${A10877%.md}.fleet.json " "$tmp/fm10728.log" 2>/dev/null | grep -c ' succ=no ')" "1"
+check "10728 no recorded instant holds a worker in both manifests" "$(grep -vc ' both=0$' "$tmp/fm10728.log" 2>/dev/null)" "0"
+check "10728 a row updated while next runs is published as updated" "$(jq -r '.workers[] | select(.label == "N1") | .arm' "${B10728%.md}.fleet.json" 2>/dev/null)" "200k"
+rel10877
+mk10877 again10728
+G10728="$root/tester/again10728dst/DEMO-nextleg-${today}B-chief.md"
+mkdir -p "$(dirname "$G10728")"
+printf '{"schema":1,"carried_from":"%s","workers":[{"doc":"/x/DEMO-60-N60.md","label":"N60"}]}\n' "${A10877%.md}.fleet.json" > "${G10728%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"/x/DEMO-60-N60.md","label":"N60"}]}\n' > "${A10877%.md}.fleet.moved.json"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$W10877/DEMO-1-N1-worker.md" > "${A10877%.md}.fleet.json"
+CHIEF_SEED_TEST_DROP='' chief next --bucket again10728dst --doc "$A10877" >/dev/null 2>"$tmp/again10728.err"
+check "10728 a second hand-over into the same successor keeps the rows of both, from a legs manifest too" "$(jq -r '[.workers[].label] | sort | join(",")' "${G10728%.md}.fleet.json" 2>/dev/null)" "N1,N60"
+check "10728 a second hand-over keeps the earlier moved rows" "$(jq -r '[.workers[].label] | sort | join(",")' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "N1,N60"
+rel10877
+mk10877 killed10728
+printf '{"schema":1,"workers":[]}\n' > "${A10877%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"/x/DEMO-61-N61.md","label":"N61"}]}\n' > "${A10877%.md}.fleet.moved.json.pending"
+chief next --bucket killed10728dst --doc "$A10877" >/dev/null 2>"$tmp/killed10728.err"
+check "10728 a next killed between the removal and the publish: the retry publishes the pending rows" "$(jq -r '[.workers[].label] | join(",")' "$root/tester/killed10728dst/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)" "N61"
+check "10728 a published hand-over leaves no pending rows" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
+rel10877
+mk10877 fail10728
+mkdir -p "$root/tester/fail10728dst/DEMO-nextleg-${today}B-chief.fleet.json"
+before10728="$(jq -cS '.workers' "${A10877%.md}.fleet.json")"
+rcf10728=0
+chief next --bucket fail10728dst --doc "$A10877" >/dev/null 2>"$tmp/f10728.err" || rcf10728=$?
+check "10728 a failed successor-manifest write exits non-zero" "$([ "$rcf10728" -ne 0 ] && echo refused || echo "rc=$rcf10728")" "refused"
+check "10728 a failed successor-manifest write leaves every row in the outgoing manifest" "$(jq -cS '.workers' "${A10877%.md}.fleet.json")" "$before10728"
+check "10728 a restored row leaves the moved rows" "$(jq -r '.workers | length' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "0"
+rel10877
+mk10877 noremove10728
+printf '{"workers":[{"doc":"%s","label":"N1"}]}\n' "$W10877/DEMO-1-N1-worker.md" > "${A10877%.md}.fleet.json"
+rcn10728=0
+chief next --bucket noremove10728dst --doc "$A10877" >/dev/null 2>"$tmp/n10728.err" || rcn10728=$?
+check "10728 a refused removal refuses the hand-over" "$([ "$rcn10728" -ne 0 ] && echo refused || echo "rc=$rcn10728")" "refused"
+check "10728 a refused removal leaves no row pending that the outgoing manifest still lists" "$([ -e "${A10877%.md}.fleet.moved.json.pending" ] && echo yes || echo no)" "no"
+check "10728 a refused removal leaves no saved copy of a row the outgoing manifest still lists" "$(jq -r '.workers | length' "${A10877%.md}.fleet.moved.json" 2>/dev/null)" "0"
+rel10877
+mk10877 newer10728
+mkdir -p "$root/tester/newer10728dst/DEMO-nextleg-${today}B-chief.fleet.json"
+FM10728_NEWER="$W10877/DEMO-1-N1-worker.md" chief next --bucket newer10728dst --doc "$A10877" >/dev/null 2>"$tmp/newer10728.err"
+check "10728 a restore keeps a row written since the removal" "$(jq -r '[.workers[] | select(.label == "N1") | .arm // "-"] | join(",")' "${A10877%.md}.fleet.json")" "400k"
+check "10728 a restore still puts the other rows back" "$(jq -r '[.workers[].label] | sort | join(",")' "${A10877%.md}.fleet.json")" "N1,N2,N3,N4,N5,N9"
+rel10877
+mk10877 twice10728
+printf '#!/usr/bin/env bash\nbash "%s" remove "%s" N2 >/dev/null 2>&1\necho "== STUB action-zero"\n' \
+    "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" "${A10877%.md}.fleet.json" > "$tmp/az-twice10728.sh"
+ACTION_ZERO_SCRIPT="$tmp/az-twice10728.sh" chief next --bucket twice10728dst --doc "$A10877" >/dev/null 2>"$tmp/twice10728.err"
+check "10728 a row that left the outgoing manifest after it was staged is not published" "$(jq -r '[.workers[].label] | join(",")' "$root/tester/twice10728dst/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)" "N1,N3,N4,N5"
+rel10877
+mk10877 latedead10728
+printf '%s\n' '# worker' '## Results' '- 09:00 LIVE — fixture' '- 09:30 WRAPPED — done' > "$W10877/DEMO-8-N8-late-dead.md"
+ql10728="$fixture_repo/scripts/handover/queue-lock.sh"
+cp "$ql10728" "$ql10728.real"
+cat > "$ql10728" <<'STUB'
+#!/usr/bin/env bash
+if [ -n "${QL10728_ADD:-}" ] && [ ! -e "$QL10728_FLAG" ]; then
+    : > "$QL10728_FLAG"
+    bash "$QL10728_FM" add "$QL10728_ADD" "$QL10728_DOC" --lane native >/dev/null 2>&1
+fi
+exec bash "$0.real" "$@"
+STUB
+QL10728_ADD="${A10877%.md}.fleet.json" QL10728_DOC="$W10877/DEMO-8-N8-late-dead.md" QL10728_FLAG="$tmp/ql10728.flag" \
+    QL10728_FM="$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" \
+    chief next --bucket latedead10728dst --doc "$A10877" >/dev/null 2>"$tmp/latedead10728.err"
+mv "$ql10728.real" "$ql10728"
+check "10728 the late dead row was added while next ran (control)" "$([ -e "$tmp/ql10728.flag" ] && echo yes || echo no)" "yes"
+check "10728 a dead row added after the staging is still retired from the outgoing manifest" "$(jq -r '[.workers[] | select(.label == "N8")] | length' "${A10877%.md}.fleet.json")" "0"
+rel10877
+mk10877 two10728
+res10728="$W10877/DEMO-70-N70-worker-RESUME.md"
+sib10728="${res10728%-RESUME.md}.md"
+printf '# RESUME brief\n' > "$res10728"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$sib10728"
+touch -d '1 hour ago' "$res10728"  # gnu-ok: Linux-only kit
+bash "$REPO_REAL/scripts/handover/chief-kit/fleet-manifest.sh" add "${A10877%.md}.fleet.json" "$res10728" --lane native --pending >/dev/null 2>&1
+fk10728="$tmp/flock10728"; mkdir -p "$fk10728"
+printf '#!/bin/sh\n[ "$*" != "-x 9" ] || : > "%s"\nexec %s "$@"\n' "$tmp/second10728.sh.waiting" "$(command -v flock)" > "$fk10728/flock"
+chmod +x "$fk10728/flock"
+{
+    printf '#!/usr/bin/env bash\ncd %q || exit 1\n' "$fixture_repo"
+    # shellcheck disable=SC2016 # $PATH expands in the generated script
+    printf 'PATH=%q:"$PATH" HANDOVER_DIR=%q USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR=%q bash %q next --bucket two10728dstb --doc %q > %q 2>&1\n' \
+        "$fk10728" "$root" "$tmp/defaultwork" "$C" "$A10877" "$tmp/second10728.out"
+    printf 'echo "$?" > %q\n' "$tmp/second10728.sh.done"
+} > "$tmp/second10728.sh"
+rct10728=0
+FM10728_PAUSE="$tmp/second10728.sh" FM10728_PAUSE_ON="${A10877%.md}.fleet.json" \
+    chief next --bucket two10728dsta --doc "$A10877" >/dev/null 2>"$tmp/two10728.err" || rct10728=$?
+tries10728=0
+while [ ! -e "$tmp/second10728.sh.done" ] && [ "$tries10728" -lt 600 ]; do sleep 0.2; tries10728=$((tries10728 + 1)); done
+both10728="$(cat "$root/tester/two10728dsta/DEMO-nextleg-${today}B-chief.fleet.json" "$root/tester/two10728dstb/DEMO-nextleg-${today}B-chief.fleet.json" 2>/dev/null)"
+check "10728 two nexts: the second one ran while the first held its removal (control)" "$([ -e "$tmp/second10728.sh.ran" ] && echo yes || echo no)" "yes"
+check "10728 two nexts: both finish with exit 0 (control)" "$rct10728 $(cat "$tmp/second10728.sh.done" 2>/dev/null)" "0 0"
+check "10728 two nexts: no worker is listed in both successor manifests" "$(printf '%s\n' "$both10728" | jq -rs '[.[].workers[].label] | sort | join(",")')" "N1,N2,N3,N4,N5,N70"
+rel10877
+mv "$fm10728.real" "$fm10728"
+
+tok11277=CJ-N9-0a1b2c3d
+mk11277() {
+    local w="$root/tester/$1" rows
+    D11277="$w"; T11277=()
+    A11277="$w/DEMO-nextleg-${today}A-chief.md"
+    TA11277="$(token_of "$(chief new --bucket "$1")")"
+    N9doc11277="$w/DEMO-9-N9-worker.md"
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$w/DEMO-1-N1-worker.md"
+    {
+        printf '%s\n' '# worker'
+        # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+        [ -z "$3" ] || printf '> **RETASK:** your nonce is `%s`.\n' "$3"
+        printf '%s\n' '## Results' '- 10:00 LIVE — fixture'
+        [ -z "${5:-}" ] || printf '%s\n' "$5"
+    } > "$N9doc11277"
+    lock11277 "$w/DEMO-1-N1-worker.md"; lock11277 "$N9doc11277"
+    rows="{\"label\":\"N1\",\"doc\":\"$w/DEMO-1-N1-worker.md\"}"
+    [ "$2" = off ] || rows="$rows,{\"label\":\"N9\",\"doc\":\"$N9doc11277\"}"
+    printf '{"schema":1,"workers":[%s]}\n' "$rows" > "${A11277%.md}.fleet.json"
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    W11277='workers: `N1:nonce-1:lock-1:11`'"${4:+ $4}" awk '/^workers:/ { print ENVIRON["W11277"]; next } { print }' "$A11277" > "$A11277.new" && mv "$A11277.new" "$A11277"
+}
+lock11277() {
+    T11277+=("$1=$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$1" 2>/dev/null)")")
+}
+add11277() {
+    # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+    printf '%s\n' '# worker' "> **RETASK:** your nonce is \`$3\`." '## Results' '- 10:00 LIVE — fixture' > "$D11277/$1"
+    lock11277 "$D11277/$1"
+    jq --arg d "$D11277/$1" --arg l "$2" '.workers += [{label: $l, doc: $d}]' "${A11277%.md}.fleet.json" > "$tmp/add.fleet11277" \
+        && cp "$tmp/add.fleet11277" "${A11277%.md}.fleet.json"
+}
+nx11277() {
+    OUT11277="$tmp/$1.out"; ERR11277="$tmp/$1.err"; RC11277=0
+    chief next --bucket "$3" --doc "$2" >"$OUT11277" 2>"$ERR11277" || RC11277=$?
+    S11277="$root/tester/$3/DEMO-nextleg-${today}${4:-B}-chief.md"
+}
+live11277() { awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$1" 2>/dev/null; }
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+spans11277() { live11277 "$1" | grep -oE '`'"$2"':[^`]*`' | tr '\n' ' ' | sed 's/ $//'; }
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+shape11277() { spans11277 "$1" "$2" | sed -E 's/`([^:`]*:[^:`]*):[^`]*`/\1/g'; }
+rel11277() {
+    local pair
+    for pair in "${T11277[@]}"; do HANDOVER_DIR="$root" bash "$QL" release "${pair%%=*}" "${pair#*=}" >/dev/null 2>&1; done
+    HANDOVER_DIR="$root" bash "$QL" release "$A11277" "$TA11277" >/dev/null 2>&1
+}
+tokgrep11277() {
+    local tok="$1" dirs=() f
+    shift
+    while [ "$1" != -- ]; do dirs+=("$1"); shift; done
+    shift
+    { find "${dirs[@]}" -type f ! -name 'DEMO-*-N*-worker*.md' 2>/dev/null; printf '%s\n' "$@"; } | while IFS= read -r f; do
+        awk -v f="$f" '
+            /^workers:/ { b = 1; next }
+            b && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { b = 0 }
+            !b { print f ": " $0 }
+        ' "$f" | grep -F -- "$tok"
+    done
+}
+clean11277() { check "11277 $1 no token outside a workers: block" "$(tokgrep11277 "${2:-$tok11277}" "$D11277" "$(dirname "$S11277")" -- "$OUT11277" "$ERR11277")" ""; }
+warn11277='next: warning: go-deliver.sh failed; workers without a usable span are carried as NONCE-UNKNOWN'
+seeded11277="next: seeded N9 from its brief's RETASK line"
+relayed11277='next: N9 kept NONCE-UNKNOWN: its doc records a SUCCESSION accepted'
+
+mkdir -p "$tmp/self11277"
+printf 'a note naming %s\n' "$tok11277" > "$tmp/self11277/note.md"
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+printf 'workers: `N9:%s:a:1`\n  `N8:x-%s:a:1`\n\nafter\n' "$tok11277" "$tok11277" > "$tmp/self11277/doc.md"
+check "11277 the token grep prints a planted note and skips a whole workers: block" "$(tokgrep11277 "$tok11277" "$tmp/self11277" -- /dev/null)" "$tmp/self11277/note.md: a note naming $tok11277"
+
+mk11277 cn1-11277 on "$tok11277" ""
+nx11277 cn1-11277 "$A11277" cn1dst-11277
+check "11277 CN1 next exits 0" "$RC11277" "0"
+check "11277 CN1 a never-relayed worker with no span is seeded with its brief token" "$(shape11277 "$S11277" N9)" "N9:$tok11277"
+check "11277 CN1 the seed note names the worker" "$(grep -cxF "$seeded11277" "$ERR11277")" "1"
+clean11277 CN1
+first11277="$(spans11277 "$S11277" N9)"
+nx11277 cn1b-11277 "$S11277" cn1bdst-11277 C
+check "11277 CN1b the next hand-over keeps the seeded span byte for byte" "$RC11277 $(shape11277 "$S11277" N9) $([ "$(spans11277 "$S11277" N9)" = "$first11277" ] && echo same)" "0 N9:$tok11277 same"
+clean11277 CN1b
+rel11277
+
+mk11277 cn1c-11277 on "" ""
+nx11277 cn1c-11277 "$A11277" cn1cdst-11277
+check "11277 CN1c no RETASK line: NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
+mk11277 cn1d-11277 on '<nonce>' ""
+nx11277 cn1d-11277 "$A11277" cn1ddst-11277
+check "11277 CN1d a placeholder RETASK value: NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+mk11277 cn2-11277 off "$tok11277" '`N9:NONCE-UNKNOWN:sessA:77`'
+nx11277 cn2-11277 "$A11277" cn2dst-11277
+check "11277 CN2 a predecessor-only NONCE-UNKNOWN span has only its token replaced" "$(spans11277 "$S11277" N9)" "\`N9:$tok11277:sessA:77\`"
+clean11277 CN2
+rel11277
+
+for p11277 in off on; do
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    mk11277 "cn2c$p11277-11277" "$p11277" "$tok11277" '`N9:CJ-N9-feedbeef:sessA:77`'
+    nx11277 "cn2c$p11277" "$A11277" "cn2c${p11277}dst-11277"
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    check "11277 CN2c a usable span is kept byte for byte (N9 $p11277 the manifest)" "$(spans11277 "$S11277" N9)" '`N9:CJ-N9-feedbeef:sessA:77`'
+    clean11277 "CN2c $p11277"
+    rel11277
+done
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+mk11277 cn3-11277 on "$tok11277" '`N9:NONCE-UNKNOWN:lock-9:99`'
+nx11277 cn3-11277 "$A11277" cn3dst-11277
+check "11277 CN3 a seeded-block NONCE-UNKNOWN span changes only its token field" "$(live11277 "$S11277" | grep '^workers:')" "workers: \`N1:nonce-1:lock-1:11\` \`N9:$tok11277:lock-9:99\`"
+clean11277 CN3
+rel11277
+
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+for c11277 in 'three|on|`N9:NONCE-UNKNOWN:lock-9`|`N9:NONCE-UNKNOWN:lock-9`' \
+    'placeholder|on|`N9:<nonce>:lock-9:99`|`N9:<nonce>:lock-9:99`' \
+    'longer|on|`N9:NONCE-UNKNOWNX:lock-9:99`|`N9:NONCE-UNKNOWNX:lock-9:99`' \
+    'two|on|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`' \
+    'usablefirst|off|`N9:CJ-N9-feedbeef:lock-9:99` `N9:NONCE-UNKNOWN:lock-8:88`|`N9:CJ-N9-feedbeef:lock-9:99`' \
+    'unknownfirst|off|`N9:NONCE-UNKNOWN:lock-9:99` `N9:CJ-N9-feedbeef:lock-8:88`|`N9:NONCE-UNKNOWN:lock-9:99`'; do
+    IFS='|' read -r n11277 p11277 s11277 e11277 <<< "$c11277"
+    mk11277 "cn3c$n11277-11277" "$p11277" "$tok11277" "$s11277"
+    nx11277 "cn3c$n11277" "$A11277" "cn3c${n11277}dst-11277"
+    check "11277 CN3c nothing is seeded over this: $n11277" "$RC11277 $(spans11277 "$S11277" N9)" "0 $e11277"
+    clean11277 "CN3c $n11277"
+    rel11277
+done
+
+mk11277 cn4-11277 on "$tok11277" "" '- 10:05 SUCCESSION accepted: X-chief replaces W-chief'
+nx11277 cn4-11277 "$A11277" cn4dst-11277
+check "11277 CN4c a relayed worker keeps NONCE-UNKNOWN" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+check "11277 CN4 the note says why the relayed worker kept NONCE-UNKNOWN" "$(grep -cxF "$relayed11277" "$ERR11277")" "1"
+clean11277 CN4
+rel11277
+
+mk11277 cn5-11277 on "$tok11277" ""
+awk '$0 == "## Results" { print "> The worker writes SUCCESSION accepted: X replaces W." } { print }' "$N9doc11277" > "$tmp/cn5.doc11277" && cp "$tmp/cn5.doc11277" "$N9doc11277"
+nx11277 cn5-11277 "$A11277" cn5dst-11277
+check "11277 CN5 a quote of the bullet above ## Results is not a relay" "$(shape11277 "$S11277" N9)" "N9:$tok11277"
+clean11277 CN5
+rel11277
+i11277=0
+for l11277 in '- 10:05 SUCCESSION accepted — relay from W-chief, new console X-chief' '- 10:05 LIVE — SUCCESSION accepted: X-chief replaces W-chief'; do
+    i11277=$((i11277 + 1))
+    mk11277 "cn5c$i11277-11277" on "$tok11277" "" "$l11277"
+    nx11277 "cn5c$i11277" "$A11277" "cn5c${i11277}dst-11277"
+    check "11277 CN5c every acceptance form counts as a relay ($i11277)" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+    rel11277
+done
+
+d11277="$tmp/relayed11277"; mkdir -p "$d11277"
+printf '%s\n' '# worker' '## Results' '- 10:05 SUCCESSION accepted: X-chief replaces W-chief' > "$d11277/cn4.md"
+printf '%s\n' '# worker' '> SUCCESSION accepted: X replaces W.' '## Results' '- 10:00 LIVE — fixture' > "$d11277/cn5.md"
+cp "$d11277/cn5.md" "$d11277/locked.md"; chmod 000 "$d11277/locked.md"
+relayed_rc11277() (
+    eval "$(sed -n '/^worker_ever_relayed() {/,/^}/p' "$C")"
+    rc=0; worker_ever_relayed "$1" || rc=$?; echo "$rc"
+)
+check "11277 CN5d worker_ever_relayed on a relayed doc" "$(relayed_rc11277 "$d11277/cn4.md")" "0"
+check "11277 CN5d worker_ever_relayed on a quote above ## Results" "$(relayed_rc11277 "$d11277/cn5.md")" "1"
+if [ -r "$d11277/locked.md" ]; then
+    echo "SKIP - 11277 CN5d unreadable doc: chmod 000 does not deny reads here"
+else
+    check "11277 CN5d an unreadable doc counts as relayed" "$(relayed_rc11277 "$d11277/locked.md")" "0"
+fi
+chmod 600 "$d11277/locked.md"
+
+gdl11277="$fixture_repo/scripts/handover/chief-kit/go-deliver.sh"
+cp "$gdl11277" "$tmp/go-deliver.saved11277"
+unset UNSET_11277
+for v11277 in unsetvar exit3 removed exit0; do
+    mk11277 "cn6$v11277-11277" on "$tok11277" ""
+    # shellcheck disable=SC2016  # the unset variable is expanded by the library copy
+    case "$v11277" in
+        unsetvar) { printf ': "$UNSET_11277"\n'; cat "$tmp/go-deliver.saved11277"; } > "$gdl11277" ;;
+        exit3) printf 'gd_brief_token() { exit 3; }\n' >> "$gdl11277" ;;
+        removed) rm -f "$gdl11277" ;;
+        exit0) { printf 'exit 0\n'; cat "$tmp/go-deliver.saved11277"; } > "$gdl11277" ;;
+    esac
+    nx11277 "cn6$v11277" "$A11277" "cn6${v11277}dst-11277"
+    check "11277 CN6 library $v11277: next exits 0 with NONCE-UNKNOWN and one warning" "$RC11277 $(shape11277 "$S11277" N9) $(grep -cxF "$warn11277" "$ERR11277")" "0 N9:NONCE-UNKNOWN 1"
+    clean11277 "CN6 $v11277"
+    cp "$tmp/go-deliver.saved11277" "$gdl11277"
+    rel11277
+done
+
+mk11277 cn8-11277 on "$tok11277" ""
+add11277 DEMO-8-N8-worker.md N8 CJ-N8-1a2b3c4d
+cat >> "$gdl11277" <<'LIB11277'
+gd_brief_token() { case "$1" in *-N9-*) echo SN-N9-5e5e5e5e ;; *-N8-*) echo CJ-N8-1a2b3c4d ;; *) return 1 ;; esac; }
+gd_token_usable() { [ "$1" != CJ-N8-1a2b3c4d ]; }
+LIB11277
+nx11277 cn8 "$A11277" cn8dst-11277
+check "11277 CN8 the seeded token and its usability come from the library" "$(shape11277 "$S11277" N9) $(shape11277 "$S11277" N8)" "N9:SN-N9-5e5e5e5e N8:NONCE-UNKNOWN"
+clean11277 CN8 SN-N9-5e5e5e5e
+cp "$tmp/go-deliver.saved11277" "$gdl11277"
+rel11277
+
+mk11277 cn9-11277 on B-N9-0a1b2c3d ""
+nx11277 cn9 "$A11277" cn9dst-11277
+check "11277 CN9 a token carrying the successor's letter is not seeded" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+clean11277 CN9 B-N9-0a1b2c3d
+rel11277
+
+mk11277 cn10-11277 off "$tok11277" ""
+printf '%s\n' '- 10:30 WRAPPED — done' >> "$N9doc11277"
+for pair11277 in "${T11277[@]}"; do
+    [ "${pair11277%%=*}" != "$N9doc11277" ] || HANDOVER_DIR="$root" bash "$QL" release "$N9doc11277" "${pair11277#*=}" >/dev/null 2>&1
+done
+nx11277 cn10 "$A11277" cn10dst-11277
+check "11277 CN10 a worker that holds no lock gets no span" "$RC11277 [$(spans11277 "$S11277" N9)]" "0 []"
+rel11277
+
+mk11277 cn11-11277 on "" ""
+add11277 DEMO-8-N8-worker.md N8 CJ-N8-1a2b3c4d
+nx11277 cn11 "$A11277" cn11dst-11277
+check "11277 CN11 a worker with no token costs another no seed and is no failure" "$(shape11277 "$S11277" N8) $(shape11277 "$S11277" N9) $(grep -cF 'next: warning: go-deliver.sh' "$ERR11277")" "N8:CJ-N8-1a2b3c4d N9:NONCE-UNKNOWN 0"
+rel11277
+
+mk11277 cn12-11277 on "$tok11277" ""
+CHIEF_LOCK_STATE_TEST_UNKNOWN="$N9doc11277" nx11277 cn12 "$A11277" cn12dst-11277
+check "11277 CN12 an unknown lock state is not seeded" "$RC11277 $(shape11277 "$S11277" N9) $(grep -cF 'next: seeded' "$ERR11277")" "0 N9:NONCE-UNKNOWN 0"
+rel11277
+
+mk11277 cn13-11277 on "$tok11277" ""
+add11277 DEMO-10-N9-worker.md N9 CJ-N9-0f0f0f0f
+nx11277 cn13 "$A11277" cn13dst-11277
+check "11277 CN13 two docs with one label each carry their own token" "$(spans11277 "$S11277" N9 | grep -oE 'N9:[^:]*' | LC_ALL=C sort | tr '\n' ' ')" "N9:$tok11277 N9:CJ-N9-0f0f0f0f "
+clean11277 CN13
+clean11277 "CN13 second" CJ-N9-0f0f0f0f
+rel11277
+
+for p11277 in on off; do
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    mk11277 "cn14$p11277-11277" "$p11277" "$tok11277" '`N9:NONCE-UNKNOWN:lock-9:99`'
+    if [ "$p11277" = on ]; then
+        add11277 DEMO-10-N9-worker.md N9 CJ-N9-0f0f0f0f
+    else
+        # shellcheck disable=SC2016  # the backticks are the RETASK line's literal markers
+        printf '%s\n' '# worker' '> **RETASK:** your nonce is `CJ-N9-0f0f0f0f`.' '## Results' '- 10:00 LIVE — fixture' > "$D11277/DEMO-10-N9-worker.md"
+        lock11277 "$D11277/DEMO-10-N9-worker.md"
+    fi
+    nx11277 "cn14$p11277" "$A11277" "cn14${p11277}dst-11277"
+    check "11277 CN14 one span and two live docs under its label: kept as written, once (N9 $p11277 the manifest)" "$RC11277 $(live11277 "$S11277" | grep '^workers:')" "0 workers: \`N1:nonce-1:lock-1:11\` \`N9:NONCE-UNKNOWN:lock-9:99\`"
+    clean11277 "CN14 $p11277"
+    clean11277 "CN14 $p11277 second" CJ-N9-0f0f0f0f
+    rel11277
+done
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
