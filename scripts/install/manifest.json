@@ -466,7 +466,7 @@
       "scopes": ["user"],
       "profiles": ["luna", "all"],
       "deps": [],
-      "probe": {"type": "cadence-runs", "script": "scripts/luna/qmd-cadence.sh", "tasks": [{"task": "HIMMEL-Qmd-Reindex", "intervalHours": 2}]},
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/qmd-cadence.sh", "tasks": [{"task": "HIMMEL-Qmd-Reindex", "intervalHours": 2, "okRcs": [0, 75]}]},
       "removable": "full-offboard-only",
       "offboard": "advise"
     },
