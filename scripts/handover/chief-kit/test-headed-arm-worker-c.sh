@@ -1070,6 +1070,12 @@ b="$(lr_n)"; why51 PROJ-9625-N7-stamp 'fleet-runtime: fleet-paused: reservation 
 check "9625-cause fleet-admission: a stamp refusal is not recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-admission"
 b="$(lr_n)"; why51 PROJ-9625-N8-paused 'fleet-runtime: fleet-paused: fleet-paused or reservation generation changed' >/dev/null
 check "9625-cause fleet-paused: a real pause is recorded as one" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-paused"
+b="$(lr_n)"; why51 PROJ-9625-N9-fleet-paused-fix 'fleet-runtime: fleet-paused: reservation admission lock is not held by preflight' 'bank-preflight: failed to write reservation metadata (expires/pid) for worker=PROJ-9625-N9-fleet-paused-fix — refusing admission rather than proceed with an unprotected slot' >/dev/null
+check "P1 a refusal naming a worker called fleet-paused is not recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-admission"
+b="$(lr_n)"; why51 PROJ-9625-N10-writer 'fleet-runtime: fleet-paused: writer lock timeout' 'bank-preflight: fleet-paused (managed control unavailable or paused)' >/dev/null
+check "P1b a check that failed for another reason is not recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-admission"
+b="$(lr_n)"; why51 PROJ-9625-N11-pause 'fleet-runtime: fleet-paused: fleet-paused' 'bank-preflight: fleet-paused (managed control unavailable or paused)' >/dev/null
+check "P1c the runtime's own pause line is recorded as a pause" "$(( $(lr_n) - b ))|$(lr_last .cause)" "1|fleet-paused"
 b="$(lr_n)"; rc=0; t51 "$SKIPPED_BANK_PREFLIGHT" PROJ-9625-N4-bank "$doc9625_ok" >/dev/null 2>&1 || rc=$?
 lr_expect bank-exhausted bank-exhausted 11 "$rc" "$b"
 rm -rf "${HIMMEL_FLEET_SLOTS:?}/PROJ-9625-N4-bank"
