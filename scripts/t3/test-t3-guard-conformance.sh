@@ -174,7 +174,7 @@ run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries
 run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
-run_codex delegate_task "$ARGS_BYPASS" deny "direct-server bypass instance denied" "carries a himmel bypass flag" mcp__t3_code_direct__
+run_codex delegate_task '{"task":"x","target":{"providerInstanceId":"claudeBypass"}}' deny "direct-server bypass instance denied" "carries a himmel bypass flag" mcp__t3_code_direct__
 
 echo "== T3 guard conformance: antigravity =="
 run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"

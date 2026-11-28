@@ -151,7 +151,7 @@ case "$out" in
 esac
 out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code__t3_thread_update","tool_input":{"action":"rename","title":"ops-chief"}}')"; rc=$?
 case "$out" in
-  *'"permissionDecision":"deny"'*) ok "R8: wired MCP chain denies a Codex-spelled -chief title";;
+  *'"permissionDecision":"deny"'*'chief-shaped'*) ok "R8: wired MCP chain denies a Codex-spelled -chief title";;
   *) bad "R8: wired MCP chain denies a Codex-spelled -chief title (rc=$rc out=$out)";;
 esac
 out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code_direct__t3_thread_wait","tool_input":{"threadId":"t"}}')"; rc=$?
