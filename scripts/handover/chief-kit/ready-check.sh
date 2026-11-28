@@ -1647,10 +1647,6 @@ elif [ -z "$wf_files" ]; then
     echo "[PASS] 10. no workflow files touched — workflow_dispatch run not applicable"
 else
     wf_err=""; wf_ids=""; wf_notes=""; wf_note=""; wf_why=""
-    # wf_failed_jobs <run id> [main]: the run's failed jobs, sorted, one per line; rc 1 when the run cannot be
-    # read. With `main`, the job names, counting only failure and timed_out (a job main cancelled never ran).
-    # Without it, `<job><TAB><conclusion><TAB><failed step names joined by \037>` (\036 alone when the JSON has no
-    # steps) for every unsuccessful job; a step is failed by the same rule as a job. gh pages the jobs itself.
     wf_failed_jobs() {
         local body fmt sel='.conclusion != null and (.conclusion | IN("success", "skipped", "neutral") | not)'
         fmt="\"\\(.name)\\t\\(.conclusion)\\t\" + (if (.steps | type) == \"array\" then [.steps[] | select($sel) | .name] | join(\"\\u001f\") else \"\\u001e\" end)"

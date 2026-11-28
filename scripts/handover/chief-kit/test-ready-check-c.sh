@@ -48,11 +48,9 @@ wf_run ".github/workflows/ci.yml"
 check "workflow PR, failed dispatch at head: exit 1" "$rc" "1"
 contains "workflow PR, failed dispatch at head: check 10 fails" "$out" "[FAIL] 10."
 
-# A failed dispatch run passes as PRE-EXISTING only when every suite its failed jobs show also
-# failed in main's latest scheduled/push run of the same workflow.
 # shellcheck disable=SC2016  # the step name is the literal script line, $SUITES unexpanded
 SUITE_STEP='Run if [ -n "$SUITES" ]; then'
-jobs_json() {  # <job>[|<conclusion>[|<failed step>...]]... -> a `gh run view --json jobs` body
+jobs_json() {
     local j
     for j in "$@"; do printf '%s\n' "$j"; done | jq -R -s -c --arg d "$SUITE_STEP" '
         {jobs: ([split("\n")[] | select(length > 0) | split("|")
@@ -73,7 +71,7 @@ log_fail() {  # <job> <suite>... -> run-log lines for the failed suites of one j
         printf '%s\tRun suites\t2026-10-29T10:00:00.2234567Z     [FAIL] %s (indented tail echo)\n' "$j" "$s.echo"
     done
 }
-no_suite_log() {  # <job>... -> run-log lines that name no failed suite
+no_suite_log() {
     local j
     for j in "$@"; do printf '%s\tRun suites\t2026-10-29T10:00:00.1Z all suites ran\n' "$j"; done
 }
@@ -168,10 +166,6 @@ check "main's newest run is green, an older one red: exit 1" "$rc" "1"
 notcontains "main's newest run is green, an older one red: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-111.txt "$RUNDIR"/log-222.txt
 
-# A re-shard moves a suite that is already red on main to another job, so suites are compared across
-# jobs: the failed SUITES in the runs' logs (`<job>\t<step>\t<ts> [FAIL] <suite> (rc=..)`, the runner's
-# own line) of every failed PR job must also have failed somewhere on main, in any job. Names
-# are the real case: main schedule run 40457809286 shard 3 vs PR 4197 dispatch run 40824556047 shard 8.
 printf '[{"conclusion":"failure","databaseId":111,"event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$SHA" > "$RUNDIR/macos-cadence.yml.json"
 main_run schedule failure 222 > "$RUNDIR/macos-cadence.yml.main.json"
 jobs_json "macos / shell (8)" > "$RUNDIR/jobs-111.json"
