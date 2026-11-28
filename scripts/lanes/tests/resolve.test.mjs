@@ -97,7 +97,7 @@ test('LN1 antigravity-t3-design row: t3-thread, no models/quota/dispatch, instan
   assert.ok(line, 'the designer row renders in /lanes text');
   assert.ok(line.includes('[t3 instance: antigravity_design]'), line);
   const home = makeTmpDir('lanes-ln1-home-');
-  const listed = spawnSync('bash', [join(TEST_DIR, '..', '..', 't3', 'antigravity-profiles.sh'), '--list'], {
+  const listed = spawnSync(BASH_BIN, [join(TEST_DIR, '..', '..', 't3', 'antigravity-profiles.sh'), '--list'], {
     encoding: 'utf8',
     env: { PATH: process.env.PATH, HOME: home },
   });
