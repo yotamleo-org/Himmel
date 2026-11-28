@@ -659,11 +659,11 @@ echo "FAILING-LINE-14"
 exit 1
 HOOK
     chmod +x "$repo14/.git/hooks/pre-commit"
-    commit_payload=$(printf '{"session_id":"s","cwd":"%s","tool_name":"Bash","tool_input":{"command":"git commit -F %s"}}' "$wt_cwd" "$msg14")
+    off_cmd="git commit -F '$msg14'"
+    commit_payload=$(jq -nc --arg cwd "$wt_cwd" --arg c "$off_cmd" '{session_id: "s", cwd: $cwd, tool_name: "Bash", tool_input: {command: $c}}')
     on_out=$(printf '%s' "$commit_payload" | HIMMEL_CONSOLE_LEG=1 PATH="$real_dir:$PATH" bash "$hook")
     on_cmd=$(printf '%s' "$on_out" | jq -r '.hookSpecificOutput.updatedInput.command // empty')
     off_out=$(printf '%s' "$commit_payload" | PATH="$real_dir:$PATH" bash "$hook")
-    off_cmd="git commit -F $msg14"
     if [ -z "$off_out" ]; then
         assert_pass "rtk off: a non-worker worktree commit runs unwrapped"
     else
