@@ -21,6 +21,7 @@ import { refuseTestJiraPost } from '../commands/release.js';
 import { isTestProject } from '../live-test-guard.js';
 import {
   BACKLOG_LABEL,
+  bothKindsOfLabel,
   agentDetailOf,
   agentDetailOfAdf,
   appendFuOverride,
@@ -163,6 +164,16 @@ function checkFlagCombinations(options: CreateOptions): void {
   if (options.remainder && options.followUpOf === undefined) {
     throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
   }
+  const stamped = followUpLabel(options);
+  const given = options.labels !== undefined ? parseLabels(options.labels) : [];
+  if (bothKindsOfLabel([...given, ...(stamped ? [stamped] : []), ...(options.residualOf !== undefined ? ['residual'] : [])])) {
+    throw new CreateRefused('jira create refused, nothing was filed: a remainder and a review residual never share a ticket; file the parent\'s own unfinished ask with --follow-up-of <key> --remainder and no residual label, or a review extra without the remainder label');
+  }
+}
+
+function followUpLabel(options: CreateOptions): 'remainder' | 'residual' | undefined {
+  if (options.followUpOf === undefined) return undefined;
+  return options.remainder ? 'remainder' : 'residual';
 }
 
 async function placement(
@@ -340,7 +351,8 @@ export async function runCreate(options: CreateOptions, run: { check?: boolean }
     residual = await planResidual(project, { ...options, residualOf: options.residualOf });
     labels = [...new Set([...(labels ?? []), ...residual.labels])];
   }
-  if (options.followUpOf !== undefined) labels = [...new Set([...(labels ?? []), 'residual'])];
+  const stamped = followUpLabel(options);
+  if (stamped !== undefined) labels = [...new Set([...(labels ?? []), stamped])];
   const duplicateOf = residual?.duplicateOf;
   const place = duplicateOf === undefined ? await placement(options, fields, residual, labels, body.detail, testProject) : undefined;
   if (place) labels = place.labels;

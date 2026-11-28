@@ -6,7 +6,7 @@ import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
-import { nextResidualDepth, queueBacklogIntake } from './create.js';
+import { bothKindsOfLabel, nextResidualDepth, queueBacklogIntake } from './create.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorField, sectorOf, sectorOptions } from './sector.js';
 import { bodyDiagnostics, homeVerdict, type BodyInput, type Diagnostic } from '../plain-block.js';
@@ -50,10 +50,10 @@ export function buildEditFields(opts: EditOptions, sectors: readonly string[] = 
         'label set, --add-labels appends to it — pick one.',
     );
   }
-  if (opts.removeLabels !== undefined && (opts.labels !== undefined || opts.addLabels !== undefined)) {
+  if (opts.removeLabels !== undefined && opts.labels !== undefined) {
     throw new Error(
-      'Edit --remove-labels is mutually exclusive with --labels and --add-labels: ' +
-        '--remove-labels drops the named labels only — pick one.',
+      'Edit --remove-labels is mutually exclusive with --labels: --labels replaces the full label set, ' +
+        '--remove-labels drops the named labels only (it combines with --add-labels in one update) — pick one.',
     );
   }
   if (opts.fixVersion !== undefined && opts.addFixVersion !== undefined) {
@@ -345,6 +345,9 @@ async function checkEditContract(key: string, o: EditOptions): Promise<string[]>
   };
   const was = contractDiagnostics(before, { format: 'adf', body: before.description }, sectors);
   const will = contractDiagnostics(after, o.description !== undefined ? { format: 'markdown', body: o.description } : { format: 'adf', body: before.description }, sectors);
+  if (!bothKindsOfLabel(before.labels) && bothKindsOfLabel(after.labels)) {
+    throw new Error(`${key} is a remainder of its parent, not a review residual; nothing changed`);
+  }
   const broken = newViolations(was, will);
   if (broken.length > 0) {
     throw new Error(`Edit ${key}: refused, nothing was written: the edit would break the ticket standard: ${broken.map((d) => d.message).join('; ')}`);
@@ -394,7 +397,7 @@ export function registerEdit(program: Command): void {
     .option(
       '--remove-labels <labels>',
       'DROP these comma-separated labels without touching the others ' +
-        '(mutually exclusive with --labels and --add-labels)',
+        '(mutually exclusive with --labels; with --add-labels both go in one update, removes first)',
     )
     .option(
       '--phase <p>',
@@ -475,12 +478,11 @@ export function registerEdit(program: Command): void {
       const body: { fields?: Record<string, unknown>; update?: Record<string, unknown> } = {};
       if (Object.keys(fields).length > 0) body.fields = fields;
       const update: Record<string, unknown> = {};
-      if (options.addLabels !== undefined) {
-        Object.assign(update, buildAddLabelsUpdate(options.addLabels));
-      }
-      if (options.removeLabels !== undefined) {
-        Object.assign(update, buildRemoveLabelsUpdate(options.removeLabels));
-      }
+      const labelOps = [
+        ...(options.removeLabels !== undefined ? buildRemoveLabelsUpdate(options.removeLabels).labels : []),
+        ...(options.addLabels !== undefined ? buildAddLabelsUpdate(options.addLabels).labels : []),
+      ];
+      if (labelOps.length > 0) update['labels'] = labelOps;
       if (options.addFixVersion !== undefined) {
         Object.assign(update, buildFixVersionBody('add', options.addFixVersion).update);
       }
