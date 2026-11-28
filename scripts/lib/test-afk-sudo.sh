@@ -1173,7 +1173,7 @@ expect_rule none git push -u origin feature
 expect_rule none git push origin main
 expect_rule none git push --force origin refs/heads/feat/x:refs/heads/feat/y
 expect_rule none bash scripts/handover/brief-lint.sh push -f main
-# shellcheck disable=SC2016 # the literal $g word
+# shellcheck disable=SC2016
 expect_rule main-history bash -c 'g=git; $g push -f origin main'
 expect_rule main-history bash -c "g'i't push --force origin main"
 expect_rule main-history bash -c "g'h' api -X DELETE repos/o/r/git/refs/heads/main"
@@ -1182,7 +1182,7 @@ nrt() { timeout 20 python3 -I -c'import sys; sys.path.insert(0, sys.argv[1]); im
 expect_text() { local want=$1 label=$2 got; shift 2; got=$(nrt "$@"); if [ "$got" = "$want" ]; then pass "floor $want: $label"; else fail "floor $want: $label" "$got"; fi; }
 expect_text none "a brief whose lines name git push, a :: word and main apart" $'A git push is never retried.\nWrite the SWEEP line :: sites=a\nmerge into main\n' bash scripts/handover/brief-lint.sh b.md
 expect_text main-history "a script line that force-pushes main" $'set -e\ngit push -f origin main\n' bash s.sh
-# shellcheck disable=SC2016 # the literal $@ and $B words of the script
+# shellcheck disable=SC2016
 expect_text main-history "a script that pushes its arguments" $'git push "$@"\n' bash s.sh -f origin main
 # shellcheck disable=SC2016
 expect_text main-history "a script that pushes a variable set on another line" $'B=main\ngit push -f origin "$B"\n' bash s.sh
@@ -1191,9 +1191,9 @@ expect_text main-history "a script whose git runs on past a backslash" $'git \\\
 expect_rule main-history bash -c $'git \\\npush --force origin main'
 expect_text main-history "a script whose backslash and newline split the word git" $'gi\\\nt push -f origin main\n' bash s.sh
 expect_text main-history "a script whose comment ends in a backslash before a force push" $'# note\\\ngit push -f origin main\n' bash s.sh
-# shellcheck disable=SC2016 # the literal $x word
+# shellcheck disable=SC2016
 expect_rule none bash scripts/handover/brief-lint.sh '$x' push -f main
-# shellcheck disable=SC2016 # the literal $g and $B words
+# shellcheck disable=SC2016
 expect_rule main-history bash -c '"$g" push -f origin main'
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'true;$g push -f origin main'

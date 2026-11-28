@@ -198,7 +198,6 @@ def _runs(ws, prog):
 
 
 def _flags(ws):
-    """The facts main-history reads from one word set; a command is the union of its sets' facts, never of the sets."""
     if ws is None:
         return None
     return frozenset(k for k, hit in (
@@ -252,7 +251,6 @@ def units(argv, texts, cwd, home):
 
 
 def _main_history(units, home):
-    """A force push or delete of main, or a repo or main-branch delete, in one command that runs git or gh."""
     for f in units:
         if f is None:
             return True
