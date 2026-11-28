@@ -8,7 +8,10 @@
 #   --apply    back <path> up to <path>.bak.<UTC stamp>, then replace it atomically.
 # rc 0 ok; rc 2 usage / unreadable or malformed settings file / resolver failure;
 # rc 3 an instance environment entry names a himmel guard bypass flag, or an instance's
-# launchArgs carry a permission-bypass flag (nothing written).
+# launchArgs carry a permission-bypass flag (nothing written); rc 96 seam guard refusal (a registered
+# seam differs from the session's launch environment on the anchor copy, or the guard lib is missing;
+# nothing run).
+# A profile the resolver refuses with rc 4 (a maintainer grant) is skipped with one stderr line.
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator"; each
 # gets an instance carrying only the resolver's default Artifact deny, as does the built-in
@@ -21,8 +24,17 @@
 # --profile <p>` exits 0 with "OK antigravity_<p>". rc 1 with "NOT OK antigravity_<p>..." adds nothing;
 # any other outcome, or a failed --list, writes nothing and exits 2. Existing antigravity entries
 # are never edited, and no "_relay" copy is made of any antigravity_* id. Seam: T3_PI_AGY_PROFILES (the script).
+# Its test seams are registered in scripts/chokepoints.json (docs/internals/t3-provider-instances.md).
 # Platform: POSIX bash 3.2+, jq, node (default resolver).
 set -u
+case "${BASH_SOURCE[0]}" in */*) _csg_dir="${BASH_SOURCE[0]%/*}" ;; *) _csg_dir=. ;; esac
+_csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
+    echo "provider-instances.sh: cannot load $_csg_lib - refusing" >&2
+    exit 96
+fi
+chokepoint_seam_guard scripts/t3/provider-instances.sh || exit 96
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 RESOLVER="${T3_PI_RESOLVER:-$HERE/../lanes/profile-settings.sh}"
 EMPTY_OK=",${T3_PI_EMPTY_OK:-operator},"
@@ -119,7 +131,12 @@ SUM_READ="$(cksum < "$FILE")"
 GEN='{}'
 for p in $PROFILES; do
     case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad profile name '$p'" ;; esac
-    if ! sp="$("$RESOLVER" "$p" 2>/dev/null)" || [ -z "$sp" ]; then
+    sp="$("$RESOLVER" "$p" 2>/dev/null)"; sp_rc=$?
+    if [ "$sp_rc" = 4 ]; then
+        echo "provider-instances: skip '$p': it carries a maintainer grant, so it gets no T3 instance" >&2
+        continue
+    fi
+    if [ "$sp_rc" != 0 ] || [ -z "$sp" ]; then
         case "$EMPTY_OK" in
             *",$p,"*)
                 echo "provider-instances: '$p' resolves to no settings file; its instance carries the default Artifact deny only" >&2

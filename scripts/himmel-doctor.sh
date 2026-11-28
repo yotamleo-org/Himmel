@@ -6437,6 +6437,36 @@ check_c103_bypass_launcher() {
     fi
 }
 
+check_c104_agy_profiles() {
+    local prog="${HIMMEL_DOCTOR_AGY_PROFILES:-$REPO_ROOT/scripts/t3/antigravity-profiles.sh}"
+    local err names rc p out first reason
+    [ -f "$prog" ] || return 0
+    err="$(mktemp "${TMPDIR:-/tmp}/c104.XXXXXX" 2>/dev/null)" || { emit WARN C104-agy-profiles "mktemp failed -- the Antigravity profiles were not read"; return 0; }
+    names="$(bash "$prog" --list 2>"$err")"; rc=$?
+    if [ "$rc" -ne 0 ]; then
+        emit WARN C104-agy-profiles "antigravity-profiles.sh --list failed rc=$rc: $(head -n 1 "$err")" "run it to see why: bash $prog --list"
+        rm -f "$err"
+        return 0
+    fi
+    for p in $names; do
+        out="$(bash "$prog" --check --profile "$p" 2>"$err")"; rc=$?
+        first="${out%%$'\n'*}"
+        case "$rc" in
+            0) emit OK C104-agy-profiles "antigravity_$p: profile home current" ;;
+            1)
+                reason="${first#"NOT OK antigravity_$p; "}"
+                if [ "$reason" != "$first" ] && [ "${reason%%;*}" = "home missing" ]; then
+                    emit INFO C104-agy-profiles "antigravity_$p: not set up on this station" "/himmel-update with the agy_design_profile flag on, if you use Gemini design threads"
+                else
+                    emit WARN C104-agy-profiles "$first" "bash scripts/t3/antigravity-profiles.sh --apply --profile $p (operator) or /himmel-update"
+                fi
+                ;;
+            *) emit WARN C104-agy-profiles "antigravity_$p: --check exited rc=$rc: $(head -n 1 "$err")" "run: bash $prog --check --profile $p" ;;
+        esac
+    done
+    rm -f "$err"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -6609,6 +6639,7 @@ run_check C100 check_c100_fleet
 run_check C101 check_c101_guard_refusals
 run_check C102 check_c102_lane_grants
 run_check C103 check_c103_bypass_launcher
+run_check C104 check_c104_agy_profiles
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

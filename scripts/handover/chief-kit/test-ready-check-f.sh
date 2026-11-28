@@ -63,15 +63,25 @@ S17_MAN_AB="$tmp/s17-man-ab"; s17_man "$S17_MAN_AB" "ran 0 $S17_A" "ran 0 $S17_B
 S17_MAN_ASKIPB="$tmp/s17-man-askipb"; s17_man "$S17_MAN_ASKIPB" "ran 0 $S17_A" "skip $S17_B"
 S17_MAN_A="$tmp/s17-man-a"; s17_man "$S17_MAN_A" "ran 0 $S17_A"
 S17_MAN_NEAR="$tmp/s17-man-near"; s17_man "$S17_MAN_NEAR" "ran 0 $S17_A" "ran 00 $S17_B" "ran 10 $S17_B" "ran 0 $S17_B.bak"
-# s17_at <sha>: run in the check-19 repo. S17_LP / S17_RS (JSON arrays), when set,
-# write the head's impacted row; S17_ROLLUP replaces the green rollup.
+s17_row_json() {
+    local lf=""
+    [ -z "${S17_SUITES_BLOB:-}" ] || lf=$(printf ',"suites_blob":"%s","mb":"%s","lister":"%s"' "$S17_SUITES_BLOB" "${S17_MB:-}" "${S17_LISTER:-}")
+    printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":%s,"status":"ok","impacted_n":%s,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s%s}\n' \
+        "${S17_ROW_BRANCH:-${STUB_PR_BRANCH:-feat/himmel-100-thing}}" "${S17_ROW_HEAD:-$SHA}" "${S17_ROW_PR:-77}" "${S17_IMPACTED_N:-2}" "${S17_LP:-[]}" "${S17_RS:-[]}" "$lf"
+}
+s17_list() {
+    S17_SUITES_BLOB=$(git hash-object --no-filters -- "$1")
+    mkdir -p "$S17R/.git/impacted-lists"
+    cp "$1" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+    S17_IMPACTED_N=$(wc -l < "$1" | tr -d ' ')  # read-sink-ok: a test helper handed only this suite's own fixture lists
+}
 s17_at() {
     local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
     SHA="$1"; REPO="$S17R"; LEDGER="$S17R/.git/cr-critic-scores.jsonl"
     seed_ledger_ok
-    if [ -n "${S17_LP:-}${S17_RS:-}" ]; then
-        printf '{"kind":"impacted","ts":"2026-11-05T00:00:00Z","source":"pr-check","branch":"%s","head":"%s","pr":%s,"status":"ok","impacted_n":2,"unverdicted_n":0,"skip_n":0,"rc":0,"local_pass":%s,"ruled_skip":%s}\n' \
-            "${S17_ROW_BRANCH:-${STUB_PR_BRANCH:-feat/himmel-100-thing}}" "$SHA" "${S17_ROW_PR:-77}" "${S17_LP:-[]}" "${S17_RS:-[]}" >> "$LEDGER"
+    [ -z "${S17_ROWS_PRE:-}" ] || printf '%s\n' "$S17_ROWS_PRE" >> "$LEDGER"
+    if [ -n "${S17_LP:-}${S17_RS:-}${S17_SUITES_BLOB:-}${S17_ROW_FORCE:-}" ]; then
+        s17_row_json >> "$LEDGER"
     fi
     # S17_RUNBOOK_CMD: the row is written by running the runbook's command in the repo, not by hand
     if [ -n "${S17_RUNBOOK_CMD:-}" ]; then
@@ -86,7 +96,12 @@ s17_tier() {
     mkdir -p "$TP_ANCHOR/scripts/ci"
     printf '%s\t%s\ttest fixture\n' "$1" "$2" > "$TP_ANCHOR/scripts/ci/suite-tiers.tsv"
 }
-s17_clear() { rm -f "$TP_ANCHOR/scripts/ci/suite-tiers.tsv"; unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL; reset_stubs; }
+s17_clear() {
+    rm -f "$TP_ANCHOR/scripts/ci/suite-tiers.tsv"; rm -rf "$S17R/.git/impacted-lists"
+    unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL
+    unset S17_IMPACTED_N S17_SUITES_BLOB S17_MB S17_LISTER S17_ROW_HEAD S17_ROW_FORCE S17_ROWS_PRE STUB_IMPACTED_SLEEP STUB_LISTER_ID STUB_LISTER_RC STUB_LISTER_LOG STUB_LISTER_SLEEP
+    reset_stubs
+}
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -421,6 +436,160 @@ s17_clear
 s17_at "$S17_ORPHAN"
 contains "19 T23 no merge-base: FAIL" "$(line17 "$out")" "[FAIL] 19. suite evidence: cannot read the impacted list"
 notcontains "19 T23: never a PASS" "$out" "[PASS] 19."
+s17_t23_l20=$(printf '%s\n' "$out" | grep -F '] 20. ' || true)
+s17_clear
+
+S17_LID=1111111111111111111111111111111111111111
+S17_LIST_AB="$tmp/s17-list-ab.txt"; printf '%s\n%s\n' "$S17_A" "$S17_B" > "$S17_LIST_AB"
+S17_LIST_0="$tmp/s17-list-0.txt"; : > "$S17_LIST_0"
+s17_slow() { READY_CHECK_ITEM19_BOUND=2; STUB_IMPACTED_SLEEP=5; }
+s17_good() {
+    s17_slow; s17_list "$S17_LIST_AB"; S17_MB="$S17_BASE"; S17_LISTER="$S17_LID"; STUB_LISTER_ID="$S17_LID"
+    S17_LP="[\"$S17_A\",\"$S17_B\"]"
+}
+S17_REMEDY="the chief re-records it with pr-check step 3.6's record fence"
+s17_falls_back() {
+    contains "19 $1: note $2" "$out" "$2"
+    contains "19 $1: the live read then times out" "$(line17 "$out")" "[FAIL] 19. suite evidence: cannot read the impacted list for origin/main..${S17_H1:0:7}: impacted-suites.sh timed out after 2s"
+    if [ "$3" = yes ]; then
+        contains "19 $1: the remedy line names the condition" "$out" "did not stand ($2)"
+        contains "19 $1: the remedy names the chief and the fence" "$out" "$S17_REMEDY"
+        contains "19 $1: the remedy names HIMMEL_REPO's own path" "$out" "by HIMMEL_REPO's own path"
+    else
+        notcontains "19 $1: no remedy line" "$out" "did not stand"
+    fi
+}
+
+s17_clear; READY_CHECK_ITEM19_BOUND=2; STUB_IMPACTED_SLEEP=5
+s17_at "$S17_H1"
+contains "19 R0 probe: the stub's sleep runs before the real script" "$(line17 "$out")" "impacted-suites.sh timed out after 2s"
+
+s17_clear; s17_good
+s17_at "$S17_H1"
+check "19 R1 a standing row: exit 0" "$rc" "0"
+contains "19 R1: PASS from the recorded list" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 0 from CI run -, 2 local"
+contains "19 R1: the ledger-row note" "$out" "impacted list from the ledger row at ${S17_H1:0:7} (2026-11-05T00:00:00Z, 2 suites)"
+notcontains "19 R1: no live read timed out" "$out" "timed out"
+
+s17_clear; s17_slow
+s17_at "$S17_H1"
+s17_falls_back R2 "no impacted row" yes
+
+s17_clear; s17_good; S17_ROW_HEAD="$S17_BASE"
+s17_at "$S17_H1"
+s17_falls_back R3a "no impacted row" yes
+s17_clear; s17_good; S17_ROW_BRANCH=feat/other
+s17_at "$S17_H1"
+s17_falls_back R3b "no impacted row" yes
+
+s17_clear; s17_good; S17_LISTER=2222222222222222222222222222222222222222
+s17_at "$S17_H1"
+s17_falls_back R4 "lister moved" yes
+
+s17_clear; s17_good; S17_MB="$S17_H1"
+s17_at "$S17_H1"
+s17_falls_back R5 "merge-base differs" yes
+
+s17_clear; s17_good; printf 'scripts/forged.sh\n' > "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_at "$S17_H1"
+s17_falls_back R6a "list file missing or altered" yes
+s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_at "$S17_H1"
+s17_falls_back R6b "list file missing or altered" yes
+
+s17_clear; s17_good; S17_LP="[\"$S17_A\"]"
+s17_at "$S17_H1"
+contains "19 R7 the recorded list feeds the per-suite proof" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B"
+contains "19 R7: from the ledger row" "$out" "impacted list from the ledger row at"
+
+s17_clear; s17_good; unset STUB_LISTER_ID; STUB_LISTER_RC=1
+s17_at "$S17_H1"
+s17_falls_back "R8a lister exits 1" "lister unreadable" no
+s17_clear; s17_good; STUB_LISTER_ID=not-hex
+s17_at "$S17_H1"
+s17_falls_back "R8b lister prints no hex id" "lister unreadable" no
+
+s17_clear; s17_good; S17_ROWS_PRE=$(SHA="$S17_H1" s17_row_json); unset S17_SUITES_BLOB; S17_ROW_FORCE=1
+s17_at "$S17_H1"
+s17_falls_back R9 "the row has no list" yes
+
+s17_clear; s17_good; s17_list "$S17_LIST_0"
+s17_at "$S17_H1"
+check "19 R10 a recorded empty list: exit 0" "$rc" "0"
+contains "19 R10: the 0 impacted PASS" "$(line17 "$out")" "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
+contains "19 R10: the ledger-row note" "$out" "impacted list from the ledger row at ${S17_H1:0:7} (2026-11-05T00:00:00Z, 0 suites)"
+
+s17_clear; s17_good; cp "$S17_LIST_AB" "$S17R/.git/x.txt"; S17_SUITES_BLOB=../x
+s17_at "$S17_H1"
+s17_falls_back R11 "the row has no list" yes
+rm -f "$S17R/.git/x.txt"
+
+s17_clear; s17_slow; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_RUNBOOK_CMD="$S17_RUN_CMD"
+s17_at "$S17_H1"
+check "19 R12 the real recorder's row stands for the real item 19: exit 0" "$rc" "0"
+contains "19 R12: PASS from the recorded list" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 0 from CI run -, 2 local"
+contains "19 R12: the ledger-row note" "$out" "impacted list from the ledger row at ${S17_H1:0:7}"
+
+S17_LLOG="$tmp/s17-lister.log"
+s17_clear; s17_good; S17_MB="$S17_H1"; S17_LISTER=2222222222222222222222222222222222222222; STUB_LISTER_LOG="$S17_LLOG"; : > "$S17_LLOG"
+s17_at "$S17_H1"
+contains "19 R13a: the merge-base is checked before the lister" "$out" "merge-base differs"
+check "19 R13a: the lister is never read" "$(wc -l < "$S17_LLOG" | tr -d ' ')" "0"
+s17_clear; s17_good; S17_SUITES_BLOB=not-hex; S17_MB="$S17_H1"
+s17_at "$S17_H1"
+contains "19 R13b: the fields are checked first" "$out" "the row has no list"
+notcontains "19 R13b: never the merge-base note" "$out" "merge-base differs"
+s17_clear; s17_good; S17_LISTER=2222222222222222222222222222222222222222; printf 'x\n' > "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_at "$S17_H1"
+contains "19 R13c: the lister is checked before the file" "$out" "lister moved"
+notcontains "19 R13c: never the file note" "$out" "list file missing or altered"
+
+s17_clear; s17_good; S17_IMPACTED_N=3
+s17_at "$S17_H1"
+s17_falls_back R14 "list file missing or altered" yes
+
+s17_fifo_row() {
+    local label="$1" fifo="$2" wpid
+    check "19 $label: the fixture is a FIFO" "$([ -p "$fifo" ] && echo yes)" "yes"
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 300} tee "$fifo" < /dev/null > /dev/null 2>&1 &
+    wpid=$!
+    s17_at "$S17_H1"
+    s17_falls_back "$label" "list file missing or altered" yes
+    check "19 $label: item 19 never opened the FIFO (its writer is still blocked)" "$(kill -0 "$wpid" 2>/dev/null && echo blocked)" "blocked"
+    kill "$wpid" 2>/dev/null; wait "$wpid" 2>/dev/null
+}
+s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_fifo_row "R18a a FIFO at the list path" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$tmp/s17-fifo"; ln -s "$tmp/s17-fifo" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+check "19 R18b: the fixture is a symlink" "$([ -L "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt" ] && echo yes)" "yes"
+s17_fifo_row "R18b a symlink to a FIFO at the list path" "$tmp/s17-fifo"
+rm -f "$tmp/s17-fifo"
+
+s17_clear; S17_ROW_HEAD="$S17_ORPHAN"; s17_list "$S17_LIST_AB"; S17_MB="$S17_BASE"; S17_LISTER="$S17_LID"; STUB_LISTER_ID="$S17_LID"; S17_LP="[\"$S17_A\"]"
+s17_at "$S17_ORPHAN"
+contains "19 R15 an orphan head with a row: note" "$out" "merge-base unreadable"
+contains "19 R15: today's FAIL" "$(line17 "$out")" "[FAIL] 19. suite evidence: cannot read the impacted list"
+notcontains "19 R15: no remedy line" "$out" "did not stand"
+check "19 R15: item 20's line equals T23's" "$(printf '%s\n' "$out" | grep -F '] 20. ' || true)" "$s17_t23_l20"
+
+s17_clear; s17_good; STUB_LISTER_SLEEP=5
+s17_at "$S17_H1"
+s17_falls_back "R16 a stalled lister" "lister unreadable" no
+
+S17_WT="$tmp/s17-wt"
+git -C "$S17R" worktree add -q --detach "$S17_WT" "$S17_H1"
+mkdir -p "$S17_WT/scripts/handover/chief-kit" "$S17_WT/scripts/cr" "$S17R/scripts/cr"
+cp "$SCRIPT" "$S17_WT/scripts/handover/chief-kit/ready-check.sh"
+rm -rf "$S17_WT/scripts/lib"; cp -R "$HERE/../../lib" "$S17_WT/scripts/lib"
+cp "$TP_ANCHOR/scripts/cr/impacted-suites.sh" "$S17R/scripts/cr/impacted-suites.sh"
+cp "$TP_ANCHOR/scripts/cr/impacted-suites.sh" "$S17_WT/scripts/cr/impacted-suites.sh"
+s17_clear; s17_good; STUB_LISTER_LOG="$S17_LLOG"; : > "$S17_LLOG"
+READY_CHECK_ANCHOR="" RUN_CWD="$S17_WT" RUN_SCRIPT="$S17_WT/scripts/handover/chief-kit/ready-check.sh" s17_at "$S17_H1"
+s17_llog=$(head -n 1 "$S17_LLOG")
+s17_lprim="$(cd "$S17R/scripts/cr" && pwd -P)/impacted-suites.sh"
+check "19 R17 from a linked worktree the lister read is the primary's copy" "$( [ -n "$s17_llog" ] && cd "${s17_llog%/*}" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "${s17_llog##*/}" )" "$s17_lprim"
+rm -f "$S17R/scripts/cr/impacted-suites.sh"
+git -C "$S17R" worktree remove --force "$S17_WT"
 s17_clear
 
 # T24-T25: the CI failure ledger (spec 7a). A suite left to CI that fails there at the

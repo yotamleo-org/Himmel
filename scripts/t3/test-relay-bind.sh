@@ -74,6 +74,38 @@ STUB
 export REAL_QL="$REAL/scripts/handover/queue-lock.sh"
 chmod +x "$STUB_DIR"/*
 
+export BRIEF_LINT_MIRROR="$T/mirror" BRIEF_LINT_JIRA_CLI="$T/jira/index.js" GATE_SIGNED="$T/signed"
+mkdir -p "$BRIEF_LINT_MIRROR" "$T/jira" "$GATE_SIGNED"
+ticket() { printf -- '---\nkey: "%s"\nstatus: "To Do"\ntype: "%s"\nlabels: [%s]\n---\n# %s: t\n' "$1" "$2" "${3:-}" "$1" > "$BRIEF_LINT_MIRROR/$1.md"; }
+for k in DEMO-1 DEMO-12; do ticket "$k" Task; done
+ticket DEMO-400 Task; ticket DEMO-401 Task; ticket DEMO-402 Task '"core"'; ticket DEMO-403 Task
+printf '/state/specs/spec.md O-R1-401\n' > "$GATE_SIGNED/DEMO-401"
+cat > "$T/jira/index.js" <<'STUB'
+const fs = require('fs');
+const a = process.argv.slice(2);
+const opt = (n) => { const i = a.indexOf(n); return i < 0 ? null : a[i + 1]; };
+const t = (k) => { try { return fs.readFileSync(opt('--mirror') + '/' + k + '.md', 'utf8'); } catch (e) { return null; } };
+if (a[0] === 'release' && a[1] === 'core-check') {
+  const paths = (opt('--paths') || '').split(',').filter(Boolean);
+  const hit = paths.find((p) => /^scripts\/(handover|hooks)\//.test(p));
+  for (const k of a.slice(a.indexOf('--key') + 1)) {
+    const x = t(k);
+    if (!x) console.log('UNKNOWN ' + k);
+    else if (hit) console.log('CORE ' + k + ' ' + hit);
+    else if (/labels: \["core"\]/.test(x)) console.log(a.includes('--docs-only') ? 'BYPASS ' + k + ' design core by label only, docs-only leg' : 'CORE ' + k + ' label core');
+    else console.log('NOT-CORE ' + k);
+  }
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  let miss = 0;
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    let r = '';
+    try { r = fs.readFileSync(process.env.GATE_SIGNED + '/' + k, 'utf8').trim(); } catch (e) { miss = 1; }
+    console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
+  }
+  process.exit(miss);
+} else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUB
+
 mkco() {
     CO="$T/$1"
     B="${2:-$CO/bucket}"
@@ -85,6 +117,9 @@ mkco() {
     cp "$STUB_DIR/t3-send.sh" "$CO/scripts/t3/t3-send.sh"
     cp "$STUB_DIR/gitleaks.sh" "$CO/scripts/handover/chief-kit/bucket-gitleaks.sh"
     cp "$STUB_DIR/queue-lock.sh" "$CO/scripts/handover/queue-lock.sh"
+    for f in brief-lint.sh mirror_heal.py holds.py minerva_siblings.py salus_marked.py; do
+        ln -sf "$REAL/scripts/handover/chief-kit/$f" "$CO/scripts/handover/chief-kit/$f"
+    done
     M="$B/chief.fleet.json"; CD="$B/chief.md"
     printf '# A — CHIEF — successor to none (fill signal 1 %%)\n\n## Results\n' > "$CD"
     BIND="$CO/scripts/t3/relay-bind.sh"
@@ -665,7 +700,7 @@ bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$ya" --thread ya1 >/dev/
 check '13. attach with an unreadable sibling manifest refuses (rc 2), never reads it as no binding' 2 "$rc"
 
 mkco y4 "$HB/y4"; mkm a none
-yb="$B/DEMO-1-N9-t3-yb-$today.md"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$yb"
+yb="$B/DEMO-1-N9-t3-yb-$today.md"; printf '# x\n\n> **Writes:** scripts/a.sh\n\n> **Launch gate:** passed\n' > "$yb"; fmx add "$B/a.fleet.json" --lane t3 --lockless "$yb"
 ( flock -x 8; sleep 45 ) 8>>"$B/t3-relay.owner.lock" & lockholder=$!
 sleep 0.3
 t0="$(date +%s)"
@@ -676,6 +711,60 @@ check "13. attach waits for the bucket owner lock and gives up with rc 2 (took $
 check '13. and binds nothing while it waited' null "$(jq -r --arg d "$yb" '.workers[] | select(.doc == $d) | .t3_thread // "null"' "$B/a.fleet.json")"
 bash "$BIND" attach --manifest "$B/a.fleet.json" --doc "$yb" --thread yb1 >/dev/null 2>&1; rc=$?
 check '13. attach with the lock free binds (rc 0)' "0 yb1" "$rc $(jq -r --arg d "$yb" '.workers[] | select(.doc == $d) | .t3_thread' "$B/a.fleet.json")"
+
+mkco g1
+gate() { bash "$BIND" prepare --manifest "$M" --ticket "$1" --label "$2" --slug g --writes "${@:3}" >"$T/out" 2>"$T/err"; echo $?; }
+gdoc() { printf '%s' "$B/$1-$2-t3-g-$today.md"; }
+nrows() { [ -e "$M" ] && jq -r '.workers | length' "$M" || echo 0; }
+check '14. replay: a build on unsigned core key DEMO-400 is refused rc 3' 3 "$(gate DEMO-400 N1 scripts/handover/chief-kit/go.sh)"
+check '14. the refusal names the key and the missing signed spec' yes "$(grep -q 'DEMO-400 is core .*no signed minerva spec' "$T/err" && echo yes)"
+check '14. a refused prepare leaves no doc and no row' "absent 0" "$([ -e "$(gdoc DEMO-400 N1)" ] && echo present || echo absent) $(nrows)"
+check '14. a key missing from the mirror is refused rc 3, naming it' "3 yes" "$(gate DEMO-77 N2 scripts/a.sh) $(grep -q 'DEMO-77 is not in the Jira mirror' "$T/err" && echo yes)"
+mkdir -p "$CO/scripts"; ln -sfn "$REAL/scripts/hooks" "$CO/scripts/hooks"
+check '14. a hook-bypass build is refused rc 3 with the bypass set in the launching shell' 3 \
+    "$(HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 T3_SEND_PROJECT="$REAL" gate DEMO-403 N3 scripts/hooks/guard-t3-thread-tools.sh)"
+check '14. the refusal names the missing T3 bypass grant record' yes "$(grep -q 'no T3 hook-bypass grant record' "$T/err" && echo yes)"
+check '14. and the pinned file it would edit' yes "$(grep -q 'scripts/hooks/guard-t3-thread-tools.sh' "$T/err" && echo yes)"
+check '14. control: a signed core key launches rc 0' 0 "$(gate DEMO-401 N4 scripts/handover/chief-kit/go.sh)"
+sd="$(gdoc DEMO-401 N4)"
+check '14. the signed launch records the gate decision in its doc' yes "$(grep -q '^> \*\*Launch gate:\*\* passed ' "$sd" && echo yes)"
+check '14. the doc carries no front matter' '# DEMO-401 - a T3 thread bound to the chief - worker N4 (t3)' "$(head -n 1 "$sd")"
+check '14. control: a design leg on a core-by-label key launches rc 0' 0 "$(gate DEMO-402 N5 "$HANDOVER_DIR/u/p/specs/x.md")"
+check '14. its doc records the design bypass' yes "$(grep -q '^> \*\*Core gate:\*\* DEMO-402 bypass=design ' "$(gdoc DEMO-402 N5)" && echo yes)"
+check '14. and the bypass is logged beside the doc' yes "$(grep -q '"key": "DEMO-402"' "$B/core-gate.jsonl" && echo yes)"
+nd="$B/DEMO-400-N6-t3-hand-$today.md"; printf '# DEMO-400 - hand made\n\n## Results (newest at the bottom)\n' > "$nd"
+fmx add "$M" --lane t3 --lockless "$nd"
+bash "$BIND" attach --manifest "$M" --doc "$nd" --thread hand1 >"$T/out" 2>"$T/err"; rc=$?
+check '14. attach refuses a listed row whose doc has no gate record, rc 3' 3 "$rc"
+check '14. the refusal names the missing launch gate record' yes "$(grep -q 'no launch gate record' "$T/err" && echo yes)"
+check '14. and binds nothing' pending "$(jq -r --arg d "$nd" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
+fd="$B/DEMO-400-N7-t3-forged-$today.md"
+printf '# DEMO-400 - forged\n\n> **Writes:** scripts/handover/chief-kit/go.sh\n\n> **Launch gate:** passed\n\n## Results (newest at the bottom)\n' > "$fd"
+fmx add "$M" --lane t3 --lockless "$fd"
+bash "$BIND" attach --manifest "$M" --doc "$fd" --thread forged1 >"$T/out" 2>"$T/err"; rc=$?
+check '14. attach re-runs the gate: a forged gate line on an unsigned core key is refused rc 3' 3 "$rc"
+check '14. the refusal names the key, never the forged line' yes "$(grep -q 'DEMO-400 is core .*no signed minerva spec' "$T/err" && echo yes)"
+check '14. and binds nothing' pending "$(jq -r --arg d "$fd" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
+bash "$BIND" attach --manifest "$M" --doc "$sd" --thread signed1 >/dev/null 2>&1; rc=$?
+check '14. attach binds the gated signed row' "0 signed1" "$rc $(jq -r --arg d "$sd" '.workers[] | select(.doc == $d) | .t3_thread' "$M")"
+wd="$B/DEMO-403-N8-t3-nowrites-$today.md"
+printf '# DEMO-403 - no writes\n\n> **Launch gate:** passed\n\n## Results (newest at the bottom)\n' > "$wd"
+fmx add "$M" --lane t3 --lockless "$wd"
+bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >"$T/out" 2>"$T/err"; rc=$?
+check '14. attach refuses a gated doc with no Writes line, so the pinned-guard check is never skipped' "3 yes" "$rc $(grep -q "no '> \*\*Writes:\*\*' line" "$T/err" && echo yes)"
+for blank in $'\t' $'\r' $' \t'; do
+    printf '# DEMO-403 - blank writes\n\n> **Writes:** %s\n\n> **Launch gate:** passed\n' "$blank" > "$wd"
+    bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >/dev/null 2>&1; rc=$?
+    check "14. attach refuses a Writes line holding only whitespace ($(printf '%s' "$blank" | od -An -c | tr -s ' '))" 3 "$rc"
+done
+check '14. prepare refuses a lower-case ticket key the gate would not read, rc 2' 2 "$(gate demo-400 N9 scripts/handover/chief-kit/go.sh)"
+check '14. and writes no doc for it' absent "$([ -e "$(gdoc demo-400 N9)" ] && echo present || echo absent)"
+ld="$B/demo-400-N10-t3-lower-$today.md"
+printf '# demo-400 - lower\n\n> **Writes:** scripts/handover/chief-kit/go.sh\n\n> **Launch gate:** passed\n' > "$ld"
+fmx add "$M" --lane t3 --lockless "$ld"
+bash "$BIND" attach --manifest "$M" --doc "$ld" --thread lower1 >/dev/null 2>&1; rc=$?
+check '14. attach refuses a doc whose name carries a lower-case ticket key, rc 3' 3 "$rc"
+check '14. and binds nothing' pending "$(jq -r --arg d "$ld" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"

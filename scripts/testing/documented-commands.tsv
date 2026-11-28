@@ -14,7 +14,7 @@ F12	scripts/cr/pr-check-ref/20-step2-lanes.md	wt	ask	bash "<himmel_dir>/scripts/
 F13	scripts/cr/pr-check-ref/20-step2-lanes.md	wt	ask	bash "<himmel_dir>/scripts/cr/doc-freshness-advisory.sh" #1967136924	bash scripts/cr/doc-freshness-advisory.sh
 F14	scripts/cr/pr-check-ref/20-step2-lanes.md	wt	ask	bash "<himmel_dir>/scripts/cr/known-findings.sh" --diff #3453937286	bash scripts/cr/known-findings.sh --diff
 F15	scripts/cr/pr-check-ref/20-step2-lanes.md	wt	ask	bash "<himmel_dir>/scripts/cr/residue-scan.sh" #1229430027	bash scripts/cr/residue-scan.sh
-F16	scripts/cr/pr-check-ref/30-step3-panel.md	wt	ask	bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --head <head> --branch '<branch>' #3140753327	bash scripts/cr/panel-first-pass.sh --head @HEAD@ --branch '@BRANCH@'
+F16	scripts/cr/pr-check-ref/30-step3-panel.md	wt	ask	bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --branch '<branch>' #1230803056	bash scripts/cr/panel-first-pass.sh --branch '@BRANCH@'
 F17	scripts/cr/pr-check-ref/31-step3-adjudicate.md	wt	ask	bash "<himmel_dir>/scripts/cr/write-verdicts.sh" prior-blocking --branch '<branch>' --from-file <scratch-path> #171903131	bash scripts/cr/write-verdicts.sh prior-blocking --branch '@BRANCH@' --from-file @SCRATCH@
 F18	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/pr-check-env.sh" CR_CLAUDE_AGENTS #3610678121	bash "@WT@/scripts/cr/pr-check-env.sh" CR_CLAUDE_AGENTS
 F19	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS #2405840842	bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS
@@ -38,7 +38,7 @@ F36	scripts/cr/pr-check-ref/70-step7-nits.md	wt	ask	bash "<himmel_dir>/scripts/c
 F37	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --duration-secs <s> #2422875973	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --duration-secs 90
 F38	scripts/cr/pr-check-ref/32-step3-reviewers.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --head <head> --status off --reason '<why>' #3593067671	bash scripts/cr/ledger-append.sh blast --head @HEAD@ --status off --reason 'why'
 F39	scripts/cr/pr-check-ref/10-step0.md	wt	ask	bash "<himmel_dir>/scripts/cr/pr-check-outside.sh" <pr> #313145915	bash scripts/cr/pr-check-outside.sh 1
-F40	scripts/cr/pr-check-ref/30-step3-panel.md	wt	ask	bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --head <head> --branch '<headRefName>' --full #1644413060	bash scripts/cr/panel-first-pass.sh --head @HEAD@ --branch '@BRANCH@' --full
+F40	scripts/cr/pr-check-ref/30-step3-panel.md	wt	ask	bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --branch '<headRefName>' --full #1548290958	bash scripts/cr/panel-first-pass.sh --branch '@BRANCH@' --full
 F41	scripts/cr/pr-check-ref/33-step3-impacted.md	wt	ask	bash "<himmel_dir>/scripts/cr/impacted-suites.sh" --check <base>..<head> --from-file <scratch-path> --record --branch '<headRefName>' --head <head> #1531775727	bash scripts/cr/impacted-suites.sh --check @HEAD@..@HEAD@ --from-file @SCRATCH@ --record --branch '@BRANCH@' --head @HEAD@
 F42	scripts/cr/pr-check-ref/33-step3-impacted.md	wt	ask	bash "<himmel_dir>/scripts/cr/ledger-append.sh" blast --branch '<headRefName>' --head <head> --duration-secs <s> #1631286162	bash scripts/cr/ledger-append.sh blast --branch '@BRANCH@' --head @HEAD@ --duration-secs 60
 F44	scripts/cr/pr-check-ref/34-step3-comments.md	wt	ask	git diff -U0 --no-color --no-ext-diff <db_sha> <head> #719437296	git diff -U0 --no-color --no-ext-diff @HEAD@ @HEAD@

@@ -302,6 +302,9 @@ setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile work
 bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
 
+Run the `launch-confirm.sh` call with a Bash tool timeout of at least 250000 ms: its window is 240 s, and the tool's
+default 120 s would end it first.
+
 The launcher writes the signal file itself once the launch passes its checks; a launch that cannot write it is refused with a `LAUNCH-REFUSED` line.
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
@@ -320,7 +323,8 @@ the real launch passes them too. The launcher opens each attempt with a `LAUNCH-
 and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
 the attempt that started at or after `--since`, the epoch taken just before
 the launch, so an earlier attempt or session never decides it. It waits up to
-60 s for that attempt to end `LAUNCH-OK` with a claude session named
+240 s by default (`--secs` sets it; the waiter's relaunch of a silent worker passes 60), since a managed launch
+runs two fleet admissions and each can wait its turn for the admission lock, for that attempt to end `LAUNCH-OK` with a claude session named
 `<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
 with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
 report a worker as running until it confirms.
@@ -974,7 +978,11 @@ the paginated files API.
 
 `check-write-hold.sh` denies a worker's write onto a file another live worker or an
 open PR holds. A write onto a free file outside the worker's `Writes` passes: it is
-claimed, recorded, and named on the PR's `outside-writes:` line for review. The
+claimed, recorded, and named on the PR's `outside-writes:` line for review. In a
+repo that carries `scripts/ci/ci-trust-paths.txt`, a free trust path is the
+exception: its first write is denied until a grant. The deny prints your grant
+command for a trust path, and says only the operator grants a settings file or CI
+workflow. The
 register is `holds.py`, under `~/.himmel/state/holds`.
 
 **`HOLD-ASK <path> <key>`** is a worker telling you the deny stopped it: `<key>` wants
@@ -1632,6 +1640,75 @@ request bullets (`WAKE worker-ready`, `worker-blocked`, `worker-finding`,
 - **Act only on the stem ticket's PR.** A path A thread may open a PR only for the ticket
   key in its doc stem. Merge or review only a PR whose title carries that key; any other
   PR a T3 thread opens is not yours to act on.
+
+### A T3 coordinator runs as fresh short sessions
+
+A coordinator is a T3 thread that routes events and status for a chief (a sub-chief). It keeps its state in a
+file and runs as short fresh sessions. A long thread woken on a timer resends its whole context on every wake
+and compacts in place. The tool forms are in
+[`t3-tool-call-rules.md`](../internals/t3-tool-call-rules.md#coordinator-schedules-and-wakes).
+
+- **One address, one state file, one writer.** A coordinator has one current T3 address and one short Markdown
+  state file in the state bucket. The file holds owners and routing, ticket and child handles, pending actions
+  with their action keys, the consumed event ids, the last completed sweep and the current **owner
+  generation**. Only the coordinator thread writes it. The one exception is the chief, which assigns the
+  generation between owners.
+- **Every turn reads, acts once, checkpoints and ends.** A turn reads the file before it acts. A missing or
+  unreadable file, or a brief whose generation is retired, stale or missing, sends the supervising chief a
+  blocker and ends before acting or writing. A brief whose event id is already among the consumed ids ends
+  without acting: it is a duplicate delivery. Otherwise the turn does one bounded unit: one event and at most
+  four lookups, with one latest item per lookup and at most 3,000 characters per item. A scheduled run's one
+  activity sweep takes one of those four slots. Use metadata projections; larger or unbounded reads go to the
+  work's owner. The checkpoint replaces the file atomically:
+  write a temp file in the same directory, then rename it over the state file.
+- **Pending actions.** Before an external action, checkpoint a pending action key derived from the event and
+  the target. Record the resulting handle once the action is confirmed. Where a T3 operation takes a
+  `clientRequestId`, derive it from that key; T3 deduplicates only within one caller scope, and a fresh
+  session can change the scope. Before retrying an uncertain outcome, reconcile it against the identifiable
+  target. An outcome that cannot be resolved keeps its key and goes to the chief as a blocker.
+- **Wakes are fresh.** A schedule uses `freshSession: true`; the thread-tools guard refuses a bound interval
+  without it (rule `non-fresh-bound-interval`). Prefer an event wherever one exists. Peers and the owners of
+  delegated workers relay a terminal result or status change with `t3_thread_send`, `mode: "queue"` and
+  `freshContext: true`. The brief starts with a stable event id, then gives the absolute state-file path and
+  the current generation. Operator and recovery requests reach the coordinator the same way, through you.
+  The full-context `scripts/t3/t3-send.sh` wake above is for the other chief roles.
+- **The chief owns delegation.** The coordinator creates no T3 delegate or PR watch and carries no background
+  work across turns. You own any durable T3 delegation and its automatic completion notice. You relay the
+  result to the coordinator as a queued fresh send, with the child task id as the event id. Automatic parent
+  notifications then land on your address, never the coordinator's.
+- **Hand off by context, never compact.** At a work boundary the handoff trigger is 100,000 resident input
+  tokens, or the lane's documented pre-compaction threshold if that is lower. Read it with
+  `bash scripts/context-fill.sh --warn-at <threshold>`. At the trigger, checkpoint, verify the checkpoint, and
+  queue a fresh continuation on the same address carrying the state-file path, the generation and the pending
+  handle; then end. A T3 Claude session with no HUD snapshot gets exit 4 and no fresh count: finish at most
+  one bounded unit and end. Queue a continuation then only if the unit made progress or has a specific next
+  action. After one continuation without progress on a handle, stop and report the blocker. If the
+  continuation cannot be queued, send the chief a blocker with the pending handle and checkpoint path through
+  the usual chief route, then end.
+- **Cutover to a new address.** Pause the legacy schedule in T3 and stop routing to the old address. The
+  current parent collects outstanding child returns or hands their delivery to an authorized owner. Queue one
+  retirement turn on the old address with the current generation: in that turn the old writer checkpoints its
+  work and marks its generation retired. Confirm the turn completed and the marker is written, then publish
+  the new generation and address to the authorized senders and the schedule owner. A late turn on the old
+  address carries the old generation, which was fixed at enqueue, and exits before acting. Reconcile the old
+  address's T3 activity and its routed child results against the consumed ids. Replay only the missing ids at
+  the new address. The first fresh run there reads the state back and confirms it owns the write.
+- **Replay by id.** The checkpointed consumed-id list is the acknowledgement; queue acceptance alone is not.
+  On a coordinator blocker, an ordinary relay or an explicit recovery request, compare the accepted inbound
+  events in the coordinator's T3 activity with the consumed ids. Match each brief's event id to its delivery
+  run id and status, including direct peer sends and runs that ended successfully without a consumed id. A
+  missing id with no queued or running delivery is replayed once, with the same event id and the current
+  generation. A second terminal delivery that is still unconsumed is a blocker. The coordinator may drop
+  consumed ids only after you have reconciled them and no retry or cutover delivery is pending.
+
+#### Event-only coordinator recovery
+
+A coordinator with a fresh schedule finds a lost event itself. Each scheduled run makes one bounded sweep of its
+own inbound activity and sends you the missing event ids (the sweep is in
+[`t3-tool-call-rules.md`](../internals/t3-tool-call-rules.md#coordinator-schedules-and-wakes)). A coordinator
+with no fresh schedule (event-only) has no automatic recovery during a quiet period: an inbound event whose
+wake ends before its checkpoint stays unconsumed until the next relay or your explicit recovery request runs
+the replay comparison above.
 
 ## See also
 
