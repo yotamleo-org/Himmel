@@ -801,13 +801,6 @@ rs_unroll() {
     fi
 }
 
-# rs_ast_proves_safe CMD: 0 only when the shfmt command-position model
-# (scripts/lib/bash-ast.sh) names every directory each glob in CMD (a literal
-# loop written out per item) can expand in, every one resolves from this cwd,
-# and no match there is a secret. Anything it cannot read (no shfmt, an opaque
-# command, an expansion, an unknown cd, a quoted or exotic glob) is not
-# proved, with the reason in RS_AST_WHY; a child render whose cwd is not ours
-# proves RS_AST_TOP_CMD, which must hold no nested shell body.
 rs_ast_proves_safe() {
     RS_AST_WHY=''
     if [ "${GUARD_UNWRAP_CWD:-}" = unknown ]; then
