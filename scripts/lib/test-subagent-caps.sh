@@ -192,6 +192,8 @@ echo "=== 3d. pipeline-cadence.sh's generated claude runner ==="
 PC="$ROOT/scripts/luna/pipeline-cadence.sh"
 pc_runner() {
     ( set +u
+      # shellcheck disable=SC2034  # read by the extracted emit_runner
+      CADENCE_PERMISSION_MODE=acceptEdits
       # shellcheck source=subagent-caps.sh
       . "$LIB"
       eval "$(sed -n '/^emit_runner() {/,/^}/p' "$PC")"
@@ -199,7 +201,7 @@ pc_runner() {
 }
 prun="$(pc_runner haiku)"
 has "cadence: the Haiku health runner starts claude with both caps" "$prun" "env $DEPTH $CONC claude --model haiku"
-has "cadence: the Haiku health runner starts with the Agent tool disallowed" "$prun" "--model haiku --disallowedTools Agent --permission-mode"
+has "cadence: the Haiku health runner starts with the Agent tool disallowed" "$prun" "--model haiku --disallowedTools Agent --permission-mode acceptEdits --settings"
 prun="$(pc_runner claude-sonnet-5-5)"
 has "cadence: a Sonnet runner carries the caps too" "$prun" "env $DEPTH $CONC claude --model claude-sonnet-5-5"
 lacks "cadence: a Sonnet runner keeps the Agent tool" "$prun" "--disallowedTools"

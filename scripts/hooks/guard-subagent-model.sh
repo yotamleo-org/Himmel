@@ -79,7 +79,7 @@ agent_def_keeps_agent() {
                     for (i = 1; i <= length(v); i++) {
                         c = substr(v, i, 1)
                         if (q != "") { if (c == q) q = "" }
-                        else if (c == "\"" || c == "\047") q = c
+                        else if ((c == "\"" || c == "\047") && p ~ /[[:space:],[{(:]/) q = c
                         else if (c == "#" && p ~ /[[:space:]]/) return substr(v, 1, i - 1)
                         p = c
                     }
@@ -87,6 +87,7 @@ agent_def_keeps_agent() {
                 }
                 function has_agent(v,   n, a, i, t) {
                     v = uncomment(v)
+                    gsub(/\([^)]*\)/, "", v)
                     gsub(/["'\''\[\]{}>|]/, " ", v)
                     n = split(v, a, /[[:space:],]+/)
                     for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || t == "*") return 1 }
@@ -113,7 +114,7 @@ agent_def_keeps_agent() {
                 0) return 0 ;;
                 1) return 1 ;;
             esac
-        done < <(find "$root/.claude/agents" -type f -name '*.md')
+        done < <(find -L "$root/.claude/agents" -type f -name '*.md')
     done
     return 1
 }
