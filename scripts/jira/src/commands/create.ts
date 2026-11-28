@@ -161,8 +161,7 @@ export function nextResidualDepth(parentLabels: string[]): number {
 
 export const BACKLOG_LABEL = 'backlog';
 
-/** A remainder (the parent's own unfinished ask) and a review residual are two kinds; no ticket is both. */
-export function bothKindsOfLabel(labels: readonly string[]): boolean {
+export function holdsRemainderAndResidual(labels: readonly string[]): boolean {
   return labels.includes('remainder') && labels.some((l) => /(^|-)residual(-|$)/.test(l));
 }
 

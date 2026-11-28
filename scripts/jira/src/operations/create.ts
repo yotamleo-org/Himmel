@@ -21,7 +21,7 @@ import { refuseTestJiraPost } from '../commands/release.js';
 import { isTestProject } from '../live-test-guard.js';
 import {
   BACKLOG_LABEL,
-  bothKindsOfLabel,
+  holdsRemainderAndResidual,
   agentDetailOf,
   agentDetailOfAdf,
   appendFuOverride,
@@ -166,7 +166,7 @@ function checkFlagCombinations(options: CreateOptions): void {
   }
   const stamped = followUpLabel(options);
   const given = options.labels !== undefined ? parseLabels(options.labels) : [];
-  if (bothKindsOfLabel([...given, ...(stamped ? [stamped] : []), ...(options.residualOf !== undefined ? ['residual'] : [])])) {
+  if (holdsRemainderAndResidual([...given, ...(stamped ? [stamped] : []), ...(options.residualOf !== undefined ? ['residual'] : [])])) {
     throw new CreateRefused('jira create refused, nothing was filed: a remainder and a review residual never share a ticket; file the parent\'s own unfinished ask with --follow-up-of <key> --remainder and no residual label, or a review extra without the remainder label');
   }
 }

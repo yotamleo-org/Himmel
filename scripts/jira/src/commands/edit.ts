@@ -6,7 +6,7 @@ import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
-import { bothKindsOfLabel, nextResidualDepth, queueBacklogIntake } from './create.js';
+import { holdsRemainderAndResidual, nextResidualDepth, queueBacklogIntake } from './create.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorField, sectorOf, sectorOptions } from './sector.js';
 import { bodyDiagnostics, homeVerdict, type BodyInput, type Diagnostic } from '../plain-block.js';
@@ -345,7 +345,7 @@ async function checkEditContract(key: string, o: EditOptions): Promise<string[]>
   };
   const was = contractDiagnostics(before, { format: 'adf', body: before.description }, sectors);
   const will = contractDiagnostics(after, o.description !== undefined ? { format: 'markdown', body: o.description } : { format: 'adf', body: before.description }, sectors);
-  if (!bothKindsOfLabel(before.labels) && bothKindsOfLabel(after.labels)) {
+  if (!holdsRemainderAndResidual(before.labels) && holdsRemainderAndResidual(after.labels)) {
     throw new Error(before.labels.includes('remainder')
       ? `${key} is a remainder of its parent, not a review residual; nothing changed`
       : `${key}: the labels would hold remainder and a review residual label, which never share a ticket; nothing changed`);
