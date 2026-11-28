@@ -47,7 +47,7 @@ run_claude() {
 
 run_codex() {
     local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
-    local full_tool="mcp__t3-code__$tool"
+    local full_tool="${6:-mcp__t3_code__}$tool"
     local cmds="" cmd="" payload="" out="" rc=0 dec="" denied=0
     local -a parts=()
     cmds="$(TOOL_NAME="$full_tool" HOOKS_FILE="$REPO/.codex/hooks.json" node -e '
@@ -174,6 +174,7 @@ run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries
 run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
+run_codex delegate_task "$ARGS_BYPASS" deny "direct-server bypass instance denied" "carries a himmel bypass flag" mcp__t3_code_direct__
 
 echo "== T3 guard conformance: antigravity =="
 run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"
