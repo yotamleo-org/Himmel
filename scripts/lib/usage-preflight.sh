@@ -39,6 +39,31 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/lib/usage-preflight.sh || exit 96
 
+_FLEET_ENTRY_ENV=()
+_FLEET_ENTRY_NAMES=" "
+for _fe_n in $(compgen -e); do
+  case "$_fe_n" in _FLEET_READMIT_N|_FLEET_ADMIT_T0) continue ;; esac
+  _FLEET_ENTRY_ENV+=("$_fe_n=${!_fe_n}")
+  _FLEET_ENTRY_NAMES="$_FLEET_ENTRY_NAMES$_fe_n "
+done
+_FLEET_ENTRY_ARGS=(${1+"$@"})
+_FLEET_BUDGET="${FLEET_ADMIT_LAUNCH_WAIT_SECS:-90}"
+case "$_FLEET_BUDGET" in ''|*[!0-9]*|????*) _FLEET_BUDGET=90 ;; esac
+_FLEET_BUDGET=$((10#$_FLEET_BUDGET))
+[ "$_FLEET_BUDGET" -le 120 ] || _FLEET_BUDGET=90
+_fleet_t0_now=$(date +%s)
+_fleet_t0_in="${_FLEET_ADMIT_T0:-}"
+case "$_fleet_t0_in" in ''|*[!0-9]*|???????????*) _fleet_t0_in="" ;; esac
+if [ -n "$_fleet_t0_in" ] && [ "$((10#$_fleet_t0_in))" -le "$_fleet_t0_now" ] &&
+   [ "$((10#$_fleet_t0_in))" -ge $((_fleet_t0_now - _FLEET_BUDGET - 5)) ]; then
+  _FLEET_ADMIT_T0=$((10#$_fleet_t0_in))
+else
+  case "${_FLEET_READMIT_N:-}" in
+    1|2) _FLEET_ADMIT_T0=$((_fleet_t0_now - _FLEET_BUDGET)) ;;
+    *) _FLEET_ADMIT_T0=$_fleet_t0_now ;;
+  esac
+fi
+
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PREFLIGHT_LIB="$(cd "$(dirname "$0")" && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
@@ -107,6 +132,33 @@ if [ "$LAUNCH_INTENT" = 1 ]; then
     echo 'bank-preflight: fleet-paused (managed control unavailable or paused)' >&2
     emit SKIPPED-FLEET
   fi
+elif [ -n "${FLEET_LAUNCH_DOC:-}" ]; then
+  # shellcheck source=scripts/lib/timeout-bin.sh
+  . "$PREFLIGHT_LIB/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+  _fleet_read_why=''
+  if [ -z "${_TIMEOUT_BIN:-}" ]; then
+    _fleet_read_why='no timeout binary'
+  else
+    _fleet_read=$("$_TIMEOUT_BIN" 5 env -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_ATTEMPT python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" resolve --doc "$FLEET_LAUNCH_DOC" --manifest "${FLEET_LAUNCH_MANIFEST:-}" 2>/dev/null)
+    _fleet_read_rc=$?
+    case "$_fleet_read_rc" in
+      0)
+        case "$(printf '%s\n' "$_fleet_read" | jq -r '.managed' 2>/dev/null)" in
+          true)
+            if [ -n "$(printf '%s\n' "$_fleet_read" | jq -r '.slots // empty' 2>/dev/null)" ]; then
+              _managed_scope="$_fleet_read"
+            else
+              _fleet_read_why='no slots'
+            fi ;;
+          false) ;;
+          *) _fleet_read_why='unparseable output' ;;
+        esac ;;
+      10) _fleet_read_why='runtime refused' ;;
+      124) _fleet_read_why='timeout' ;;
+      *) _fleet_read_why="exit $_fleet_read_rc" ;;
+    esac
+  fi
+  [ -z "$_fleet_read_why" ] || echo "bank-preflight: family target not read ($_fleet_read_why) — counted as an unmanaged read" >&2
 fi
 
 # fleet-size cap. Concurrency, not bank exhaustion, burned the
@@ -137,7 +189,10 @@ fi
 is_int "$FLEET_CAP" || FLEET_CAP=4
 if [ -n "$_managed_scope" ] && [ "$(printf '%s\n' "$_managed_scope" | jq -r .managed)" = true ]; then
   _managed_target=$(printf '%s\n' "$_managed_scope" | jq -r .target)
-  [ "$FLEET_CAP" -le "$_managed_target" ] || FLEET_CAP="$_managed_target"
+  if [ "$FLEET_CAP" -gt "$_managed_target" ]; then
+    _fleet_cap_source="bank-preflight: cap-source=family-target target=$_managed_target policy-cap=$FLEET_CAP"
+    FLEET_CAP="$_managed_target"
+  fi
   FLEET_CAP_OK=''
 fi
 
@@ -394,7 +449,7 @@ _fleet_gate_drop() { # _fleet_gate_drop <gate> <fence>
 # cannot get it, the lock is left to age out (a REFUSED launch — SKIPPED-FLEET —
 # for up to FLEET_ADMIT_STALE_SECS) and that is logged, never silent.
 _fleet_release_admit() {
-  local admit="$1" gate="$1.reclaim" iters=0 fence
+  local admit="$1" gate="$1.reclaim" iters=0 fence held_at
   while ! _fleet_gate_take "$gate"; do
     iters=$((iters + 1))
     # The retry window (ITERS x RETRY_SLEEP = 160 x 0.05 = 8s) must exceed
@@ -415,10 +470,34 @@ _fleet_release_admit() {
   # the reclaimer's lock. The rename targets a path through our fence and
   # fails once the gate is not ours; the victim goes when the gate drops.
   if [ -n "$fence" ] && [ "$(cat "$admit/pid" 2>/dev/null)" = "$$" ]; then
-    mv "$admit" "$fence/victim" 2>/dev/null
+    held_at="$(cat "$admit/acquired" 2>/dev/null)" || held_at=""
+    if mv "$admit" "$fence/victim" 2>/dev/null && [ "${LAUNCH_INTENT:-}" = 1 ]; then
+      case "$held_at" in
+        ''|*[!0-9]*|???????????*) ;;
+        *) echo "bank-preflight: admission lock held $(( $(date +%s) - 10#$held_at ))s" >&2 ;;
+      esac
+    fi
   fi
   _fleet_gate_drop "$gate" "$fence"
   return 0
+}
+_fleet_pidns_read() {
+  [ -z "${_fleet_pidns_read_done:-}" ] || return 0
+  _fleet_pidns_read_done=1
+  _fleet_pidns_self="$(readlink /proc/self/ns/pid 2>/dev/null)" || _fleet_pidns_self=""
+  if [ -z "$_fleet_pidns_self" ] && [ "$(uname -s 2>/dev/null)" != Linux ]; then _fleet_pidns_self=none; fi
+}
+_fleet_pidns_write() {
+  _fleet_pidns_read
+  [ -z "${_fleet_pidns_self:-}" ] || printf '%s\n' "$_fleet_pidns_self" > "$1/pidns" 2>/dev/null || :
+}
+_fleet_pid_confirmed_dead() {
+  local rc=0
+  declare -F proc_tree_process_alive >/dev/null 2>&1 || return 1
+  _fleet_pidns_read
+  [ -n "${_fleet_pidns_self:-}" ] && [ "$(cat "$1/pidns" 2>/dev/null)" = "$_fleet_pidns_self" ] || return 1
+  proc_tree_process_alive "$2" || rc=$?
+  [ "$rc" -eq 1 ]
 }
 _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_stale_admit below
   local admit="$1" expected_at="$2" fence="$3" victim stolen_at
@@ -429,6 +508,9 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
   # no rename, no restore, no empty window.
   stolen_at="$(cat "$admit/acquired" 2>/dev/null)" || stolen_at=""
   [ "$stolen_at" = "$expected_at" ] || return 1
+  if [ -n "${4:-}" ]; then
+    [ "$(cat "$admit/pid" 2>/dev/null)" = "$4" ] && _fleet_pid_confirmed_dead "$admit" "$4" || return 1
+  fi
   _fleet_admit_hook post-verify "$admit"
   # Fenced: the victim lives INSIDE our gate, so this rename fails
   # outright if the gate was broken while we were paused anywhere since taking
@@ -495,6 +577,7 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
       # claim could never be released by its owner and would wedge admission
       # until it aged out.
       if printf '%s\n' "$$" > "$admit/pid" 2>/dev/null; then
+        _fleet_pidns_write "$admit"
         return 0
       fi
     fi
@@ -502,11 +585,11 @@ _fleet_steal_stale_admit_gated() { # runs UNDER the gate — see _fleet_steal_st
   fi
   return 1
 }
-_fleet_steal_stale_admit() { # _fleet_steal_stale_admit <admit-dir> <expected-acquired-stamp>
+_fleet_steal_stale_admit() {
   local gate="$1.reclaim" rc fence
   _fleet_gate_take "$gate" || return 1
   fence="$_fleet_gate_fence"
-  _fleet_steal_stale_admit_gated "$1" "$2" "$fence"
+  _fleet_steal_stale_admit_gated "$1" "$2" "$fence" "${3:-}"
   rc=$?
   _fleet_gate_drop "$gate" "$fence"
   return "$rc"
@@ -530,6 +613,7 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
       # pid-verified now, so a claim whose pid write failed could never be
       # released by its owner and would wedge admission until it aged out.
       if printf '%s\n' "$$" > "$admit/pid" 2>/dev/null; then
+        _fleet_pidns_write "$admit"
         return 0
       fi
     fi
@@ -555,6 +639,15 @@ _fleet_claim_admit() { # _fleet_claim_admit <admit-dir>
     ''|*[!0-9]*) _fleet_admit_stamp_or_fail "$admit"; return 1 ;;
   esac
   age=$(( $(date +%s) - held_at ))
+  _fleet_held_pid="$(cat "$admit/pid" 2>/dev/null)"
+  case "$_fleet_held_pid" in
+    ''|*[!0-9]*) ;;
+    *) if _fleet_pid_confirmed_dead "$admit" "$_fleet_held_pid"; then
+         echo "bank-preflight: reclaiming the fleet admission lock ($admit) from a dead holder pid $_fleet_held_pid (age ${age}s)" >&2
+         _fleet_steal_stale_admit "$admit" "$held_at" "$_fleet_held_pid"
+         return
+       fi ;;
+  esac
   [ "$age" -ge "${FLEET_ADMIT_STALE_SECS:-60}" ] || return 1
   # Age alone cannot tell a
   # crashed holder from one still legitimately inside the critical section
@@ -744,6 +837,41 @@ _fleet_reclaim_dead_reservation() {
   return "$rc"
 }
 
+_fleet_holder_line() {
+  local pid at
+  pid="$(cat "$SLOTS/.admit/pid" 2>/dev/null)"
+  at="$(cat "$SLOTS/.admit/acquired" 2>/dev/null)"
+  case "$pid" in ''|*[!0-9]*) at="" ;; esac
+  case "$at" in
+    ''|*[!0-9]*) ;;
+    *) echo "bank-preflight: admission lock held by holder pid $pid (age $(( $(date +%s) - 10#$at ))s, command: $(ps -o comm= -p "$pid" 2>/dev/null | head -c 64))" >&2 ;;
+  esac
+}
+
+_fleet_readmit() {
+  local point="$1" n="${_FLEET_READMIT_N:-0}" t0="$_FLEET_ADMIT_T0" name word
+  case "$n" in 0|1) ;; *) n=2 ;; esac
+  if [ "$LAUNCH_INTENT" = 1 ] && [ "$n" -lt 2 ] &&
+     [ $(( $(date +%s) - _FLEET_ADMIT_T0 )) -lt "$_FLEET_BUDGET" ] && [ -x "$BASH" ]; then
+    echo "bank-preflight: admission lock lost ($point) — re-running admission ($((n + 1)) of 2)" >&2
+    _fleet_holder_line
+    for name in $(compgen -e); do
+      # shellcheck disable=SC2163
+      case "$_FLEET_ENTRY_NAMES" in *" $name "*) ;; *) export -n "$name"; unset "$name" ;; esac
+    done
+    for word in ${_FLEET_ENTRY_ENV[@]+"${_FLEET_ENTRY_ENV[@]}"}; do
+      # shellcheck disable=SC2163
+      export "$word"
+    done
+    export _FLEET_READMIT_N=$((n + 1)) _FLEET_ADMIT_T0="$t0"
+    shopt -s execfail
+    exec "$BASH" "$0" ${_FLEET_ENTRY_ARGS[@]+"${_FLEET_ENTRY_ARGS[@]}"}
+  fi
+  echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was lost during admission ($point) and the re-admissions did not keep it — refusing" >&2
+  _fleet_holder_line
+  emit SKIPPED-FLEET
+}
+
 if ! _fleet_census; then
   echo "bank-preflight: fleet process census failed ('$_fleet_ps_cmd' exited $_fleet_ps_rc) — cannot verify the fleet is under cap; refusing rather than silently permitting an unbounded launch" >&2
   echo "bank-preflight: FLEET ?/$FLEET_CAP" >&2
@@ -766,7 +894,7 @@ fi
 # anything git-tracked.
 SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 if [ -n "${_managed_target:-}" ]; then
-  SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) || emit SKIPPED-FLEET
+  if ! SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) && [ "$LAUNCH_INTENT" = 1 ]; then emit SKIPPED-FLEET; fi
 fi
 mkdir -p "$SLOTS" 2>/dev/null
 
@@ -779,10 +907,22 @@ API_CAP="${HIMMEL_API_MAX_CONCURRENT:-10}"
 is_int "$API_CAP" || API_CAP=10
 _fleet_admitted=0
 _fleet_admit_iters=0
-while [ "$_fleet_admit_iters" -lt "${FLEET_ADMIT_RETRY_ITERS:-100}" ]; do
+# shellcheck source=scripts/lib/proc-tree.sh
+. "$(dirname "$0")/proc-tree.sh" 2>/dev/null || :  # swallow-ok: a tree without proc-tree.sh (an adopter copy) keeps the stale-age path
+_fleet_admit_floor="${FLEET_ADMIT_RETRY_ITERS:-100}"
+case "$_fleet_admit_floor" in ''|*[!0-9]*|??????????*) _fleet_admit_floor=100 ;; esac
+_fleet_admit_floor=$((10#$_fleet_admit_floor))
+if [ "$LAUNCH_INTENT" = 1 ] && [ -n "${_FLEET_READMIT_N:-}" ]; then _fleet_admit_floor=1; fi
+while :; do
   _fleet_claim_admit "$SLOTS/.admit" && { _fleet_admitted=1; break; }
-  sleep "${FLEET_ADMIT_RETRY_SLEEP:-0.05}"
+  if [ "$_fleet_admit_iters" -lt $((_fleet_admit_floor - 1)) ]; then
+    sleep "${FLEET_ADMIT_RETRY_SLEEP:-0.05}"
+    _fleet_admit_iters=$((_fleet_admit_iters + 1))
+    continue
+  fi
   _fleet_admit_iters=$((_fleet_admit_iters + 1))
+  [ "$LAUNCH_INTENT" = 1 ] && [ $(( $(date +%s) - _FLEET_ADMIT_T0 )) -lt "$_FLEET_BUDGET" ] || break
+  sleep 0.25
 done
 
 if [ "$_fleet_admitted" -eq 1 ]; then
@@ -946,9 +1086,11 @@ fi
 if [ "$_fleet_admitted" -eq 1 ] && [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" != "$$" ]; then
   echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was reclaimed while this preflight held it — refusing to decide on a stale census" >&2
   _fleet_admitted=0
+  _fleet_lock_lost=1
 fi
 
 echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrouter=$fleet_openrouter reserved=$fleet_reserved total=$fleet_n/$FLEET_CAP" >&2
+[ -z "${_fleet_cap_source:-}" ] || echo "$_fleet_cap_source" >&2
 _fleet_own_recheck=false
 if [ -n "${CADENCE_USAGE_RECHECK_ATTEMPT:-}" ]; then
   _fleet_own_recheck=$(python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" reservation \
@@ -973,14 +1115,11 @@ if [ "$LANE" = api ] && [ "$LAUNCH_INTENT" = "1" ] && [ "${HIMMEL_API_LANE:-}" !
 fi
 
 if [ "$_fleet_admitted" -eq 0 ]; then
+  if [ "${_fleet_lock_lost:-0}" = 1 ] && [ "${FLEET_CAP_OK:-}" != "1" ] && [ "$LAUNCH_INTENT" = "1" ]; then
+    _fleet_readmit in-lock
+  fi
   echo "bank-preflight: could not acquire the fleet admission lock ($SLOTS/.admit) after $_fleet_admit_iters retries — cannot verify the fleet is under cap" >&2
-  _fleet_held_pid="$(cat "$SLOTS/.admit/pid" 2>/dev/null)"
-  _fleet_held_at="$(cat "$SLOTS/.admit/acquired" 2>/dev/null)"
-  case "$_fleet_held_pid" in ''|*[!0-9]*) _fleet_held_at="" ;; esac
-  case "$_fleet_held_at" in
-    ''|*[!0-9]*) ;;
-    *) echo "bank-preflight: admission lock held by holder pid $_fleet_held_pid (age $(( $(date +%s) - 10#$_fleet_held_at ))s, command: $(ps -o comm= -p "$_fleet_held_pid" 2>/dev/null | head -c 64))" >&2 ;;
-  esac
+  _fleet_holder_line
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: FLEET_CAP_OK bypass in effect (launching shell only) — proceeding despite the admission-lock failure" >&2
   elif [ "$LAUNCH_INTENT" = "1" ]; then
@@ -1055,10 +1194,13 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ] 
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$WORKER" > "$dir/name" 2>/dev/null || true
         if [ -n "${FLEET_LAUNCH_ATTEMPT:-}" ] && [ -n "${_managed_target:-}" ]; then
-          if ! python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" stamp --slot "$dir" \
+          python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" stamp --slot "$dir" \
               --doc "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" --manifest "${FLEET_LAUNCH_MANIFEST:-}" --name "$WORKER" \
-              --attempt-id "$FLEET_LAUNCH_ATTEMPT" --pid "${CADENCE_USAGE_CALLER_PID:-$$}" >/dev/null; then
+              --attempt-id "$FLEET_LAUNCH_ATTEMPT" --pid "${CADENCE_USAGE_CALLER_PID:-$$}" >/dev/null
+          _fleet_stamp_rc=$?
+          if [ "$_fleet_stamp_rc" -ne 0 ]; then
             rm -rf "$dir"
+            [ "$_fleet_stamp_rc" -eq 12 ] && return 4
             return 3
           fi
         fi
@@ -1097,7 +1239,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ] 
   esac
   if [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" != "$$" ]; then
     echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was reclaimed before the reservation — refusing" >&2
-    emit SKIPPED-FLEET
+    _fleet_readmit pre-reserve
   fi
   _fleet_resv_key="$(fleet_reservation_key "$WORKER")"
   _fleet_reserve "$SLOTS/$_fleet_resv_key"
@@ -1115,7 +1257,16 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ] 
     _fleet_reserve_rc=$?
   fi
   case "$_fleet_reserve_rc" in
-    0) : ;;
+    0)
+      _fleet_admit_hook post-reserve "$SLOTS/$_fleet_resv_key"
+      if [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" != "$$" ]; then
+        if [ "$(cat "$SLOTS/$_fleet_resv_key/pid" 2>/dev/null)" = "${CADENCE_USAGE_CALLER_PID:-$$}" ]; then
+          rm -rf "${SLOTS:?}/$_fleet_resv_key"
+        fi
+        _fleet_readmit post-reserve
+      fi
+      ;;
+    4) _fleet_readmit stamp ;;
     2)
       # name the holder and when it lapses, so this reads as what it is (a slot already held under
       # this worker's name, e.g. by a refused earlier launch), never as a full fleet.
