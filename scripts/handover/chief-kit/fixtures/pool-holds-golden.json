@@ -1,5 +1,6 @@
 {
   "doc": "/fixture/HIMMEL-nextleg-2026-11-15GD-roadmap-chief.md",
+  "mirror_fresh": true,
   "mode": "on",
   "prs": {
     "4998": "OPEN",
@@ -71,13 +72,13 @@
       "age_days": 0,
       "age_gen": 1,
       "asks_operator": false,
-      "class": "wake",
+      "class": "no-authority",
       "fired": false,
       "first_seen": "2026-11-15T12:00:00Z",
       "key": "HIMMEL-5",
       "line": "a2ed14c37a73",
       "outside": null,
-      "reason": "on wake=date:2026-11-18",
+      "reason": "wake=date holds nothing: no live holder (decisions 1281, 1282)",
       "verb": "park",
       "wake": "date:2026-11-18",
       "words": null

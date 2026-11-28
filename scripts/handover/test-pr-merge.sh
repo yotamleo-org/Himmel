@@ -128,12 +128,13 @@ case "$verb" in
                 # refuse-rather-than-merge-unbound path.
                 [ "${STUB_HEAD_UNREADABLE:-0}" = "1" ] && { echo ""; exit 0; }
                 echo "abc123"
-            elif [ "${STUB_CR_BLOCK:-0}" = "1" ] || [ "${STUB_CI_BLOCK:-0}" = "1" ] || [ "${STUB_ALL_GREEN:-0}" = "1" ]; then
-                echo '{"number":42,"headRefOid":"abc123","url":"https://github.com/o/r/pull/42"}'
-            else
-                # Non-JSON so cr_merge_gate degrades + fails open (existing cases
-                # without STUB_CR_BLOCK/CI_BLOCK/ALL_GREEN stay green).
+            elif [ "${STUB_META_FAIL:-0}" = "1" ]; then
+                echo "gh: could not resolve to a PullRequest" >&2
+                exit 1
+            elif [ "${STUB_META_JUNK:-0}" = "1" ]; then
                 echo "degraded-non-json"
+            else
+                echo '{"number":42,"headRefOid":"abc123","url":"https://github.com/o/r/pull/42"}'
             fi
             exit 0
         fi
@@ -153,14 +154,10 @@ case "$verb" in
         echo "merged"
         ;;
     "api graphql")
-        # CR-gate reviewThreads query. STUB_CI_BLOCK=1 needs the CR gate to PASS
-        # (resolved coderabbit threads) so the CI gate is reached; otherwise one
-        # unresolved coderabbitai thread arms the CR block (fixture from
-        # test-cr-merge-gate.sh).
-        if [ "${STUB_CI_BLOCK:-0}" = "1" ] || [ "${STUB_ALL_GREEN:-0}" = "1" ]; then
-            echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}'
-        else
+        if [ "${STUB_CR_BLOCK:-0}" = "1" ]; then
             echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}'
+        else
+            echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}'
         fi
         ;;
     "api repos"*)
@@ -170,12 +167,14 @@ case "$verb" in
         # STUB_CI_BLOCK=1 returns a FAILED non-CodeRabbit check-run so the CI
         # gate blocks while the CR gate still passes.
         if printf ' %s ' "$@" | grep -q 'check-runs'; then
+            [ "${STUB_CI_UNKNOWN:-0}" = "1" ] && { echo "gh: HTTP 502" >&2; exit 1; }
             if [ "${STUB_CI_BLOCK:-0}" = "1" ]; then
                 echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}'
             else
                 echo '{"check_runs":[]}'
             fi
         elif printf ' %s ' "$@" | grep -q 'statuses'; then
+            [ "${STUB_CHECKLESS:-0}" = "1" ] && { echo '[]'; exit 0; }
             # CodeRabbit's real shape: a commit STATUS with creator identity
             # identity. The CR gate requires it PRESENT + success on the
             # head; the CI gate excludes it and reads the rest.
@@ -304,12 +303,13 @@ FRONT
         else
             export GH_CMD=gh
         fi
+        [ "${STUB_CR_ARMED:-0}" = "1" ] || export CR_PROFILE=none
         GH_LOG="$ghlog" \
             MERGE_BLOCK_ALERT_DIR="$tmp/alerts" MERGE_BLOCK_ALERT_CMD="$tmp/bin/alert-sender" \
             TELEGRAM_ACCESS_PATH="$tmp/access.json" \
             TICKET_STATUS_STATE_DIR="$tmp/state" \
             PATH="$run_path" \
-            bash "$PR_MERGE" "$@" >"$tmp/out" 2>"$tmp/err"
+            bash "${PR_MERGE_ALT:-$PR_MERGE}" "$@" >"$tmp/out" 2>"$tmp/err"
     )
     local rc=$?
     LAST_GH_LOG="$ghlog"
@@ -475,7 +475,7 @@ fi
 # App is armed for the repo (git config himmel.coderabbit / CR_APP=1). This
 # fixture repo is never armed, so without this the gate would silently allow —
 # arm it here so the block this case exists to prove is actually exercised.
-if STUB_CR_BLOCK=1 CR_APP=1 \
+if STUB_CR_BLOCK=1 CR_APP=1 STUB_CR_ARMED=1 \
     run_case "handover/x-slug" 5 "CR-gate block exits 5 before check"; then
     assert_log_lacks "pr merge" "CR-gate block does not attempt merge"
     assert_err_has    "CR gate" "CR-gate block reports CR gate on stderr"
@@ -491,6 +491,57 @@ if STUB_CI_BLOCK=1 \
     assert_log_lacks "pr merge" "CI-gate block does not attempt merge"
     assert_err_has    "CI gate" "CI-gate block reports CI gate on stderr"
     assert_alerts 1 "CI-gate block: exactly one operator DM"
+fi
+
+make_nolib_tree() {
+    local root="$1" omit="$2" f
+    mkdir -p "$root/handover" "$root/lib"
+    cp "$SCRIPT_DIR/pr-merge.sh" "$root/handover/pr-merge.sh"
+    for f in "$SCRIPT_DIR/../"*; do
+        case "$(basename "$f")" in handover|lib) ;; *) ln -s "$f" "$root/$(basename "$f")" ;; esac
+    done
+    for f in "$SCRIPT_DIR/../lib/"*; do
+        [ "$(basename "$f")" = "$omit" ] || ln -s "$f" "$root/lib/$(basename "$f")"
+    done
+}
+make_nolib_tree "$TT_BASE/nolib-none" none
+make_nolib_tree "$TT_BASE/nolib-ci" ci-green-gate.sh
+make_nolib_tree "$TT_BASE/nolib-cr" review-merge-gate.sh
+
+PR_MERGE_ALT="$TT_BASE/nolib-none/handover/pr-merge.sh" \
+    run_case "handover/x-slug" 0 "library-tree control: all libraries present merges"
+
+if PR_MERGE_ALT="$TT_BASE/nolib-ci/handover/pr-merge.sh" \
+    run_case "handover/x-slug" 8 "missing CI gate library refuses (exit 8)"; then
+    assert_log_lacks "pr merge" "missing CI gate library: no merge call"
+    assert_err_has "ci-green-gate.sh" "missing CI gate library: stderr names the library"
+fi
+if PR_MERGE_ALT="$TT_BASE/nolib-cr/handover/pr-merge.sh" \
+    run_case "handover/x-slug" 8 "missing CR gate library refuses (exit 8)"; then
+    assert_log_lacks "pr merge" "missing CR gate library: no merge call"
+    assert_err_has "review-merge-gate.sh" "missing CR gate library: stderr names the library"
+fi
+
+if STUB_CI_UNKNOWN=1 run_case "handover/x-slug" 9 "CI lookup unknown refuses (exit 9)"; then
+    assert_log_lacks "pr merge" "CI lookup unknown: no merge call"
+    assert_err_has "CI gate verdict unknown" "CI lookup unknown: stderr says the CI verdict is unknown"
+fi
+if STUB_CR_ARMED=1 run_case "handover/x-slug" 9 "CR gate with no readable reviewer verdict refuses (exit 9)"; then
+    assert_log_lacks "pr merge" "CR verdict unknown: no merge call"
+    assert_err_has "CR gate verdict unknown" "CR verdict unknown: stderr says the CR verdict is unknown"
+fi
+if STUB_META_FAIL=1 run_case "handover/x-slug" 9 "gate selector unresolvable refuses (exit 9)"; then
+    assert_log_lacks "pr merge" "unresolvable selector: no merge call"
+fi
+if STUB_META_JUNK=1 run_case "handover/x-slug" 9 "unreadable PR metadata refuses (exit 9)"; then
+    assert_log_lacks "pr merge" "unreadable PR metadata: no merge call"
+fi
+
+if STUB_CHECKLESS=1 run_case "handover/x-slug" 0 "exempt: a PR with no checks at all still merges"; then
+    assert_log_has "pr merge 42 --squash" "checkless PR reaches the merge call"
+fi
+if CI_MERGE_GATE_OK=1 STUB_CI_UNKNOWN=1 run_case "handover/x-slug" 0 "exempt: an explicit CI_MERGE_GATE_OK bypass still merges"; then
+    assert_log_has "pr merge 42 --squash" "CI bypass reaches the merge call"
 fi
 
 # --- the merge is BOUND to the vetted head SHA ---

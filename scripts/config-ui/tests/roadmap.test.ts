@@ -1867,14 +1867,15 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   if (o.state !== "ok") throw new Error(o.reason);
   const held = o.items.filter((i) => i.source === "pool hold");
   const of = (n: number) => held.find((i) => i.key === K(n));
-  expect(of(2)!.ctx).toBe("park since 3 chief generations, with no operator words and no wake");
-  expect(of(2)!.act).toBe("record the operator's words (O- record) or a near wake=, or dispatch it");
+  expect(of(2)!.ctx).toBe("park since 3 chief generations, with no operator words and no live holder");
+  expect(of(2)!.act).toBe("record the operator's words (O- record) or a live wake (pr:, done: with a live owner), or dispatch it");
   expect(of(1)!.ctx).toBe('question on the operator\'s words: "Approved one more round"');
   expect(of(1)!.act).toBe("none, unless the words do not say this");
   expect(of(3)!.ctx).toBe("hold on wake=pr:4999 for 7 days");
   expect(of(3)!.act).toBe("re-decide: dispatch it, or record the operator's words");
   expect(of(4)).toBeUndefined();
-  expect(of(5)).toBeUndefined();
+  expect(of(5)!.ctx).toBe("park since 1 chief generations, with no operator words and no live holder");
+  expect(of(5)!.act).toBe("record the operator's words (O- record) or a live wake (pr:, done: with a live owner), or dispatch it");
   const chief = o.items.filter((i) => i.source === "chief doc");
   expect(chief.map((i) => i.key)).toEqual([K(6)]);
   expect(o.unread).toEqual(["handoff items"]);

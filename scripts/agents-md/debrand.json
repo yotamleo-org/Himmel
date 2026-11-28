@@ -1,85 +1,47 @@
 [
   {
-    "from": "the Skill tool",
-    "to": "your skill-invocation mechanism",
-    "dormant": true,
-    "note": "Claude-Code tool name -> behavioral. Full-phrase ('the X tool') so it only matches unambiguous tool references, never factual prose. DORMANT: phrase not in live CLAUDE.md; retained for the test-generate.sh fixture."
+    "from": "an Opus parent spawns a Fable child",
+    "to": "a mid-tier parent spawns a top-model child",
+    "note": "Escalation prose: a routing fact, neutralized so a non-Claude driver does not read a Claude-only dispatch as an instruction it can execute. LIVE: keep this string intact when editing the escalation paragraph."
   },
   {
-    "from": "the Agent tool",
-    "to": "your subagent-dispatch mechanism",
-    "dormant": true,
-    "note": "Full-phrase only; deliberately does NOT match bare 'Agent tool' which appears inside a factual hook description in CLAUDE.md. DORMANT: phrase not in live CLAUDE.md; retained for the test fixture."
+    "from": "names haiku at medium effort",
+    "to": "names the smallest model tier at medium effort",
+    "note": "Claude model name -> tier language. LIVE."
   },
   {
-    "from": "the Bash tool",
-    "to": "your shell-execution mechanism",
-    "dormant": true,
-    "note": "Full-phrase tool reference -> behavioral text. DORMANT: phrase not in live CLAUDE.md; retained for the test fixture."
+    "from": "haiku is a leaf and never",
+    "to": "the smallest model tier is a leaf and never",
+    "note": "Claude model name -> tier language. LIVE."
   },
   {
-    "from": "the **Fable main thread**",
-    "to": "the **main thread**",
-    "dormant": true,
-    "note": "Identity claim — a Codex/GPT session must not read itself as the Fable main thread. DORMANT since the delegation block of CLAUDE.md was rewritten (phrase no longer in live CLAUDE.md); retained because the test-generate.sh fixture exercises it. Fable mentions in FABLE-WINDOW provenance comments stay (documentary, not identity)."
+    "from": "`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`",
+    "to": "your harness's spawn-depth and concurrency caps",
+    "note": "Claude Code env names -> the behavior every harness has some equivalent of. LIVE."
   },
   {
-    "from": "inherits the Fable\nmain loop",
-    "to": "inherits the main\nloop",
-    "dormant": true,
-    "note": "Spans CLAUDE.md's hard wrap — embedded newline load-bearing. DORMANT since the delegation block of CLAUDE.md was rewritten; retained for the test fixture."
+    "from": "`docs/internals/lane-calibration.md`, `/lanes`, ",
+    "to": "`docs/internals/lane-calibration.md`, ",
+    "note": "A Claude Code slash command with no equivalent elsewhere; the two docs carry the same information. LIVE."
   },
   {
-    "from": "the time-limited Fable quota",
-    "to": "the time-limited top-tier quota",
-    "dormant": true,
-    "note": "Quota claim — neutral tier language. DORMANT since the delegation block of CLAUDE.md was rewritten; retained for the test fixture."
+    "from": "A live URL → `WebFetch` directly.",
+    "to": "A live URL → fetch it directly with your web-fetch tool.",
+    "note": "Claude Code tool name -> behavioral. LIVE."
   },
   {
-    "from": "Fable-5 `low` ≈ prior-gen\n`xhigh`",
-    "to": "on Claude, Fable-5 `low` ≈ prior-gen\n`xhigh`",
-    "dormant": true,
-    "note": "The effort calibration is a Claude-family fact (false for GPT) — attribute it instead of asserting it about the reading model. DORMANT since the token-hygiene trim of CLAUDE.md: the calibration prose moved to docs/internals/lane-calibration.md, which carries its own non-Claude reader note. Retained for the test fixture."
+    "from": "use `/handover`, never edit docs",
+    "to": "use the handover skill, never edit docs",
+    "note": "Claude Code slash command -> skill, which every harness here loads under its own mechanism. LIVE."
   },
   {
-    "from": "| Fable 5 | judgment, taste — hardest calls; escalation target |",
-    "to": "| top model | judgment, taste — hardest calls; escalation target |",
-    "dormant": true,
-    "note": "Lane table row — neutral tier language for non-Claude drivers. DORMANT since the token-hygiene trim of CLAUDE.md: the tier table moved to docs/internals/lane-calibration.md, which is NOT debranded (this transform only covers CLAUDE.md -> AGENTS.md); that doc carries an explicit non-Claude reader note instead. Retained for the test fixture."
+    "from": "(e.g. `EDIT_ON_MAIN_OK=1 claude`)",
+    "to": "(e.g. `EDIT_ON_MAIN_OK=1` exported before your harness starts)",
+    "note": "The launch command names Claude; the env var is what matters. LIVE."
   },
   {
-    "from": "spawns a Fable child",
-    "to": "spawns a top-model child",
-    "note": "Escalation prose — routing fact, neutralized so a GPT/Codex driver doesn't read a Claude-only dispatch as an instruction it can execute. LIVE — keep this string intact when editing the escalation paragraph."
-  },
-  {
-    "from": "Fable = judgment and taste, the\nescalation target",
-    "to": "the top model = judgment and taste, the\nescalation target",
-    "dormant": true,
-    "note": "The condensed tier-semantics sentence that replaced the lane table in CLAUDE.md. A later steering cull moved it out of CLAUDE.md to docs/internals/lane-calibration.md, so the rule matches nothing now. Restore it if the sentence returns."
-  },
-  {
-    "from": "Fable-as-parent",
-    "to": "Top-model-as-parent",
-    "dormant": true,
-    "note": "Escalation prose — same neutralization. DORMANT since the token-hygiene trim of CLAUDE.md: the escalation-shape prose moved to docs/internals/lane-calibration.md, which carries its own non-Claude reader note. Retained for the test fixture."
-  },
-  {
-    "from": "compare per task vs Fable-low",
-    "to": "compare per task vs top-model-low",
-    "dormant": true,
-    "note": "Sonnet-row pricing comparison added 2026-07-08 — neutral tier language; full-phrase scopes the replacement to that comparison clause. DORMANT since 2026-07-10 (a later lane-table row replaced the clause); retained for the test fixture."
-  },
-  {
-    "from": "Fable stays CONSERVED (limited release)",
-    "to": "The top model stays CONSERVED (limited release)",
-    "dormant": true,
-    "note": "Conservation note added 2026-07-08. DORMANT since the token-hygiene trim of CLAUDE.md: the cost-posture prose moved to docs/internals/lane-calibration.md, which carries its own non-Claude reader note. Retained for the test fixture."
-  },
-  {
-    "from": "a Sonnet/Opus/Fable implementor-shaped Agent dispatch",
-    "to": "a Sonnet/Opus/top-model implementor-shaped Agent dispatch",
-    "dormant": true,
-    "note": "guard-implementor-dispatch hook description in the ENFORCEMENT section — neutral tier language, same pattern as the Fable-5 lane-table row. DORMANT: the ENFORCEMENT hook enumeration was replaced by a pointer in the token-hygiene trim of CLAUDE.md; retained for the test fixture."
+    "from": "use `himmel-ops:stuck-playbook` (`docs/internals/stuck-playbook.md`)",
+    "to": "read `docs/internals/stuck-playbook.md`",
+    "note": "A Claude Code plugin skill; the doc it wraps is readable anywhere. LIVE."
   }
 ]

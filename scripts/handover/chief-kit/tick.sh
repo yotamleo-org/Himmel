@@ -605,6 +605,12 @@ Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a 
 line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
 matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
+After the `# pool-unresolved` lines --pool-dispositions prints pool-unheld=<n>[+?]:<KEY>,... (sorted): the keys it
+classes no-authority or unowned that carry a Live-state line, with +? when any such line reads unchecked; absent when
+there is none and nothing is unchecked. The tick carries it after pool-parked= (plain `pool-unheld:` line). It differs
+from pool-holds=<unhandled>/<total>, which counts holds rows, invalid and unchecked included. When the holds file it
+reads (within its 30 min bound and for the doc's release) carries "mirror_fresh": false, a slice line whose target
+names a project key is unchecked (`the Jira mirror is stale or incomplete`); a missing file or key is no verdict.
 held-hi=<KEY>,... names the keys the same snapshot holds on a `NEEDS-CHIEF-NOTE` line (no readable scope, or a merged
 PR with no remainder) that are High or above or operator-directed, in any version, or carry a fixVersion and were created
 TICK_HELD_OLD_DAYS (default 30) or more days ago; each has one `# held-hi <KEY> <class> prio=<p|?> age=<d>d ver=<v|->`
@@ -639,7 +645,8 @@ or its PR merged or closed the line is stale, `?` marks an unreadable target (ne
 the waiter wakes once per newly stale key. The PR states come from the prs map of the doc's holds file
 (pool-holds-<stem>.json, the --pool-holds step below; missing or over 30 min old: every PR target and every
 wake= line reads `?`); --pool-stale makes no gh call. A line whose holds row is unchanged is also stale when
-its wake fired (`wake=<event>=fired`) or it waits on an outside PR with no watch row (`outside-PR=unwatched`).
+its pr: or done: wake fired (`wake=<event>=fired`; a date never fires) or it waits on an outside PR with no watch
+row (`outside-PR=unwatched`). A holds file whose mirror_fresh is false makes every key target read `?`.
 An issue number or a number GitHub cannot resolve reads `?`. Another KEY-shaped token (a wave label such as ZA-1) is text. Before
 the field, --pool-stale prints one `STALE-DISPOSITION <KEY> line=<12 hex> <target>=<state>...` line per
 stale key: line= is the sha256 prefix of the line's text after `pool-disposition:`, and every
@@ -671,14 +678,19 @@ only when a line cites a PR. With GitHub out (scripts/lib/gh-quota.sh ghq_scan_g
 a quota.tsv reading under 170 s old) nothing is read and every PR-dependent wake reads unchecked. In a bucket that declares a release,
 a give-up line (question, close, hold, park, or a slice naming no key, PR or @sha) on a pool key or an
 asks_operator key counts as dispositioned only on `authority=O-<R>-<n>|decision-<n>` that a words
-record of release-state-<stem>.json names the key with, or on a valid `wake=` that has not fired: pr:<n>
-(or pr-<n>-merge) on an open PR, done:<KEY> on a key an open PR's head branch or a worker names or the
-current version lists, date:<YYYY-MM-DD[THH:MMZ]> at most 7 days out, file:<absolute path under the handover
-root or TICK_STATE_DIR>; a list fires when any event fires, and an invalid part wins. Otherwise it is
-unresolved as no-authority, invalid or unchecked (a failed PR read; no, an old or a not-OK state file; a doc
-with no release: line). outside is true for a cross-repository PR of the open-PR list with no manifest watch
-row, null with no manifest or no open-PR list. A missing holds
-file, or one over 30 min old, reads every give-up line unchecked. With no declared release the step
+record of release-state-<stem>.json names the key with, or on a live `wake=` that has not fired: pr:<n>
+(or pr-<n>-merge) on an open PR, or done:<KEY> with a live owner (an open PR whose head branch names KEY, or
+a live worker on it; a fixVersion holds nothing). done: also needs a fresh, complete Jira mirror: .cursor.json
+lastSync within TICK_POOL_MIRROR_MAX (default 21600 s) and no "complete": false, else it reads unchecked, as it
+does when a worker on KEY reads unknown or the open-PR list or the fleet manifest is unread. date:<YYYY-MM-DD[THH:MMZ]>
+and file:<absolute path under the handover root or TICK_STATE_DIR> hold nothing (decisions 1281, 1282): a line held
+only by them is no-authority, `wake=date holds nothing: no live holder (decisions 1281, 1282)`; a malformed
+date or path stays invalid, and the queue: line's wake=file: (relaunch=) is unchanged. A list fires when any
+event fires, and an invalid part wins. Otherwise it is unresolved as no-authority, invalid or unchecked (a failed
+PR read; no, an old or a not-OK state file; a doc with no release: line). outside is true for a cross-repository
+PR of the open-PR list with no manifest watch row, null with no manifest or no open-PR list. When the step runs
+with a release it writes mirror_fresh (true or false, the bound above). A missing holds file, or one over 30 min
+old (`the holds file is older than 30 min`), reads every give-up line unchecked. With no declared release the step
 prints pool-holds=off:no-ledger, which the tick shows, and the lines keep the rule above.
 
 INTAKE=<n> is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
@@ -863,19 +875,24 @@ decisions, invalid, unowned, held = {}, {}, {}, {}
 closing = set()
 holds_on = bool(sys.argv[1]) and sys.argv[4].startswith("on:")
 target_re = re.compile(sys.argv[6])
+def targets(rest):
+    return target_re.findall(re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest))
 def gives_up(key, verb, rest):
-    rest = re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest)
-    return verb != "slice" or not any(t for t in target_re.findall(rest) if t != key and (not re.fullmatch(r"[A-Z]+-\d+", t) or t.split("-")[0] == key.split("-")[0]))
-hrows, hwhy = {}, ""
+    return verb != "slice" or not any(t for t in targets(rest) if t != key and (not re.fullmatch(r"[A-Z]+-\d+", t) or t.split("-")[0] == key.split("-")[0]))
+def names_key(key, rest):
+    return any(t != key and re.fullmatch(r"[A-Z]+-\d+", t) and t.split("-")[0] == key.split("-")[0] for t in targets(rest))
+hrows, hwhy, mirror_stale = {}, "", False
 if holds_on:
     try:
         hage = time.time() - os.path.getmtime(sys.argv[5])
         hd = json.load(open(sys.argv[5]))
         hrows = {r["key"]: r for r in hd.get("rows") or []}
         if hage > 1800:
-            hrows, hwhy = {}, "the holds file is %d min old" % (hage // 60)
+            hrows, hwhy = {}, "the holds file is older than 30 min"
         elif (hd.get("release") or "") != sys.argv[4][3:]:
             hrows, hwhy = {}, "the holds file was written for release %s" % hd.get("release")
+        else:
+            mirror_stale = hd.get("mirror_fresh") is False
     except FileNotFoundError:
         hwhy = "no holds file"
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
@@ -914,6 +931,8 @@ if sys.argv[1]:
                 decisions[key] = value
             else:
                 held[key] = (str(hr.get("class")), "%s: %s" % (hr.get("reason"), value))
+        elif mirror_stale and names_key(key, m[3]):
+            held[key] = ("unchecked", "the Jira mirror is stale or incomplete: " + value)
         elif not has_owner(m[3], key):
             unowned[key] = value
         else:
@@ -1039,6 +1058,12 @@ for key, reason in sorted(invalid.items()):
 for key, (cls, reason) in sorted(held.items()):
     if key not in rows:
         print("# pool-unresolved %s %s %s" % (cls, key, reason))
+lined = set(decisions) | set(unowned) | set(held)
+listed = unresolved + [(c, k, r) for k, (c, r) in held.items() if k not in rows]
+unheld = sorted({k for c, k, _ in listed if c in ("no-authority", "unowned") and k in lined})
+unk = any(c == "unchecked" and k in lined for c, k, _ in listed)
+if unheld or unk:
+    print("pool-unheld=%d%s%s" % (len(unheld), "+?" if unk else "", ":" + ",".join(unheld) if unheld else ""))
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
@@ -1052,9 +1077,9 @@ PY
 }
 
 pool_holds() {
-    python3 -I - "$@" "$POOL_TARGET_RE" <<'PY'
+    python3 -I - "$@" "$POOL_TARGET_RE" "$HERE/../../lib" <<'PY'
 import collections, datetime, fcntl, hashlib, json, os, re, subprocess, sys, tempfile
-doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, seed, target_re = sys.argv[1:14]
+doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, seed, target_re, lib = sys.argv[1:15]
 target_re = re.compile(target_re)
 state_dir = os.path.dirname(out)
 now = datetime.datetime.now(datetime.timezone.utc)
@@ -1215,15 +1240,39 @@ if open_tsv:
                 open_prs[int(f[0])] = (f[1], f[4] == "true")
     except OSError:
         open_prs = None
-watched, worker_docs = None, set()
+watched, worker_docs = None, []
 if manifest:
     try:
         mf = json.load(open(manifest))
         watched = {int(w["pr"]) for w in mf.get("watch") or [] if isinstance(w, dict) and str(w.get("pr", "")).isdigit()}
-        worker_docs = {os.path.basename(str(w.get("doc", ""))) for w in (mf.get("workers") or mf.get("legs") or []) if isinstance(w, dict)}
+        if any(mf.get(k) is not None and not isinstance(mf.get(k), list) for k in ("workers", "legs")):
+            raise TypeError("the roster is not a list")
+        legs = mf.get("workers") or mf.get("legs") or []
+        worker_docs = [str(w["doc"]) for w in legs if isinstance(w, dict) and w.get("doc")]
     except (OSError, ValueError, TypeError, AttributeError):
-        watched = None
-worker_docs |= {os.path.basename(w) for w in (os.environ.get("WORKERS") or "").split()}
+        watched, worker_docs = None, []
+worker_docs += (os.environ.get("WORKERS") or "").split()
+states = None
+def worker_state(path):
+    global states
+    if states is None:
+        try:
+            sys.path.insert(0, lib)
+            from fleet_runtime import WorkerStates
+            states = WorkerStates()
+        except ImportError:
+            states = lambda path: "unknown"
+    return states(path)
+
+def mirror_is_fresh():
+    try:
+        bound = int(os.environ.get("TICK_POOL_MIRROR_MAX") or 21600)
+        cur = json.load(open(os.path.join(mirror, ".cursor.json")))
+        synced = datetime.datetime.fromisoformat(str(cur["lastSync"]).replace("Z", "+00:00"))
+        return cur.get("complete") is not False and (now - synced).total_seconds() <= bound
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+mirror_fresh = bool(mirror) and mirror_is_fresh()
 
 def front(key):
     if not mirror:
@@ -1233,20 +1282,6 @@ def front(key):
     except OSError:
         return None
     return {m[1]: m[2].strip() for m in (re.match(r"\s*([A-Za-z_]+):\s*(.*)$", l) for l in head.splitlines()) if m}
-
-def focus_version():
-    for line in text:
-        m = re.match(r"focus-version:\s*(v\d\S*)", line)
-        if m:
-            return m[1]
-    try:
-        for row in open(mirror.rstrip("/") + ".versions.tsv").read().splitlines():
-            c = row.split("\t")
-            if len(c) > 1 and c[1] == "false":
-                return c[0]
-    except OSError:
-        pass
-    return ""
 
 def under(path, base):
     base = os.path.normpath(base) if base else ""
@@ -1264,35 +1299,36 @@ def event(e):
         return Event("valid", "", s in ("MERGED", "CLOSED"))
     m = re.fullmatch(r"done:([A-Z]+-\d+)", e)
     if m:
+        if not mirror_fresh:
+            return Event("unchecked", "done:%s unchecked: the Jira mirror is stale or incomplete" % m[1], False)
         f = front(m[1])
         if f is None:
             return Event("unchecked", "%s is not in the Jira mirror" % m[1], False)
         if f.get("statusCategory", "").strip('"') == "Done":
             return Event("valid", "", True)
-        focus = focus_version()
-        if (focus and ('"%s"' % focus) in f.get("fixVersions", "")) or any(d == m[1] or d.startswith(m[1] + "-") for d in worker_docs) \
-                or (open_prs is not None and any(re.search(r"(?<![A-Za-z0-9])%s(?![0-9])" % re.escape(m[1]), b, re.I) for b, _ in open_prs.values())):
+        if open_prs is not None and any(re.search(r"(?<![A-Za-z0-9])%s(?![0-9])" % re.escape(m[1]), b, re.I) for b, _ in open_prs.values()):
             return Event("valid", "", False)
-        if open_prs is None:
-            return Event("unchecked", "%s is not in the current version and the open-PR read is missing" % m[1], False)
-        return Event("invalid", "%s is neither worked (no open PR, no worker) nor in the current version" % m[1], False)
+        found = [worker_state(d) for d in worker_docs if os.path.basename(d) == m[1] or os.path.basename(d).startswith(m[1] + "-")]
+        if any(w not in ("wrapped", "unknown") for w in found):
+            return Event("valid", "", False)
+        if "unknown" in found:
+            return Event("unchecked", "done:%s unchecked: a worker on it reads unknown" % m[1], False)
+        if open_prs is None or watched is None:
+            return Event("unchecked", "done:%s unchecked: the open-PR list or the fleet manifest is unread" % m[1], False)
+        return Event("no-owner", "done:%s has no live owner" % m[1], False)
     m = re.fullmatch(r"date:(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})Z)?", e)
     if m:
         try:
-            t = datetime.datetime.fromisoformat("%sT%s:%s:00+00:00" % (m[1], m[2] or "00", m[3] or "00"))
+            datetime.datetime.fromisoformat("%sT%s:%s:00+00:00" % (m[1], m[2] or "00", m[3] or "00"))
         except ValueError:
             return Event("invalid", "wake=%s is not a date" % e, False)
-        if t <= now:
-            return Event("valid", "", True)
-        if (t - now).total_seconds() > 7 * 86400:
-            return Event("invalid", "wake=%s is more than 7 days out: a park needs the operator's words" % e, False)
-        return Event("valid", "", False)
+        return Event("timer-date", "", False)
     m = re.fullmatch(r"file:(.+)", e)
     if m:
         p = m[1]
         if not p.startswith("/") or ".." in p.split("/") or not (under(os.path.normpath(p), hroot) or under(os.path.normpath(p), state_dir)):
             return Event("invalid", "wake=%s is not an absolute path under the handover root or the state dir" % e, False)
-        return Event("valid", "", os.path.exists(p))
+        return Event("timer-file", "", False)
     return Event("invalid", "wake=%s is not pr:<n>, done:<KEY>, date:<date> or file:<path>" % e, False)
 
 release = ledger[3:] if ledger.startswith("on:") else None
@@ -1334,20 +1370,26 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
                 parts.append(("invalid", "authority=%s names no record of the operator's words for %s" % (ref, key)))
     events = wake_events(rest)
     ev = [event(e) for e in events]
-    fired = any(x.fired for x in ev)
-    parts += [(x.state, x.reason) for x in ev if x.state != "valid"]
+    timers = list(dict.fromkeys(x.state[6:] for x in ev if x.state.startswith("timer-")))
+    held_by = [x for x in ev if x.state == "valid"]
+    fired = any(x.fired for x in held_by)
+    parts += [(x.state, x.reason) for x in ev if x.state in ("invalid", "unchecked")]
     kinds = [k for k, _ in parts]
     first = lambda k: next(r for c, r in parts if c == k)
     if "invalid" in kinds:
         cls, reason = "invalid", first("invalid")
     elif "authority" in kinds:
         cls, reason = "authority", "on the operator's words"
-    elif ev and not fired and "unchecked" not in kinds:
+    elif held_by and not fired and "unchecked" not in kinds:
         cls, reason = "wake", "on wake=" + ",".join(events)
     elif "unchecked" in kinds:
         cls, reason = "unchecked", first("unchecked")
     elif fired:
         cls, reason = "no-authority", "its wake=%s fired, and no operator words" % ",".join(events)
+    elif timers:
+        cls, reason = "no-authority", "wake=%s holds nothing: no live holder (decisions 1281, 1282)" % ",".join(timers)
+    elif any(x.state == "no-owner" for x in ev):
+        cls, reason = "no-authority", next(x.reason for x in ev if x.state == "no-owner")
     else:
         cls, reason = "no-authority", "no operator words and no wake"
     if not release and cls != "invalid":
@@ -1368,6 +1410,8 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
 mode = "on" if ledger.startswith("on:") else "off:no-ledger"
 body = {"ts": iso(now), "doc": os.path.abspath(doc), "mode": mode, "release": release, "rows": rows,
         "prs": None if prstate is None else dict(sorted(prstate.items(), key=lambda kv: int(kv[0])))}
+if mode == "on":
+    body["mirror_fresh"] = mirror_fresh
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), prefix="." + os.path.basename(out) + ".")
@@ -1524,18 +1568,19 @@ for line in prior_lines or []:
     if m:
         ccarry[m[2]] = (m[3], m[4], m[1])
 
-prstate, hold = None, {}
+prstate, hold, mirror_fresh = None, {}, None
 try:
     if time.time() - os.path.getmtime(holds) <= 1800:
         hd = json.load(open(holds))
         prstate = None if hd.get("prs") is None else {str(k): v for k, v in hd["prs"].items()}
         hold = {r["key"]: r for r in hd.get("rows") or [] if r.get("fired") or r.get("outside") is True}
+        mirror_fresh = hd.get("mirror_fresh")
 except (OSError, ValueError, TypeError, KeyError, AttributeError):
-    prstate, hold = None, {}
+    prstate, hold, mirror_fresh = None, {}, None
 
 def state(kind, ref):
     if kind == "key":
-        f = front(ref)
+        f = None if mirror_fresh is False else front(ref)
         if f is None:
             return "?"
         return "done" if f.get("statusCategory", "").strip('"') == "Done" else "open"
@@ -4053,6 +4098,7 @@ intake_age=""
 intake_age_first=0
 pool_parked_n=""
 pool_owed_n=""
+pool_unheld=""
 pool_blocked=""
 pool_chiefsign=""
 pool_rowsstale=""
@@ -4119,6 +4165,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
                 pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
                 [ "$pool_parked_n" -gt 0 ] || { pool_parked_n=""; pool_owed_n=""; }
                 [ -z "$pool_owed_n" ] || [ "$pool_owed_n" -gt 0 ] || pool_owed_n=""
+                pool_unheld="$(printf '%s\n' "$pd_summary" | sed -n 's/^pool-unheld=//p' | head -n 1)"
                 ;;
         esac
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
@@ -5571,6 +5618,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'cloud: %s\n' "$cloud_summary"
     printf 'orphans-wip: %s%s\n' "$orphans_wip" "${orphans_wip_age:+ (read $orphans_wip_age ago)}"
     printf 'pool: %s\n' "$pool_summary"
+    [ -z "$pool_unheld" ] || printf 'pool-unheld: %s\n' "$pool_unheld"
     printf 'pool-closed: %s\n' "$pool_closed"
     printf 'prio: %s\n' "$prio_summary"
     [ -z "$prio_stale" ] || printf 'prio-stale: %s\n' "$prio_stale"
@@ -5601,7 +5649,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|pool-changed=skip|pool-changed=0|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|pool-changed=skip|pool-changed=0|pool-unheld=0|pool-unheld=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*|stale=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
@@ -5663,6 +5711,7 @@ else
     compact_field pool-holds "$pool_holds_f"
     compact_field pool-changed "$pool_changed"
     compact_field pool-parked "$pool_parked_n"
+    compact_field pool-unheld "$pool_unheld"
     compact_field chief-owed "$pool_owed_n"
     compact_field blocked "$pool_blocked"
     compact_field chief-sign "$pool_chiefsign"

@@ -262,8 +262,9 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question|hold|park <target>` line whose target names a
     ticket key of the mirror's project or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
-    blocker is Done (Jira mirror) or its PR merged or closed, or when its hold line's wake fired or it waits on
-    an outside PR (below). The PR states come from the pool-holds file, filled by one GraphQL
+    blocker is Done (Jira mirror) or its PR merged or closed, or when its hold line's `pr:` or `done:` wake fired
+    or it waits on an outside PR (below). A date never fires (decisions 1281, 1282): a give-up line with no
+    live holder is not stale but `# pool-unresolved no-authority` and listed in `pool-unheld=` (below). The PR states come from the pool-holds file, filled by one GraphQL
     query that names exactly the cited PR numbers, however old, on the read token; a wave label such as
     `ZA-1` is text, not a ticket. `?` in the list marks a target it could not read (an issue number, a
     number GitHub cannot resolve, a failed read), never a stale one. `tick.sh --pool-stale --doc <doc>`
@@ -308,7 +309,7 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
     give each a fixVersion or a disposition.
 
     **Hold lines (`pool_holds`).** In a bucket that declares a release, a give-up line needs the
-    operator's words or a near wake the tick checks:
+    operator's words or a live wake the tick checks:
     `pool-disposition: <KEY> <verb> <free text> [authority=<ref>] [wake=<event>[,<event>...]] [@<sha>]`.
     A give-up line is a `question`, `close`, `hold` or `park` line, or a `slice` naming no key, PR or `@sha`,
     on a pool key or on a key of `asks_operator_keys` (other off-pool keys stay invalid; a `slice` with a
@@ -318,24 +319,39 @@ Retained wake rows/blocks still govern replay and `GAP` reconciliation.
       decision. A decision file alone, or a legacy O- row, is not authority.
     - `wake=pr:<n>` (or `pr-<n>-merge`) fires when the PR merges or closes and is valid while it is open;
       a PR GitHub cannot resolve is invalid, a failed or paused read is unchecked. `wake=done:<KEY2>` fires
-      when KEY2 is Done and is valid while an open PR's head branch or a worker names it, or it is in the
-      current version. `wake=date:<YYYY-MM-DD>` (or `<YYYY-MM-DDTHH:MMZ>`, UTC) is valid at most 7 days
-      ahead; a later date is a park and needs authority. `wake=file:<path>` fires when the file exists and
-      is valid only as an absolute path under the handover root or `TICK_STATE_DIR` with no `..`. A list
-      fires when any event fires.
+      when KEY2 is Done and needs a live owner: an open PR whose head branch names KEY2, or a live worker on
+      it (a fixVersion holds nothing). A worker on it that reads `unknown`, or an unread open-PR list or fleet
+      manifest, makes the line `unchecked`; with both read and no owner it is `no-authority`
+      (`done:<KEY2> has no live owner`). It also needs a fresh, complete Jira mirror (`.cursor.json`
+      `lastSync` within `TICK_POOL_MIRROR_MAX`, default 21600 s, and no `"complete": false`); otherwise the
+      line is `unchecked`. A list fires when any event fires.
+    - `wake=date:` and `wake=file:` hold nothing (decisions 1281, 1282): a line held only by them is
+      `no-authority` (`wake=date holds nothing: no live holder (decisions 1281, 1282)`) and listed in
+      `pool-unheld=`. A date never fires; a malformed date, or a file path that is not absolute under the
+      handover root or `TICK_STATE_DIR` with no `..`, is still invalid. The `queue:` line's `wake=file:`
+      (`relaunch=`, above) is unchanged.
     - Counting, in order: any invalid part makes the line `invalid` (with the reason); a valid authority
-      dispositions it; a valid wake that has not fired dispositions it; otherwise it is unhandled,
-      `no-authority` (`unchecked` when an input could not be read). Each shows as
+      dispositions it; a live `pr:` or `done:` wake that has not fired dispositions it; otherwise it is
+      unhandled, `no-authority` (`unchecked` when an input could not be read). Each shows as
       `# pool-unresolved <class> <KEY> <reason>: <line>`; none of them fails the tick.
+    - The tick prints `pool-unheld=<n>[+?]:<KEY>,...` (a plain `pool-unheld:` line and a compact field after
+      `pool-parked=`, left off when nothing is unheld or unchecked): the keys `--pool-dispositions` classes
+      `no-authority` or `unowned` that carry a Live-state line, with `+?` when any line reads `unchecked`.
+      It differs from `pool-holds=<unhandled>/<total>`: `pool-holds` counts holds rows, `invalid` and
+      `unchecked` included; `pool-unheld` lists keys after the snapshot owner check and leaves those
+      classes out. An unheld key leaves `# pool-parked`, so it raises supply, and it wakes you through
+      `# pool-unresolved` like any unresolved key.
     The tick runs `tick.sh --pool-holds --doc <doc>` under the pool-stale lock, before `pool-stale=`; it writes
     `pool-holds-<doc stem>.json` in `TICK_STATE_DIR` (rows with class, reason, words, `fired`, `outside`
     and the age, and the PR state map) and nothing else, and `--pool-dispositions` (the tick's and the
     waiter's) and `--pool-stale` read it. A missing holds file, or one over 30 minutes old, reads every
-    give-up line `unchecked`: never an all-clear. With no release declared in the bucket (`release: none`,
+    give-up line `unchecked`: never an all-clear. A holds file that carries `"mirror_fresh": false` makes a
+    `slice` line whose target names a project key `unchecked` (`the Jira mirror is stale or incomplete`), and
+    `--pool-stale` reads its key targets `?`; a missing file or key is no verdict. With no release declared in the bucket (`release: none`,
     or no `release/*/release.json`) the lines keep the rule above and the tick prints
     `pool-holds=off:no-ledger`; a doc with no `release:` line in a bucket that declares one reads its give-up
     lines `unchecked`.
-    Stale causes: a line whose wake fired (`wake=<event>=fired`), or that waits on an outside PR
+    Stale causes: a line whose `pr:` or `done:` wake fired (`wake=<event>=fired`), or that waits on an outside PR
     (`isCrossRepository`) with no manifest `watch` row (`outside-PR=unwatched`), is stale, one wake per
     newly stale key.
     Lineage age: the step appends to the shared `pool-lines.tsv` when a stem's set of give-up lines

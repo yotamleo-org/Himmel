@@ -301,7 +301,8 @@ echo "TEST: pr-merge suppresses worktree-held branch-delete cosmetic error"
 rc=0
 out=$(
     cd "$REPO"
-    GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="42" FAKE_GH_FAIL="merge" \
+    CR_MERGE_GATE_OK=1 CI_MERGE_GATE_OK=1 \
+        GH_CMD="$FAKE_GH" FAKE_GH_PR_LIST="42" FAKE_GH_FAIL="merge" \
         FAKE_GH_MERGE_OUT="failed to run git: fatal: 'main' is already used by worktree at '/tmp/x'" \
         bash "$PR_MERGE" 2>&1
 ) || rc=$?

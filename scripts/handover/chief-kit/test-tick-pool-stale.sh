@@ -542,10 +542,185 @@ hp_run() {
     TICK_STATE_DIR="$hp/state" HIMMEL_RELEASE_STATE_DIR="$hp/rel" TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$d" 2>/dev/null
 }
 hpo="$(hp_run true)"
-check 'the outside PR and the fired date flag stale through the producer' '2:HIMMEL-9190,HIMMEL-9191' "$(printf '%s\n' "$hpo" | sed -n 's/^pool-stale=//p')"
+check 'the outside PR flags stale through the producer; a past date beside the operator words does not' '1:HIMMEL-9190' "$(printf '%s\n' "$hpo" | sed -n 's/^pool-stale=//p')"
 check 'the outside line names its cause' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9190 line=[0-9a-f]* PR#5002=OPEN outside-PR=unwatched\$")"
-check 'the fired line names its wake' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9191 line=[0-9a-f]* wake=date:[0-9-]*=fired\$")"
-check 'an open same-repo PR is not stale (I6)' '1:HIMMEL-9191' "$(hp_run false | sed -n 's/^pool-stale=//p')"
+check 'a past date never fires: no wake=date: cause (decisions 1281, 1282)' 0 "$(printf '%s\n' "$hpo" | grep -c "wake=date:[0-9-]*=fired")"
+check 'an open same-repo PR is not stale (I6)' '0' "$(hp_run false | sed -n 's/^pool-stale=//p')"
+
+du="$WORK/du"; DUM="$du/mirror/HIMMEL"; mkdir -p "$du/rel/v1.1.3" "$du/state" "$du/w" "$DUM"; printf '{}\n' > "$du/rel/v1.1.3/release.json"
+printf 'v1.1.3\tfalse\t\n' > "$du/mirror/HIMMEL.versions.tsv"
+du_now=2026-11-22T12:00:00Z
+du_cursor() { printf '{"lastSync":"%s"%s}\n' "$1" "${2:+,$2}" > "$DUM/.cursor.json"; }
+du_cursor 2026-11-22T11:00:00Z
+du_key() { printf -- '---\nkey: "HIMMEL-%s"\nstatus: "%s"\nstatusCategory: "%s"\nfixVersions: ["v1.1.3"]\n---\n\n# HIMMEL-%s: t\n' "$1" "$2" "$3" "$1" > "$DUM/HIMMEL-$1.md"; }
+du_key 10713 "To Do" "To Do"; du_key 903 "To Do" "To Do"; du_key 905 Done Done
+du_stem=HIMMEL-nextleg-2026-11-22DU-roadmap-chief
+du_doc="$du/$du_stem.md"; du_file="$du/state/pool-holds-$du_stem.json"
+du_mk() { printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "$@" '' '## Results' > "$du_doc"; }
+du_rows() { local k; for k in "$@"; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$k"; done > "$du/rows"; }
+du_env() { env -u TICK_POOL_MIRROR_MAX TICK_NOW="$du_now" TICK_STATE_DIR="$du/state" HIMMEL_RELEASE_STATE_DIR="$du/rel" NEXT_DISPATCH_MIRROR="$DUM" "$@"; }
+du_holds() {
+    jq -n --arg t "$du_now" '{ts: $t, status: "OK", asks_operator_keys: [],
+        words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-207", "HIMMEL-213", "HIMMEL-214"], op: "none", verbatim: "keep it held"}]}' \
+        > "$du/state/release-state-$du_stem.json"
+    du_env bash "$PS_REAL_SUT" --pool-holds --doc "$du_doc" "$@" > /dev/null 2>&1
+}
+du_class() { jq -r --arg k "HIMMEL-$1" '.rows[] | select(.key == $k) | .class' "$du_file" 2>/dev/null; }
+du_reason() { jq -r --arg k "HIMMEL-$1" '.rows[] | select(.key == $k) | .reason' "$du_file" 2>/dev/null; }
+du_pd() { du_env bash "$PS_REAL_SUT" --pool-dispositions --doc "$du_doc" < "$du/rows" 2>/dev/null; }
+du_stale() { du_env TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$du_doc" 2>/dev/null | sed -n 's/^pool-stale=//p'; }
+: > "$du/open.tsv"; printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
+du_in=(--open-prs "$du/open.tsv" --workers-from "$du/manifest.json")
+du_nothing='holds nothing: no live holder (decisions 1281, 1282)'
+
+du_mk "$pd HIMMEL-7006 hold HIMMEL-7006 wake=date:2026-11-24 (AY 11-22, from the AU roadmap chief audit: v1.1.3 cut chain, VERSION, CHANGELOG, tag; confirm with the release manager that TAG-READY is tracked, then slice the cut)" \
+    "$pd HIMMEL-9917 slice HIMMEL-9917 wake=date:2026-11-23 (AY 11-22 AU audit: merge-from-any-directory denial bug; AU said close by 11-22; audit the code rows, then close or slice)" \
+    "$pd HIMMEL-9850 hold HIMMEL-9342 wake=date:2026-11-29 (AY 11-22 AU audit: tick under 20 CPU-s; folds into 9342 o14)" \
+    "$pd HIMMEL-9525 question HIMMEL-9525 wake=date:2026-11-23 (AY 11-22 AU audit: hook cache dirs, about 30079 to clean; destructive, needs the operator, or close if the hook fix merged)" \
+    "$pd HIMMEL-9190 hold decision 1228 wake=date:2026-11-23 (AY 11-22 AU audit: semantic API opt-in on the Mac station; Goomal session)" \
+    "$pd HIMMEL-9252 hold HIMMEL-9569 wake=date:2026-11-23 (AY 11-22 AU audit: graph-data VM proof plus Mac adopter confirmation; gates a ticket close; Goomal session)" \
+    "$pd HIMMEL-10377 hold waits on the chief signature under decision 1120 wake=date:2026-11-23 (AN 11-22 01:15Z re-read, ticket-auditor): docs worker dispatch after signing" \
+    "$pd HIMMEL-10531 hold waits on the o62 harvest probe wake=date:2026-11-23 (AN 11-22 01:15Z re-read, ticket-auditor): code merged #5650; probe ok after the 11-22 harvest, then cadence-armed green" \
+    "$pd HIMMEL-10069 hold waits on the chief recording the r4 spec signature wake=date:2026-11-23 (AN 11-22 01:15Z re-read, ticket-auditor): spec-check NO-SPEC; brief F10069a ready" \
+    "$pd HIMMEL-8620 slice decision 1210 wake=date:2026-11-23 (hard-fail at 20k, allowlist the four; INTAKE Q-v1.1.3-5438; split follow-up HIMMEL-10713" \
+    "$pd HIMMEL-8957 slice decision 1210 wake=date:2026-11-23 (dry-run count plus per-clip price worker owed; paid rerun needs a second GO)" \
+    "$pd HIMMEL-10088 hold HIMMEL-10088 wake=date:2026-11-23 (AW audit: C69 OK, bare query no 401; only a full qmd embed proof left, then close o23 o24)" \
+    "$pd HIMMEL-8823 hold HIMMEL-8823 wake=date:2026-11-23 (AW audit: S7 station first run is a chief run, no worker)" \
+    "$pd HIMMEL-10660 slice HIMMEL-10660 wake=date:2026-11-23 (AW audit: design and plan r5 done; chief reads r5 verdict, signs, files build slices)" \
+    "$pd HIMMEL-9569 hold decision 1228 wake=date:2026-11-23 (AY 11-22: B1 PRs merged; Mac VM e2e o86 and Goomal round trip o87 run in the 11-23 Goomal session)"
+du_rows 7006 9917 9850 9525 9190 9252 10377 10531 10069 8620 8957 10088 8823 10660 9569
+du_holds "${du_in[@]}"
+du1="$(du_pd)"
+check 'D1: every give-up BC 11-23 line reads no-authority: a date holds nothing' \
+    'HIMMEL-10069 HIMMEL-10088 HIMMEL-10377 HIMMEL-10531 HIMMEL-10660 HIMMEL-7006 HIMMEL-8823 HIMMEL-8957 HIMMEL-9190 HIMMEL-9252 HIMMEL-9525 HIMMEL-9569 HIMMEL-9850 HIMMEL-9917 ' \
+    "$(printf '%s\n' "$du1" | sed -n "s/^# pool-unresolved no-authority \(HIMMEL-[0-9]*\) wake=date $du_nothing: .*/\1/p" | sort | tr '\n' ' ')"
+check 'D1: HIMMEL-8620, a decision slice, has no pool-unresolved line' 0 "$(printf '%s\n' "$du1" | grep -c '^# pool-unresolved [a-z-]* HIMME[L]-8620 ')"
+check 'D1 field: pool-unheld= lists exactly the no-authority keys, not HIMMEL-8620' \
+    'pool-unheld=14:HIMMEL-10069,HIMMEL-10088,HIMMEL-10377,HIMMEL-10531,HIMMEL-10660,HIMMEL-7006,HIMMEL-8823,HIMMEL-8957,HIMMEL-9190,HIMMEL-9252,HIMMEL-9525,HIMMEL-9569,HIMMEL-9850,HIMMEL-9917' \
+    "$(printf '%s\n' "$du1" | grep '^pool-unheld=')"
+du_seed() { cp "$du/rows" "$du/state/tick-pool-$(printf '%s\n%s' "$(realpath -m "$du_doc")" "$(realpath -m "$DUM")" | cksum | cut -d' ' -f1).rows"; }
+du_tick() { du_env TICK_POOL_WAIT=0 TICK_POOL_MIN_SECS=99999 TOKEN='' bash "$PS_REAL_SUT" --doc "$du_doc" "$@" 2>/dev/null; }
+sed -i '/^## Live state$/a pool-disposition: HIMMEL-9001 hold x wake=date:2026-11-21' "$du_doc"  # gnu-ok: chief kit is Linux-only
+: > "$du/flag"; : > "$du/R.md"
+sed -i "/^## Live state\$/a queue: 5737 HELD wake=file:$du/flag resume=$du/R.md" "$du_doc"  # gnu-ok: chief kit is Linux-only
+du_rows 7006 9917 9850 9525 9190 9252 10377 10531 10069 8620 8957 10088 8823 10660 9569 9001; du_seed
+du6="$(du_tick)"; du6v="$(du_tick --verbose)"
+du6k='15:HIMMEL-10069,HIMMEL-10088,HIMMEL-10377,HIMMEL-10531,HIMMEL-10660,HIMMEL-7006,HIMMEL-8823,HIMMEL-8957,HIMMEL-9001,HIMMEL-9190,HIMMEL-9252,HIMMEL-9525,HIMMEL-9569,HIMMEL-9850,HIMMEL-9917'
+check 'D6: the full tick prints the compact pool-unheld= field' "$du6k" "$(printf '%s\n' "$du6" | sed -n 's/.* pool-unheld=\([^ ]*\).*/\1/p')"
+check 'D6: the verbose tick prints the plain pool-unheld: line' "pool-unheld: $du6k" "$(printf '%s\n' "$du6v" | grep '^pool-unheld: ')"
+check 'H6: the queue: line wake=file: still fires relaunch= (out of scope, unchanged)' "5737:$du/R.md" "$(printf '%s\n' "$du6" | sed -n 's/.* relaunch=\([^ ]*\).*/\1/p')"
+check 'D6: a date-only line past its date carries no fired cause' 0 "$(cat "$du"/state/tick-pool-stale-*.out <(printf '%s\n' "$du6v") | grep -c 'wake=date:2026-11-21=fired')"
+du_mk "$pd HIMMEL-8620 slice decision 1210 wake=date:2026-11-23 - split follow-up HIMMEL-10713"
+du_rows 8620; du_seed
+check 'D6: a doc with nothing unheld has no compact pool-unheld= field' 0 "$(du_tick | grep -c ' pool-unheld=')"
+
+du_mk "$pd HIMMEL-218 slice later into HIMMEL-903" "$pd HIMMEL-219 hold x wake=date:2026-11-25"
+du_rows 218 219
+du_unheld() { du_pd | grep '^pool-unheld='; }
+rm -f "$du_file"
+check 'D4: no holds file: the unowned key is listed and the unread give-up line adds +?' 'pool-unheld=1+?:HIMMEL-218' "$(du_unheld)"
+du_holds "${du_in[@]}"; touch -d '31 minutes ago' "$du_file"  # gnu-ok: chief kit is Linux-only
+check 'D4: a holds file 31 min old: the unowned key is listed with +?' 'pool-unheld=1+?:HIMMEL-218' "$(du_unheld)"
+du_h31="$(du_pd | grep '^# pool-unresolved ')"
+touch -d '35 minutes ago' "$du_file"  # gnu-ok: chief kit is Linux-only
+check 'H5: the pool-unresolved block of a holds file 35 min old equals the block at 31 min' "$du_h31" "$(du_pd | grep '^# pool-unresolved ')"
+du_holds "${du_in[@]}"; jq '.release = "v9.9.9"' "$du_file" > "$du_file.tmp" && mv "$du_file.tmp" "$du_file"
+check 'D4: a holds file written for v9.9.9: the unowned key is listed with +?' 'pool-unheld=1+?:HIMMEL-218' "$(du_unheld)"
+du_holds "${du_in[@]}"; touch -d '29 minutes ago' "$du_file"  # gnu-ok: chief kit is Linux-only
+check 'D4: a holds file 29 min old judges the give-up line: no +?' 'pool-unheld=2:HIMMEL-218,HIMMEL-219' "$(du_unheld)"
+check 'P7: the usage text names TICK_POOL_MIRROR_MAX and its default 21600' 1 "$(bash "$PS_REAL_SUT" --help 2>&1 | grep -c 'TICK_POOL_MIRROR_MAX.*21600')"
+
+du_absent="$du/state/flag-not-yet"
+du_mk "$pd HIMMEL-201 hold x wake=date:2026-11-25,pr:5002" "$pd HIMMEL-202 hold x wake=pr:5002" \
+    "$pd HIMMEL-203 hold x wake=date:2026-11-25,pr:5001" "$pd HIMMEL-204 hold x wake=pr:5001" \
+    "$pd HIMMEL-205 park x wake=date:2026-12-22" "$pd HIMMEL-206 park x wake=date:2026-13-45" \
+    "$pd HIMMEL-207 hold x authority=O-v1.1.3-0001 wake=date:2026-11-21" "$pd HIMMEL-208 hold x wake=date:2026-11-21" \
+    "$pd HIMMEL-209 park x wake=date:2026-11-25" "$pd HIMMEL-210 hold x wake=file:$du_absent" \
+    "$pd HIMMEL-211 hold x wake=pr:5002" "$pd HIMMEL-212 hold x wake=pr:5002,file:$du_absent" \
+    "$pd HIMMEL-213 hold x authority=O-v1.1.3-0001" "$pd HIMMEL-214 hold x authority=O-v1.1.3-0001 wake=file:$du_absent" \
+    "$pd HIMMEL-215 hold x wake=date:2026-11-25,file:$du_absent"
+du_holds "${du_in[@]}"
+check 'D2: a date beside an open pr: changes nothing: wake, as the pr: alone' 'wake wake' "$(du_class 201) $(du_class 202)"
+check 'D2: a date beside a merged pr: changes nothing: no-authority, as the pr: alone' 'no-authority no-authority' "$(du_class 203) $(du_class 204)"
+check 'D2: a well-formed date 30 days out is a timer like any date, not invalid' "no-authority wake=date $du_nothing" "$(du_class 205) $(du_reason 205)"
+check 'D2: a malformed date stays invalid with its reason' 'invalid wake=date:2026-13-45 is not a date' "$(du_class 206) $(du_reason 206)"
+check 'D3: the operator words plus a past date: authority' authority "$(du_class 207)"
+check 'D3: a past date alone: no-authority, a date holds nothing' "no-authority wake=date $du_nothing" "$(du_class 208) $(du_reason 208)"
+check 'D3: a past date beside the operator words is not stale' 0 "$(du_stale | grep -c 'HIMME[L]-207')"
+du_rows 201 202 203 204 205 206 207 208 210 211 212 213 214 215
+printf '# disposition HIMMEL-209 in-flight owned by N1\n' >> "$du/rows"
+check 'D5: a date-only line whose key is in flight has no pool-unresolved line' 0 "$(du_pd | grep -c '^# pool-unresolved [a-z-]* HIMME[L]-209 ')"
+check 'H6: wake=file: alone holds nothing' "no-authority wake=file $du_nothing" "$(du_class 210) $(du_reason 210)"
+check 'H6: a file part beside an open pr: changes nothing' 'wake wake' "$(du_class 211) $(du_class 212)"
+check 'H6: a file part beside the operator words changes nothing' 'authority authority' "$(du_class 213) $(du_class 214)"
+check 'H6: a date and a file name each timer kind in one reason' "no-authority wake=date,file $du_nothing" "$(du_class 215) $(du_reason 215)"
+
+du_mk "$pd HIMMEL-216 hold x wake=done:HIMMEL-903" "$pd HIMMEL-217 slice HIMMEL-905 then the rest"
+du_rows 216 217
+du_holds "${du_in[@]}"
+check 'D9 owner: done: on a To Do key in the version with no worker and no PR holds nothing' 'no-authority done:HIMMEL-903 has no live owner' "$(du_class 216) $(du_reason 216)"
+check 'D9 field: the no-owner done: key is listed' 'pool-unheld=1:HIMMEL-216' "$(du_unheld)"
+printf '5003\tfeat/himmel-903-x\tfalse\tbob\tfalse\n' > "$du/open.tsv"
+du_holds "${du_in[@]}"
+check 'D9 owner: an open PR naming the key in its branch is a live owner' wake "$(du_class 216)"
+: > "$du/open.tsv"
+du_w="$du/w/HIMMEL-903-N1-x.md"
+printf '# w\n\n## Results\n- 10:00 LIVE — on it\n' > "$du_w"
+printf '#!/usr/bin/env bash\necho "status: FRESH"\nexit 11\n' > "$du/lock-held.sh"; chmod +x "$du/lock-held.sh"
+jq -n --arg d "$du_w" '{schema: 1, workers: [{doc: $d, label: "N1"}]}' > "$du/manifest.json"
+TICKET_STATUS_QUEUE_LOCK="$du/lock-held.sh" du_holds "${du_in[@]}"
+check 'D9 owner: a live manifest worker on the key is a live owner (S2)' wake "$(du_class 216)"
+printf -- '- 11:00 WRAPPED — done\n' >> "$du_w"
+TICKET_STATUS_QUEUE_LOCK="$du/lock-held.sh" du_holds "${du_in[@]}"
+check 'D9 owner: a wrapped manifest worker owns nothing' no-authority "$(du_class 216)"
+jq -n --arg d "$du/w/HIMMEL-903-N2-gone.md" '{schema: 1, workers: [{doc: $d, label: "N2"}]}' > "$du/manifest.json"
+du_holds "${du_in[@]}"
+check 'D9 owner: a manifest worker whose state reads unknown leaves done: unchecked' unchecked "$(du_class 216)"
+printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
+du_holds --workers-from "$du/manifest.json"
+check 'D9 owner: no open-PR list leaves done: unchecked, never no-authority (S1)' unchecked "$(du_class 216)"
+printf '{"schema":' > "$du/manifest.json"
+du_holds "${du_in[@]}"
+check 'D9 owner: a corrupt manifest leaves done: unchecked, never no-authority (S1)' unchecked "$(du_class 216)"
+for du_w_bad in '"unread"' '{}' '""' 'false' '0'; do
+    printf '{"schema":1,"workers":%s}\n' "$du_w_bad" > "$du/manifest.json"
+    rm -f "$du_file"
+    du_holds "${du_in[@]}"
+    check "D9 owner: a workers value $du_w_bad leaves done: unchecked, never no-authority" unchecked "$(du_class 216)"
+done
+printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
+du_holds "${du_in[@]}"
+check 'D9 mirror: a fresh complete cursor writes mirror_fresh true' true "$(jq -r '.mirror_fresh' "$du_file")"
+check 'D9 mirror: a fresh mirror leaves the Done slice target stale' '1:HIMMEL-217' "$(du_stale)"
+for du_c in 'lastSync 7 h old' 'complete false' 'absent'; do
+    case "$du_c" in
+        'lastSync 7 h old') du_cursor 2026-11-22T05:00:00Z ;;
+        'complete false') du_cursor 2026-11-22T11:00:00Z '"complete":false' ;;
+        absent) rm -f "$DUM/.cursor.json" ;;
+    esac
+    du_holds "${du_in[@]}"
+    check "D9 mirror: a cursor $du_c writes mirror_fresh false" false "$(jq -r '.mirror_fresh' "$du_file")"
+    check "D9 mirror: a cursor $du_c leaves done: unchecked" unchecked "$(du_class 216)"
+    du9="$(du_pd)"
+    check "D9 field: a cursor $du_c makes the key-target slice line unchecked" 1 "$(printf '%s\n' "$du9" | grep -c '^# pool-unresolved unchecked HIMME[L]-217 the Jira mirror is stale or incomplete: HIMME[L]-217 slice HIMME[L]-905 then the rest$')"
+    check "D9 field: a cursor $du_c adds +?" 'pool-unheld=0+?' "$(printf '%s\n' "$du9" | grep '^pool-unheld=')"
+    check "D9 mirror: a cursor $du_c reads the slice key target ?" '?' "$(du_stale)"
+done
+printf '5003\tfeat/himmel-903-x\tfalse\tbob\tfalse\n' > "$du/open.tsv"
+du_holds "${du_in[@]}"
+check 'D9 mirror: a stale mirror leaves done: unchecked even with an open PR on the key' unchecked "$(du_class 216)"
+: > "$du/open.tsv"; du_cursor 2026-11-22T11:00:00Z
+du_holds "${du_in[@]}"; du9="$(du_pd)"
+check 'D9 field: a fresh complete mirror decides the slice line again, the saved stale file notwithstanding' 0 "$(printf '%s\n' "$du9" | grep -c '^# pool-unresolved unchecked HIMME[L]-217 ')"
+check 'D9 field: a fresh complete mirror drops the +?' 'pool-unheld=1:HIMMEL-216' "$(printf '%s\n' "$du9" | grep '^pool-unheld=')"
+rm -f "$du_file"
+check 'S3: no holds file is no mirror verdict: the Done slice target is still stale (the ? is the unread wake= line)' '1:HIMMEL-217,?' "$(du_stale)"
+du_cursor 2026-11-22T05:00:00Z
+du_off="$du/off.md"; printf '%s\n' '# chief' '' 'release: none' '' '## Live state' "$pd HIMMEL-217 slice HIMMEL-905 then the rest" '' '## Results' > "$du_off"
+du_env bash "$PS_REAL_SUT" --pool-holds --doc "$du_off" "${du_in[@]}" > /dev/null 2>&1
+check 'S3: a ledger-off doc writes no mirror verdict' null "$(jq -r '.mirror_fresh' "$du/state/pool-holds-off.json")"
+check 'S3: a ledger-off doc keeps the Done slice target stale on a stale mirror' '1:HIMMEL-217' "$(du_env TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$du_off" 2>/dev/null | sed -n 's/^pool-stale=//p')"
+du_cursor 2026-11-22T11:00:00Z
 
 rk="$WORK/rk"; mkdir -p "$rk/conf" "$rk/cache" "$rk/home/.himmel/state/jira-mirror/CONFKEY"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$rk/conf/himmel.conf"
