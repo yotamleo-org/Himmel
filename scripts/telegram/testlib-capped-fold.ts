@@ -1,12 +1,13 @@
 import { lstat, mkdir, readFile, realpath, stat, utimes, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { closureMarker, ledgerVerify, returnSha, roundOverride, roundReset, roundSeed, sealRound } from './chief-route.ts';
+import { closureMarker, ledgerVerify, returnSha, roundCritical, roundOverride, roundReset, roundSeed, sealRound } from './chief-route.ts';
 import { ledgerDirOf, ledgerEntryNames } from '../jira/src/release/pinned.ts';
 
 type FixtureRead = string | { path: string; text: string };
 export type FixtureStep =                                                          // runs after returns[after] (0-based) is sealed
   | { after: number; step: 'override'; findings: string[]; why: string; chief: string }   // roundOverride; HIMMEL_CONSOLE=1 only around the call
+  | { after: number; step: 'closure'; kind: 'spec'; round: number; decision: string; quote: string }
   | { after: number; step: 'reset'; decision: string; quote: string;                      // the new-stem history reset
       documents: { specStem: string; specText: string; planText: string } }
   | { after: number; step: 'reset-in-place'; decision: string; quote: string };          // the existing helpers' recipe: the N8 negative only
@@ -25,12 +26,15 @@ export type RoundFixture = { specsRoot: string; spec: string; plan: string; verd
 export type GroupOptions = { reset?: 'new-stem' | 'in-place' | 'none'; citation?: string };   // reset defaults to 'new-stem'; citation: one path as a `## Fact ownership` row
 export type KnownSingleVariant = 'refusedCap' | 'overrideAdmitted' | 'admittedNextRound';
 export type KnownSingleOptions = { variant: KnownSingleVariant; citation?: string };
+export type ClosureCarryVariant = 'carry' | 'findingsClosure' | 'writerBetween' | 'unsealedClosure' | 'bodyChanged' | 'noAnchor' | 'keysChanged';
+export type ClosureCarryOptions = { variant: ClosureCarryVariant };
 export type GroupFixture = RoundFixture & { keys: string[]; anchor: string; members: string[];
   earlier: string[];                          // the earlier-epoch return paths ('new-stem' only), else []
   decision: string | null };                  // the reset decision file; null for reset 'none'
 export type SelectorRequest =                                                      // the JSON-stdin selector; no new helper file
   | ({ builder: 'group'; scratchRoot: string } & GroupOptions)
   | ({ builder: 'known-single'; scratchRoot: string } & KnownSingleOptions)
+  | ({ builder: 'closure-carry'; scratchRoot: string } & ClosureCarryOptions)
   | { builder: 'fresh-single'; scratchRoot: string };
 
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
@@ -116,6 +120,11 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
     verdicts.push(verdict); previous[r.kind] = lines.join('\n');
     for (const s of steps.filter(x => x.after === index)) {
       if (s.step === 'override') { const quote = 'open one more review round for this ticket'; await decide('7311', quote); await underConsole(() => roundOverride(specsRoot, request.key, { findings: s.findings, why: s.why, chief: s.chief, decision: '7311', quote })); continue; }
+      if (s.step === 'closure') {
+        await decide(s.decision, s.quote);
+        await underConsole(() => roundCritical(specsRoot, request.key, { finding: '', decision: s.decision, quote: s.quote, noRound: false, closure: true, round: `${s.kind}:${s.round}` }));
+        continue;
+      }
       await decide(s.decision, s.quote);
       await underConsole(() => roundReset(specsRoot, request.key, { decision: s.decision, quote: s.quote }));
       rounds.spec = 0; rounds.plan = 0; previous.spec = null; previous.plan = null;
@@ -211,6 +220,28 @@ export async function buildFreshSingleFixture(scratchRoot: string): Promise<Roun
     declarations: false, returns });
 }
 
+const CLOSURE_VARIANTS: ClosureCarryVariant[] = ['carry', 'findingsClosure', 'writerBetween', 'unsealedClosure', 'bodyChanged', 'noAnchor', 'keysChanged'];
+export async function buildClosureCarryFixture(scratchRoot: string, opts: ClosureCarryOptions): Promise<RoundFixture> {
+  if (!opts || !CLOSURE_VARIANTS.includes(opts.variant)) throw new Error(`fixture closure-carry variant must be one of ${CLOSURE_VARIANTS.join(', ')}`);
+  const key = fixtureKey(9831); const v = opts.variant;
+  const specOf = (note: string, line = SPEC_LINE, more = '') => specDocument(`${key} (${note})${more}`, `${key} closure carry`, line);
+  const A = specOf('the reviewed draft');
+  const S = v === 'bodyChanged' ? specOf('the closure edit', SPEC_CHANGED) : v === 'keysChanged' ? specOf('the closure edit', SPEC_LINE, `, ${fixtureKey(9832)}`) : specOf('the closure edit');
+  const late = { reads: [ESTIMATE, 'spec'] as FixtureRead[] };
+  const spec = (round: number, extra: Partial<Return> = {}) => issue('spec', round, [`- **S${round}** (minor) a wording note`], { ...(round >= 5 ? late : {}), ...extra });
+  const plan = (round: number, extra: Partial<Return> = {}) => issue('plan', round, [`- **P${round}** (minor) a plan note`], { reads: ['plan', 'spec', ESTIMATE], ...extra });
+  const closure = (round: number, text: string, extra: Partial<Return> = {}) => issue('spec', round, text ? [text] : [], { ...late, closure: true, rewrite: { spec: S }, ...extra });
+  const early = [1, 2, 3, 4].flatMap(round => [spec(round), plan(round)]);
+  const returns = v === 'writerBetween' ? [...early, plan(5), spec(5, { rewrite: { spec: specOf('the writer edit') } }), closure(6, '')]
+    : v === 'unsealedClosure' ? [...early, spec(5), plan(5), closure(6, '', { rewrite: { spec: specOf('the first closure edit') } }), closure(7, '')]
+    : [...early, spec(5), plan(5, v === 'noAnchor' ? { rewrite: { spec: A } } : {}), closure(6, v === 'findingsClosure' ? '- **C1** (minor) a closure note' : '')];
+  const opened = returns.findIndex(r => r.kind === 'spec' && r.round === 6) - 1;
+  const steps: FixtureStep[] = [{ after: opened, step: 'closure', kind: 'spec', round: 6, decision: '1601', quote: 'open the spec closure round for this ticket' }];
+  if (v === 'unsealedClosure') steps.push({ after: opened + 1, step: 'closure', kind: 'spec', round: 7, decision: '1602', quote: 'open a second spec closure round for this ticket' });
+  return buildRoundFixture({ scratchRoot, key, specText: v === 'noAnchor' ? specOf('the first draft') : A,
+    planText: planDocument(`${key} closure carry plan`, 'Task 1: build the closure carry fixture.'), declarations: false, returns, steps });
+}
+
 async function lintUnavailableForSignerOnlyCitation(scratchRoot: string): Promise<void> {
   const dir = join(scratchRoot, 'no-lint-bin');
   await mkdir(dir);
@@ -227,6 +258,7 @@ if (import.meta.main) {
     : builder === 'group' ? await buildGroupFixture(scratchRoot, options as GroupOptions)
     : builder === 'known-single' ? await buildKnownSingleFixture(scratchRoot, options as KnownSingleOptions)
     : builder === 'fresh-single' ? await buildFreshSingleFixture(scratchRoot)
+    : builder === 'closure-carry' ? await buildClosureCarryFixture(scratchRoot, options as ClosureCarryOptions)
     : (() => { throw new Error(`fixture selector: unknown builder ${builder}`); })();
   console.log(JSON.stringify(fixture));
 }

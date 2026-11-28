@@ -326,16 +326,24 @@ export function validateCappedProofShape(value: unknown): AnyCappedProof {
 }
 
 const ANNOTATION_MAX = 200;
-const FRONT_MATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+export const FRONT_MATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
 const TICKET_ITEM = /^([A-Z][A-Z0-9]*-[0-9]+)[ \t]*(?:\(([^()]*)\))?$/;
 const KEY_SHAPED = /[A-Z][A-Z0-9]*-[0-9]+/;
 
 export function declaredTickets(specText: string): string[] | null {
   const front = FRONT_MATTER.exec(specText)?.[1];
   if (front === undefined) return null;
-  const lines = [...front.matchAll(/^tickets:[ \t]*(.*)$/gm)];
-  if (lines.length !== 1) return null;
-  let value = lines[0][1].trim();
+  const lines = [...front.matchAll(/^(tickets?):[ \t]*(.*)$/gm)];
+  const plural = lines.filter(line => line[1] === 'tickets'); const singular = lines.filter(line => line[1] === 'ticket');
+  if (!lines.length || plural.length > 1 || singular.length > 1) return null;
+  const keys = lines.map(line => ticketKeys(line[2]));
+  if (keys.some(k => k === null)) return null;
+  if (keys.length === 2 && [...keys[0]!].sort().join(',') !== [...keys[1]!].sort().join(',')) return null;
+  return keys[lines.findIndex(line => line[1] === 'tickets')] ?? keys[0];
+}
+
+function ticketKeys(raw: string): string[] | null {
+  let value = raw.trim();
   if (value.startsWith('[')) {
     if (!value.endsWith(']')) return null;
     value = value.slice(1, -1);
