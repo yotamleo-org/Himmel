@@ -1172,6 +1172,21 @@ expect_rule main-history git push -fu origin main
 expect_rule none git push -u origin feature
 expect_rule none git push origin main
 expect_rule none git push --force origin refs/heads/feat/x:refs/heads/feat/y
+expect_rule none bash scripts/handover/brief-lint.sh push -f main
+# shellcheck disable=SC2016 # the literal $g word
+expect_rule main-history bash -c 'g=git; $g push -f origin main'
+expect_rule main-history bash -c "g'i't push --force origin main"
+expect_rule main-history bash -c "g'h' api -X DELETE repos/o/r/git/refs/heads/main"
+expect_rule main-history bash -c "g'h' repo delete o/r"
+nrt() { timeout 20 python3 -I -c'import sys; sys.path.insert(0, sys.argv[1]); import never_remote as n; print(n.check(sys.argv[4:], [sys.argv[3]], sys.argv[2], "/home/op") or "none")' "$LIB" /work "$@"; }
+expect_text() { local want=$1 label=$2 got; shift 2; got=$(nrt "$@"); if [ "$got" = "$want" ]; then pass "floor $want: $label"; else fail "floor $want: $label" "$got"; fi; }
+expect_text none "a brief whose lines name git push, a :: word and main apart" $'A git push is never retried.\nWrite the SWEEP line :: sites=a\nmerge into main\n' bash scripts/handover/brief-lint.sh b.md
+expect_text main-history "a script line that force-pushes main" $'set -e\ngit push -f origin main\n' bash s.sh
+# shellcheck disable=SC2016 # the literal $@ and $B words of the script
+expect_text main-history "a script that pushes its arguments" $'git push "$@"\n' bash s.sh -f origin main
+# shellcheck disable=SC2016
+expect_text main-history "a script that pushes a variable set on another line" $'B=main\ngit push -f origin "$B"\n' bash s.sh
+expect_text main-history "a script line that runs on past a backslash" $'git push -f \\\norigin main\n' bash s.sh
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
 expect_rule approval-system tee /etc/sudoers

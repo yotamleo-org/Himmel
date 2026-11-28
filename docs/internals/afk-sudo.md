@@ -260,9 +260,20 @@ same walk as the binding above), is refused as `rule=oversize`:
 |---|---|
 | `disk-wipe` | mkfs/wipefs/blkdiscard/partitioners, block devices, `rm` of `/`, a top-level directory or home (or a `/*` glob of one), btrfs subvolume delete of `/` |
 | `secret-read` | `/etc/shadow`, ssh and gpg keys, the Claude credentials and channel `.env`, `.env`, `totp.seed`, secret-tool/gh token/himmel-secrets reads |
-| `main-history` | a force push or delete naming main/master (`--force*`, `--delete`, a `+` or `:` refspec, or a short-flag cluster carrying `f` or `d`: `-f`, `-d`, `-fu`, `-df`), deleting `refs/heads/main`, `gh repo delete` |
+| `main-history` | a force push or delete naming main/master (`--force*`, `--delete`, a `+` or `:` refspec, or a short-flag cluster carrying `f` or `d`: `-f`, `-d`, `-fu`, `-df`), deleting `refs/heads/main`, `gh repo delete`; each in one command that runs `git` or `gh` (below) |
 | `approval-system` | `/etc/himmel`, the libexec dir, state and ledger dirs, sudoers, visudo, this installer |
 | `guards-off` | settings files and `scripts/hooks` outside a worktree, `hooks.json`, `--dangerously-skip-permissions`, `HIMMEL_*_OK=1` and `*_BYPASS*=1`, stopping the telegram bridge |
+
+`main-history` judges one command at a time, not the whole word set: the argv is one
+command, and each line of a file copy or the stdin is one (a line ending in a backslash
+runs on). The command must also hold a word naming `git` (or `gh` for the two delete
+forms), with quotes and backslashes dropped (`g'i't`, `/usr/bin/git`). A line that
+expands a `$` word also holds the argv words and the file's `key=value` words, so
+`git push "$@"` and `B=main` then `git push -f origin "$B"` still match. A read-only
+lint whose arguments or brief lines name push, a force word and main apart is not
+refused. The cost: a git wrapper, alias or shell function under another
+name, or a push whose words a quote or heredoc carries across lines, misses the floor
+and reaches the operator's phone ask instead.
 
 Config `never_remote_extra` only adds fnmatch patterns. A match answers
 `result=never-remote rule=<name>` (exit 5), is ledgered, and gives the operator no
