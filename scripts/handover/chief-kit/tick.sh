@@ -1245,9 +1245,9 @@ if manifest:
     try:
         mf = json.load(open(manifest))
         watched = {int(w["pr"]) for w in mf.get("watch") or [] if isinstance(w, dict) and str(w.get("pr", "")).isdigit()}
+        if any(mf.get(k) is not None and not isinstance(mf.get(k), list) for k in ("workers", "legs")):
+            raise TypeError("the roster is not a list")
         legs = mf.get("workers") or mf.get("legs") or []
-        if not isinstance(legs, list):
-            raise TypeError("workers is not a list")
         worker_docs = [str(w["doc"]) for w in legs if isinstance(w, dict) and w.get("doc")]
     except (OSError, ValueError, TypeError, AttributeError):
         watched, worker_docs = None, []

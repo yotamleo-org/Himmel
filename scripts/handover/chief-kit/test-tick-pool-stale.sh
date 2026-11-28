@@ -682,9 +682,12 @@ check 'D9 owner: no open-PR list leaves done: unchecked, never no-authority (S1)
 printf '{"schema":' > "$du/manifest.json"
 du_holds "${du_in[@]}"
 check 'D9 owner: a corrupt manifest leaves done: unchecked, never no-authority (S1)' unchecked "$(du_class 216)"
-printf '{"schema":1,"workers":"unread"}\n' > "$du/manifest.json"
-du_holds "${du_in[@]}"
-check 'D9 owner: a workers value that is not a list leaves done: unchecked, never no-authority' unchecked "$(du_class 216)"
+for du_w_bad in '"unread"' '{}' '""' 'false' '0'; do
+    printf '{"schema":1,"workers":%s}\n' "$du_w_bad" > "$du/manifest.json"
+    rm -f "$du_file"
+    du_holds "${du_in[@]}"
+    check "D9 owner: a workers value $du_w_bad leaves done: unchecked, never no-authority" unchecked "$(du_class 216)"
+done
 printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
 du_holds "${du_in[@]}"
 check 'D9 mirror: a fresh complete cursor writes mirror_fresh true' true "$(jq -r '.mirror_fresh' "$du_file")"
