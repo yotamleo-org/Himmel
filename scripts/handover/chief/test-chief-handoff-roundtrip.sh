@@ -251,7 +251,7 @@ wrap_gate() {
 mk_wrap_doc() {
     wdoc="$wg/$1.md"
     printf '%s\n' '# chief' '## Results' '- 10:00 LIVE — up' > "$wdoc"
-    # shellcheck disable=SC2016  # the backticks are literal: they wrap the token in queue-lock's output
+    # shellcheck disable=SC2016
     wtok="$(HANDOVER_DIR="$root" bash "$QL" acquire "$wdoc" 2>&1 | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
 }
 mk_wrap_doc unowed
