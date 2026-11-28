@@ -1675,7 +1675,12 @@ else
         }' | sort -u
     }
     wf_join() { awk 'length($0) { printf "%s%s", (n++ ? ", " : ""), $0 }'; }
-    wf_off_list() { printf '%s' "$1" | tr '\037' '\n' | grep -vxF -f <(printf '%s\n' "$2") | sed -n 1p; }
+    wf_off_list() {
+        local off
+        off=$(printf '%s' "$1" | tr '\037' '\n' | grep -vxF -f <(printf '%s\n' "$2"))
+        [ "$?" -le 1 ] || return 1
+        printf '%s\n' "$off" | sed -n 1p
+    }
     # wf_preexisting <workflow file> <failed dispatch run id>: rc 0 and wf_note set when the default branch's
     # latest completed scheduled/push run of the workflow is red, every failed job of the run is explained (it
     # ended `failure`, its log names a failed suite, each failed step is on WF_SUITE_STEPS) or is a
@@ -1683,7 +1688,7 @@ else
     # rc 1 and wf_why says why: empty when main is not red, `UNRESOLVED:` when the record cannot explain a job.
     wf_preexisting() {
         local main_runs main_row main_id main_event pr_jobs main_jobs pr_s main_s name concl steps suites row why
-        local expl="" derived="" unres="" pairs="" bad="" suite_steps
+        local expl="" derived="" unres="" pairs="" bad="" suite_steps rc
         wf_why=""
         main_runs=$("$GH" run list --repo "$nwo" --workflow "$1" --branch "${tp_branch:-main}" --json databaseId,status,conclusion,event --limit 20 2>/dev/null) || { wf_why="cannot read main's runs"; return 1; }  # swallow-ok: a failed read sets wf_why and returns 1
         main_row=$(printf '%s' "$main_runs" | jq -r '[.[] | select(.status == "completed" and (.event == "schedule" or .event == "push"))][0] | select(.conclusion == "failure" or .conclusion == "timed_out") | "\(.databaseId) \(.event)"' 2>/dev/null)  # swallow-ok: unparsable runs read as empty, which returns 1 on the next line
@@ -1703,8 +1708,8 @@ else
             elif [ "$steps" = "$(printf '\036')" ]; then why="steps unreadable"
             elif [ -z "$steps" ]; then why="no failed step"
             elif [ -n "$row" ]; then
-                why=$(wf_off_list "$steps" "$(printf '%s' "$row" | cut -f3)")
-                if [ -n "$why" ]; then why="derived: failed step $why"
+                if ! why=$(wf_off_list "$steps" "$(printf '%s' "$row" | cut -f3)"); then why="derived: steps cannot be compared"
+                elif [ -n "$why" ]; then why="derived: failed step $why"
                 elif ! printf '%s\n' "$main_jobs" | grep -qxF -- "$(printf '%s' "$row" | cut -f2)"; then why="derived: main's $(printf '%s' "$row" | cut -f2) not red"
                 elif [ -z "$suites" ]; then derived="$derived
 $name"; continue
@@ -1712,8 +1717,8 @@ $name"; continue
             fi
             if [ -z "$why" ] && [ -z "$suites" ]; then why="no failed suite"
             elif [ -z "$why" ]; then
-                why=$(wf_off_list "$steps" "$suite_steps")
-                [ -z "$why" ] || why="failed step $why"
+                if ! why=$(wf_off_list "$steps" "$suite_steps"); then why="steps cannot be compared"
+                elif [ -n "$why" ]; then why="failed step $why"; fi
             fi
             if [ -n "$why" ]; then unres="$unres
 $name ($why)"; continue; fi
@@ -1723,7 +1728,8 @@ $suites"
         done <<EOF
 $pr_jobs
 EOF
-        bad=$(printf '%s\n' "$pairs" | cut -f2 | sed '/^$/d' | sort -u | grep -vxFf <(printf '%s\n' "$main_s" | cut -f2 | sed '/^$/d')) || true  # swallow-ok: every suite red on main is grep rc 1 and an empty set is the answer
+        bad=$(printf '%s\n' "$pairs" | cut -f2 | sed '/^$/d' | sort -u | grep -vxFf <(printf '%s\n' "$main_s" | cut -f2 | sed '/^$/d')) && rc=0 || rc=$?
+        [ "$rc" -le 1 ] || { wf_why="cannot compare the failed suites of run $2 with main run $main_id"; return 1; }
         [ -z "$bad" ] || wf_why="run $2 failed on suites not red on main run $main_id: $(awk -F'\t' 'NR == FNR { b[$0]; next } $2 in b { print $2 " (" $1 ")" }' <(printf '%s\n' "$bad") <(printf '%s\n' "$pairs") | wf_join)"
         [ -z "$unres" ] || wf_why="${wf_why:+$wf_why; }UNRESOLVED: run $2 job(s) the logs do not explain: $(printf '%s\n' "$unres" | wf_join)"
         [ -n "$expl" ] || [ -z "$derived" ] || wf_why="${wf_why:+$wf_why; }UNRESOLVED: run $2 failed only derived job(s) ($(printf '%s\n' "$derived" | wf_join)), which name no suite"
