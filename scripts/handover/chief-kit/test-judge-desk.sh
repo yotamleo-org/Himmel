@@ -23,7 +23,7 @@ notstopped() { if [ -e "$B/judge-desk/STOP" ]; then fail "$1 (STOP written)"; el
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/judge-desk-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 export TZ=UTC HIMMEL_TEST_FIXTURE=1
-unset JUDGE_DESK_GEN JUDGE_DESK_LIVE JUDGE_DESK_NOW JUDGE_DESK_PREFLIGHT
+unset JUDGE_DESK_GEN JUDGE_DESK_LIVE JUDGE_DESK_NOW JUDGE_DESK_PREFLIGHT DNOW DSESS
 NOW="$(python3 -I -c 'from datetime import datetime, timezone; print(int(datetime(2026, 11, 28, 12, 0, 0, tzinfo=timezone.utc).timestamp()))')"
 SINCE=2026-11-28T00:00:00+00:00
 S0=11111111-1111-4111-8111-111111111111
@@ -523,18 +523,19 @@ if [ -z "$(scan names 'judge-desk/(judge-requests|desk-runs|runs/|STOP)' "$WORK/
 if [ "${#tracked[@]}" -gt 0 ]; then pass "row 16: the tracked script list is not empty"; else fail "row 16: git ls-files listed no script, so every grep above was vacuous"; fi
 q="$(scan names 'judge-desk/(desk-runs|runs/)' "$REPO_ROOT/scripts/handover/chief-kit/judge-queue.sh")"
 eq "row 16: judge-queue.sh names neither desk-runs nor runs/" "$q" ""
-cp "$REPO_ROOT/scripts/handover/chief-kit/judge-queue.sh" "$WORK/judge-queue.sh"
+cp "$REPO_ROOT/scripts/handover/chief-kit/judge-queue.sh" "$WORK/judge-queue.sh" || fail "row 16: judge-queue.sh could not be copied for the planted control"
 # shellcheck disable=SC2016  # planted literal text
 printf '%s\n' 'cat "$B/judge-desk/desk-runs.jsonl"' >> "$WORK/judge-queue.sh"
 if [ -z "$(scan names 'judge-desk/(desk-runs|runs/)' "$WORK/judge-queue.sh")" ]; then fail "row 16: red control, a planted desk-runs read in judge-queue.sh was not flagged"; else pass "row 16: red control, a planted desk-runs read in judge-queue.sh is flagged"; fi
 
 newcase
 HA=abcdef0000000000000000000000000000000001; HB=abcdef0000000000000000000000000000000002
-newrun 6139 "$HA" a; RA="$RUN"
+newrun 6139 "$HA" a || fail "review: the first claim failed"
+RA="$RUN"
 req 6139 "$HB"; spec "$C/spec-b.json" dsk6139b 6139 "$HB"
-D claim "$C/spec-b.json" >/dev/null 2>&1
+D claim "$C/spec-b.json" >/dev/null 2>&1 || fail "review: the second claim failed"
 RB="$(rowf "$(RUNS)" claim - run last)"
-if [ "$RA" != "$RB" ] && [ "$RB" != norow ]; then pass "review: two heads of one PR sharing seven hex characters get distinct run ids ($RA, $RB)"; else fail "review: run id collision ($RA, $RB)"; fi
+if [ "$RA" != "$RB" ] && [ "$RA" != norow ] && [ "$RB" != norow ]; then pass "review: two heads of one PR sharing seven hex characters get distinct run ids ($RA, $RB)"; else fail "review: run id collision ($RA, $RB)"; fi
 
 dg_case "$DOCD/ready-later-live.md" GO
 touch "$B/judge-desk/STOP"
@@ -561,6 +562,20 @@ if [ "$(id -u)" != 0 ]; then
     chmod 755 "$B/verdicts"
     eq "review: an unreadable verdicts dir is a stop, not an empty one (rc 3)" "$rc" 3
 fi
+
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"printf '%s\\\\n' '(' judge-dir.sh ')'\"},\"(\\\\njudge-dir.sh\\\\n)\",0]"
+eq "review: a quoted parenthesis token is not a command separator" "$out" "RECORDED $RUN GO"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"$WV; $WV\"},\"$MARK\",1]"
+eq "review: one marker refusal does not clear two write-verdict.sh calls (rc 3)" "$rc" 3
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"$WV; $WV\"},\"$MARK\\\\n$MARK\",1]"
+eq "review: a marker refusal per call is no stop" "$out" "RECORDED $RUN GO"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"$WV\"},\"Exit code 3\\\\nHIMMEL_CONSOLE_JUDGE_NOVERDICT is set (a judge desk writes no verdict) text\",0]"
+eq "review: an exit-0 result that only reads like a refusal is a stop (rc 3)" "$rc" 3
+
+newcase
+DSESS="$S0" newrun 6139 "$H" a || fail "review: the predecessor claim failed"
+out="$(JUDGE_DESK_LIVE="$WORK/live0.sh" D wait --max-wait 0 2>&1)"
+eq "review: wait returns ENDED for a predecessor session's finished judge" "$out" ENDED
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

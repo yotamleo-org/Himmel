@@ -298,7 +298,7 @@ PUNCT = re.compile(r'[;&|()]+')
 
 def command_segments(cmd):
     try:
-        lex = shlex.shlex((cmd or '').replace('\n', ' ; '), posix=True, punctuation_chars=True)
+        lex = shlex.shlex((cmd or '').replace('\n', ' ; '), posix=False, punctuation_chars=True)
         lex.whitespace_split = True
         lex.commenters = ''
         toks = list(lex)
@@ -318,6 +318,7 @@ def command_segments(cmd):
 def command_heads(cmd):
     heads = []
     for toks in command_segments(cmd):
+        toks = [t[1:-1] if len(t) > 1 and t[0] == t[-1] and t[0] in '\'"' else t for t in toks]
         if toks and os.path.basename(toks[0]) in ('bash', 'sh') and '-c' in toks and toks.index('-c') + 1 < len(toks):
             heads += command_heads(toks[toks.index('-c') + 1])
             continue
@@ -340,9 +341,10 @@ def judge_facts(tr):
         name, inp = c['name'], c['input']
         if name == 'Bash':
             heads = command_heads(inp.get('command', ''))
-            if any(h in WRITE_SCRIPTS for h in heads):
+            writes = sum(1 for h in heads if h in WRITE_SCRIPTS)
+            if writes:
                 f['attempted'] = True
-                if MARKER_TEXT in c['result'] and (c['error'] or c['result'].startswith('Exit code')):
+                if c['error'] and c['result'].count(MARKER_TEXT) >= writes:
                     f['refused'] = True
                 else:
                     f['stops'].append('a judge write-verdict.sh or judge-call.sh call did not end in the marker refusal')
@@ -725,15 +727,17 @@ def cmd_draft_go(o):
     else:
         draft = 'WAIT-DRAFT'
     with d.locked():
+        if os.path.exists(d.stop_file):
+            die('STOP is present; nothing drafted')
         d.append({'schema': 1, 'kind': 'draft', 'run': run, 'draft': draft, 'go_line': go_line, 'at': iso_local(now())})
     print(draft + (' ' + go_line if go_line else ''))
     return 0
 
 
-def live_count(d):
+def live_count(d, session):
     script = seam('JUDGE_DESK_LIVE') or os.path.join(HERE, 'live-subagents.sh')
     try:
-        r = run_cmd(['bash', script, '--session', d.o.session, '--projects', d.o.projects], timeout=60)
+        r = run_cmd(['bash', script, '--session', session, '--projects', d.o.projects], timeout=60)
     except (OSError, subprocess.TimeoutExpired):
         return None
     m = re.search(r'^live-subagents=(\d+)$', r.stdout, re.M)
@@ -767,9 +771,11 @@ def cmd_wait(o):
         if any(not d.has_run(r.get('pr'), r.get('head'), rows) for r in d.requests()):
             print('REQUEST')
             return 0
-        open_n = len([c for c in d.open_claims(rows) if c.get('desk_session') == o.session])
-        if open_n:
-            live = live_count(d)
+        open_by_session = {}
+        for c in d.open_claims(rows):
+            open_by_session[c.get('desk_session')] = open_by_session.get(c.get('desk_session'), 0) + 1
+        for sess, open_n in open_by_session.items():
+            live = live_count(d, sess) if sess else None
             if live is not None and live < open_n:
                 print('ENDED')
                 return 0
