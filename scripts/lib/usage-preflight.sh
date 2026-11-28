@@ -471,8 +471,7 @@ _fleet_release_admit() {
   # fails once the gate is not ours; the victim goes when the gate drops.
   if [ -n "$fence" ] && [ "$(cat "$admit/pid" 2>/dev/null)" = "$$" ]; then
     held_at="$(cat "$admit/acquired" 2>/dev/null)" || held_at=""
-    mv "$admit" "$fence/victim" 2>/dev/null
-    if [ "${LAUNCH_INTENT:-}" = 1 ]; then
+    if mv "$admit" "$fence/victim" 2>/dev/null && [ "${LAUNCH_INTENT:-}" = 1 ]; then
       case "$held_at" in
         ''|*[!0-9]*|???????????*) ;;
         *) echo "bank-preflight: admission lock held $(( $(date +%s) - 10#$held_at ))s" >&2 ;;
@@ -911,6 +910,8 @@ _fleet_admit_iters=0
 # shellcheck source=scripts/lib/proc-tree.sh
 . "$(dirname "$0")/proc-tree.sh" 2>/dev/null || :  # swallow-ok: a tree without proc-tree.sh (an adopter copy) keeps the stale-age path
 _fleet_admit_floor="${FLEET_ADMIT_RETRY_ITERS:-100}"
+case "$_fleet_admit_floor" in ''|*[!0-9]*|??????????*) _fleet_admit_floor=100 ;; esac
+_fleet_admit_floor=$((10#$_fleet_admit_floor))
 if [ "$LAUNCH_INTENT" = 1 ] && [ -n "${_FLEET_READMIT_N:-}" ]; then _fleet_admit_floor=1; fi
 while :; do
   _fleet_claim_admit "$SLOTS/.admit" && { _fleet_admitted=1; break; }

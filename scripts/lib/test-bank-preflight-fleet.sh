@@ -840,10 +840,6 @@ mk_loss_tree() {
     printf '. %q\n' "$SUT_LIB/fleet-reservation-key.sh"
     printf '_lt_marks=%q\n_lt_mode=%q\n' "$tree/marks" "$mode"
     cat <<'TRIGGER'
-_lt_n=$(( $(cat "$_lt_marks/passes" 2>/dev/null || echo 0) + 1 ))
-printf '%s\n' "$_lt_n" > "$_lt_marks/passes"
-cat "/proc/$$/environ" > "$_lt_marks/environ.$_lt_n" 2>/dev/null
-cat "/proc/$$/cmdline" > "$_lt_marks/cmdline.$_lt_n" 2>/dev/null
 _lt_fire() {
   [ "$_lt_mode" = every ] || [ ! -e "$_lt_marks/fired" ] || return 0
   echo x >> "$_lt_marks/fired"
@@ -959,16 +955,20 @@ check "(R3t) an inherited clock inside the window, budget spent -> refused" SKIP
 err_has "(R3t) names the lost lock" 'was lost during admission (in-lock) and the re-admissions did not keep it'
 err_lacks "(R3t) does not re-run" 're-running admission'
 r3tc_epoch="$(date +%s)"
-r3_run r3tc "sleep 3; $R3_LOSS" "tr '\\0' '\\n' < /proc/\$PPID/environ > '$W/r3tc.env'; date +%s > '$W/r3tc.t3'; sleep 11" \
-  CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=10 _FLEET_ADMIT_T0="$(( r3tc_epoch - 100 ))"
+r3_run r3tc "sleep 3; $R3_LOSS" "tr '\\0' '\\n' < /proc/\$PPID/environ > '$W/r3tc.env'; date +%s > '$W/r3tc.t3'; sleep 21" \
+  CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=20 _FLEET_ADMIT_T0="$(( r3tc_epoch - 100 ))"
 check "(R3tc) re-admitted, its claim try made with the budget spent -> admitted" PROCEED "$r3_out"
 err_has "(R3tc) re-runs once" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
+if [ -r /proc/self/environ ]; then
 r3tc_t0="$(sed -n 's/^_FLEET_ADMIT_T0=//p' "$W/r3tc.env" 2>/dev/null)"
 r3tc_t3="$(cat "$W/r3tc.t3" 2>/dev/null)"
 check "(R3tc) pass 2 carries pass 1's clock, set at the noted epoch" 1 \
   "$(is_int "$r3tc_t0" && [ $((r3tc_t0 - r3tc_epoch)) -ge 0 ] && [ $((r3tc_t0 - r3tc_epoch)) -le 1 ] && echo 1 || echo 0)"
 check "(R3tc) pass 2's clock is at least 3 s before its pre-lock census" 1 \
   "$(is_int "$r3tc_t0" && is_int "$r3tc_t3" && [ $((r3tc_t3 - r3tc_t0)) -ge 3 ] && echo 1 || echo 0)"
+else
+  echo "ok - (R3tc) SKIP the clock dump: /proc/self/environ is unreadable on this host"
+fi
 r3_run r3r "$R3_LOSS" :
 check "(R3r) a plain read that loses the lock reports, never refuses" PROCEED "$r3_out"
 err_lacks "(R3r) a plain read does not re-run" 're-running admission'
@@ -1077,6 +1077,11 @@ check "(B1c) a plain read behind a live holder reports" PROCEED "$b1c_out"
 check "(B1c) ... within its own few seconds, not a launch budget" 1 "$([ "$b1c_secs" -le 12 ] && echo 1 || echo 0)"
 err_has "(B1c) ... naming the busy lock" 'could not acquire the fleet admission lock'
 err_lacks "(B1c) a plain read does not re-run" 're-running admission'
+mkdir -p "$slots_b1/.admit"; date +%s > "$slots_b1/.admit/acquired"; printf '%s\n' "$b1_holder" > "$slots_b1/.admit/pid"
+: > "$W/err.log"
+b1z_out="$(run_pf "$slots_b1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9811-b1z HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_RETRY_ITERS=08 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(B1z) a zero-padded try count behind a live holder -> refused as busy" SKIPPED-FLEET "$b1z_out"
+err_has "(B1z) ... after its 8 tries, read as decimal" 'after 8 retries'
 kill "$b1_holder" 2>/dev/null; wait "$b1_holder" 2>/dev/null
 
 wave() {
