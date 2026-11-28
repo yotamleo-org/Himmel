@@ -1189,6 +1189,10 @@ expect_text main-history "a script that pushes a variable set on another line" $
 expect_text main-history "a script line that runs on past a backslash" $'git push -f \\\norigin main\n' bash s.sh
 expect_text main-history "a script whose git runs on past a backslash" $'git \\\npush --force origin main\n' bash s.sh
 expect_rule main-history bash -c $'git \\\npush --force origin main'
+expect_text main-history "a script whose backslash and newline split the word git" $'gi\\\nt push -f origin main\n' bash s.sh
+expect_text main-history "a script whose comment ends in a backslash before a force push" $'# note\\\ngit push -f origin main\n' bash s.sh
+# shellcheck disable=SC2016 # the literal $x word
+expect_rule none bash scripts/handover/brief-lint.sh '$x' push -f main
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
 expect_rule approval-system tee /etc/sudoers

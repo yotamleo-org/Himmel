@@ -198,22 +198,26 @@ def _runs(ws, prog):
 
 
 def _flags(ws):
-    """The facts main-history reads from one word set; a command is the union of its sets' facts, never of the sets.
-    `computed` is a `$` or backtick word, which may name any program."""
+    """The facts main-history reads from one word set; a command is the union of its sets' facts, never of the sets."""
     if ws is None:
         return None
     return frozenset(k for k, hit in (
         ("push", "push" in ws), ("force", _any(ws, FORCE) or any(_short_force(w) for w in ws)),
         ("main", _any(ws, PROTECTED)), ("DELETE", "DELETE" in ws), ("ref-main", any("refs/heads/main" in w for w in ws)),
-        ("repo", "repo" in ws), ("delete", "delete" in ws), ("git", _runs(ws, "git")), ("gh", _runs(ws, "gh")),
-        ("computed", any("$" in w or "`" in w for w in ws))) if hit)
+        ("repo", "repo" in ws), ("delete", "delete" in ws), ("git", _runs(ws, "git")), ("gh", _runs(ws, "gh"))) if hit)
+
+
+def _computed(words):
+    """A `$` or backtick word where shell text starts a command (first, or after a word ending in ; & | or (),
+    which may name any program."""
+    return any(w[:1] in "$`" and (i == 0 or words[i - 1][-1] in ";&|(") for i, w in enumerate(words))
 
 
 def units(argv, texts, cwd, home):
-    """The facts of each command main-history judges: the argv, and each line of a file copy or stdin (a backslash
-    and newline are dropped, as the shell does). A line that expands a `$` word also holds the facts of the argv
-    words and the text's `key=value` words, which a script reads through its arguments and variables, though their
-    `computed` words name no program on that line. None for a word with too many forms."""
+    """The facts of each command main-history judges: the argv, and each line of a file copy or stdin, read both as
+    written and with each backslash and newline dropped (the shell drops them outside a comment). A line that
+    expands a `$` word also holds the facts of the argv words and the text's `key=value` words, which a script reads
+    through its arguments and variables. None for a word with too many forms."""
     memo = {}
 
     def facts(items):
@@ -226,17 +230,22 @@ def units(argv, texts, cwd, home):
             out |= memo[item]
         return _flags(out)
 
-    joined = [a.replace("\\\n", "") for a in argv]
-    args = facts([(w, True) for w in argv] + [(w, False) for a in argv + joined for w in a.split()])
+    scripts = [a.split() for a in argv + [a.replace("\\\n", "") for a in argv]]
+    args = facts([(w, True) for w in argv] + [(w, False) for s in scripts for w in s])
+    if args is not None and any(len(s) > 1 and _computed(s) for s in scripts):
+        args |= {"computed"}
     yield args
     for t in texts:
-        t = t.replace("\\\n", "")
         assigned = facts([(w, False) for w in t.split() if "=" in w])
-        for line in t.split("\n"):
-            f = facts([(w, False) for w in line.split()])
-            if f is not None and "$" in line:
-                f = None if args is None or assigned is None else f | (args | assigned) - {"computed"}
-            yield f
+        for text in {t, t.replace("\\\n", "")}:
+            for line in text.split("\n"):
+                words = line.split()
+                f = facts([(w, False) for w in words])
+                if f is not None and _computed(words):
+                    f |= {"computed"}
+                if f is not None and "$" in line:
+                    f = None if args is None or assigned is None else f | (args | assigned) - {"computed"}
+                yield f
 
 
 def _main_history(units, home):
