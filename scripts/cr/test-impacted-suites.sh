@@ -1984,14 +1984,23 @@ fi
 printf 'scripts/test-lx-a.sh\n' > "$LS/red.txt"
 printf 'scripts/lib/lx-lib.sh\n' > "$LS/paths.txt"
 lx_combo_bad=""
-for lx_c in "--check $lx_range" "--plan $lx_range" "--check $lx_range --record --branch b --head $lx_head" "--shell $lx_range" \
-    "--check $lx_range --from-file $LXV" "--runner scripts/lanes/tests/plugins.test.mjs" "--runner-check" \
-    "--selector-miss $lx_range --red-file $LS/red.txt" "--paths-file $LS/paths.txt $lx_range" "--red-file $LS/red.txt" \
-    "--run scripts/test-lx-a.sh" "$lx_range" "--lister-id"; do
-    read -r -a lx_argv <<< "$lx_c"
-    ( cd "$LX" && bash "$IS" --lister-id "${lx_argv[@]}" > "$LS/is4a.out" 2>/dev/null ); lx_x=$?
-    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ]; then lx_combo_bad="$lx_combo_bad [$lx_c rc=$lx_x]"; fi
-done
+lx_is4a() {
+    ( cd "$LX" && bash "$IS" --lister-id "$@" > "$LS/is4a.out" 2>/dev/null ); lx_x=$?
+    if [ "$lx_x" -ne 2 ] || [ -s "$LS/is4a.out" ]; then lx_combo_bad="$lx_combo_bad [$* rc=$lx_x]"; fi
+}
+lx_is4a --check "$lx_range"
+lx_is4a --plan "$lx_range"
+lx_is4a --check "$lx_range" --record --branch b --head "$lx_head"
+lx_is4a --shell "$lx_range"
+lx_is4a --check "$lx_range" --from-file "$LXV"
+lx_is4a --runner scripts/lanes/tests/plugins.test.mjs
+lx_is4a --runner-check
+lx_is4a --selector-miss "$lx_range" --red-file "$LS/red.txt"
+lx_is4a --paths-file "$LS/paths.txt" "$lx_range"
+lx_is4a --red-file "$LS/red.txt"
+lx_is4a --run scripts/test-lx-a.sh
+lx_is4a "$lx_range"
+lx_is4a --lister-id
 if [ -z "$lx_combo_bad" ]; then pass "IS4a --lister-id with any other flag or a range exits 2 with no id"; else fail "IS4a combinations:$lx_combo_bad"; fi
 lx_reset
 ( cd "$LX" && bash "$IS" --check "$lx_range" --shell --from-file "$LXV" --record --branch feat/lx --head "$lx_head" >/dev/null 2>&1 )
