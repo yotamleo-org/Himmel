@@ -752,7 +752,9 @@ def cmd_wait(o):
     if not o.since:
         die('wait needs --since (the desk start)', 2)
     start = time.monotonic()
-    while True:
+    first = True
+    while first or time.monotonic() - start < o.max_wait:
+        first = False
         d.expire_leases()
         if os.path.exists(d.stop_file):
             print('STOP')
@@ -780,9 +782,10 @@ def cmd_wait(o):
                 return 0
         remaining = o.max_wait - (time.monotonic() - start)
         if remaining <= 0:
-            print('TIMEOUT')
-            return 0
+            break
         time.sleep(min(o.tick, remaining))
+    print('TIMEOUT')
+    return 0
 
 
 COMMANDS = {'wait': cmd_wait, 'next': cmd_next, 'claim': cmd_claim, 'record': cmd_record, 'draft-go': cmd_draft_go}
