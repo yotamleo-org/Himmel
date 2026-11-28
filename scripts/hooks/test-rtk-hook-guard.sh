@@ -354,9 +354,11 @@ for cmd in 'git commit -F /tmp/msg' 'git commit -q -m \"fix(x): y\"' 'git commit
         assert_fail "expected rtk git commit rewrite for '$cmd', got: $out"
     fi
 done
+# shellcheck disable=SC2016
 for cmd in 'git commit -F /tmp/msg && git push' 'git commit -F /tmp/msg; git log -1' \
     'git push -u origin fix/x' 'git diff origin/main' 'git show HEAD' 'git commit -m \"git push\"' \
-    'cd /tmp && git commit -F /tmp/msg'; do
+    'cd /tmp && git commit -F /tmp/msg' 'git commit -m \"$(id)\"' 'git commit -m `id`' \
+    'git commit -F /tmp/msg > /tmp/out' 'git commit -F <(id)'; do
     out=$(run_hook_leg "$wt_cwd" "$cmd")
     if [ -z "$out" ]; then
         assert_pass "worker worktree rewrite still suppressed: $cmd"
@@ -383,7 +385,9 @@ if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedInput.command + "
 else
     assert_fail "silent rtk: expected the guard's rtk git commit rewrite, got: $out"
 fi
+# shellcheck disable=SC2016
 for row in '|git commit -F /tmp/msg|' '1|git commit -F /tmp/msg && git push|' '1|git push|' \
+    '1|git commit -m \"$(id)\"|' '1|git commit -m `id`|' \
     '1|git commit -F /tmp/msg|/home/u/.claude-codex'; do
     leg=${row%%|*}; rest=${row#*|}; cmd=${rest%%|*}; cfg=${rest#*|}
     out=$(run_silent "$leg" "$cmd" "$cfg")
@@ -635,6 +639,11 @@ fi
 echo "Test 14: worker commit through the guard: capped when it passes, failing line kept with rtk on and off"
 if real_rtk=$(command -v rtk 2>/dev/null); then
     real_dir=$(dirname "$real_rtk")
+    if ! { [ -r "$repo_root/scripts/lib/git-clean.sh" ] && . "$repo_root/scripts/lib/git-clean.sh"; }; then
+        echo "FAIL: cannot load scripts/lib/git-clean.sh" >&2
+        exit 1
+    fi
+    git_env_scrub
     cap=5
     repo14=$(mktemp -d "${TMPDIR:-/tmp}/rtk-guard-commit.XXXXXX") || { echo "FAIL: cannot make a scratch repo" >&2; exit 1; }
     commit_n=0
@@ -699,9 +708,9 @@ HOOK
     for mode in on off; do
         if [ "$mode" = on ]; then c="$on_cmd"; else c="$off_cmd"; fi
         res=$(run_commit "$c" 1)
-        failed_at=$(grep -n 'Failed$' <<< "$res" | head -n 1 | cut -d: -f1)
-        line_at=$(grep -n '^FAILING-LINE-14$' <<< "$res" | head -n 1 | cut -d: -f1)
-        if [ "$(grep -c '^FAILING-LINE-14$' <<< "$res")" -eq 1 ] && [ -n "$failed_at" ] \
+        failed_at=$(awk '/Failed$/ { print NR; exit }' <<< "$res")
+        line_at=$(awk '/^FAILING-LINE-14$/ { print NR; exit }' <<< "$res")
+        if [ "$(awk '/^FAILING-LINE-14$/ { n++ } END { print n + 0 }' <<< "$res")" -eq 1 ] && [ -n "$failed_at" ] \
             && [ "$failed_at" -lt "$line_at" ] && grepq "$res" -x 'rc=1'; then
             assert_pass "rtk $mode: a failing commit prints its failing line once, after the Failed line, rc=1"
         else

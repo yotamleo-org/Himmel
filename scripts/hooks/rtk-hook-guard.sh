@@ -105,7 +105,7 @@ case "$out" in
                 commit_cmd=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedInput.command // empty')
                 case "$commit_cmd" in
                 *"
-"*|*'&'*|*';'*|*'|'*) ;;
+"*|*'&'*|*';'*|*'|'*|*'`'*|*'$'*|*'<'*|*'>'*) ;;
                 "rtk git commit"|"rtk git commit "*)
                     if [ "$(grep -oE '(^|[^[:alnum:]_])git($|[^[:alnum:]_])' <<< "$commit_cmd" | wc -l)" -eq 1 ]; then
                         printf '%s\n' "$out"
