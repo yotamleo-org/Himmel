@@ -66,34 +66,23 @@ Follow this priority order. Explicit user preference always beats observed files
 
 1. **Check your instructions for a declared worktree directory preference.** If the user has already specified one, use it without asking.
 
-2. **Check for an existing project-local worktree directory:**
-   ```bash
-   ls -d .worktrees 2>/dev/null     # Preferred (hidden)
-   ls -d worktrees 2>/dev/null      # Alternative
-   ```
-   If found, use it. If both exist, `.worktrees` wins.
+2. **Otherwise use `.claude/worktrees/` at the project root**, one folder per branch named `<type>+<slug>` (branch `<type>/<slug>`, for example `fix/login-bug` lives in `.claude/worktrees/fix+login-bug`). This repo's `/worktree` command creates exactly that. Never use `.worktrees/` or `worktrees/`.
 
-3. **If there is no other guidance available**, default to `.worktrees/` at the project root.
+#### Safety Verification
 
-#### Safety Verification (project-local directories only)
-
-**MUST verify directory is ignored before creating worktree:**
+`.claude/worktrees/` is already ignored by this repo's `.gitignore`. For a project-local folder (the default, or a declared one inside the repo), check it, and if it is NOT ignored, stop and report it. Never edit `.gitignore` or commit to fix it. A declared folder outside the repo needs no check.
 
 ```bash
-git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/dev/null
+dir=".claude/worktrees"   # or the folder your instructions declared
+git check-ignore -q "${dir%/}/"
 ```
-
-**If NOT ignored:** Add to .gitignore, commit the change, then proceed.
-
-**Why critical:** Prevents accidentally committing worktree contents to repository.
 
 #### Create the Worktree
 
 ```bash
-# Determine path based on chosen location
-path="$LOCATION/$BRANCH_NAME"
+path="$dir/<type>+<slug>"
 
-git worktree add "$path" -b "$BRANCH_NAME"
+git worktree add "$path" -b "<type>/<slug>"
 cd "$path"
 ```
 
@@ -147,11 +136,8 @@ Ready to implement <feature-name>
 | In a submodule | Treat as normal repo (Step 0 guard) |
 | Native worktree tool available | Use it (Step 1a) |
 | No native tool | Git worktree fallback (Step 1b) |
-| `.worktrees/` exists | Use it (verify ignored) |
-| `worktrees/` exists | Use it (verify ignored) |
-| Both exist | Use `.worktrees/` |
-| Neither exists | Check instruction file, then default `.worktrees/` |
-| Directory not ignored | Add to .gitignore + commit |
+| No declared preference | Use `.claude/worktrees/<type>+<slug>` |
+| `.claude/worktrees` not ignored | Stop and report; never edit `.gitignore` |
 | Permission error on create | Sandbox fallback, work in place |
 | Tests fail during baseline | Report failures + ask |
 | No package.json/Cargo.toml | Skip dependency install |
@@ -163,5 +149,5 @@ Ready to implement <feature-name>
 | "I'm obviously not in a worktree — no need to check" | Run Step 0. Harness-created isolation and submodules both fool eyeballing; the detection commands settle it. |
 | "`git worktree add` is quicker than hunting for a native tool" | A native tool (e.g. `EnterWorktree`) owns placement, branching, and cleanup. Bypassing it is the #1 mistake — it creates phantom state your harness can't see or manage. |
 | "The worktree directory is surely ignored already" | Run `git check-ignore`. An unignored worktree directory commits the whole tree into the repo. |
-| "Any directory name works" | Explicit instructions beat an existing project-local directory, which beats the `.worktrees/` default. |
+| "Any directory name works" | Explicit instructions beat the `.claude/worktrees/<type>+<slug>` default; `.worktrees/` and `worktrees/` are never it. |
 | "The workspace is fresh — baseline tests can wait" | A dirty baseline makes every later failure ambiguous. Run the tests now; proceeding past failures is your human partner's call. |
