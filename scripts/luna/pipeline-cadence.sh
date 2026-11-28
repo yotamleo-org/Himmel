@@ -181,6 +181,13 @@ CADENCE_PERMISSION_MODE="acceptEdits"
 # shellcheck source=../lib/macos-fda-warning.sh
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
+SUBAGENT_CAPS_ENV=()
+_caps_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/subagent-caps.sh"
+# shellcheck source=../lib/subagent-caps.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_caps_lib" ] && . "$_caps_lib"; }; then
+    echo "WARN pipeline-cadence: $_caps_lib did not load; the runners carry no subagent caps" >&2
+fi
 
 # Operator-decision defaults.
 FETCH_HEALTH_TIME="03:30"
@@ -901,7 +908,10 @@ emit_runner() {
     # only affects --print mode, and cadence runners are interactive-shaped.
     # --permission-mode is EXPLICIT: never inherit a default that could be
     # bypassPermissions (billing rule).
-    printf '        _rc=0; %s --model %s --permission-mode %s --settings %s %s < /dev/null || _rc=$?\n' "$q_claude" "$q_model" "$CADENCE_PERMISSION_MODE" "$q_settings" "$q_prompt"
+    local q_caps="" q_noagent=""
+    [ -z "${SUBAGENT_CAPS_ENV[0]:-}" ] || q_caps="env ${SUBAGENT_CAPS_ENV[*]} "
+    [ -z "$q_caps" ] || ! subagent_caps_is_haiku "$q_model" || q_noagent="--disallowedTools Agent "
+    printf '        _rc=0; %s%s --model %s %s--permission-mode %s --settings %s %s < /dev/null || _rc=$?\n' "$q_caps" "$q_claude" "$q_model" "$q_noagent" "$CADENCE_PERMISSION_MODE" "$q_settings" "$q_prompt"
     # Fail-closed fallback (coderabbit #1762): classifier unavailable/silent ->
     # parked on rc 0, error otherwise -- never complete by default.
     printf '        _flow_outcome=$(%s --classify "$_rc" "$log" "" %s 2>/dev/null) || _flow_outcome=\n' "$q_flow_lib" "$WORKER_SESSION_DONE_MARKER"

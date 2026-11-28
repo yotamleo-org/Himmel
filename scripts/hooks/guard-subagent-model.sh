@@ -29,11 +29,12 @@
 #   2. tool_input.subagent_type keeps the Agent tool, so the Haiku child could
 #      spawn (and a built-in Explore it calls runs on the MAIN session's model,
 #      a tier up): it is absent, null, empty, "general-purpose" or "claude", or
-#      it names an agent definition, a *.md under $CLAUDE_PROJECT_DIR/.claude/
-#      agents/ first, then $HOME/.claude/agents/, whose frontmatter `name:`
-#      (the file name when it has none) is the type and leaves Agent available:
-#      no `tools:` key, or one listing Agent or the old name Task, and no
-#      `disallowedTools:` naming it. A key's value is its own line plus every
+#      it names an agent definition, a *.md anywhere under $CLAUDE_PROJECT_DIR/
+#      .claude/agents/ first, then $HOME/.claude/agents/ (subfolders included),
+#      whose frontmatter `name:` (the file name when it has none) is the type
+#      and leaves Agent available: no `tools:` key, or one listing Agent, the
+#      old name Task or the `*` wildcard, and no `disallowedTools:` naming it.
+#      A `#` inside quotes is not a comment. A key's value is its own line plus every
 #      indented or `- ` continuation line up to the next top-level key, so
 #      inline, quoted, flow, block-scalar and list forms all count; comments
 #      and blank lines are skipped. The deny names
@@ -69,15 +70,26 @@ agent_def_keeps_agent() {
     case "$1" in *[!A-Za-z0-9_-]*) return 1 ;; esac
     for root in "${CLAUDE_PROJECT_DIR:-}" "${HOME:-}"; do
         [ -n "$root" ] && [ -d "$root/.claude/agents" ] || continue
-        for f in "$root/.claude/agents"/*.md; do
+        while IFS= read -r f; do
             [ -f "$f" ] || continue  # fail-open-ok: a workflow nudge (header FAIL-OPEN); an unreadable definition is skipped like a missing one
             rc=0
             awk -v want="$1" -v stem="$(basename "$f" .md)" '
+                function uncomment(v,   i, c, q, p) {
+                    q = ""; p = " "
+                    for (i = 1; i <= length(v); i++) {
+                        c = substr(v, i, 1)
+                        if (q != "") { if (c == q) q = "" }
+                        else if (c == "\"" || c == "\047") q = c
+                        else if (c == "#" && p ~ /[[:space:]]/) return substr(v, 1, i - 1)
+                        p = c
+                    }
+                    return v
+                }
                 function has_agent(v,   n, a, i, t) {
-                    sub(/(^|[[:space:]])#.*$/, "", v)
+                    v = uncomment(v)
                     gsub(/["'\''\[\]{}>|]/, " ", v)
                     n = split(v, a, /[[:space:],]+/)
-                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task") return 1 }
+                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || t == "*") return 1 }
                     return 0
                 }
                 function take(v) {
@@ -101,7 +113,7 @@ agent_def_keeps_agent() {
                 0) return 0 ;;
                 1) return 1 ;;
             esac
-        done
+        done < <(find "$root/.claude/agents" -type f -name '*.md')
     done
     return 1
 }

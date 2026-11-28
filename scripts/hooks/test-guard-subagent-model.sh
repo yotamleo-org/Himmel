@@ -305,6 +305,23 @@ assert_rc "a column-1 comment between tools items does not end the list: + haiku
 RC50=$(run_hook def-dash-key "$(payload dash-key haiku)" "${DEFS[@]}")
 assert_rc "an Agent item under a later -notes: key does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC50"
 
+mkdir -p "$PROJ/.claude/agents/review/deep"
+printf -- '---\nname: star-tools\ntools: "*"\n---\nbody\n' > "$PROJ/.claude/agents/star-tools.md"
+printf -- "---\nname: star-list\ntools: ['*']\n---\nbody\n" > "$PROJ/.claude/agents/star-list.md"
+printf -- '---\nname: nested-inherits\n---\nbody\n' > "$PROJ/.claude/agents/review/deep/nested.md"
+printf -- '---\nname: nested-safe\ntools: Read\n---\nbody\n' > "$PROJ/.claude/agents/review/safe.md"
+printf -- '---\nname: hash-quoted\ntools: "Read, Bash(echo #1), Agent"\n---\nbody\n' > "$PROJ/.claude/agents/hash-quoted.md"
+RC51=$(run_hook def-star "$(payload star-tools haiku)" "${DEFS[@]}")
+assert_rc "tools \"*\" grants every tool, Agent included: + haiku is DENIED (rc=2)" 2 "$RC51"
+RC52=$(run_hook def-star-list "$(payload star-list haiku)" "${DEFS[@]}")
+assert_rc "tools ['*'] grants every tool, Agent included: + haiku is DENIED (rc=2)" 2 "$RC52"
+RC53=$(run_hook def-nested "$(payload nested-inherits haiku)" "${DEFS[@]}")
+assert_rc "a definition in a subfolder of .claude/agents that keeps Agent + haiku is DENIED (rc=2)" 2 "$RC53"
+RC54=$(run_hook def-nested-safe "$(payload nested-safe haiku)" "${DEFS[@]}")
+assert_rc "a definition in a subfolder whose tools omit Agent + haiku is allowed (rc=0)" 0 "$RC54"
+RC55=$(run_hook def-hash-quoted "$(payload hash-quoted haiku)" "${DEFS[@]}")
+assert_rc "a # inside a quoted tools value is not a comment: + haiku is DENIED (rc=2)" 2 "$RC55"
+
 echo ""
 echo "=== escape hatch ==="
 

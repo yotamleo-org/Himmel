@@ -188,6 +188,23 @@ aout="$(arm_dry --model haiku)"
 has "arm-resume: a Haiku relaunch starts with the Agent tool disallowed" "$aout" "--model haiku --disallowedTools Agent --autocompact"
 
 echo ""
+echo "=== 3d. pipeline-cadence.sh's generated claude runner ==="
+PC="$ROOT/scripts/luna/pipeline-cadence.sh"
+pc_runner() {
+    ( set +u
+      # shellcheck source=subagent-caps.sh
+      . "$LIB"
+      eval "$(sed -n '/^emit_runner() {/,/^}/p' "$PC")"
+      emit_runner health /vault claude prompt /log /settings "" "$1" health "" "" "" "" "" ) 2>/dev/null
+}
+prun="$(pc_runner haiku)"
+has "cadence: the Haiku health runner starts claude with both caps" "$prun" "env $DEPTH $CONC claude --model haiku"
+has "cadence: the Haiku health runner starts with the Agent tool disallowed" "$prun" "--model haiku --disallowedTools Agent --permission-mode"
+prun="$(pc_runner claude-sonnet-5-5)"
+has "cadence: a Sonnet runner carries the caps too" "$prun" "env $DEPTH $CONC claude --model claude-sonnet-5-5"
+lacks "cadence: a Sonnet runner keeps the Agent tool" "$prun" "--disallowedTools"
+
+echo ""
 echo "=== 4. headed-arm-worker.sh launches through the two wired exec points ==="
 hawsrc="$(cat "$HAW")"
 has "chain: headed-arm-worker.sh sets worker-claude-launcher.sh as the launcher" "$hawsrc" 'HEADED_ARM_LAUNCHER="${HEADED_ARM_WORKER_SHIM:-$HERE/../../lanes/worker-claude-launcher.sh}"'
