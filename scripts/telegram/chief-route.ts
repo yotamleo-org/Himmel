@@ -1192,7 +1192,7 @@ async function sealTarget(verdict: string, readPath: string): Promise<SealTarget
 type SealedFile = { read_path: string; read_sha: string; seeded: boolean };
 const sealedFileOf = (x: { read_path: unknown; read_sha: unknown }, seeded: boolean): SealedFile => ({ read_path: String(x.read_path), read_sha: String(x.read_sha), seeded });
 const distinctFiles = (files: SealedFile[]) => files.filter((s, i) => files.findIndex(o => o.read_path === s.read_path && o.read_sha === s.read_sha) === i);
-function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: SealedFile[] } {
+export function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: SealedFile[] } {
   const row = roundRows(rows, kind).filter(x => Number(x.round) === r - 1).at(-1);
   const returns: { return_sha: string }[] = row ? [row as { return_sha: string }] : Number(seedOf(rows)?.[kind]) === r - 1 ? seededReturns(rows, kind) : [];
   const own = row ? [sealedFileOf(row, false)] : seededReturns(rows, kind).flatMap(s => s.seals.map(x => sealedFileOf(x, true)));

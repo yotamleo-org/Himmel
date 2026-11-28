@@ -4945,7 +4945,7 @@ test("shared fixture refuses escaping ancestors before creating directories", as
 });
 
 const cappedKey = "HIMMEL-10205";
-const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; planText?: string; pageName?: string } = {}) => {
+const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; firstSpecText?: string; planText?: string; pageName?: string } = {}) => {
   const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const r = root();
   const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
@@ -4958,7 +4958,8 @@ const cappedFixture = async (options: { specFindings?: string; planFindings?: st
       reads: ["spec", ...(kind === "plan" ? ["plan"] : []), { path: `specs/designs/${options.pageName ?? "page.html"}`, text: "<h1>Review page</h1>\n" },
         { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }] };
   }));
-  const f = await buildRoundFixture({ scratchRoot: r, key: cappedKey, specText, planText, returns });
+  if (options.firstSpecText !== undefined) (returns[1] as { rewrite?: { spec: string } }).rewrite = { spec: specText };
+  const f = await buildRoundFixture({ scratchRoot: r, key: cappedKey, specText: options.firstSpecText ?? specText, planText, returns });
   return { ...f, r, args: { key: cappedKey, spec: f.spec, plan: f.plan,
     specReturn: f.verdicts.filter(p => p.includes("critic-spec-")).at(-1)!, planReturn: f.verdicts.filter(p => p.includes("critic-plan-")).at(-1)! } };
 };
@@ -5961,6 +5962,11 @@ test("D1 declaredTickets: plain, flow, comma and annotated scalars, with commas 
   expect(shared.declaredTickets(`---\ntickets: ${a}\nother: 1\n---\n# T\n`)).toEqual([a]);
   expect(shared.declaredTickets(`---\ntitle: x\ntickets: [${a}, ${b}]\n---\n`)).toEqual([a, b]);
   expect(shared.declaredTickets(`---\ntickets: ${a}\n---`)).toEqual([a]);
+  expect(read(`ticket: ${a}`), "S3: the singular key").toEqual([a]);
+  expect(read(`ticket: ${a}\ntickets: ${a}`), "S3: both spellings agree").toEqual([a]);
+  expect(read(`ticket: ${a}, ${b}`), "S3: a singular comma list").toEqual([a, b]);
+  expect(read(`ticket: ${b}, ${a}\ntickets: ${a}, ${b}`), "S3: the order is the tickets: line's").toEqual([a, b]);
+  expect(read(`ticket: ${a}, ${b}\ntickets: ${b}, ${a}`), "S3: the order is the tickets: line's, either way").toEqual([b, a]);
   const maximum = Array.from({ length: 4096 }, (_, i) => t2Key(100000 + i));
   expect(read(`tickets: [${maximum.join(", ")}]`)).toEqual(maximum);
   expect(read(`tickets: [${[...maximum, t2Key(200000)].join(", ")}]`)).toBeNull();
@@ -5997,6 +6003,9 @@ test("D5 declaredTickets refuses a key inside an annotation, nested or unbalance
   expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets: ${b}\n---\n# T\n`), "a second tickets: line").toBeNull();
   expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets: ${a}\n---\n# T\n`)).toBeNull();
   expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets:\n---\n# T\n`)).toBeNull();
+  expect(read(`ticket: ${a}\ntickets: ${b}`), "S3: ticket: and tickets: disagree").toBeNull();
+  expect(read(`ticket: ${a}\nticket: ${b}`), "S3: two ticket: lines").toBeNull();
+  expect(read(`ticket: ${a} (see ${b})`), "S3: a singular line naming a key in its annotation").toBeNull();
   expect(shared.declaredTickets(`---\ntickets: ${a}\n  tickets: ${b}\n---\n# T\n`), "an indented line is not a second declaration").toEqual([a]);
   expect(shared.declaredTickets(`---\ntitle: x\n---\n# T\n`), "no tickets line").toBeNull();
   expect(shared.declaredTickets(`# T\n\ntickets: ${a}\n`), "no front matter").toBeNull();
@@ -8673,6 +8682,13 @@ test("T-G1, T-G2, T-G1b, T-G4, T-G5: sign-shape refuses the shapes the signer ca
   expect(signShape().code, "usage").toBe(2);
 });
 
+test("S4: sign-shape reads a ticket: line like a tickets: line", () => {
+  const disagree = signShape(shapeFile("HIMMEL-1-j.md", `---\nticket: HIMMEL-1\ntickets: HIMMEL-99\n---\n${shapeSpec(null)}`));
+  expect(disagree.code, "ticket: and tickets: disagree").toBe(3);
+  expect(disagree.out).toContain("HIMMEL-1-j.md: the tickets line does not parse");
+  expect(signShape(shapeFile("HIMMEL-1-k.md", `---\nticket: HIMMEL-1\n---\n${shapeSpec(null)}`)), "a ticket:-only spec").toEqual({ code: 0, signal: null, out: "SIGN-SHAPE OK\n", err: "" });
+});
+
 test("T-G3: sign-shape and the signer agree on every row of the shared table", async () => {
   const { RESIDUAL_ROWS } = await import("../jira/src/release/test-residual-fixtures.ts");
   const { checkResiduals } = await import("../jira/src/release/spec-sign.ts");
@@ -8703,15 +8719,113 @@ test("T-G3: sign-shape and the signer agree on every row of the shared table", a
 
 test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets table", async () => {
   const { declaredTickets } = await import("../jira/src/release/pinned.ts");
-  const rows: [string, boolean][] = [[cappedKey, true], [`${cappedKey} (a title)`, true], [`[${cappedKey}]`, true], [`${cappedKey} ()`, true], [`${cappedKey} (Relates: HIMMEL-2)`, false]];
-  const got = await Promise.all(rows.map(async ([tickets]) => {
-    const specText = `---\ntickets: ${tickets}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
-    const f = await cappedFixture({ specText });
+  const rows: [string, boolean][] = [[`tickets: ${cappedKey}`, true], [`tickets: ${cappedKey} (a title)`, true], [`tickets: [${cappedKey}]`, true], [`tickets: ${cappedKey} ()`, true],
+    [`tickets: ${cappedKey} (Relates: HIMMEL-2)`, false], [`ticket: ${cappedKey}`, true]];
+  const got = await Promise.all(rows.map(async ([line]) => {
+    const specText = `---\n${line}\n---\n` + fixtureSpecText.replace(/^---\ntickets: .*\n---\n/, "").replace("## Alternatives considered", "Reference: HIMMEL-8626 remains a body reference.\n\n## Alternatives considered");
+    const f = await cappedFixture({ specText, ...(line.startsWith("ticket:") ? { firstSpecText: specText.replace(line, `tickets: ${cappedKey}`) } : {}) });
     const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
     const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
     return [declares(p1Fold(f.args)), declares(p1Cli("--keys", cappedKey, ...p1Flags(f.args).slice(2))), signer, signShape(f.spec).code === 0];
   }));
   expect(got).toEqual(rows.map(([, ok]) => [ok, ok, ok, ok]));
+});
+
+test("S1, S2, N4: the capped fold reads a plan's ticket: line on --key and --keys, and refuses ticket: and tickets: that disagree", async () => {
+  const plan = (front: string) => `---\n${front}\n---\nKey: ${cappedKey}\n${fixturePlanText}`;
+  const s1 = await cappedFixture({ planText: plan(`ticket: ${cappedKey}`) });
+  expect(p1Fold(s1.args), "S1: a singular ticket: line naming the key passes --key").toMatchObject({ code: 0, err: "" });
+  expect(v2Cli((await cappedFixture()).args), "S2 control: --keys accepts a plan with no ticket: line").toMatchObject({ code: 0, err: "" });
+  const s2 = await cappedFixture({ planText: plan("ticket: HIMMEL-99") });
+  expect(v2Cli(s2.args), "S2: a singular ticket: line naming another key refuses --keys").toMatchObject({ code: 1, out: "", err: p1Line(`capped-fold: tickets must declare only ${cappedKey}`) });
+  const n4 = await cappedFixture({ planText: plan(`ticket: ${cappedKey}\ntickets: HIMMEL-99`) });
+  for (const run of [p1Fold(n4.args), v2Cli(n4.args)]) expect(run, "N4: the two spellings disagree on both routes").toMatchObject({ code: 1, out: "", err: p1Line(`capped-fold: tickets must declare only ${cappedKey}`) });
+});
+
+const CC_VARIANTS = ["carry", "findingsClosure", "writerBetween", "unsealedClosure", "bodyChanged", "noAnchor", "keysChanged"] as const;
+const ccBuild = async (variant: typeof CC_VARIANTS[number]) => {
+  const f = await (await b1Lib()).buildClosureCarryFixture(realpathSync(root()), { variant });
+  const key = /^(HIMMEL-\d+)/.exec(basename(f.spec))![1];
+  const planReturn = b1Kind(f, "plan").at(-1)!; const specReturn = b1Kind(f, "spec").at(-1)!;
+  const A = [...readFileSync(planReturn, "utf8").matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (.+)$/gm)].find(m => resolve(dirname(planReturn), m[2]) === f.spec)![1];
+  const snapshot = join(dirname(f.ledgerPath), key, A);
+  return { ...f, key, A, S: sha(readFileSync(f.spec, "utf8")), snapshot, args: { key, spec: f.spec, plan: f.plan, specReturn, planReturn } };
+};
+const ccRefusal = (spec: string) => p1Line(`capped-fold: seal provenance disagrees: ${spec}`);
+let ccCarryPassed: Promise<void> | null = null;
+const ccSiblingPasses = () => {
+  ccCarryPassed ??= ccBuild("carry").then(f => { expect(v2Cli(f.args), "sibling: the carry build passes C1").toMatchObject({ code: 0, err: "" }); });
+  return ccCarryPassed;
+};
+
+test("closure-carry fixture: each variant's spec ledger differs from carry in the one shape its name says", async () => {
+  const route = await import("./chief-route"); const { declaredTickets } = await t2Pinned();
+  const bodyOf = (text: string) => text.replace(/^---\n[\s\S]*?\n---(?:\n|$)/, "");
+  const tails: Record<string, (string | number)[][]> = {};
+  for (const variant of CC_VARIANTS) {
+    const f = await ccBuild(variant);
+    const rows = readFileSync(f.ledgerPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    const name = (s: string | undefined) => s === f.A ? "A" : s === f.S ? "S" : "other";
+    tails[variant] = rows.filter(r => r.row === "round" && r.critic === "spec")
+      .map(r => [r.round, r.mode, r.verdict, name(route.roundBefore(rows, "spec", Number(r.round) + 1).sealed.find((s: any) => s.read_path === f.spec)?.read_sha)]);
+    const older = readFileSync(f.snapshot, "utf8"); const current = readFileSync(f.spec, "utf8");
+    expect(f.A === f.S, `${variant}: A and S differ`).toBe(false);
+    expect(bodyOf(current) === bodyOf(older), `${variant}: the body after the front matter`).toBe(variant !== "bodyChanged");
+    expect(JSON.stringify(declaredTickets(current)?.sort()) === JSON.stringify(declaredTickets(older)?.sort()), `${variant}: the declared key set`).toBe(variant !== "keysChanged");
+    expect(declaredTickets(older), `${variant}: A declares its key`).toEqual([f.key]);
+    for (const v of f.verdicts) expect(readFileSync(v, "utf8"), `${variant}: ${basename(v)}`).not.toMatch(/^(Key|Reviewed):/m);
+  }
+  const full = (rounds: number[], sealed: string) => rounds.map(round => [round, "full", "SPEC FINDINGS 1", sealed]);
+  const carry = [...full([1, 2, 3, 4, 5], "A"), [6, "closure", "SPEC CLEAN", "S"]];
+  expect(tails).toEqual({
+    carry, bodyChanged: carry, keysChanged: carry,
+    findingsClosure: [...full([1, 2, 3, 4, 5], "A"), [6, "closure", "SPEC FINDINGS 1", "S"]],
+    writerBetween: [...full([1, 2, 3, 4], "A"), ...full([5], "other"), [6, "closure", "SPEC CLEAN", "S"]],
+    unsealedClosure: [...full([1, 2, 3, 4, 5], "A"), [6, "closure", "SPEC CLEAN", "other"], [7, "closure", "SPEC CLEAN", "S"]],
+    noAnchor: [...full([1, 2, 3, 4, 5], "other"), [6, "closure", "SPEC CLEAN", "S"]],
+  });
+});
+
+test("C1: a plan seal on spec A carries across a CLEAN spec closure that changed only the front matter, and the proof pins the A snapshot", async () => {
+  const shared = await t2Pinned(); const f = await ccBuild("carry");
+  const run = v2Cli(f.args);
+  expect(run.err).toBe(""); expect(run.code).toBe(0);
+  const proof = JSON.parse(run.out);
+  expect(shared.validateCappedLedgerProofShape(proof)).toEqual(proof);
+  expect(proof.carried.map((c: any) => [c.kind, c.finding_id, c.round])).toEqual([["plan", "P5", 5]]);
+  expect(proof.spec).toEqual({ path: f.spec, sha256: f.S });
+  expect(proof.pins).toContainEqual({ role: "artifact", path: f.spec, sha256: f.S });
+  expect(proof.pins).toContainEqual({ role: "snapshot", path: f.snapshot, sha256: f.A });
+});
+
+test("N1, N2, N3, N9, N10, N11: a carry shape that differs from C1 in one way keeps the seal refusal", async () => {
+  await ccSiblingPasses();
+  for (const variant of ["findingsClosure", "writerBetween", "unsealedClosure", "bodyChanged", "noAnchor"] as const) {
+    const f = await ccBuild(variant);
+    expect(v2Cli(f.args), variant).toMatchObject({ code: 1, out: "", err: ccRefusal(f.spec) });
+  }
+  const keys = await ccBuild("keysChanged");
+  const both = p1Cli("--keys", `${keys.key},HIMMEL-9832`, ...p1Flags(keys.args).slice(2));
+  expect(both, "N11: the key list changed, run over the two keys S declares").toMatchObject({ code: 1, out: "", err: ccRefusal(keys.spec) });
+});
+
+test("N5, N7, N8: a carried seal keeps the snapshot, quote and ledger checks", async () => {
+  const n5 = await ccBuild("carry"); expect(v2Cli(n5.args), "N5 control").toMatchObject({ code: 0 });
+  rmSync(n5.snapshot);
+  expect(v2Cli(n5.args), "N5: the snapshot of A is gone").toMatchObject({ code: 1, out: "", err: p1Line(`ENOENT: no such file or directory, realpath '${n5.snapshot}'`) });
+  const n7 = await ccBuild("carry"); expect(v2Cli(n7.args), "N7 control").toMatchObject({ code: 0 });
+  await editCappedReturn(n7, n7.args.planReturn, text => text.replace(`READ-SHA256 ${n7.A} ${n7.spec}`, `READ-SHA256 ${"f".repeat(64)} ${n7.spec}`));
+  expect(v2Cli(n7.args), "N7: the quote does not name A").toMatchObject({ code: 1, out: "", err: p1Line(`capped-fold: missing/conflicting critic READ quote: ${n7.spec}`) });
+  const n8 = await ccBuild("carry"); expect(v2Cli(n8.args), "N8 control").toMatchObject({ code: 0 });
+  const { returnSha } = await import("./chief-route"); const planSum = returnSha(readFileSync(n8.args.planReturn, "utf8"));
+  editLedger(n8, rows => { const r = rows.find(x => x.row === "seal" && x.return_sha === planSum && x.read_path === n8.spec && x.read_sha === n8.A)!; r.read_sha = n8.S; });
+  expect(v2Cli(n8.args), "N8: the ledger seal row does not record A").toMatchObject({ code: 1, out: "", err: ccRefusal(n8.spec) });
+});
+
+test("N6: the closure carry is v2-only", async () => {
+  const route = await c3Route(); const f = await ccBuild("carry"); const policy = route.v2Policy([f.key]);
+  await c3Kind(f, "plan", policy);
+  expect(await c3Message(c3Kind(f, "plan", { ...policy, closureReads: false })), "the carry under a non-closure-reads policy").toBe(`capped-fold: seal provenance disagrees: ${f.spec}`);
 });
 
 test("T-C1: FINDING_LINE is the one imported grammar with the base source", async () => {
