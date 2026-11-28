@@ -67,7 +67,7 @@ SUBAGENT_MODEL_OK	grant	registry	-
 SUBAGENT_PARK_GUARD_DISABLE	grant	registry	-
 SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE	floor	registry	lets a subagent write an operator-chain row: it reaches the approval channel itself
 T3CODE_UNWATCH_OK	grant	registry	-
-T3_THREAD_TOOLS_OK	floor	registry	lets an agent move a thread onto a T3 instance that carries bypass flags, or name itself a chief, and lets T3's create, review and merge pull-request tools through, including a merge the GO and trust-path gates would refuse
+T3_THREAD_TOOLS_OK	floor	registry	lets an agent move a thread onto a T3 instance that carries bypass flags, name itself a chief, or bind an interval schedule to its thread without a fresh session, and lets T3's create, review and merge pull-request tools through, including a merge the GO and trust-path gates would refuse
 TEMPLATE_VERSION_OK	grant	registry	-
 UNCHECKED_MKTEMP_OK	grant	registry	-
 UNEXPANDED_FILE_PATH_OK	floor	registry	turns off the raw-path check that every file guard behind it relies on, so a go code would grant the floor guards' targets (secrets, live settings, the primary checkout) by a padded path

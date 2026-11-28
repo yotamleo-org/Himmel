@@ -533,7 +533,7 @@
       "hooks": [
         "scripts/hooks/guard-t3-thread-tools.sh"
       ],
-      "bypasses": "Lets a T3 Code MCP tool call name a provider instance off .t3.instance_allowlist, or set a -chief/-console thread title, and lifts the refusal of T3's pull_request_create, pull_request_review and pull_request_merge tools (rule t3-pr-route), including a merge the GO and trust-path gates would refuse (scripts/hooks/guard-t3-thread-tools.sh; the allow is printed to stderr).",
+      "bypasses": "Lets a T3 Code MCP tool call name a provider instance off .t3.instance_allowlist, set a -chief/-console thread title, or create a bound interval schedule without a fresh session (rule non-fresh-bound-interval), and lifts the refusal of T3's pull_request_create, pull_request_review and pull_request_merge tools (rule t3-pr-route), including a merge the GO and trust-path gates would refuse (scripts/hooks/guard-t3-thread-tools.sh; the allow is printed to stderr).",
       "remedy": "T3_THREAD_TOOLS_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
