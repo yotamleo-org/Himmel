@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-silent-worker-act.sh — silent-worker-act.sh nudges a silent worker once on the bus past
 # bound one, relaunches a worker with no live window from its RESUME doc past bound two, never
-# ends a live window, owes a row on any failed step, acts the same under a succession signal,
+# ends a live window but quotes its last words from its transcript, owes a row on any failed step, acts the same under a succession signal,
 # and leaves a worker with a fresh doc write alone.
 # The bus, the process census, the launcher and the launch confirmation are stubbed
 # (SILENT_ACT_BUS / _CENSUS / _LAUNCHER / _CONFIRM); owe.sh and append-results.sh are real,
@@ -79,7 +79,17 @@ printf '%s\n' "$*" >> "$WORK/confirm.log"
 echo "LAUNCH-CONFIRMED x pid=1"
 EOF
 chmod +x "$WORK"/*.sh
-export WORK HIMMELCTL_CACHE_DIR="$WORK/cache" SILENT_ACT_NUDGE_GRACE_SECS=0
+PROJ="$WORK/claude/projects/-demo"; mkdir -p "$PROJ"
+{
+    printf '{"type":"custom-title","customTitle":"DEMO-9-N9-w-2026-11-25","sessionId":"s9"}\n'
+    printf '{"type":"agent-name","agentName":"DEMO-9-N9-w-2026-11-25","sessionId":"s9"}\n'
+    printf '{"type":"assistant","message":{"content":[{"type":"text","text":"Running the suite."},{"type":"tool_use","name":"Bash"}]}}\n'
+    printf '{"type":"user","message":{"content":"hook refused"}}\n'
+    printf '{"type":"assistant","message":{"content":[{"type":"text","text":"BLOCKED: every hook refuses every tool call.\\nRun: git -C /w checkout tables.json"}]}}\n'
+    printf '{"type":"user","message":{"content":"hook refused"}}\n'
+} > "$PROJ/s9.jsonl"
+printf '{"type":"custom-title","customTitle":"DEMO-99-N99-w-2026-11-25"}\n{"type":"assistant","message":{"content":[{"type":"text","text":"not N9"}]}}\n' > "$PROJ/s99.jsonl"
+export WORK HIMMELCTL_CACHE_DIR="$WORK/cache" SILENT_ACT_NUDGE_GRACE_SECS=0 CLAUDE_CONFIG_DIR="$WORK/claude"
 export SILENT_ACT_BUS="$WORK/bus.sh" SILENT_ACT_CENSUS="$WORK/census.sh" SILENT_ACT_LAUNCHER="$WORK/launcher.sh"
 export SILENT_ACT_CONFIRM="$WORK/confirm.sh"
 export HIMMEL_BUS_NAME="DEMO-chief-2026-11-25"
@@ -137,7 +147,12 @@ check "9b. its process is alive" "yes" "$(kill -0 "$LIVE_PID" 2>/dev/null && ech
 out="$(SILENT_ACT_NUDGE_GRACE_SECS=300 run N9 161)"
 check "9c. inside the nudge grace the next call waits" "SILENT-ACT N9 done" "$out"
 out="$(run N9 161)"
-check "9d. after the grace a live window is never ended or relaunched: it owes a named blocked step" "SILENT-ACT N9 live-silent owed=o4" "$out"
+check "9d. after the grace a live window is never ended or relaunched: it owes a named blocked step and quotes the worker's last words from its transcript" "SILENT-ACT N9 live-silent owed=o4 last=\"BLOCKED: every hook refuses every tool call. Run: git -C /w checkout tables.json\"" "$out"
+if tail -n1 "$CHIEF_DOC" | grep -qF 'last="BLOCKED: every hook refuses every tool call.'; then
+    check "9h. the chief doc bullet carries the last words" ok ok
+else
+    check "9h. the chief doc bullet carries the last words" ok "$(tail -n1 "$CHIEF_DOC")"
+fi
 check "9e. its process is still alive" "yes" "$(kill -0 "$LIVE_PID" 2>/dev/null && echo yes)"
 check "9f. no launch ran" "$launches_before" "$(count "$WORK/launch.log")"
 check "9g. one nudge went to it" "1" "$(grep -c '^DEMO-9-N9-w-2026-11-25 ' "$WORK/bus.log")"
@@ -160,7 +175,7 @@ printf '%s\t%s\topus\t200000\n' 301 "DEMO-12-N12-w-2026-11-25" >> "$WORK/census.
 out="$(SILENT_ACT_NUDGE_GRACE_SECS=300 CENSUS_RC=3 run N12 161)"
 check "14c. a partial census keeps its readable rows: the worker it shows is a live window, nudged first" "SILENT-ACT N12 nudged" "$out"
 out="$(CENSUS_RC=3 run N12 161)"
-check "14d. and after the grace it owes as a live window, never launched" "SILENT-ACT N12 live-silent owed=o8" "$out"
+check "14d. and after the grace it owes as a live window, never launched; with no transcript it carries no last words" "SILENT-ACT N12 live-silent owed=o8" "$out"
 out="$(SILENT_ACT_CENSUS="$WORK/census-fail.sh" run N13 161)"
 check "14e. a census that fails (rc 2) never relaunches: it owes" "SILENT-ACT N13 nudge=no-window census=unknown owed=o9" "$out"
 out="$(SILENT_ACT_CENSUS='' SILENT_ACT_CENSUS_LIB="$WORK/no-such-lib.sh" run N14 161)"
