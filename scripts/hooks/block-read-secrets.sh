@@ -872,13 +872,17 @@ rs_ast_prove() {
             pwd -P
         ) || { RS_AST_WHY='a cd target that does not resolve from here'; return 1; }
         while IFS= read -r pat; do
-            # compgen -G exits 1 on no match, so a failed setup step or an rc above 1 (a
-            # missing compgen is 127) fails the proof; bash 3.2 has no globstar. A set
-            # GLOBIGNORE hides a match, and unsetting it turns dotglob off, so it goes first
+            # compgen -G exits 1 on no match and a missing one 127, either fails the proof; the
+            # bash on ubuntu-latest CI lists no dotfile from compgen -G under dotglob, so the
+            # shell's own expansion runs too; unsetting GLOBIGNORE turns dotglob off, so it is first
             ms=$(
                 unset GLOBIGNORE
-                cd -- "$d" && shopt -s dotglob nocaseglob && shopt -u failglob nullglob || exit 3
+                cd -- "$d" && shopt -s dotglob nocaseglob nullglob && shopt -u failglob || exit 3
                 shopt -u globstar 2>/dev/null
+                set +f
+                # shellcheck disable=SC2086 # the validated glob is expanded on purpose
+                for m in $pat; do printf '%s\n' "$m"; done
+                shopt -u nullglob
                 compgen -G "$pat" || [ "$?" -le 1 ] || exit 3
                 exit 0
             ) || { RS_AST_WHY="the glob $pat could not be expanded in $d"; return 1; }
