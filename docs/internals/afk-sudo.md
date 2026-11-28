@@ -283,7 +283,9 @@ by any other means (a variable in a non-shell file such as Python, `printf -v`, 
 binding after `;`, `then` or `{`, a binding in another file copy, a value a loop reads from a
 file or a pipe); a program in argv whose push or delete verb comes from stdin or a file copy
 (`xargs git` with `push --force origin main` on stdin, `xargs -I{} git {} --force origin main`
-with `push` on stdin, `xargs gh repo` with `delete o/r` on stdin); or a push whose words a
+with `push` on stdin, `xargs gh repo` with `delete o/r` on stdin, `xargs gh api -X` with
+`DELETE repos/o/r/git/refs/heads/main` on stdin; the whole-request word set before this
+change refused each of these); or a push whose words a
 quote, heredoc or open bracket carries across lines. Each misses the floor and reaches the
 operator's phone ask instead.
 
