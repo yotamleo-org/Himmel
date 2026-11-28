@@ -605,5 +605,69 @@ for name in $R7_NAMES; do
 done
 check "R7: a name outside the three prefixes writes no row" '[ "$(row_count "$R7_ROWS")" = 0 ]'
 
+PR_SHA=0123456789abcdef0123456789abcdef01234567
+pr_call() { printf '{"tool_name":"%s%s","tool_input":%s}' "$1" "$2" "$3"; }
+pr_args() {
+    case "$1" in
+        pull_request_create) printf '{"title":"t","body":"b"}' ;;
+        pull_request_review) printf '{"number":7,"verdict":"approve","expectedHeadSha":"%s"}' "$PR_SHA" ;;
+        pull_request_merge) printf '{"number":7,"expectedHeadSha":"%s"}' "$PR_SHA" ;;
+    esac
+}
+for p in "$T" "$C" "$D"; do
+    for t in pull_request_create pull_request_review pull_request_merge; do
+        run "PR: ${p}$t is refused by rule t3-pr-route" 2 "refused ${p}$t (rule t3-pr-route)" "$(pr_call "$p" "$t" "$(pr_args "$t")")"
+    done
+done
+run "PR: the create refusal names the worker's open route" 2 'bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>' \
+    "$(pr_call "$T" pull_request_create "$(pr_args pull_request_create)")"
+run "PR: the create refusal links the PR with link_pull_request" 2 'link_pull_request with the PR' \
+    "$(pr_call "$T" pull_request_create "$(pr_args pull_request_create)")"
+run "PR: the review refusal names gh pr review" 2 'gh pr review <pr>' "$(pr_call "$T" pull_request_review "$(pr_args pull_request_review)")"
+run "PR: the merge refusal sends a worker to its chief" 2 'send READY to your chief' "$(pr_call "$T" pull_request_merge "$(pr_args pull_request_merge)")"
+run "PR: the merge refusal names the chief's merge-on-green.sh line" 2 'bash scripts/handover/merge-on-green.sh <pr> --go <GO file>' \
+    "$(pr_call "$T" pull_request_merge "$(pr_args pull_request_merge)")"
+for t in pull_request_create pull_request_review pull_request_merge; do
+    run "PR bypass: $t is allowed under T3_THREAD_TOOLS_OK=1, on stderr" 0 'override: allowed' \
+        "$(pr_call "$T" "$t" "$(pr_args "$t")")" T3_THREAD_TOOLS_OK=1
+done
+run "PR control: pull_request_read stays a silent allow" 0 - "$(pr_call "$T" pull_request_read '{"number":7}')"
+run "PR control: link_pull_request stays a silent allow" 0 - "$(pr_call "$T" link_pull_request '{"url":"https://github.com/o/r/pull/7"}')"
+PR_ROWS="$TMP/pr-rows.jsonl"
+run "PR row: a create with a PR title still refuses" 2 't3-pr-route' \
+    "$(pr_call "$T" pull_request_create '{"title":"PRTITLEMARKER-11622","body":"b"}')" HIMMEL_GUARD_REFUSALS_LOG="$PR_ROWS"
+check "PR row: it writes one row with rule t3-pr-route titled by the tool, never the PR title" \
+    '[ "$(row_count "$PR_ROWS")" = 1 ] && [ "$(jq -r "[.rule, .title] | join(\"|\")" "$PR_ROWS")" = "t3-pr-route|pull_request_create" ] && ! grep -q PRTITLEMARKER "$PR_ROWS"'
+
+DX="$TMP/dod10"
+dg() { git -c user.name=t -c user.email=t@t -c init.defaultBranch=main -c commit.gpgsign=false "$@"; }
+mkdir -p "$DX/origin/scripts/handover" "$DX/origin/scripts/cr"
+dg init -q "$DX/origin"
+cp "$HOOKS/../handover/merge-on-green.sh" "$DX/origin/scripts/handover/merge-on-green.sh"
+cp "$HOOKS/../cr/anchor-handoff.sh" "$DX/origin/scripts/cr/anchor-handoff.sh"
+cp "$HOOKS/../cr/pr-check-step0.sh" "$DX/origin/scripts/cr/pr-check-step0.sh"
+dg -C "$DX/origin" add -A && dg -C "$DX/origin" commit -qm base
+dg clone -q "$DX/origin" "$DX/himmel"
+dg -C "$DX/himmel" worktree add -q -b feat/x "$DX/wt" refs/remotes/origin/main
+mkdir -p "$DX/wt/scripts/handover/sub"
+DX_WT="$(cd "$DX/wt" && pwd -P)" DX_PRIMARY="$(cd "$DX/himmel" && pwd -P)"
+dod10_err=$(printf '%s' "$(pr_call "$T" pull_request_merge "$(pr_args pull_request_merge)")" | bash "$HOOK" 2>&1 >/dev/null)
+chief_line=$(printf '%s\n' "$dod10_err" | sed -n 's/^ *a chief: *from the worktree root, //p' | sed "s|<pr>|7|; s|<GO file>|$DX/go-7.txt|")
+N=$((N+1))
+if [[ "$chief_line" =~ ^bash\ scripts/handover/merge-on-green\.sh\ 7\ --go\ / ]] && ! grep -qF '$HIMMEL_REPO' <<<"$dod10_err"; then
+    echo "ok   DOD-10: the merge refusal's chief line is the relative merge-on-green.sh spelling"
+else echo "FAIL DOD-10: the chief line is '$chief_line', or the refusal spells \$HIMMEL_REPO"; FAIL=$((FAIL+1)); fi
+dod10() { jq -cn --arg c "$chief_line" --arg d "$1" '{tool_name:"Bash",tool_input:{command:$c},cwd:$d}'; }
+SPELL=(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE HIMMEL_REPO="$DX_PRIMARY" bash "$HOOKS/guard-pr-check-literal.sh")
+N=$((N+1))
+dod10_out=$(dod10 "$DX_WT" | "${SPELL[@]}" 2>&1 >/dev/null); dod10_rc=$?
+if [ -n "$chief_line" ] && [ "$dod10_rc" = 0 ]; then echo "ok   DOD-10: guard-pr-check-literal admits the chief line from the worktree root"
+else echo "FAIL DOD-10: guard-pr-check-literal on '$chief_line' from the worktree root: rc=$dod10_rc out=$dod10_out"; FAIL=$((FAIL+1)); fi
+N=$((N+1))
+dod10_out=$(dod10 "$DX_WT/scripts/handover/sub" | "${SPELL[@]}" 2>&1 >/dev/null); dod10_rc=$?
+if [ -n "$chief_line" ] && [ "$dod10_rc" = 2 ] && grep -qF 'guard-pr-check-literal: DENIED' <<<"$dod10_out"; then
+    echo "ok   DOD-10 control: the same line from a subdirectory of the worktree is refused"
+else echo "FAIL DOD-10 control: from a subdirectory: rc=$dod10_rc out=$dod10_out"; FAIL=$((FAIL+1)); fi
+
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]

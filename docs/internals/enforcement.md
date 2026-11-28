@@ -3296,8 +3296,11 @@ chain, and the guard judges all three prefixes alike. Each T3 provider instance 
 so the operator can make an instance that carries a himmel bypass flag and pick
 it in the T3 UI. The T3 tools also let an agent pick the instance of a new or
 existing thread, and a T3 thread title ending in `-chief` or `-console` is the
-name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
-(exit 2):
+name `scripts/lib/session-name.sh` trusts as a chief. T3 also gives every
+session its own pull-request tools, which skip himmel's shell-route gates. Four
+rules, each a deny (exit 2): instances (with its own-settings, harness-registry
+and narrowing parts), chief titles, `non-fresh-bound-interval` and
+`t3-pr-route`:
 
 - **Instances.** Every value under a key named `instanceId` or
   `providerInstanceId` (case and `_` ignored) anywhere in `tool_input` is judged,
@@ -3352,6 +3355,19 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
 - **Titles.** A string under a key named `title` anywhere in `tool_input` whose
   trimmed value ends in `-chief` or `-console` (any case) denies. A title inside
   a `delegatedFrom` object names the calling thread and is not judged.
+- **`non-fresh-bound-interval`.** A `schedule_task` that creates an interval
+  schedule bound to the calling thread without a fresh session denies, and the
+  deny prints the fresh-session form ([T3 tool call rules](t3-tool-call-rules.md)).
+- **`t3-pr-route`.** `pull_request_create`, `pull_request_review` and
+  `pull_request_merge` deny on all three prefixes, whatever `tool_input` holds,
+  before any input is walked. The review marker, the chief's GO, the
+  trust-path GO and `merge-on-green.sh` sit on the shell route, which a T3 tool
+  call skips, so the deny names that route: `worker-pr-open.sh` or `gh pr create`
+  then `link_pull_request`, `gh pr review`, and for a merge the worker's READY to
+  its chief or the chief's `bash scripts/handover/merge-on-green.sh <pr> --go
+  <GO file>` from the worktree root. The refusal row's title is the tool name.
+  Section "Pull-request tools" of the [T3 tool call rules](t3-tool-call-rules.md#pull-request-tools)
+  has the route and its limits.
 
 The two files these rules protect have their own fence in
 `block-edit-live-settings.sh` (same `EDIT_LIVE_SETTINGS_OK` bypass; reads stay
@@ -3371,7 +3387,10 @@ under `~/.t3/worktrees/` stay ordinary worktrees.
 
 A security fence: fails CLOSED on a missing `jq`, a payload that does not
 parse, and the unreadable files above. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
-`floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
+`floor`); the allow is printed to stderr. It lifts every rule, the `t3-pr-route`
+merge refusal included, so wherever it reaches it also lets a T3 merge through
+that the shell route's GO and trust-path gates would refuse. The Antigravity
+adapter scrubs every `*_OK` variable, so there nothing lifts a refusal. Wired in `EXPECTED_SCRIPT_ORDER`
 (`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
 matcher `mcp__t3-code__.*`. On Codex it runs in the `.codex/hooks.json` `mcp__.*`
 chain, which sends `mcp__t3_code__` and `mcp__t3_code_direct__`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.

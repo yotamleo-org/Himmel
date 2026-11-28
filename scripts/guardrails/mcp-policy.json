@@ -206,6 +206,45 @@
     "himmelprobe": {
       "verdict": "allow", "egress": "local", "note": "himmel's own MCP-load probe server",
       "tools": { "himmelprobe_marker": "read" }
+    },
+    "t3-code": {
+      "verdict": "allow", "egress": "off-box", "provider": null, "note": "T3 Code's MCP server (Claude, and Antigravity after its adapter). The pull-request tools send their text to GitHub. Classes follow T3's own annotations. allow_destructive: pull_request_merge is refused by guard-t3-thread-tools.sh rule t3-pr-route, as are pull_request_create and pull_request_review; unlink only removes a link in T3's own thread state, and no shell hook refuses its equivalent. Its other tools are unlisted (observe).",
+      "tools": {
+        "pull_request_read": "read", "pull_request_list": "read", "ci_logs": "read",
+        "list_thread_pull_requests": "read", "read_pull_request_guide": "read",
+        "pull_request_create": "write", "pull_request_update": "write", "pull_request_respond": "write",
+        "pull_request_review": "write", "ci_rerun": "write", "watch_pull_request": "write",
+        "unwatch_pull_request": "write", "link_pull_request": "write", "link_pull_requests": "write",
+        "write_pull_request_guides": "write",
+        "pull_request_merge": "destructive", "unlink_pull_request": "destructive", "unlink_pull_requests": "destructive"
+      },
+      "allow_destructive": ["pull_request_merge", "unlink_pull_request", "unlink_pull_requests"]
+    },
+    "t3_code": {
+      "verdict": "allow", "egress": "off-box", "provider": null, "note": "T3 Code's MCP server as Codex names it; the same map as t3-code.",
+      "tools": {
+        "pull_request_read": "read", "pull_request_list": "read", "ci_logs": "read",
+        "list_thread_pull_requests": "read", "read_pull_request_guide": "read",
+        "pull_request_create": "write", "pull_request_update": "write", "pull_request_respond": "write",
+        "pull_request_review": "write", "ci_rerun": "write", "watch_pull_request": "write",
+        "unwatch_pull_request": "write", "link_pull_request": "write", "link_pull_requests": "write",
+        "write_pull_request_guides": "write",
+        "pull_request_merge": "destructive", "unlink_pull_request": "destructive", "unlink_pull_requests": "destructive"
+      },
+      "allow_destructive": ["pull_request_merge", "unlink_pull_request", "unlink_pull_requests"]
+    },
+    "t3_code_direct": {
+      "verdict": "allow", "egress": "off-box", "provider": null, "note": "T3 Code's direct MCP server as Codex names it; the same map as t3-code.",
+      "tools": {
+        "pull_request_read": "read", "pull_request_list": "read", "ci_logs": "read",
+        "list_thread_pull_requests": "read", "read_pull_request_guide": "read",
+        "pull_request_create": "write", "pull_request_update": "write", "pull_request_respond": "write",
+        "pull_request_review": "write", "ci_rerun": "write", "watch_pull_request": "write",
+        "unwatch_pull_request": "write", "link_pull_request": "write", "link_pull_requests": "write",
+        "write_pull_request_guides": "write",
+        "pull_request_merge": "destructive", "unlink_pull_request": "destructive", "unlink_pull_requests": "destructive"
+      },
+      "allow_destructive": ["pull_request_merge", "unlink_pull_request", "unlink_pull_requests"]
     }
   }
 }

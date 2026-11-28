@@ -378,7 +378,7 @@ assert_deny "block-graphify-egress denies cloud graphify on salus" "salus" \
     "$(make_pre run_command "$(jq -cn --arg c "graphify update $SALUS_FX --backend deepseek" '{CommandLine:$c}')")" \
     CLAUDE_GLM_CONFIG_DIR="$TMP/empty-glm"
 
-for t3_tool in preview_open preview_act preview_navigate preview_snapshot preview_evaluate preview_list schedule_task pull_request_merge pull_request_create \
+for t3_tool in preview_open preview_act preview_navigate preview_snapshot preview_evaluate preview_list schedule_task \
                t3_thread_search t3_thread_list t3_thread_read t3_thread_send t3_thread_transfer \
                t3_thread_launch create_threads delegate_task ci_rerun create_issue \
                t3_environment_read pull_request_read ci_logs read_issue send_to_user html_preview html_render; do
@@ -387,6 +387,10 @@ for t3_tool in preview_open preview_act preview_navigate preview_snapshot previe
 done
 assert_pass "t3_thread_launch with an allowlisted instance passes the shared chain" \
     "$(make_pre mcp_t3-code_t3_thread_launch '{"title":"Work","modelSelection":{"instanceId":"claudeAgent","model":"claude-sonnet-5-5"}}')"
+assert_deny "T3 tool mcp_t3-code_pull_request_merge is refused by guard-t3-thread-tools rule t3-pr-route" "t3-pr-route" \
+    "$(make_pre mcp_t3-code_pull_request_merge '{"number":7,"expectedHeadSha":"0123456789abcdef0123456789abcdef01234567"}')"
+assert_deny "T3 tool mcp_t3-code_pull_request_create is refused by guard-t3-thread-tools rule t3-pr-route" "t3-pr-route" \
+    "$(make_pre mcp_t3-code_pull_request_create '{"title":"t","body":"b"}')"
 
 echo "== 8. Non-himmel cwd: luna and salus vaults =="
 mk_vault() {
@@ -440,6 +444,10 @@ done
 assert_pass "lazy call_mcp_tool without Arguments allowed" \
     "$(make_pre call_mcp_tool '{"ServerName":"shadcn","ToolName":"get_audit_checklist"}')"
 assert_pass "lazy call_mcp_tool graphify keeps the mcp_* allowlist" "$(make_lazy graphify graph_stats)"
+assert_deny "lazy call_mcp_tool t3-code/pull_request_merge is refused by rule t3-pr-route" "t3-pr-route" \
+    "$(make_lazy t3-code pull_request_merge '{"number":7,"expectedHeadSha":"0123456789abcdef0123456789abcdef01234567"}')"
+assert_deny "lazy call_mcp_tool t3-code/pull_request_create is refused by rule t3-pr-route" "t3-pr-route" \
+    "$(make_lazy t3-code pull_request_create '{"title":"t","body":"b"}')"
 assert_pass "lazy call_mcp_tool with a string toolSummary allowed" \
     "$(make_pre call_mcp_tool '{"ServerName":"context7","ToolName":"query-docs","Arguments":{"q":"x"},"toolSummary":"Look up docs"}')"
 SUMMARY_LOG="$TMP/mcp-policy-summary.jsonl"

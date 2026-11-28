@@ -4,6 +4,12 @@
 # a T3 Code tool call that names a bypass provider instance, or one off the
 # optional narrowing list, or that sets a -chief or -console thread title.
 #
+# Pull-request tools (rule t3-pr-route): pull_request_create, pull_request_review and
+# pull_request_merge are refused on all three prefixes, whatever tool_input holds, before
+# the input walk. himmel's review, GO and trust-path gates sit on the shell route, which a
+# T3 tool call skips, so the refusal names that route. The refusal row's title is the
+# tool name, never the PR title.
+#
 # Bypass instance: an entry in T3's settings file
 # (${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json, .providerInstances) whose
 # env / environment (on the instance or its config) names a *_OK or *BYPASS*
@@ -102,6 +108,26 @@ for p in $T3_TOOL_PREFIXES; do
     case "$tool" in "$p"*) judged=1; break ;; esac
 done
 [ "$judged" = 1 ] || exit 0
+
+case "${tool#"$p"}" in
+    pull_request_create)
+        refuse "$tool (rule t3-pr-route)" "T3's pull_request_create pushes this thread's branch and opens its PR in one call, so himmel's
+review gate (the marker a push writes, checked before a PR opens) never runs.
+Open the PR on the shell route: push the branch, then /pr-check, then, from the worktree root,
+  bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>   (a chief's worker)
+  gh pr create ...                                                (any other session)
+Then link it here: link_pull_request with the PR's URL." t3-pr-route "" "${tool#"$p"}" ;;
+    pull_request_review)
+        refuse "$tool (rule t3-pr-route)" "T3's pull_request_review submits a review outside himmel's routes. Review on the shell route:
+  gh pr review <pr> ..." t3-pr-route "" "${tool#"$p"}" ;;
+    pull_request_merge)
+        refuse "$tool (rule t3-pr-route)" "T3's pull_request_merge merges without himmel's merge gates (review threads, green CI, the chief's
+GO for a worker, a trust-reviewed GO for a CI trust path); auto and stack merge at a later head
+or merge other PRs. Merge on the shell route:
+  a chief's worker:  do not merge; send READY to your chief, who merges your PR
+  a chief:           from the worktree root, bash scripts/handover/merge-on-green.sh <pr> --go <GO file>
+  any other session: the operator merges (merge-on-green.sh needs ARMAUTOMERGE=1 and the chief profile's allow rule)" t3-pr-route "" "${tool#"$p"}" ;;
+esac
 
 findings=$(jq -r '
     def key_is($names): ascii_downcase | gsub("_"; "") as $k | any($names[]; . == $k);
