@@ -1208,6 +1208,8 @@ expect_text main-history "a script whose for loop binds main" $'for b in main ma
 expect_text main-history "a script whose set binds the force and main" $'set -- -f origin main\ngit push "$@"\n' bash s.sh
 expect_text main-history "a script whose read binds main" $'read b <<< main\ngit push -f origin "$b"\n' bash s.sh
 expect_text main-history "a script whose array of the force and main spans lines" $'args=(\n  --force\n  origin main\n)\ngit push "${args[@]}"\n' bash s.sh
+expect_text main-history "xargs that force-pushes a branch it reads from stdin" $'main\n' xargs git push --force origin
+expect_text none "a git commit whose message file names push, -f and main" $'docs: a push with -f to main is refused\n' git commit -F msg.txt
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'env -- "$g" push -f origin main'
 expect_rule main-history bash -c "eval '\"\$g\" push -f origin main'"

@@ -274,8 +274,10 @@ element of several words), a `$` or backtick word, which may name any program. A
 expands a `$` word also holds the argv words and every line of the file that binds a value
 (a `key=value` word, whose quoted or array value spans words, or a `for`, `select`, `set`
 or `read` line), so `git push "$@"` and `B=main` then `git push -f origin "$B"` still
-match. A read-only lint whose arguments or brief lines name push, a force word and main
-apart is not refused, nor is a lone `$x` argument, which no shell expands. The cost: a git
+match. The argv command also holds the force, main and main-ref words of every file copy
+and the stdin (never their program or push words), so `xargs git push --force origin` with
+`main` on stdin still matches. A read-only lint whose arguments or brief lines name push, a
+force word and main apart is not refused, nor is a lone `$x` argument, which no shell expands. The cost: a git
 wrapper, alias or shell function under another name; a value bound away from the push line
 by any other means (a variable in a non-shell file such as Python, `printf -v`, `mapfile`, a
 binding after `;`, `then` or `{`, a binding in another file copy, a value a loop reads from a

@@ -228,8 +228,10 @@ def units(argv, texts, cwd, home):
     written and with each backslash and newline dropped (a heuristic: the shell keeps them in a comment or single
     quotes). A line that expands a `$` word also holds the facts of the argv words and of every line of the text that
     binds a value (a `key=value` word, whose quoted or array value spans words, and lines while a `(` it opens stays
-    open, or a `for`, `select`, `set` or `read` line), which a script reads through its arguments and variables. None
-    for a word with too many forms."""
+    open, or a `for`, `select`, `set` or `read` line), which a script reads through its arguments and variables. The
+    argv also holds the force, main and main-ref facts of every file copy and the stdin, which a program it runs may
+    read as arguments (`xargs git push --force origin` with `main` on stdin), but never their program or push words.
+    None for a word with too many forms."""
     memo = {}
 
     def facts(items):
@@ -246,7 +248,8 @@ def units(argv, texts, cwd, home):
     args = facts([(w, True) for w in argv] + [(w, False) for s in scripts for w in s])
     if args is not None and any(len(s) > 1 and _computed(s) for s in scripts):
         args |= {"computed"}
-    yield args
+    data = [facts([(w, False) for w in t.split()]) for t in texts]
+    yield None if args is None or None in data else args.union(*(d & {"force", "main", "ref-main"} for d in data))
     for t in texts:
         reads = {t, t.replace("\\\n", "")}
         assigned = facts([(w, False) for text in reads for w in _binding_words(text)])
