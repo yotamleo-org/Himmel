@@ -97,6 +97,7 @@ gh_json() { # <head> [cross] [state]
 export GH_JSON="$tmp/pr.json"
 
 # Run the grant with the given extra env words, args in GR_ARGS.
+unset HIMMEL_CONSOLE_JUDGE_NOVERDICT
 run() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
     HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-5058 \
     GRANT_ROUND_GH="$tmp/gh" GRANT_ROUND_PRIMARY="$prim" "$@" bash "$SCRIPT" "${GR_ARGS[@]}"; }

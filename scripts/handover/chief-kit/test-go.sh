@@ -22,7 +22,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/go.sh"
-unset HIMMEL_CONSOLE_LEG CHIEF_SESSION_NAME 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_JUDGE_NOVERDICT CHIEF_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/go-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT

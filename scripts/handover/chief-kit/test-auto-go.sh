@@ -19,7 +19,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="${AUTO_GO_UNDER_TEST:-$HERE/auto-go.sh}"
-unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME GH_CMD 2>/dev/null || true
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_JUDGE_NOVERDICT HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME GH_CMD 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/auto-go-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT

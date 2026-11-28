@@ -59,6 +59,7 @@ SPELLINGS='
 '
 
 unset -f chief_worker go_gate 2>/dev/null || true
+unset HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_JUDGE_NOVERDICT
 # shellcheck source=/dev/null
 if ! . "$GO_GATE_SRC" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
     fail "cannot source $GO_GATE_SRC or it does not define chief_worker -- this is the RED-before-fix case"
