@@ -5925,7 +5925,9 @@ compression is lost in unpinned worktree sessions too; a worktree outside
 `.claude/worktrees/` keeps the rewrite. Evidence and the worker-side recovery:
 [`stuck-playbook.md`](stuck-playbook.md). One exception: a chief-spawned
 worker (`HIMMEL_CONSOLE_LEG=1`, which works in its worktree by `cd` and is
-never pinned) keeps `rtk git commit` for one simple `git commit`, and the
+never pinned) keeps `rtk git commit` for one simple `git commit` (no
+separator, backtick, `$`, `<` or `>` anywhere in it, even inside a quoted
+message; such a commit runs unwrapped), and the
 guard writes that rewrite itself when rtk (1.2.1 skips git under
 `.claude/worktrees/` on its own) stays silent. A passing commit then prints
 `ok <sha>` instead of about 90 pre-commit status lines; a failing one still

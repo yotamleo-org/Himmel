@@ -47,14 +47,6 @@
 #       segment at all) keep the rewrite. 3g: a mixed forward/backslash cwd
 #       whose worktree segment itself uses backslashes still drops (see the
 #       inline justification).
-#   3h. A chief-spawned worker (HIMMEL_CONSOLE_LEG=1) in a worktree keeps the
-#       rewrite for one simple `git commit` only; a compound, a push, a diff
-#       and a non-worker session stay unwrapped.
-#   14. Live installed rtk, end to end on a commit whose pre-commit hook
-#       prints 60 status lines: RED, the unwrapped commit a worker ran before
-#       3h exceeds the cap; GREEN, the forwarded rtk commit fits it; and a
-#       failing commit prints its failing line, in order and once, with its
-#       exit code, with rtk on and with rtk off.
 
 set -euo pipefail
 
