@@ -16,9 +16,10 @@
   Google route, operator decision 1259). No other processor may see the content.
 - API-key Gemini (`GEMINI_API_KEY` / `GOOGLE_API_KEY`, the `gemini-subagent` tool,
   hermes) and every untrusted cloud stay DENIED.
-- The egress hook HARD-BLOCKS: WebSearch/WebFetch, cloud MCP tools, research-class
+- The egress hook HARD-BLOCKS, for Claude sessions: WebSearch/WebFetch, cloud MCP tools, research-class
   skills, `git push` / `git remote add`, curl/wget. Local qmd + the localhost
-  obsidian-vault MCP are allowed (they do not egress PHI).
+  obsidian-vault MCP are allowed (they do not egress PHI). Which floor loads for
+  which harness: the floors addendum (`_CLAUDE.salus-floors.md`) below.
 - **Run Claude from THIS repo** (`cwd = the vault`) so the hook loads. Antigravity
   hooks come from the user-scope backstop, never a repo-local `.agents/hooks.json`;
   its secret and provider-home read fences apply here too.

@@ -4,8 +4,9 @@
 # entry: the check scripts/claude-codex runs (its own lists and claude-glm's), and the salus cell of scripts/guardrails/egress-matrix.json. The same
 # test runs on the directory and on the primary checkout of its repo (a linked worktree can sit outside a marked primary). Anything that cannot be
 # read or run fails closed (marked): a list that exists but is unreadable, a git that fails on a directory holding .git, any exception.
-# CLI: python3 salus_marked.py salus|adapter|primary <dir>   exit 0 = yes, 10 = no; any other code is a crash and the caller refuses.
-# primary prints the checkout root on stdout when the answer is yes.
+# CLI: python3 salus_marked.py salus <dir> [<dir> ...] | adapter <dir> | primary <dir>   exit 0 = yes (salus: any dir marked), 10 = no;
+# any other code is a crash and the caller refuses. primary prints the checkout root on stdout when the answer is yes.
+# CLI: python3 salus_marked.py lists   prints every list file _lists() reads, one absolute path per line, exit 0.
 # git-env-ok: _primary drops every GIT_* name from the environment it hands git
 import os
 import pathlib
@@ -80,7 +81,7 @@ def _primary(d):
 
 def _salus_marked(path):
     d = os.path.realpath(path)
-    if _dir_marked(d):
+    if _dir_marked(os.path.abspath(path)) or _dir_marked(d):
         return True
     primary = _primary(d)
     return primary is not None and primary != d and _dir_marked(primary)
@@ -120,12 +121,18 @@ def primary_root(path):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3 or sys.argv[1] not in ('salus', 'adapter', 'primary'):
+    mode = sys.argv[1] if len(sys.argv) > 1 else ''
+    if mode == 'lists' and len(sys.argv) == 2:
+        for cfg, name in _lists():
+            print(os.path.join(cfg, name))
+        sys.exit(0)
+    if mode == 'salus' and len(sys.argv) >= 3:
+        sys.exit(YES if any(salus_marked(d) for d in sys.argv[2:]) else NO)
+    if len(sys.argv) != 3 or mode not in ('adapter', 'primary'):
         sys.exit(2)
     if sys.argv[1] == 'primary':
         root = primary_root(sys.argv[2])
         if root is not None:
             print(root)
         sys.exit(YES if root is not None else NO)
-    fn = salus_marked if sys.argv[1] == 'salus' else is_adapter
-    sys.exit(YES if fn(sys.argv[2]) else NO)
+    sys.exit(YES if is_adapter(sys.argv[2]) else NO)

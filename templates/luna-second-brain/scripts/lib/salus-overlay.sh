@@ -46,6 +46,10 @@ apply_salus_overlay() {
     printf '\n' >> "$repo_root/_CLAUDE.md"
     cat "$ov/_CLAUDE.salus-agy.md" >> "$repo_root/_CLAUDE.md"
   fi
+  if [ -f "$repo_root/_CLAUDE.md" ] && ! grep -q "salus-posture-floors" "$repo_root/_CLAUDE.md"; then
+    printf '\n' >> "$repo_root/_CLAUDE.md"
+    cat "$ov/_CLAUDE.salus-floors.md" >> "$repo_root/_CLAUDE.md"
+  fi
   if [ -e "$repo_root/.agents/hooks.json" ]; then
     echo "salus-overlay: WARNING .agents/hooks.json exists in the vault — it fails closed outside himmel; remove it (Antigravity hooks come from the user-scope backstop)" >&2
   fi

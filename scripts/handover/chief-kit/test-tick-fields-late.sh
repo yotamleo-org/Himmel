@@ -1269,12 +1269,17 @@ same 'decision-<n> resolves through words_records only: decision-9 names the key
 same 'decision-<n> resolves through words_records only: a decision file on disk does not help' "$(ph_class 52)" invalid
 contains 'and the invalid line is unresolved with its reason' "$ph_pdo" '# pool-unresolved invalid HIMMEL-52 authority=decision-268 names no record of the operator'"'"'s words for HIMMEL-52'
 same 'a legacy O- row is not authority' "$(ph_class 53)" invalid
-same 'a slice naming a key keeps today'"'"'s rule' "$(ph_unres "$ph_pdo" 54)" ''
+same 'a slice naming a key reads unchecked when the step had no mirror (mirror_fresh false)' \
+    "$(ph_unres "$ph_pdo" 54)" '# pool-unresolved unchecked HIMMEL-54 the Jira mirror is stale or incomplete: HIMMEL-54 slice HIMMEL-900'
 contains 'a free-text slice needs a form' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-45 '
 contains 'an off-pool operator key is checked' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-77 '
 contains 'an off-pool key the operator did not ask for stays invalid as today' "$ph_pdo" '# pool-unresolved invalid HIMMEL-78 malformed, duplicate or unknown'
 same 'chief-wait'"'"'s call reads the same file (same classes)' \
     "$(printf '%s\n' "$(cat "$PH/rows")" | ph_env env DOC='' bash "$SUT" --pool-dispositions --doc "$ph_doc" 2>/dev/null)" "$ph_pdo"
+mkdir -p "$PH/mirror"; printf '{"lastSync":"%s","total":1,"project":"HIMMEL"}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" > "$PH/mirror/.cursor.json"
+ph_env bash "$SUT" --pool-holds --doc "$ph_doc" --mirror "$PH/mirror" > /dev/null 2>&1
+same 'a slice naming a key keeps today'"'"'s rule when the step read a fresh mirror' "$(ph_unres "$(ph_pd)" 54)" ''
+ph_holds > /dev/null
 ph_series="HIMMEL-4,HIMMEL-41"
 contains 'the no-doc call still prints pool-keys' \
     "$(printf 'SERIES\tser-1\t%s\n' "$ph_series" | ph_env env DOC='' bash "$SUT" --pool-dispositions 2>/dev/null)" "# pool-keys 1 SERIES $ph_series"
@@ -1298,7 +1303,7 @@ contains 'a missing holds file reads every give-up line unchecked' "$ph_pdo" '# 
 contains 'and a bare one too, never an all-clear' "$ph_pdo" '# pool-unresolved unchecked HIMMEL-4 '
 same 'a slice naming a key is not a give-up line' "$(ph_unres "$ph_pdo" 54)" ''
 ph_holds > /dev/null; touch -d '31 minutes ago' "$ph_file"  # gnu-ok: chief kit is Linux-only
-contains 'an old holds file reads every give-up line unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file is 31 min old'
+contains 'an old holds file reads every give-up line unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file is older than 30 min'
 ph_holds > /dev/null
 ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
 contains 'a line changed since the holds run reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-4 the line changed since the holds run'
@@ -1341,6 +1346,10 @@ mk_ph 902 Done Done '[]'
 mk_ph 903 "To Do" "To Do" '["v1.1.3"]'
 mk_ph 904 "To Do" "To Do" '[]'
 printf 'v1.1.3\tfalse\t\n' > "$PH/mirror/HIMMEL.versions.tsv"
+printf '{"lastSync":"%s","total":4,"project":"HIMMEL"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$PHM/.cursor.json"
+mkdir -p "$PH/w"; ph_w="$PH/w/HIMMEL-901-N1-x-2026-11-15.md"
+printf '# w\n\n## Results\n- 10:00 LIVE — on it\n' > "$ph_w"
+printf '#!/usr/bin/env bash\necho "status: FRESH"\nexit 11\n' > "$PH/lock-held.sh"; chmod +x "$PH/lock-held.sh"
 printf '4999\tfeat/other\tfalse\tme\tfalse\n5001\tfeat/himmel-904-x\tfalse\tme\tfalse\n4761\tupstream/fix\tfalse\tbob\ttrue\n' > "$PH/open-prs.tsv"
 cat > "$PH/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -1373,24 +1382,23 @@ ph_mk 'release: v1.1.3' \
     "pool-disposition: HIMMEL-70 hold for a file wake=file:$PH/state/flag-not-yet" \
     'pool-disposition: HIMMEL-71 hold on the merge wake=pr-4999-merge' \
     'pool-disposition: HIMMEL-72 hold on the merge wake=pr:777' \
-    "pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001 wake=date:$(ph_day '+30 days')" \
+    'pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001 wake=date:2026-13-45' \
     "pool-disposition: HIMMEL-73 park for now authority=bogus wake=date:$(ph_day '+3 days')" \
     'pool-disposition: HIMMEL-74 hold waits on PR 4761 wake=pr:4761' \
     'pool-disposition: HIMMEL-75 park soon wake=sometime'
 : > "$PH/gh.log"
 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
-same 'a valid unfired dated wake is handled' "$(ph_class 60)" wake
-same 'a fired wake does not hold' "$(ph_class 61)|$(ph_field 61 fired)" 'no-authority|true'
-same 'a wake more than 7 days out is a park' "$(ph_class 62)" invalid
-contains 'and says so' "$(ph_field 62 reason)" 'more than 7 days'
-same 'done: on a backlog To Do key with no PR and no worker is invalid' "$(ph_class 63)" invalid
+same 'a near date holds nothing (decisions 1281, 1282)' "$(ph_class 60)|$(ph_field 60 reason)" 'no-authority|wake=date holds nothing: no live holder (decisions 1281, 1282)'
+same 'a past date never fires and holds nothing' "$(ph_class 61)|$(ph_field 61 fired)" 'no-authority|false'
+same 'a date more than 7 days out is a timer like any date, not invalid' "$(ph_class 62)" no-authority
+same 'done: with no owner found and no fleet manifest read is unchecked, never no-authority' "$(ph_class 63)" unchecked
 same 'done: on a key an open PR'"'"'s head branch names is handled' "$(ph_class 64)" wake
 same 'done: on a Done key is fired, never invalid' "$(ph_class 65)|$(ph_field 65 fired)" 'no-authority|true'
-same 'done: on a key in the current version is handled' "$(ph_class 66)" wake
+same 'done: on a key only in the current version is no owner: unchecked with no manifest read' "$(ph_class 66)" unchecked
 same 'file: with a relative path is invalid' "$(ph_class 67)" invalid
 same 'file: outside the handover root and the state dir is invalid' "$(ph_class 68)" invalid
 same 'file: with a .. segment is invalid' "$(ph_class 69)" invalid
-same 'file: under the state dir that does not exist yet is handled' "$(ph_class 70)" wake
+same 'file: under the state dir holds nothing (ruling (a))' "$(ph_class 70)|$(ph_field 70 reason)" 'no-authority|wake=file holds nothing: no live holder (decisions 1281, 1282)'
 same 'wake=pr-<n>-merge on an open PR is handled' "$(ph_class 71)" wake
 same 'wake=pr:<n> GitHub cannot resolve on a successful read is invalid' "$(ph_class 72)|$(ph_field 72 reason)" 'invalid|PR 777 not found'
 same 'an invalid part wins: a valid authority beside an invalid wake' "$(ph_class 46)" invalid
@@ -1405,18 +1413,18 @@ same 'outside from the real read: a cross-repository PR with no watch row is out
 printf '{"schema":1,"workers":[],"watch":[{"pr":4761,"repo":""}]}\n' > "$PH/manifest.json"
 ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
 same 'outside from the real read: a watch row makes it a live wake' "$(ph_field 74 outside)" false
-ph_wake --open-prs "$PH/open-prs.tsv" --workers 'HIMMEL-901-N1-x-2026-11-15.md' > /dev/null
-same 'done: on a key a --workers worker holds is handled' "$(ph_class 63)" wake
-printf '{"schema":1,"workers":[{"doc":"HIMMEL-901-N1-x-2026-11-15.md"}]}\n' > "$PH/manifest.json"
-ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
-same 'done: on a key a worker holds is handled' "$(ph_class 63)" wake
+TICKET_STATUS_QUEUE_LOCK="$PH/lock-held.sh" ph_wake --open-prs "$PH/open-prs.tsv" --workers "$ph_w" > /dev/null
+same 'done: on a key a live --workers worker holds is handled' "$(ph_class 63)" wake
+jq -n --arg d "$ph_w" '{schema: 1, workers: [{doc: $d}]}' > "$PH/manifest.json"
+TICKET_STATUS_QUEUE_LOCK="$PH/lock-held.sh" ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'done: on a key a live manifest worker holds is handled' "$(ph_class 63)" wake
 ph_rc=0; PH_GH_FAIL=1 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null || ph_rc=$?
 same 'a failed PR read never fails the step' "$ph_rc" 0
 same 'a failed PR read is unchecked, neither invalid nor fired' "$(ph_class 71)|$(ph_field 71 fired)" 'unchecked|false'
 same 'and a not-found PR is unchecked too' "$(ph_class 72)" unchecked
 ph_wake > /dev/null
 same 'an unread open-PR list leaves done: worked test unchecked' "$(ph_class 63)" unchecked
-same 'but done: in the current version still holds' "$(ph_class 66)" wake
+same 'and done: in the current version reads unchecked too: a fixVersion holds nothing' "$(ph_class 66)" unchecked
 ph_mk 'release: v1.1.3' "pool-disposition: HIMMEL-60 park until then wake=date:$(ph_day '+3 days')" 'pool-disposition: HIMMEL-63 hold after it wake=done:HIMMEL-903'
 : > "$PH/gh.log"
 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
@@ -1431,8 +1439,9 @@ contains 'and the tick still prints' "$ph_tick" 'TICK '
 same 'and the PR-dependent line reads unchecked' "$(ph_class 71)" unchecked
 mk_ph 90 "To Do" "To Do" '[]'
 ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-76 hold after it wake=done:HIMMEL-90'
-ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
-same 'done: never matches a longer key in a head branch' "$(ph_class 76)" invalid
+printf '{"schema":1,"workers":[]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'done: never matches a longer key in a head branch' "$(ph_class 76)|$(ph_field 76 reason)" 'no-authority|done:HIMMEL-90 has no live owner'
 ph_state "$ph_words" '[]'
 : > "$PH/state/flag-present"
 ph_mk 'release: v1.1.3' \
@@ -1446,7 +1455,7 @@ same 'a real O- record that does not name the key is not authority' "$(ph_class 
 same 'a real decision-<n> record that does not name the key is not authority' "$(ph_class 83)" invalid
 same 'a wake on a merged PR fired and holds nothing' "$(ph_class 56)|$(ph_field 56 fired)" 'no-authority|true'
 same 'a wake on a closed PR fired and holds nothing' "$(ph_class 57)|$(ph_field 57 fired)" 'no-authority|true'
-same 'a file: wake on a file that exists fired and holds nothing' "$(ph_class 58)|$(ph_field 58 fired)" 'no-authority|true'
+same 'a file: wake on a file that exists never fires and holds nothing' "$(ph_class 58)|$(ph_field 58 fired)" 'no-authority|false'
 rm -f "$PH/state/pool-lines.tsv"; mkdir "$PH/state/pool-lines.tsv"
 ph_rc=0
 ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh-fail" TOKEN='' bash "$SUT" --doc "$ph_doc" > /dev/null 2>&1 || ph_rc=$?

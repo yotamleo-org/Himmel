@@ -9,7 +9,8 @@ of each file argument and stdin, each also in its trimmed, `key=value`, path-nor
 realpath'd and basename forms (links resolve before `..`, as the kernel opens a path).
 A word that derives more than MAX_FORMS forms, or whose path the kernel cannot walk (`landing`: a walk that fails for
 any reason but a missing name or a name under a non-directory), is refused as `oversize`. Every rule is a membership test on that set, so
-there is no shell syntax or word order to model and no shape list to keep closing.
+there is no shell syntax or word order to model and no shape list to keep closing; main-history tests the same forms
+one command at a time (`units`), so words spread over a lint's arguments or a brief's lines are not a push.
 Co-occurrence over-blocks (an unrelated `main` next to `git push -f`); that cost
 is accepted.
 """
@@ -191,13 +192,87 @@ def _short_force(w):
     return w[:1] == "-" and w[1:].isascii() and w[1:].isalnum() and ("f" in w or "d" in w)
 
 
-def _main_history(ws, home):
-    force = _any(ws, FORCE) or any(_short_force(w) for w in ws)
-    if "push" in ws and force and _any(ws, PROTECTED):
-        return True
-    if "gh" in ws and "DELETE" in ws and any("refs/heads/main" in w for w in ws):
-        return True
-    return {"gh", "repo", "delete"} <= ws
+def _runs(ws, prog):
+    """A word that names prog, with any quotes and backslashes in it dropped (`g'i't`, `\\git`, `/usr/bin/git`) and cut
+    at the shell's and a script's punctuation (`$(git`, `` `git ``, `os.system("git`)."""
+    return any(os.path.basename(p) == prog for w in ws for p in re.split(r"[^\w./-]+", re.sub(r"[\"'\\]", "", w)))
+
+
+def _flags(ws):
+    if ws is None:
+        return None
+    return frozenset(k for k, hit in (
+        ("push", "push" in ws), ("force", _any(ws, FORCE) or any(_short_force(w) for w in ws)),
+        ("main", _any(ws, PROTECTED)), ("DELETE", "DELETE" in ws), ("ref-main", any("refs/heads/main" in w for w in ws)),
+        ("repo", "repo" in ws), ("delete", "delete" in ws), ("git", _runs(ws, "git")), ("gh", _runs(ws, "gh"))) if hit)
+
+
+def _computed(words):
+    """A `$` or backtick word in shell text, which may name any program, after any wrapper or assignment word."""
+    return any("$" in w or "`" in w for w in words)
+
+
+def _binding_words(text):
+    """The words of every line that binds a value, and of the lines an open `(` carries that value over."""
+    out, depth = [], 0
+    for line in text.split("\n"):
+        words = line.split()
+        if depth > 0 or "=" in line or words[:1] in (["for"], ["select"], ["set"], ["read"]):
+            out += words
+            depth = max(depth, 0) + line.count("(") - line.count(")")
+    return out
+
+
+def units(argv, texts, cwd, home):
+    """The facts of each command main-history judges: the argv, and each line of a file copy or stdin, read both as
+    written and with each backslash and newline dropped (a heuristic: the shell keeps them in a comment or single
+    quotes). A line that expands a `$` word also holds the facts of the argv words and of every line of the text that
+    binds a value (a `key=value` word, whose quoted or array value spans words, and lines while a `(` it opens stays
+    open, or a `for`, `select`, `set` or `read` line), which a script reads through its arguments and variables. The
+    argv also holds the force, main and main-ref facts of every file copy and the stdin, which a program it runs may
+    read as arguments (`xargs git push --force origin` with `main` on stdin), but never their program or push words.
+    None for a word with too many forms."""
+    memo = {}
+
+    def facts(items):
+        out = set()
+        for item in items:
+            if item not in memo:
+                memo[item] = _forms(item[0], item[1], cwd, home)
+            if memo[item] is None:
+                return None
+            out |= memo[item]
+        return _flags(out)
+
+    scripts = [a.split() for a in argv + [a.replace("\\\n", "") for a in argv]]
+    args = facts([(w, True) for w in argv] + [(w, False) for s in scripts for w in s])
+    if args is not None and any(len(s) > 1 and _computed(s) for s in scripts):
+        args |= {"computed"}
+    data = [facts([(w, False) for w in t.split()]) for t in texts]
+    yield None if args is None or None in data else args.union(*(d & {"force", "main", "ref-main"} for d in data))
+    for t in texts:
+        reads = {t, t.replace("\\\n", "")}
+        assigned = facts([(w, False) for text in reads for w in _binding_words(text)])
+        for text in reads:
+            for line in text.split("\n"):
+                words = line.split()
+                f = facts([(w, False) for w in words])
+                if f is not None and _computed(words):
+                    f |= {"computed"}
+                if f is not None and "$" in line:
+                    f = None if args is None or assigned is None else f | (args | assigned) - {"computed"}
+                yield f
+
+
+def _main_history(units, home):
+    for f in units:
+        if f is None:
+            return True
+        if {"push", "force", "main"} <= f and f & {"git", "computed"}:
+            return True
+        if ({"DELETE", "ref-main"} <= f or {"repo", "delete"} <= f) and f & {"gh", "computed"}:
+            return True
+    return False
 
 
 def _approval_system(ws, home):
@@ -226,7 +301,7 @@ def check(argv, texts, cwd, home, extra=()):
     if ws is None:
         return "oversize"
     for name, rule in RULES:
-        if rule(ws, home):
+        if rule(units(argv, texts, cwd, home) if rule is _main_history else ws, home):
             return name
     if any(isinstance(p, str) and p and _any(ws, (p,)) for p in extra):
         return "extra"

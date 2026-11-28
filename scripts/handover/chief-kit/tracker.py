@@ -1695,7 +1695,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
             [r if isinstance(r, OwedRow) else OwedRow(r, 'chief') for r in chief_owes], holds_unread)
 
 
-POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it"
+POOL_HOLD_ACT = "record the operator's words (O- record) or a live wake (pr:, done: with a live owner), or dispatch it"
 
 
 def pool_hold_items(chief_doc, opn):
@@ -1725,7 +1725,7 @@ def pool_hold_items(chief_doc, opn):
         elif cls == 'invalid':
             ctx, act = '%s: %s' % (verb, r.get('reason')), POOL_HOLD_ACT
         elif cls in ('no-authority', 'unchecked'):
-            ctx = '%s since %s chief generations, with no operator words and no wake' % (verb, r.get('age_gen') or 1)
+            ctx = '%s since %s chief generations, with no operator words and no live holder' % (verb, r.get('age_gen') or 1)
             ctx, act = (ctx if cls == 'no-authority' else '%s (unchecked: %s)' % (ctx, r.get('reason'))), POOL_HOLD_ACT
         elif cls == 'authority':
             ctx, act = '%s on the operator\'s words: "%s"' % (verb, r.get('words')), 'none, unless the words do not say this'

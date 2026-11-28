@@ -260,9 +260,34 @@ same walk as the binding above), is refused as `rule=oversize`:
 |---|---|
 | `disk-wipe` | mkfs/wipefs/blkdiscard/partitioners, block devices, `rm` of `/`, a top-level directory or home (or a `/*` glob of one), btrfs subvolume delete of `/` |
 | `secret-read` | `/etc/shadow`, ssh and gpg keys, the Claude credentials and channel `.env`, `.env`, `totp.seed`, secret-tool/gh token/himmel-secrets reads |
-| `main-history` | a force push or delete naming main/master (`--force*`, `--delete`, a `+` or `:` refspec, or a short-flag cluster carrying `f` or `d`: `-f`, `-d`, `-fu`, `-df`), deleting `refs/heads/main`, `gh repo delete` |
+| `main-history` | a force push or delete naming main/master (`--force*`, `--delete`, a `+` or `:` refspec, or a short-flag cluster carrying `f` or `d`: `-f`, `-d`, `-fu`, `-df`), deleting `refs/heads/main`, `gh repo delete`; each in one command that runs `git` or `gh` (below) |
 | `approval-system` | `/etc/himmel`, the libexec dir, state and ledger dirs, sudoers, visudo, this installer |
 | `guards-off` | settings files and `scripts/hooks` outside a worktree, `hooks.json`, `--dangerously-skip-permissions`, `HIMMEL_*_OK=1` and `*_BYPASS*=1`, stopping the telegram bridge |
+
+`main-history` judges one command at a time, not the whole word set: the argv is one
+command, and each line of a file copy or the stdin is one, read both as written and with
+each backslash and newline dropped (a heuristic for the shell, which keeps them in a comment
+or single quotes). The command must also hold a word naming `git` (or `gh` for the two
+delete forms), with quotes and backslashes dropped and cut at punctuation (`g'i't`,
+`/usr/bin/git`, `$(git`, `os.system("git`), or, in shell text (a file line, or an argv
+element of several words), a `$` or backtick word, which may name any program. A line that
+expands a `$` word also holds the argv words and every line of the file that binds a value
+(a `key=value` word, whose quoted or array value spans words, or a `for`, `select`, `set`
+or `read` line), so `git push "$@"` and `B=main` then `git push -f origin "$B"` still
+match. The argv command also holds the force, main and main-ref words of every file copy
+and the stdin (never their program or push words), so `xargs git push --force origin` with
+`main` on stdin still matches. A read-only lint whose arguments or brief lines name push, a
+force word and main apart is not refused, nor is a lone `$x` argument, which no shell expands. The cost: a git
+wrapper, alias or shell function under another name; a value bound away from the push line
+by any other means (a variable in a non-shell file such as Python, `printf -v`, `mapfile`, a
+binding after `;`, `then` or `{`, a binding in another file copy, a value a loop reads from a
+file or a pipe); a program in argv whose push or delete verb comes from stdin or a file copy
+(`xargs git` with `push --force origin main` on stdin, `xargs -I{} git {} --force origin main`
+with `push` on stdin, `xargs gh repo` with `delete o/r` on stdin, `xargs gh api -X` with
+`DELETE repos/o/r/git/refs/heads/main` on stdin; the whole-request word set before this
+change refused each of these); or a push whose words a
+quote, heredoc or open bracket carries across lines. Each misses the floor and reaches the
+operator's phone ask instead.
 
 Config `never_remote_extra` only adds fnmatch patterns. A match answers
 `result=never-remote rule=<name>` (exit 5), is ledgered, and gives the operator no

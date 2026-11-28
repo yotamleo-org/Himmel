@@ -67,7 +67,7 @@ want(){ # <label> <haystack> <needle>
 want "spec goes to the state repo" "$flat" 'state repo `specs/<type>/`'
 want "plan goes to the state repo" "$flat" '`specs/plans/`'
 want "autonomous rulings use the Ruling format" "$flat" '`<decision> — <why> — <cost if wrong>`'
-want "Stage 2 critic names its model" "$stage2" '`model: opus` at high effort'
+want "Stage 2 critic names its model" "$stage2" '`model: sonnet` at high effort'
 want "Stage 4 critic names its model" "$stage4" '`model: sonnet` at high effort'
 
 want "Stage 1a invokes the vendored grilling skill" "$grill" 'Invoke `lean-skills:grilling` (unless it is already running)'
