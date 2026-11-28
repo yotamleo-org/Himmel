@@ -1187,6 +1187,8 @@ expect_text main-history "a script that pushes its arguments" $'git push "$@"\n'
 # shellcheck disable=SC2016
 expect_text main-history "a script that pushes a variable set on another line" $'B=main\ngit push -f origin "$B"\n' bash s.sh
 expect_text main-history "a script line that runs on past a backslash" $'git push -f \\\norigin main\n' bash s.sh
+expect_text main-history "a script whose git runs on past a backslash" $'git \\\npush --force origin main\n' bash s.sh
+expect_rule main-history bash -c $'git \\\npush --force origin main'
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
 expect_rule approval-system tee /etc/sudoers

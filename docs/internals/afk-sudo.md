@@ -265,9 +265,10 @@ same walk as the binding above), is refused as `rule=oversize`:
 | `guards-off` | settings files and `scripts/hooks` outside a worktree, `hooks.json`, `--dangerously-skip-permissions`, `HIMMEL_*_OK=1` and `*_BYPASS*=1`, stopping the telegram bridge |
 
 `main-history` judges one command at a time, not the whole word set: the argv is one
-command, and each line of a file copy or the stdin is one (a line ending in a backslash
-runs on). The command must also hold a word naming `git` (or `gh` for the two delete
-forms), with quotes and backslashes dropped (`g'i't`, `/usr/bin/git`). A line that
+command, and each line of a file copy or the stdin is one (a backslash and newline are
+dropped, as the shell does). The command must also hold a word naming `git` (or `gh` for
+the two delete forms), with quotes and backslashes dropped (`g'i't`, `/usr/bin/git`), or a
+`$` or backtick word of its own, which may name any program. A line that
 expands a `$` word also holds the argv words and the file's `key=value` words, so
 `git push "$@"` and `B=main` then `git push -f origin "$B"` still match. A read-only
 lint whose arguments or brief lines name push, a force word and main apart is not

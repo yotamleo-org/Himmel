@@ -192,13 +192,31 @@ def _short_force(w):
     return w[:1] == "-" and w[1:].isascii() and w[1:].isalnum() and ("f" in w or "d" in w)
 
 
+def _runs(ws, prog):
+    """A word that names prog, with any quotes and backslashes in it dropped (`g'i't`, `\\git`, `/usr/bin/git`)."""
+    return any(os.path.basename(re.sub(r"[\"'\\]", "", w)) == prog for w in ws)
+
+
+def _flags(ws):
+    """The facts main-history reads from one word set; a command is the union of its sets' facts, never of the sets.
+    `computed` is a `$` or backtick word, which may name any program."""
+    if ws is None:
+        return None
+    return frozenset(k for k, hit in (
+        ("push", "push" in ws), ("force", _any(ws, FORCE) or any(_short_force(w) for w in ws)),
+        ("main", _any(ws, PROTECTED)), ("DELETE", "DELETE" in ws), ("ref-main", any("refs/heads/main" in w for w in ws)),
+        ("repo", "repo" in ws), ("delete", "delete" in ws), ("git", _runs(ws, "git")), ("gh", _runs(ws, "gh")),
+        ("computed", any("$" in w or "`" in w for w in ws))) if hit)
+
+
 def units(argv, texts, cwd, home):
-    """The word sets main-history judges, one per command: the argv, and each line of a file copy or stdin (a line
-    ending in a backslash runs on). A line that expands a `$` word also holds the argv words and the text's
-    `key=value` words, which a script reads through its arguments and variables. None for a word with too many forms."""
+    """The facts of each command main-history judges: the argv, and each line of a file copy or stdin (a backslash
+    and newline are dropped, as the shell does). A line that expands a `$` word also holds the facts of the argv
+    words and the text's `key=value` words, which a script reads through its arguments and variables, though their
+    `computed` words name no program on that line. None for a word with too many forms."""
     memo = {}
 
-    def words(items):
+    def facts(items):
         out = set()
         for item in items:
             if item not in memo:
@@ -206,35 +224,29 @@ def units(argv, texts, cwd, home):
             if memo[item] is None:
                 return None
             out |= memo[item]
-        return out
+        return _flags(out)
 
-    args = words([(w, True) for w in argv] + [(w, False) for a in argv for w in a.split()])
-    out = [args]
+    joined = [a.replace("\\\n", "") for a in argv]
+    args = facts([(w, True) for w in argv] + [(w, False) for a in argv + joined for w in a.split()])
+    yield args
     for t in texts:
-        lines = t.replace("\\\n", " ").split("\n")
-        assigned = words([(w, False) for w in t.split() if "=" in w])
-        for line in lines:
-            ws = words([(w, False) for w in line.split()])
-            if ws is not None and "$" in line:
-                ws = None if args is None or assigned is None else ws | args | assigned
-            out.append(ws)
-    return out
-
-
-def _runs(ws, prog):
-    """A word that names prog, with any quotes and backslashes in it dropped (`g'i't`, `\\git`, `/usr/bin/git`)."""
-    return any(os.path.basename(re.sub(r"[\"'\\]", "", w)) == prog for w in ws)
+        t = t.replace("\\\n", "")
+        assigned = facts([(w, False) for w in t.split() if "=" in w])
+        for line in t.split("\n"):
+            f = facts([(w, False) for w in line.split()])
+            if f is not None and "$" in line:
+                f = None if args is None or assigned is None else f | (args | assigned) - {"computed"}
+            yield f
 
 
 def _main_history(units, home):
     """A force push or delete of main, or a repo or main-branch delete, in one command that runs git or gh."""
-    for ws in units:
-        if ws is None:
+    for f in units:
+        if f is None:
             return True
-        force = _any(ws, FORCE) or any(_short_force(w) for w in ws)
-        if "push" in ws and force and _any(ws, PROTECTED) and _runs(ws, "git"):
+        if {"push", "force", "main"} <= f and f & {"git", "computed"}:
             return True
-        if ("DELETE" in ws and any("refs/heads/main" in w for w in ws) or {"repo", "delete"} <= ws) and _runs(ws, "gh"):
+        if ({"DELETE", "ref-main"} <= f or {"repo", "delete"} <= f) and f & {"gh", "computed"}:
             return True
     return False
 
