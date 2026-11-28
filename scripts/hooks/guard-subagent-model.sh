@@ -73,18 +73,19 @@ agent_def_keeps_agent() {
             awk -v want="$1" -v stem="$(basename "$f" .md)" '
                 function has_agent(v,   n, a, i, t) {
                     sub(/[[:space:]]+#.*$/, "", v)
-                    gsub(/["'\''\[\]-]/, " ", v)
-                    n = split(v, a, /[ ,]+/)
+                    sub(/^[[:space:]]*-[[:space:]]+/, "", v)
+                    gsub(/["'\''\[\]]/, " ", v)
+                    n = split(v, a, /[[:space:],]+/)
                     for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task") return 1 }
                     return 0
                 }
                 NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
                 /^---[[:space:]]*$/ { done = 1; exit }
-                /^[^[:space:]]/ { key = "" }
+                /^[^[:space:]-]/ { key = "" }
                 /^name:/ { v = $0; sub(/^name:/, "", v); sub(/[[:space:]]+#.*$/, "", v); gsub(/["'\''[:space:]]/, "", v); name = v }
                 /^tools:/ { tools = 1; key = "tools"; v = $0; sub(/^tools:/, "", v); if (has_agent(v)) listed = 1; next }
                 /^disallowedTools:/ { key = "drop"; v = $0; sub(/^disallowedTools:/, "", v); if (has_agent(v)) dropped = 1; next }
-                /^[[:space:]]+-/ { if (key == "tools" && has_agent($0)) listed = 1; if (key == "drop" && has_agent($0)) dropped = 1 }
+                /^[[:space:]]*-[[:space:]]/ { if (key == "tools" && has_agent($0)) listed = 1; if (key == "drop" && has_agent($0)) dropped = 1 }
                 END {
                     if (!done || (name == "" ? stem : name) != want) exit 2
                     exit (dropped || (tools && !listed)) ? 1 : 0

@@ -4818,7 +4818,8 @@ also denies a Haiku child on a type that keeps the Agent tool:
 a `model` naming Haiku (`haiku`, `claude-haiku-5-5`, any case) with
 `subagent_type` `general-purpose`, `claude` or none, or a type whose agent
 definition (the `*.md` under `$CLAUDE_PROJECT_DIR/.claude/agents/`, then
-`$HOME/.claude/agents/`, whose frontmatter `name:` is that type) leaves Agent
+`$HOME/.claude/agents/`, whose frontmatter `name:`, or its file name when it has
+no `name:`, is that type) leaves Agent
 available, since that child
 could spawn and its Explore would run on the main session's model. A type with
 no readable definition (built-ins, plugin agents) passes. The deny names

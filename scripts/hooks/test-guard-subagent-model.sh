@@ -279,6 +279,16 @@ assert_rc "an agent found by its name: field, not its file name, + haiku is DENI
 RC42=$(run_hook def-yaml-drop "$(payload yaml-drop haiku)" "${DEFS[@]}")
 assert_rc "project agent dropping Agent as a YAML list item + haiku is allowed (rc=0)" 0 "$RC42"
 
+printf -- '---\nname: hyphen-drop\ndisallowedTools: mcp__example__run-Agent\n---\nbody\n' > "$PROJ/.claude/agents/hyphen-drop.md"
+printf -- '---\nname: col1-list\ntools:\n- Read\n- Agent\n---\nbody\n' > "$PROJ/.claude/agents/col1-list.md"
+printf -- '---\nname: tab-sep\ntools:\tRead,\tAgent\n---\nbody\n' > "$PROJ/.claude/agents/tab-sep.md"
+RC43=$(run_hook def-hyphen "$(payload hyphen-drop haiku)" "${DEFS[@]}")
+assert_rc "a disallowed tool whose name merely ends in -Agent does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC43"
+RC44=$(run_hook def-col1 "$(payload col1-list haiku)" "${DEFS[@]}")
+assert_rc "project agent listing Agent as an unindented YAML list item + haiku is DENIED (rc=2)" 2 "$RC44"
+RC45=$(run_hook def-tab "$(payload tab-sep haiku)" "${DEFS[@]}")
+assert_rc "project agent with tab-separated tools naming Agent + haiku is DENIED (rc=2)" 2 "$RC45"
+
 echo ""
 echo "=== escape hatch ==="
 
