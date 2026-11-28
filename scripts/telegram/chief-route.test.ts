@@ -8726,8 +8726,9 @@ test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets tab
     const f = await cappedFixture({ specText, ...(line.startsWith("ticket:") ? { firstSpecText: specText.replace(line, `tickets: ${cappedKey}`) } : {}) });
     const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
     const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
-    if (line.startsWith("ticket:")) for (const run of [p1Fold(f.args), v2Cli(f.args)]) expect(run, `${line}: the fold itself passes`).toMatchObject({ code: 0, err: "" });
-    return [declares(p1Fold(f.args)), declares(p1Cli("--keys", cappedKey, ...p1Flags(f.args).slice(2))), signer, signShape(f.spec).code === 0];
+    const v1 = p1Fold(f.args); const v2 = p1Cli("--keys", cappedKey, ...p1Flags(f.args).slice(2));
+    if (line.startsWith("ticket:")) for (const run of [v1, v2]) expect(run, `${line}: the fold itself passes`).toMatchObject({ code: 0, err: "" });
+    return [declares(v1), declares(v2), signer, signShape(f.spec).code === 0];
   }));
   expect(got).toEqual(rows.map(([, ok]) => [ok, ok, ok, ok]));
 });
