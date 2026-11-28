@@ -213,7 +213,7 @@ write_gate_handoff() {
 gate_id="$(owe_row "$root/tester/owedgate" 'the second ticket live proof')"
 gate_ids="$(owe_row "$root/tester/owedgate" 'status page ask a') $(owe_row "$root/tester/owedgate" 'status page ask b')"
 write_gate_handoff "$gate_id" 'Operator asks still open: (a) status page "RESUME briefs (1634), newest 8 h old" looks like a bug; (b) "12 started, no one on it": bug or current work?; (c) launch a design leg' \
-    '9. Not closed; waiting for proof' '12. A proof not yet closed' '13. Merged as #6, closed.' '14. Do not mark this (closed) until proof arrives' '  10. An indented item with no row' '11. A row that is not in the ledger: o99'
+    '9. Not closed; waiting for proof' '12. A proof not yet closed' '13. Merged as #6, closed.' '14. Do not mark this (closed) until proof arrives' '- Standing ruling: one PR per ticket, binding' '**15.** A bold-numbered ask' '16: A colon-numbered ask' '      17. A deeply indented ask' '  10. An indented item with no row' '11. A row that is not in the ledger: o99'
 rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
 check "5 next refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
 check "5 the refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: Operator asks still open')" "1"
@@ -223,10 +223,16 @@ check "5 not closed is no closed mark" "$(printf '%s\n' "$out" | grep -c 'item 9
 check "5 not yet closed is no closed mark" "$(printf '%s\n' "$out" | grep -c 'item 12: A proof not yet closed')" "1"
 check "5 a plain closed word is no (closed) mark" "$(printf '%s\n' "$out" | grep -c 'item 13: Merged as #6, closed')" "1"
 check "5 a (closed) mid-sentence is no mark" "$(printf '%s\n' "$out" | grep -c 'item 14: Do not mark this')" "1"
+check "5 the HANDOFF template asks for rulings as bullets and owed work as numbered items" "$(grep -c 'Standing rulings and notes as "- " bullets' "$REPO_REAL/docs/handover/chief-handoff-template.md")" "1"
+check "5 a template-shaped standing-ruling bullet is not an item" "$(printf '%s\n' "$out" | grep -c 'Standing ruling')" "0"
+check "5 a bold-numbered item is checked" "$(printf '%s\n' "$out" | grep -c 'item 15: A bold-numbered ask')" "1"
+check "5 a colon-numbered item is checked" "$(printf '%s\n' "$out" | grep -c 'item 16: A colon-numbered ask')" "1"
+check "5 an item indented by six spaces is checked" "$(printf '%s\n' "$out" | grep -c 'item 17: A deeply indented ask')" "1"
 check "5 an item indented by two spaces is checked" "$(printf '%s\n' "$out" | grep -c 'item 10: An indented item')" "1"
 check "5 an o<N> the ledger does not hold is no owed id" "$(printf '%s\n' "$out" | grep -c 'item 11: A row that is not')" "1"
 check "5 the refused next writes no successor doc" "$([ -e "$gateB" ] && echo yes || echo no)" "no"
-write_gate_handoff "$gate_id" "Operator asks still open, rows $gate_ids: (a) status page; (b) 12 started; (c) a design leg"
+write_gate_handoff "$gate_id" "Operator asks still open, rows $gate_ids: (a) status page; (b) 12 started; (c) a design leg" \
+    '- Standing ruling: one PR per ticket, binding' '- Worker N35 runs on sonnet, brief and debt in its doc'
 check "5 the fixture HANDOFF can be made unreadable" "$(chmod 000 "$gate_handoff" && echo yes)" "yes"
 if [ ! -r "$gate_handoff" ]; then
     rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
