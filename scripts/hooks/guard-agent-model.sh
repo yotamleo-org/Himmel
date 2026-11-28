@@ -66,16 +66,17 @@
 #
 # CRITIC ON A JUDGE (a deny, any model, a missing model too): a judge or judge-ro
 # dispatch whose description reads as a spec or plan critic round or a closure
-# check ("critic", "closure check|round|critic|r<n>", "spec closure", "plan
-# closure") and does not say "judge" is denied and steered to general-purpose on
-# sonnet at high effort (operator decision 1606). A description that
+# check ("critic", "closure check(s)|round(s)|critic(s)|r<n>", "spec closure",
+# "plan closure") and does not say "judge" is denied and steered to general-purpose
+# on sonnet at high effort (operator decision 1606). A description that
 # says "judge" (the generator's "Judge <qid> on <KEY>", "Trust judge PR <n>") is a
 # judge and unchanged. The bypass is a usable `ESCALATION: <reason>` line, echoed on
 # stderr like every other rescue. The prompt counts too, whatever the description
-# says: a line that opens with a minerva charter's first sentence ("Red-team this
-# design spec." / "Red-team this implementation plan.") or the closure pack's
-# `CLOSURE-CHECK <KEY> <kind> r<n> <sha12>` marker line makes it a critic. A quoted
-# diff line ("+Red-team ...") or a mid-line mention does not.
+# says: a line that starts, in its first column, with a minerva charter's first
+# sentence ("Red-team this design spec." / "Red-team this implementation plan.")
+# or the closure pack's `CLOSURE-CHECK <KEY> <kind> r<n> <sha12>` marker line
+# makes it a critic. A quoted diff line ("+Red-team ..." or a " Red-team ..."
+# context line) or a mid-line mention does not.
 #
 # Platform guard: jq only, no git/path work beyond the sibling policy file; any
 # POSIX bash 3.2+.
@@ -135,10 +136,10 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     | ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) as $isj
     | ($ti.description | s) as $desc
     | ([$ti.prompt | s | split("\n")[]
-        | select(test("^[ \\t]*(CLOSURE-CHECK [A-Z][A-Z0-9]*-[0-9]+ (spec|plan) r[0-9]+ [0-9a-f]{12}[ \\t]*$|Red-team this (design spec|implementation plan)\\.)"))]
+        | select(test("^(CLOSURE-CHECK [A-Z][A-Z0-9]*-[0-9]+ (spec|plan) r[0-9]+ [0-9a-f]{12}[ \\t\\r]*$|Red-team this (design spec|implementation plan)\\.)"))]
        | length > 0) as $critmark
     | ($isj and ($critmark
-       or (($desc | test("\\bcritics?\\b|\\bclosure[ -](check|round|critic|r[0-9]+)\\b|\\b(spec|plan)[ -]closure\\b"; "i"))
+       or (($desc | test("\\bcritics?\\b|\\bclosure[ -](checks?|rounds?|critics?|r[0-9]+)\\b|\\b(spec|plan)[ -]closure\\b"; "i"))
            and ($desc | test("\\bjudge\\b"; "i") | not)))) as $iscrit
     | ($tool == "Agent" and $isj
        and ([$ti.prompt | s | split("\n")[] | select(test("^[ \\t]*JUDGE-BRIEF:[ \\t]*[0-9a-f]{16}[ \\t]*$"))] | length) == 0) as $jbwarn

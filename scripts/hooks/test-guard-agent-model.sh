@@ -433,6 +433,12 @@ silent "a judge whose prompt quotes a charter diff line (+Red-team ...) -> uncha
     "$(described 'Judge PR 6300' "$(agent judge opus "$JBL"$'\n'"+Red-team this design spec. You are adversarial")")"
 silent "a judge whose prompt mentions the charter mid-line -> unchanged, no output" \
     "$(described 'Judge PR 6300' "$(agent judge opus "$JBL"$'\n'"the charter opens: Red-team this design spec.")")"
+silent "a judge whose prompt has a diff context line ( Red-team ...) -> unchanged, no output" \
+    "$(described 'Judge PR 6300' "$(agent judge opus "$JBL"$'\n'" Red-team this design spec. You are adversarial")")"
+check "a closure pack line with a CRLF ending on judge -> deny" block \
+    "$(described 'Review spec round 6' "$(agent judge opus $'x\nCLOSURE-CHECK PROJ-1 spec r5 0123456789ab\r\n\n## open blocking findings')")"
+check "a plural 'Closure checks' description on judge -> deny" block \
+    "$(described 'Closure checks for PROJ-1' "$(agent judge opus 'x')")"
 btxt="$(deny_text "$(agent general-purpose fable 'do the review')")"
 needs "fable with no ESCALATION line -> text names the line and the dispatch that keeps fable" "$btxt" \
     "keep model: fable" "ESCALATION: <reason>" "line of its own"
