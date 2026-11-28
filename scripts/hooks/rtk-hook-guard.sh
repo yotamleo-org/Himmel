@@ -40,6 +40,16 @@ payload=$(cat 2>/dev/null || true)
 command -v rtk >/dev/null 2>&1 || exit 0
 
 out=$(printf '%s' "$payload" | rtk hook claude 2>/dev/null) || exit 0
+if [ -z "$out" ] && [ "${HIMMEL_CONSOLE_LEG:-}" = "1" ] && command -v jq >/dev/null 2>&1; then
+    out=$(printf '%s' "$payload" | jq -c '
+        select(.tool_name == "Bash")
+        | select((.cwd // "") | test("/\\.claude/worktrees/"))
+        | select((.tool_input.command // "") | test("^git commit( |$)"))
+        | {hookSpecificOutput: {hookEventName: "PreToolUse",
+            permissionDecisionReason: "RTK auto-rewrite",
+            updatedInput: (.tool_input + {command: ("rtk " + .tool_input.command)}),
+            permissionDecision: "allow"}}' 2>/dev/null) || out=""
+fi
 [ -n "$out" ] || exit 0
 
 # the claudex classifier cannot establish the executable behind
@@ -91,6 +101,19 @@ case "$out" in
     */.claude/worktrees/*|*\\.claude\\worktrees\\*|*\\\\.claude\\\\worktrees\\\\*)
         # Here-string, not a pipe: `grep -q` under pipefail SIGPIPEs the producer.
         if grep -Eq '(^|[^[:alnum:]_])git($|[^[:alnum:]_])' <<< "$out" 2>/dev/null; then
+            if [ "${HIMMEL_CONSOLE_LEG:-}" = "1" ] && command -v jq >/dev/null 2>&1; then
+                commit_cmd=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedInput.command // empty')
+                case "$commit_cmd" in
+                *"
+"*|*'&'*|*';'*|*'|'*) ;;
+                "rtk git commit"|"rtk git commit "*)
+                    if [ "$(grep -oE '(^|[^[:alnum:]_])git($|[^[:alnum:]_])' <<< "$commit_cmd" | wc -l)" -eq 1 ]; then
+                        printf '%s\n' "$out"
+                        exit 0
+                    fi
+                    ;;
+                esac
+            fi
             exit 0
         fi
         ;;
