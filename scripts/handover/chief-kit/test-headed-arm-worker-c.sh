@@ -780,6 +780,72 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl PROJ-8320
 check "48q dry-run --headless --profile: exit 0" "$rc" "0"
 not_contains "48q dry-run --headless --profile: no Remote Control" "$out" "remote-control="
 
+shim_env48="$tmp/shim-env48"
+# shellcheck disable=SC2016 # literal $@ and ${..} belong to the stub script, not this one
+printf '%s\n' '#!/usr/bin/env bash' 'printf "[%s]" "$@" > "$(dirname "$0")/env48-out"; printf " code=%s entry=%s\n" "${CLAUDE_CODE_EXPERIMENTAL_CODE_MODE-unset}" "${CLAUDE_CODE_ENTRYPOINT-unset}" >> "$(dirname "$0")/env48-out"' > "$shim_env48"
+chmod 755 "$shim_env48"
+rm -f "$tmp/env48-out"
+(unset WORKER_SESSION_REMOTE_CONTROL CLAUDE_CODE_EXPERIMENTAL_CODE_MODE; WORKER_SESSION_CODE_MODE=1 CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
+  WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+  bash "$SHIM" --model claude-sonnet-5 "load doc") || true
+check "48s shim: WORKER_SESSION_CODE_MODE=1 sets the Code Mode var, drops the inherited entrypoint, argv unchanged" \
+  "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=1 entry=unset"
+rm -f "$tmp/env48-out"
+(unset WORKER_SESSION_REMOTE_CONTROL WORKER_SESSION_CODE_MODE CLAUDE_CODE_EXPERIMENTAL_CODE_MODE; CLAUDE_CODE_ENTRYPOINT=sdk-ts WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
+  WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+  bash "$SHIM" --model claude-sonnet-5 "load doc") || true
+check "48t shim: WORKER_SESSION_CODE_MODE unset -> no Code Mode var, entrypoint untouched" \
+  "$(cat "$tmp/env48-out" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc] code=unset entry=sdk-ts"
+rm -f "$tmp/env48-out"; rc=0
+WORKER_SESSION_CODE_MODE=1 WORKER_SESSION_REMOTE_CONTROL=PROJ-9999-leg WORKER_SESSION_CLAUDE_BIN="$shim_env48" \
+  WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+  bash "$SHIM" --model m "load doc" >/dev/null 2>&1 || rc=$?
+check "48u shim: Code Mode beside Remote Control is refused (exit 2)" "$rc" "2"
+check "48u shim: nothing is exec'd" "$([ -e "$tmp/env48-out" ] && echo ran || echo none)" "none"
+rc=0; rm -f "$tmp/lane48-argv"
+(unset WORKER_SESSION_REMOTE_CONTROL; WORKER_SESSION_CODE_MODE=1 WORKER_SESSION_CLAUDE_BIN="$tmp/lanebin48/claude-codex" \
+  WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+  bash "$SHIM" --model m "load doc") >/dev/null 2>&1 || rc=$?
+check "48v shim: Code Mode on a claude-codex lane is refused (exit 2)" "$rc" "2"
+check "48v shim: claude-codex is never exec'd" "$([ -e "$tmp/lane48-argv" ] && echo ran || echo none)" "none"
+rc=0; out="$(bash "$SCRIPT" --dry-run --code-mode --profile worker-impl PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "48w dry-run --code-mode native --profile: exit 0" "$rc" "0"
+contains "48w dry-run --code-mode: reports code-mode=1" "$out" "code-mode=1"
+not_contains "48w dry-run --code-mode: no Remote Control" "$out" "remote-control="
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+not_contains "48x dry-run without --code-mode: no code-mode= (off by default)" "$out" "code-mode="
+for args48 in "--no-profile" "--lane claudex --profile worker-impl" "--headless --profile worker-impl" "--relay"; do
+  rc=0
+  # shellcheck disable=SC2086 # args48 is a deliberate word list
+  bash "$SCRIPT" --dry-run --code-mode $args48 PROJ-8320-cm some/doc.md /tmp/nosig 99999999999 /tmp/worker.log >/dev/null 2>&1 || rc=$?
+  check "48y dry-run --code-mode $args48: refused (exit 2)" "$rc" "2"
+done
+d48cm="$tmp/c48cm"; mk_launch_stubs "$d48cm" "PROJ-8320-cm"; mkdir -p "$tmp/repo48cm"
+rc=0
+IMPL_GUARD_OK='' WORKER_SESSION_REMOTE_CONTROL='' \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+KONSOLE_CMD="$d48cm/konsole" PGREP_CMD="$d48cm/pgrep" \
+WORKER_SESSION_REPO="$tmp/repo48cm" HEADED_ARM_LOCK_DIR="$d48cm/locks" HEADED_ARM_PROC="$d48cm/proc" \
+  bash "$SCRIPT" --code-mode --profile worker-impl "PROJ-8320-cm" "$some_doc" "$d48cm/signal-never" "$PAST" "$d48cm/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d48cm" || true
+check "48z full --code-mode launch: exit 0" "$rc" "0"
+contains "48z full --code-mode launch: WORKER_SESSION_CODE_MODE=1 reaches the launched env" "$(cat "$d48cm/env-record" 2>/dev/null || true)" "WORKER_SESSION_CODE_MODE=1"
+not_contains "48z full --code-mode launch: no Remote Control" "$(cat "$d48cm/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL"
+not_contains "48z full plain launch (48d): no Code Mode" "$(cat "$d48/env-record" 2>/dev/null || true)" "WORKER_SESSION_CODE_MODE"
+d48cx="$tmp/c48cx"; mk_launch_stubs "$d48cx" "PROJ-8320-cx"; mkdir -p "$tmp/repo48cx"
+rc=0
+IMPL_GUARD_OK='' WORKER_SESSION_REMOTE_CONTROL='' WORKER_SESSION_CODE_MODE=1 \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+KONSOLE_CMD="$d48cx/konsole" PGREP_CMD="$d48cx/pgrep" \
+WORKER_SESSION_REPO="$tmp/repo48cx" HEADED_ARM_LOCK_DIR="$d48cx/locks" HEADED_ARM_PROC="$d48cx/proc" \
+  bash "$SCRIPT" --profile worker-impl "PROJ-8320-cx" "$some_doc" "$d48cx/signal-never" "$PAST" "$d48cx/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d48cx" || true
+check "48z ambient WORKER_SESSION_CODE_MODE without --code-mode: exit 0" "$rc" "0"
+not_contains "48z ambient WORKER_SESSION_CODE_MODE is scrubbed from a plain launch" "$(cat "$d48cx/env-record" 2>/dev/null || true)" "WORKER_SESSION_CODE_MODE"
+contains "48z ambient case keeps Remote Control" "$(cat "$d48cx/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL=PROJ-8320-cx"
+
 # --- 49. single-writer barrier: a worker launch carries its holder key, seeds its file holds and refuses an overlap ----
 # The wrapper sets HIMMEL_HOLD_KEY/_DOC/_LABEL for a worker that implements; headed-arm.sh seeds them (its own suite
 # proves the seed rows). Here: the env reaches the launched process, and a refusal or a pre-launch refusal leaves no row.

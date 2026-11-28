@@ -2208,7 +2208,7 @@ test('himmel-guard is on by default in the starter install and the user profile'
 // A bare tool name in permissions.deny removes the definition from the request
 // payload (a scoped rule only blocks calls); disableWorkflows drops Workflow.
 const TRIM_DENY = ['NotebookEdit', 'DesignSync', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'ReportFindings', 'RemoteTrigger', 'Artifact', 'AskUserQuestion', 'SendFeedback'];
-const TRIM_NEVER = ['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent'];
+const TRIM_NEVER = ['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent', 'REPL'];
 
 for (const name of BUS_PROFILES) {
   test(`HIMMEL-4983: ${name} denies exactly the unused tools by bare name and disables Workflows`, () => {

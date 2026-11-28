@@ -103,7 +103,7 @@ function validateReadinessSpec(errors, name, spec) {
 // A bare tool name in permissions.deny removes the tool's definition from the
 // request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
 // therefore bare names only, and never a tool a worker works through.
-const TOOL_TRIM_PROTECTED = new Set(['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent', 'Task']);
+const TOOL_TRIM_PROTECTED = new Set(['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent', 'Task', 'REPL']);
 const BARE_TOOL_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 // The one rule only worker-vm adds: the sanctioned guest-launch script, relative,
