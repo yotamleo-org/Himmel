@@ -425,10 +425,10 @@ missing=""
 scan_sh="$(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "${PI_SCAN_SH[@]}")"; rc_sh=$?
 scan_mjs="$(grep -oE 'process\.env\.PLUGIN_PROFILES_[A-Z_]*' "$PI_SCAN_MJS")"; rc_mjs=$?
 expect_eq "S-LIST pi: both scans read their sources and matched" "$rc_sh|$rc_mjs" "0|0"
-# shellcheck disable=SC2013 # one bare variable name per line, never spaces
-for n in $( { printf '%s\n' "$scan_sh" | sed 's/^.*\${//'; printf '%s\n' "$scan_mjs" | sed 's/^process\.env\.//'; } | sort -u); do
+while IFS= read -r n; do
+    [ -n "$n" ] || continue
     case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
-done
+done <<< "$( { printf '%s\n' "$scan_sh" | sed 's/^.*\${//'; printf '%s\n' "$scan_mjs" | sed 's/^process\.env\.//'; } | sort -u)"
 expect_eq "S-LIST pi: every seam it and its unregistered children read is in $PI_KEY" "$missing" ""
 got="$(_csg_registry_seams "$CHOKEPOINTS" "$PI_KEY" | tr ' ' '\n' | sort | tr '\n' ' ')"
 expect_eq "S-GATE pi: _csg_registry_seams $PI_KEY equals the fixed list" "${got% }" "$PI_SEAMS"

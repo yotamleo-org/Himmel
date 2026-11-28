@@ -696,10 +696,10 @@ seam_list() {
     expect_eq "S-LIST $label: $key equals the fixed list" "$got" "$fixed"
     scan="$(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "$@")"; rc=$?
     expect_eq "S-LIST $label: the scan read its sources and matched" "$rc" 0
-    # shellcheck disable=SC2013 # one bare variable name per line, never spaces
-    for n in $(printf '%s\n' "$scan" | sed 's/^.*\${//' | sort -u); do
+    while IFS= read -r n; do
+        [ -n "$n" ] || continue
         case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
-    done
+    done <<< "$(printf '%s\n' "$scan" | sed 's/^.*\${//' | sort -u)"
     expect_eq "S-LIST $label: every seam its script reads is in $key" "$missing" ""
 }
 seam_gate() {
