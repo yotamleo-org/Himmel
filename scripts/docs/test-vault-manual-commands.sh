@@ -12,9 +12,10 @@
 #
 # Cases: 1. the manual names no unprovided command; 2. control: /contra is named
 # and provided; 3. a fixture proves the check flags a dead command and only it,
-# also beside a live one on the same line; 4. a missing manual file is reported.
+# also beside a live one on the same line; 4. a missing manual file, or a path
+# that is not a regular file, is reported.
 #
-# Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/grep/sed/mktemp.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/find/grep/sed/mktemp.
 #
 # Usage: bash scripts/docs/test-vault-manual-commands.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -51,20 +52,25 @@ provided() {
 }
 
 dead_commands() {
-    local f hit
+    local f hit hits
     for f in "$@"; do
-        [ -r "$f" ] || { echo "${f#"$ROOT"/}: missing or unreadable"; continue; }
+        if ! { [ -f "$f" ] && [ -r "$f" ] && hits="$(named_commands "$f")"; }; then
+            echo "${f#"$ROOT"/}: missing or unreadable"
+            continue
+        fi
         while IFS= read -r hit; do
             [ -n "$hit" ] || continue
             provided "${hit#*:/}" || echo "${f#"$ROOT"/}:${hit%%:*}: ${hit#*:}"
         done <<EOF
-$(named_commands "$f")
+$hits
 EOF
     done
 }
 
-shopt -s nullglob
-dead="$(dead_commands "$TPL/_CLAUDE.md" "$TPL/AGENTS.md" "$TPL"/docs/*.md "$TPL"/docs/*/*.md)"
+dead="$(
+    dead_commands "$TPL/_CLAUDE.md" "$TPL/AGENTS.md"
+    find "$TPL/docs" -type f -name '*.md' | while IFS= read -r f; do dead_commands "$f"; done
+)"
 if [ -z "$dead" ]; then
     ok "the vault manual names only commands a plugin provides"
 else
@@ -72,7 +78,7 @@ else
     printf '%s\n' "$dead" | sed 's/^/  /' >&2
 fi
 
-if named_commands "$TPL/_CLAUDE.md" | grep -q ':/contra$' && provided contra; then
+if [ "$(named_commands "$TPL/_CLAUDE.md" | grep -c ':/contra$')" -gt 0 ] && provided contra; then
     ok "control: /contra is named in _CLAUDE.md and provided"
 else
     bad "control: /contra is not named in _CLAUDE.md or no plugin provides it"
@@ -91,11 +97,12 @@ if [ "$got" = "$fx:2: /not-a-real-command" ]; then
 else
     bad "fixture: expected only /not-a-real-command flagged, got: $got"
 fi
-missing="$(dead_commands "$fx.absent")"
-if [ "$missing" = "$fx.absent: missing or unreadable" ]; then
-    ok "fixture: a missing manual file is reported"
+missing="$(dead_commands "$fx.absent" "$TPL/docs")"
+if [ "$missing" = "$fx.absent: missing or unreadable
+templates/luna-second-brain/docs: missing or unreadable" ]; then
+    ok "fixture: a missing manual file and a directory are reported"
 else
-    bad "fixture: a missing manual file was not reported, got: $missing"
+    bad "fixture: a missing manual file or a directory was not reported, got: $missing"
 fi
 
 echo "vault-manual-commands: $pass passed, $fail failed"
