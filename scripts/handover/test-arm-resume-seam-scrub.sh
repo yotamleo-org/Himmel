@@ -241,6 +241,23 @@ env -i PATH="$STUB_BIN:$SCHED_STUB:/usr/bin:/bin" HOME="$TMP" CLAUDE_REC="$TMP/r
     ARM_RESUME_LOG_DIR="$TMP/arm-logs" HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl" sh -c "$B_RUN" </dev/null >/dev/null 2>&1
 assert_eq "T18 the stub claude run from the crontab runner sees the marker" "HIMMEL_BRIDGE_SESSION=set" "$(cat "$TMP/rec-runner" 2>/dev/null)"
 
+maint_run() {
+    local body
+    body=$(env "$@" PATH="$SCHED_STUB:$PATH" OSTYPE=linux-gnu bash "$ARM" --time "$(future_time)" \
+            --handover "$HANDOVER" --dry-run 2>&1 \
+          | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}')
+    rm -f "$TMP/rec-maint"
+    env "$@" PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-maint" WATCH="HIMMEL_HOOK_INTEGRITY_BYPASS_OK HIMMEL_MAINTAINER_ACTION" \
+        HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$body" </dev/null >/dev/null 2>&1
+    tr '\n' ' ' < "$TMP/rec-maint" 2>/dev/null || echo MISSING
+}
+assert_eq "S5 a resume armed from a maintainer session inherits neither the bypass nor the marker" \
+    "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=gone HIMMEL_MAINTAINER_ACTION=gone " \
+    "$(maint_run HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_MAINTAINER_ACTION=hook-edit)"
+assert_eq "S5 control: a resume armed from the operator's bypass shell keeps the bypass" \
+    "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=set HIMMEL_MAINTAINER_ACTION=gone " \
+    "$(maint_run -u HIMMEL_MAINTAINER_ACTION HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1)"
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"
