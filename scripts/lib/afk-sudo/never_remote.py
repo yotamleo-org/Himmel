@@ -212,12 +212,24 @@ def _computed(words):
     return any("$" in w or "`" in w for w in words)
 
 
+def _binding_words(text):
+    """The words of every line that binds a value, and of the lines an open `(` carries that value over."""
+    out, depth = [], 0
+    for line in text.split("\n"):
+        words = line.split()
+        if depth > 0 or "=" in line or words[:1] in (["for"], ["select"], ["set"], ["read"]):
+            out += words
+            depth = max(depth, 0) + line.count("(") - line.count(")")
+    return out
+
+
 def units(argv, texts, cwd, home):
     """The facts of each command main-history judges: the argv, and each line of a file copy or stdin, read both as
     written and with each backslash and newline dropped (a heuristic: the shell keeps them in a comment or single
     quotes). A line that expands a `$` word also holds the facts of the argv words and of every line of the text that
-    binds a value (a `key=value` word, whose quoted or array value spans words, or a `for`, `select`, `set` or `read`
-    line), which a script reads through its arguments and variables. None for a word with too many forms."""
+    binds a value (a `key=value` word, whose quoted or array value spans words, and lines while a `(` it opens stays
+    open, or a `for`, `select`, `set` or `read` line), which a script reads through its arguments and variables. None
+    for a word with too many forms."""
     memo = {}
 
     def facts(items):
@@ -237,8 +249,7 @@ def units(argv, texts, cwd, home):
     yield args
     for t in texts:
         reads = {t, t.replace("\\\n", "")}
-        assigned = facts([(w, False) for text in reads for line in text.split("\n")
-                          if "=" in line or line.split()[:1] in (["for"], ["select"], ["set"], ["read"]) for w in line.split()])
+        assigned = facts([(w, False) for text in reads for w in _binding_words(text)])
         for text in reads:
             for line in text.split("\n"):
                 words = line.split()

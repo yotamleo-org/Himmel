@@ -1217,6 +1217,8 @@ expect_text main-history "a script whose set binds the force and main" $'set -- 
 # shellcheck disable=SC2016
 expect_text main-history "a script whose read binds main" $'read b <<< main\ngit push -f origin "$b"\n' bash s.sh
 # shellcheck disable=SC2016
+expect_text main-history "a script whose array of the force and main spans lines" $'args=(\n  --force\n  origin main\n)\ngit push "${args[@]}"\n' bash s.sh
+# shellcheck disable=SC2016
 expect_rule main-history bash -c 'env -- "$g" push -f origin main'
 # shellcheck disable=SC2016
 expect_rule main-history bash -c "eval '\"\$g\" push -f origin main'"
