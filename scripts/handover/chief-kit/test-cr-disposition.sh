@@ -89,14 +89,13 @@ check "ready-check's owner-review line over the ready-pass fixture" "$(ready_pas
 # fixture deferral out of its items 7 and 18, so this suite exercises only cr-disposition.sh's own gate
 export READY_STUB_GQL_BRANCH=gql-other
 ready_pass_ledger "$REPO" "$SHA"
-# defer_finding <id> <severity> <text> - a worker-deferred finding at $FHEAD, written
-# through the ledger's single writer (test-pr-check-run invariant 7).
 defer_finding() {
-  local dout
-  dout=$(CR_LEDGER="$LEDGER" bash "$LA" finding --branch "$BR" --head "$FHEAD" --model gpt-6.1-sol --id "$1" \
+  local dout dto="${5:-HIMMEL-6352}"
+  [ "$dto" != - ] || dto=""
+  dout=$(CR_LEDGER="$LEDGER" bash "$LA" finding --branch "${4:-$BR}" --head "$FHEAD" --model gpt-6.1-sol --id "$1" \
     --severity "$2" --file scripts/config-ui/agui-web/src/main.tsx --line 23 --verdict deferred \
     --reason "Pre-existing production lifecycle defect outside approved e2e-only repair scope; chief-directed Bug follow-up verified and linked" \
-    --deferred-to HIMMEL-6352 --fu-class hardening --fu-why no-check --text "$3" 2>&1) || {
+    ${dto:+--deferred-to "$dto"} ${6:+--artifact "$6"} --fu-class hardening --fu-why no-check --text "$3" 2>&1) || {
     echo "FAIL: fixture finding $1 was not written: $dout" >&2; exit 1; }
 }
 defer_finding census-reset-1 imp "Fleet census rerender recreates source and resets active transcript"
@@ -373,6 +372,266 @@ rc=0; out="$(cd "$tmp/foreign" && env -u GH_CMD -u himmel_github_token_vm2 PATH=
   GH_READ_ENV_ROOT="$tmp/t11noroot" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
 contains "13: from another repo's folder the gated checkout's ledger is read" "$out" "[OPEN] crit adopt-9@$FHEAD"
 check    "13: the head-branch read runs in the gated checkout" "$(cat "$tmp/t13.log")" "$(cd "$REPO" && pwd -P)"
+
+D1FIX="$HERE/fixtures/cr-disposition/d1-ruling-line.txt"
+VD="$HDIR/$VSCOPE/verdicts"
+FUKEY=HIMMEL-6352
+OTHERKEY=HIMMEL-6353
+d1() { sed -e "s/<fid>/$1/" -e "s/<fhead>/$FHEAD/" "$D1FIX"; }
+export READY_STUB_BRANCH=t14
+defer_finding t14-imp imp "A deferred Important on a trust path" t14
+defer_finding t14-crit crit "A deferred Critical on a trust path" t14
+cp "$LEDGER" "$tmp/ledger.bak14"
+D1BOTH="$(d1 t14-imp)"$'\n'"$(d1 t14-crit)"
+t14_reset() {
+  [ ! -d "$VD" ] || chmod 755 "$VD"
+  cp "$tmp/ledger.bak14" "$LEDGER"
+  rm -rf "$VD"/JV* "$HDIR/.locks"
+  export READY_STUB_BRANCH=t14 READY_CHECK_ANCHOR="$TA" READY_STUB_TRUST_FILE=scripts/lib/env-alias.sh \
+    JIRA_CMD="$tmp/bin/jira" HANDOVER_DIR="$HDIR"
+  verdict "$HDIR" JV1 "**GO** for head \`$SHA\`." 93
+}
+chk() { rc=0; out="$(bash "$DISP" check "$@" 2>&1)" || rc=$?; }
+wv() {
+  local wvout
+  wvout=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$HDIR" CLAUDE_CODE_SESSION_ID=sess-judge \
+    bash "$HERE/write-verdict.sh" "$1" GO "$SHA" --pr "$2" --model test-model --effort high --evidence-file "$3" 2>&1) \
+    || { echo "FAIL - cannot write verdict $1: $wvout"; fails=$((fails+1)); }
+}
+printf '%s\n\n## Evidence checked\n\n- read the diff\n' "$D1BOTH" > "$evd/jv2-ev.md"
+jv2() { wv JV2 93 "$evd/jv2-ev.md"; }
+chief_rows() {
+  local f
+  for f in t14-imp t14-crit; do
+    bash "$DISP" record 93 "$SHA" "$f@$FHEAD" follow-up:HIMMEL-6352 --source chief \
+      --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1 || { echo "FAIL - chief row for $f not recorded"; fails=$((fails+1)); }
+  done
+}
+both_open() {
+  contains "$1: t14-imp stays open" "$out" "[OPEN] imp t14-imp@$FHEAD"
+  contains "$1: t14-crit stays open" "$out" "[OPEN] crit t14-crit@$FHEAD"
+}
+one_line() {
+  check    "$1: the output is one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "1"
+  contains "$1: it names $2" "$out" "$2"
+  contains "$1: it says it is not a GitHub wait" "$out" "(not a GitHub wait"
+}
+gofile() { find "$HDIR/.locks/go" -type f 2>/dev/null | wc -l | tr -d ' '; }
+
+t14_reset
+gos --trust-reviewed JV1 93 "$SHA"
+check "14 NC: a GO that rules nothing -> go.sh exit 9" "$rc" "9"
+both_open "14 NC"
+nogo  "14 NC"
+chk 93 "$SHA" --trust-path yes
+for f in imp:t14-imp crit:t14-crit; do
+  contains "14 NC: ${f#*:}'s reason names the ruling line (R5-F45)" "$out" \
+    "[OPEN] ${f%%:*} ${f#*:}@$FHEAD: no disposition row at this head; no judge GO at this head carries $(d1 "${f#*:}") (brief the judge with the deferred key)"
+done
+
+t14_reset; jv2
+gos --trust-reviewed JV2 93 "$SHA"
+check "14 R1: a judge GO through the real writer ruling both -> go.sh exit 0" "$rc" "0"
+check "14 R1: the GO file is written" "$([ -f "$HDIR/.locks/go/93.$SHA" ] && gofile)" "1"
+chk 93 "$SHA" --trust-path yes
+contains "14 R1: t14-imp is cleared by JV2" "$out" "[OK] imp t14-imp@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV2)"
+contains "14 R1: t14-crit is cleared by JV2" "$out" "[OK] crit t14-crit@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV2)"
+
+t14_reset; jv2
+gos --trust-reviewed JV1 93 "$SHA"
+check "14 R1b: JV2 rules them while go.sh trusts JV1 -> exit 0" "$rc" "0"
+
+t14_reset; chief_rows
+gos --trust-reviewed JV1 93 "$SHA"
+check    "14 R2: a chief coverage row clears no trust-path Important or Critical (the bounded exception) -> exit 9" "$rc" "9"
+contains "14 R2: names the trust path" "$out" "trust path"
+both_open "14 R2"
+nogo     "14 R2"
+
+t14_reset; jv2
+mkdir -p "$VD/JV4"; mv "$VD/JV2"/*.md "$VD/JV4/"; rm -rf "$VD/JV2"
+gos --trust-reviewed JV1 93 "$SHA"
+check "14 R3: JV2's record moved under JV4 -> exit 9" "$rc" "9"
+both_open "14 R3"
+
+for c in a b c d e f; do
+  t14_reset
+  case "$c" in
+    a) verdict "$HDIR" JV3a "**GO** for head \`$SHA\`." 93 "delta: no-op"$'\n'"$D1BOTH" ;;
+    b) verdict "$HDIR" JV3b "**GO** for head \`$SHA\`." 94 "$D1BOTH" ;;
+    c) verdict "$HDIR" JV3c "**GO** for head \`$SHA2\`." 93 "$D1BOTH" ;;
+    d) verdict "$HDIR" JV3d "**GO** for head \`$SHA\`." 93 reason evid "$D1BOTH" ;;
+    e) verdict "$HDIR" JV3e "**GO** for head \`$SHA\`." 93 "$D1BOTH"
+       verdict "$HDIR" JV3e "**GO** for head \`$SHA\`." 94 reason sibling ;;
+    f) verdict "$HDIR" JV3f "**GO** for head \`$SHA\`." 93 "delta-scope: x"$'\n'"$D1BOTH" ;;
+  esac
+  chk 93 "$SHA" --trust-path yes
+  check "14 R4 ($c): a signed record that is not a GO for this PR and head clears nothing -> exit 1" "$rc" "1"
+  both_open "14 R4 ($c)"
+done
+t14_reset
+verdict "$HDIR" JV3ok "**GO** for head \`$SHA\`." 93 "$D1BOTH"
+chk 93 "$SHA" --trust-path yes
+check    "14 R4 control: the same signed record for PR 93 at the head -> exit 0" "$rc" "0"
+contains "14 R4 control: t14-imp cleared" "$out" "[OK] imp t14-imp@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV3ok)"
+contains "14 R4 control: t14-crit cleared" "$out" "[OK] crit t14-crit@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV3ok)"
+
+for c in legacy two-attests reordered; do
+  t14_reset
+  case "$c" in
+    legacy)      r5=$(printf '%s\n' "$D1BOTH" | sed 's/ attest:.*//') ;;
+    two-attests) r5=$(printf '%s\n' "$D1BOTH" | sed 's/,no-weakened-guard$//') ;;
+    reordered)   r5=$(printf '%s\n' "$D1BOTH" | sed 's/attest:ci-green,no-data-loss,/attest:no-data-loss,ci-green,/') ;;
+  esac
+  verdict "$HDIR" JV5 "**GO** for head \`$SHA\`." 93 "$r5"
+  chk 93 "$SHA" --trust-path yes
+  check "14 R5 ($c): not the D1 form -> exit 1" "$rc" "1"
+  both_open "14 R5 ($c)"
+done
+t14_reset
+verdict "$HDIR" JV5 "**GO** for head \`$SHA\`." 93 "- $(d1 t14-imp)"$'\n'"- $(d1 t14-crit)"
+chk 93 "$SHA" --trust-path yes
+check "14 R5 control: the D1 form after '- ' -> exit 0" "$rc" "0"
+t14_reset
+verdict "$HDIR" JV5 "**GO** for head \`$SHA\`." 93 reason later "e"$'\n\n'"## Verdict"$'\n\n'"$D1BOTH"
+chk 93 "$SHA" --trust-path yes
+check "14 R5b: the D1 lines under a second ## Verdict heading in the evidence -> exit 1" "$rc" "1"
+both_open "14 R5b"
+
+t14_reset
+for f in t14-imp t14-crit; do bash "$DISP" record 93 "$SHA" "$f@$FHEAD" fix-here --source chief >/dev/null 2>&1; done
+jv2
+gos --trust-reviewed JV2 93 "$SHA"
+check    "14 R6 (a): a fix-here row stays open whatever JV2 rules -> exit 9" "$rc" "9"
+contains "14 R6 (a): says fix-here" "$out" "[OPEN] imp t14-imp@$FHEAD: the ruling is fix-here"
+nogo     "14 R6 (a)"
+t14_reset
+bash "$DISP" record 93 "$SHA" "t14-imp@$FHEAD" follow-up:HIMMEL-6352 --source chief \
+  --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
+tail -n 1 "$LEDGER" | sed 's/,"mac":"[0-9a-f]*"//' > "$tmp/unsigned14.jsonl"
+check "14 R6 (b): the raw row carries no mac" "$(grep -c '"mac"' "$tmp/unsigned14.jsonl")" "0"
+cat "$tmp/unsigned14.jsonl" >> "$LEDGER"
+jv2
+gos --trust-reviewed JV2 93 "$SHA"
+check    "14 R6 (b): an unsigned latest row stays open whatever JV2 rules -> exit 9" "$rc" "9"
+contains "14 R6 (b): says no valid mac" "$out" "[OPEN] imp t14-imp@$FHEAD: its disposition row carries no valid mac"
+
+t14_reset
+printf '%s\n%s\n\n## Evidence checked\n\n- read the diff\n' "$(d1 t14-imp | sed "s/$FUKEY/$OTHERKEY/")" "$(d1 t14-crit)" > "$evd/r7-ev.md"
+wv JV2 93 "$evd/r7-ev.md"
+gos --trust-reviewed JV2 93 "$SHA"
+check "14 R7 (a): a ruling for another key -> exit 9" "$rc" "9"
+chk 93 "$SHA" --trust-path yes
+contains "14 R7 (a): the reason names both keys" "$out" "judge JV2 rules follow-up:HIMMEL-6353 but the finding is deferred to HIMMEL-6352"
+t14_reset; jv2
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/bin/jira-miss"; chmod +x "$tmp/bin/jira-miss"
+JIRA_CMD="$tmp/bin/jira-miss" gos --trust-reviewed JV2 93 "$SHA"
+check    "14 R7 (b): the ruled key is not in Jira -> exit 9" "$rc" "9"
+contains "14 R7 (b): says the key does not exist" "$out" "HIMMEL-6352 does not exist"
+t14_reset
+defer_finding t14-nokey imp "A deferral with no follow-up ticket" t14n -
+verdict "$HDIR" JV2 "**GO** for head \`$SHA\`." 93 "$(d1 t14-nokey)"
+rc=0; out="$(READY_STUB_BRANCH=t14n bash "$DISP" check 93 "$SHA" --trust-path yes 2>&1)" || rc=$?
+check    "14 R7 (c): a deferral with no deferred_to gets no verdict route -> exit 1" "$rc" "1"
+contains "14 R7 (c): it stays open" "$out" "[OPEN] imp t14-nokey@$FHEAD"
+
+t14_reset
+defer_finding t14-spec imp "A spec critic finding sharing the head" t14 HIMMEL-6352 spec
+printf '%s\n%s\n\n## Evidence checked\n\n- read the diff\n' "$D1BOTH" "$(d1 t14-spec)" > "$evd/r14-ev.md"
+wv JV2 93 "$evd/r14-ev.md"
+chk 93 "$SHA" --trust-path yes
+check    "14 R14: a ruling never clears a spec finding -> exit 1" "$rc" "1"
+contains "14 R14: t14-spec stays open" "$out" "[OPEN] imp t14-spec@$FHEAD"
+contains "14 R14: the diff Important is cleared" "$out" "[OK] imp t14-imp@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV2)"
+contains "14 R14: the diff Critical is cleared" "$out" "[OK] crit t14-crit@$FHEAD: follow-up:HIMMEL-6352 (verdict:JV2)"
+
+t14_reset; jv2
+verdict "$HDIR" JV7 "**GO** for head \`$SHA2\`." 93
+printf '\0' >> "$VD/JV7/HIMMEL-1-judge-JV7.md"
+chk 93 "$SHA" --trust-path yes
+check   "14 R8 (a): a NUL-bearing record under a listed qid -> exit 2" "$rc" "2"
+one_line "14 R8 (a)" "$VD/JV7/HIMMEL-1-judge-JV7.md"
+gos --trust-reviewed JV2 93 "$SHA"
+check   "14 R8 (f): through go.sh -> exit 11" "$rc" "11"
+t14_reset; jv2
+verdict "$HDIR" JV7 "**GO** for head \`$SHA2\`." 93
+: > "$VD/JV7/empty.md"
+chk 93 "$SHA" --trust-path yes
+check   "14 R8 (b): an empty record beside a listed one -> exit 2" "$rc" "2"
+one_line "14 R8 (b)" "$VD/JV7/empty.md"
+t14_reset; jv2
+rc=0; out="$(HANDOVER_DIR="$tmp/missing" bash "$DISP" check 93 "$SHA" --trust-path yes 2>&1)" || rc=$?
+check   "14 R8 (c): an unresolved handover root -> exit 2" "$rc" "2"
+one_line "14 R8 (c)" "$tmp/missing"
+t14_reset; jv2
+chk 93 "$SHA" --trust-path yes --repo -bad/x
+check   "14 R8 (d): a repo with no verdict scope -> exit 2" "$rc" "2"
+one_line "14 R8 (d)" "-bad/x"
+t14_reset
+verdict "$HDIR" JV7 "**GO** for head \`$SHA\`." 93 "$D1BOTH"
+sed -i.x '$ s/^mac: .*/mac: 0000000000000000000000000000000000000000000000000000000000000000/' "$VD/JV7/HIMMEL-1-judge-JV7.md"
+rm -f "$VD/JV7/HIMMEL-1-judge-JV7.md.x"
+chk 93 "$SHA" --trust-path yes
+check "14 R8 (e): the ruling only in a record whose mac fails -> exit 1 (the qid is dropped)" "$rc" "1"
+both_open "14 R8 (e)"
+if [ "$(id -u)" -eq 0 ]; then
+  echo "SKIP - 14 R8 (g): root reads a mode-000 directory"
+else
+  t14_reset; jv2
+  chmod 000 "$VD"
+  chk 93 "$SHA" --trust-path yes
+  chmod 755 "$VD"
+  check   "14 R8 (g): an unreadable verdicts directory -> exit 2" "$rc" "2"
+  one_line "14 R8 (g)" "$VD"
+fi
+t14_reset; jv2
+verdict "$HDIR" JV8 "**NO-GO** for head \`deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\`." 93
+chk 93 "$SHA" --trust-path yes
+check   "14 R8 (h): a NO-GO at a head the checkout cannot order -> exit 2" "$rc" "2"
+one_line "14 R8 (h)" "deadbeef"
+t14_reset
+printf '%s\r\n%s\r\n\r\n## Evidence checked\r\n\r\n- read the diff\r\n' "$(d1 t14-imp)" "$(d1 t14-crit)" > "$evd/r15-ev.md"
+wv JV2 93 "$evd/r15-ev.md"
+chk 93 "$SHA" --trust-path yes
+check "14 R15: a CRLF evidence file still rules both (the mac is over the raw bytes) -> exit 0" "$rc" "0"
+
+t14_reset; jv2
+verdict "$HDIR" JV8 "**NO-GO** for head \`$SHA\`." 93
+chk 93 "$SHA" --trust-path yes
+check    "14 R10 (a): a judge's NO-GO at the head vetoes the ruling -> exit 1" "$rc" "1"
+contains "14 R10 (a): the reason names JV8's NO-GO" "$out" "judge JV8 holds a NO-GO for PR 93 at or after $SHA"
+t14_reset; jv2
+DESC=$(GIT_AUTHOR_DATE="@2 +0000" GIT_COMMITTER_DATE="@2 +0000" git -C "$REPO" -c user.name=t -c user.email=t@example.com \
+  commit-tree -p "$SHA" -m d "$SHA^{tree}")
+verdict "$HDIR" JV8 "**NO-GO** for head \`$DESC\`." 93
+chk 93 "$SHA" --trust-path yes
+check "14 R10 (b): a NO-GO at a descendant of the head vetoes it -> exit 1" "$rc" "1"
+both_open "14 R10 (b)"
+
+t14_reset; chief_rows; jv2
+gos --trust-reviewed JV2 93 "$SHA"
+check "14 R9: chief coverage rows do not block the judge's ruling -> exit 0" "$rc" "0"
+t14_reset
+wv JV6 95 "$evd/jv2-ev.md"
+READY_STUB_TRUST_FILE='' gos 95 "$SHA"
+check "14 R11: off a trust path a plain go.sh with JV6 ruling both -> exit 0" "$rc" "0"
+t14_reset
+defer_finding t14b-imp imp "One deferred Important off a trust path" t14b
+READY_STUB_BRANCH=t14b bash "$DISP" record 96 "$SHA" "t14b-imp@$FHEAD" follow-up:HIMMEL-6352 --source chief \
+  --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
+rc=0; out="$(READY_STUB_BRANCH=t14b HANDOVER_DIR="$tmp/missing" bash "$DISP" check 96 "$SHA" --trust-path no 2>&1)" || rc=$?
+check "14 R12: a row-route pass reads no verdict, even with no handover root -> exit 0" "$rc" "0"
+
+d1norm() { tr '\n' ' ' | sed 's/> //g; s/  */ /g'; }
+d1doc=$(sed 's/HIMMEL-6352/<KEY>/' "$D1FIX" | d1norm)
+d1doc=${d1doc% }
+check "14 R13: the absence matcher fires on the old template wording" \
+  "$(printf '%s\n' '> that head carries that line. The chief (never the worker) records it with `cr-disposition.sh record … --source' '> judge:<qid>`.' | d1norm | grep -c -e '--source judge:')" "1"
+for doc in docs/handover/judge-brief-template.md docs/handover/chief-sections/judge.md; do
+  dtext=$(d1norm < "$HERE/../../../$doc")
+  contains "14 R13: $doc holds the ruling line" "$dtext" "$d1doc"
+  check    "14 R13: $doc never asks for a judge-source row" "$(grep -c -e '--source judge:' <<< "$dtext")" "0"
+done
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

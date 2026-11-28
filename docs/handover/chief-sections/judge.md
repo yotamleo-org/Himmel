@@ -170,16 +170,33 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
 - **A deferred Critical or Important finding needs a disposition before GO**:
   past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
-  Critical/Important on the PR's branch is deferred with no valid row at that head.
-  The judge rules one of two, which the chief (never the worker) records with
-  `bash scripts/handover/chief-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|chief [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
-  (a) **fix-here**: fixed in this PR, so the finding's own ledger verdict must
-  read fixed or disproved; (b) **follow-up:<KEY>**: merge now with the follow-up
-  ticket already filed, and only if the merge cannot break main. The record must
-  carry all three attests (CI green at the head, no data loss, no weakened guard)
-  or it is refused. **Who decides:** a Critical always needs a judge verdict
-  (`judge:<qid>`, a signed GO at the same head whose verdict carries the line
-  `<fid>@<finding head> <disposition>`); an Important on a trust-path PR
-  needs one too; any other Important may take `chief`.
+  Critical/Important on the PR's branch is deferred with no valid disposition at that head.
+  Each one is (a) **fix-here**: fixed in this PR, so the finding's own ledger verdict must
+  read fixed or disproved; or (b) **follow-up:<KEY>**: merge now with the follow-up
+  ticket already filed, and only if the merge cannot break main (CI green at the
+  head, no data loss, no weakened guard). **Who decides:** a Critical always needs a
+  judge; an Important on a trust-path PR needs one too; any other Important may take
+  the chief.
+  - **A judge rules a follow-up in its own verdict.** Its signed GO at the head carries,
+    inside `## Verdict` (above the first `## ` heading of its evidence), one line per
+    deferral it rules: `<fid>@<fhead> follow-up:<KEY> attest:ci-green,no-data-loss,no-weakened-guard`.
+    `cr-disposition.sh check` finds that line itself in the GO of any qid that rules GO
+    at the head, unless a judge holds a NO-GO for the PR at or after it. The chief writes
+    no row for a judge's ruling and never a row in a judge's name.
+  - **Brief the judge with the deferral:** copy `<fid>@<fhead>` from the check's `[OPEN]`
+    line and the finding's deferred key into the judge's question in that line's form.
+  - **When you persist a judge's record by hand** (its write was refused, above), the
+    evidence file is the judge's evidence verbatim, without its verdict line, with its
+    ruling lines kept above the first `## ` heading; add no ruling line the judge did not
+    write. If the classifier refuses that write, re-dispatch the judge to persist its own
+    record.
+  - **The chief still records** `fix-here`, and a follow-up for an Important off a trust
+    path, with `bash scripts/handover/chief-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source chief [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`
+    (a follow-up needs all three attests or it is refused).
+  - **Coverage only:** when `ready-check.sh` item 7 refuses a deferral's key because its
+    carry rule does not reach it (an earlier-head finding with a finding row at a later
+    head), record a `--source chief` follow-up row with the three attests. Item 7 reads it
+    for the key. It is coverage, not the disposition: it never clears a Critical or a
+    trust-path Important by itself, and it does not block a judge's ruling.
   A `WAKE ready … disposition=open:<n>` already ran that same check at the
   READY head (`ok` = it passes): open findings need their disposition before GO.
