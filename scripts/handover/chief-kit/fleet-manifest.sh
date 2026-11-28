@@ -411,8 +411,10 @@ retire_verdict() {
 retire_managed() {
     RETIRE_MANAGED=$'\n'
     [ -e "$1" ] || return 0
-    RETIRE_MANAGED=$'\n'"$(jq -r -s 'if length == 1 and (.[0] | type) == "object" then (.[0].attempts // {})[] | .doc // empty
-        else error("not one JSON object") end' "$1")"$'\n' || return 1
+    RETIRE_MANAGED=$'\n'"$(jq -r -s 'if length == 1 and (.[0] | type) == "object"
+            and ((.[0] | has("attempts") | not) or ((.[0].attempts | type) == "object" and all(.[0].attempts[]; type == "object")))
+        then (.[0].attempts // {})[] | .doc // empty
+        else error("not one JSON object with an attempts object") end' "$1")"$'\n' || return 1
 }
 
 fleet_retire() (

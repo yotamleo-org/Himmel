@@ -570,14 +570,21 @@ printf '{"schema":1,"workers":[{"doc":"%s","label":"N96"},{"doc":"%s","label":"N
 before_c="$(cat "$m12c")"
 out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" 2>/dev/null)"
 check '12. a managed attempt of the anchor is kept, though its doc is gone' 1 "$(grep -c "^keep	$m12c	N96	$managed	managed attempt$" <<<"$out")"
-PATH="$tmp/fail-bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>/dev/null; rc=$?
+PATH="$tmp/fail-bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
 check '12. a failed rewrite exits 1' 1 "$rc"
+check '12. and says the rewrite failed' 1 "$(grep -c "^fleet-manifest: cannot write $m12c$" "$d12c/err")"
 check '12. and reports no row as retired' 0 "$(grep -c '^retired' "$d12c/out")"
 check '12. and leaves the manifest as it was' "$before_c" "$(cat "$m12c")"
 : > "$d12c/fleet-control.json"
-TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>/dev/null; rc=$?
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
 check '12. an empty fleet-control.json refuses the retire (rc 1)' 1 "$rc"
+check '12. and names the unread anchor' 1 "$(grep -c "^fleet-manifest: cannot read $d12c/fleet-control.json$" "$d12c/err")"
 check '12. and nothing is retired' "$before_c" "$(cat "$m12c")"
+printf '{"schema":1,"attempts":false}\n' > "$d12c/fleet-control.json"
+TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/out" 2>"$d12c/err"; rc=$?
+check '12. a fleet-control.json whose attempts is not an object refuses the retire (rc 1)' 1 "$rc"
+check '12. and names the unread anchor too' 1 "$(grep -c "^fleet-manifest: cannot read $d12c/fleet-control.json$" "$d12c/err")"
+check '12. and nothing is retired either' "$before_c" "$(cat "$m12c")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
