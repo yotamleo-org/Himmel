@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Suite for scripts/hooks/block-unexpanded-file-path.sh.
-#
-# Usage: bash scripts/hooks/test-block-unexpanded-file-path.sh
-# Exit 0 when every row passes, 1 otherwise.
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd -P)
