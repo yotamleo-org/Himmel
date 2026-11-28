@@ -573,6 +573,118 @@ has "dsk: a dsk verdict at the READY head leaves the duty judge-owed" "DUTY judg
 has "dsk: the older verdict still reaches the classifier" "--verdict-file $B/verdicts/j101a/judge.md $H2 $H1" "$(cat "$STUB/delta-calls")"
 hasnt "dsk: the classifier never reads the dsk record" "dsk6139a" "$(cat "$STUB/delta-calls")"
 
+cat > "$STUB/proj-gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s %s %s\n' "$1" "$2" "${GH_HOST:-}" >> "$STUB/gh-hosts"
+if [ "$1 $2" = "pr list" ]; then
+    printf '%s\n' "$PWD" >> "$STUB/pr-cwds"
+    printf '%s\n' "${GH_REPO:-}" >> "$STUB/pr-repos"
+    cat "$PWD/prs.json" 2>/dev/null || cat "$STUB/default-prs.json" 2>/dev/null || echo '[]'
+else
+    printf '%s\n' "$*" >> "$STUB/gh-calls"
+fi
+EOF
+chmod +x "$STUB/proj-gh"
+pr_json() { printf '[{"number":101,"headRefName":"feat/x","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$1"; }
+pworld() {
+    world
+    : > "$STUB/pr-cwds"; : > "$STUB/pr-repos"; : > "$STUB/gh-hosts"; rm -f "$STUB/default-prs.json"
+    for r in repoA:repo-a repoB:repo-b; do
+        mkdir -p "$WORK/w/${r%%:*}"; git -C "$WORK/w/${r%%:*}" init -q
+        git -C "$WORK/w/${r%%:*}" remote add origin "https://github.com/acme/${r##*:}.git"
+    done
+    pr_json "$H2" > "$WORK/w/repoA/prs.json"
+    pr_json "$H1" > "$WORK/w/repoB/prs.json"
+    set_tail "- 10:05 READY 101 $H1 GREEN"
+}
+# shellcheck disable=SC2016
+for_project() { printf '# chief\n\nThe project this console is FOR is **`%s`**.\n' "$1" > "$CHIEF"; }
+set_origin() { git -C "$WORK/w/repoB" remote set-url origin "$1" || fail "origin setup failed for $1"; }
+psweep() {
+    OUT=$(GH_REPO=ambient/other GH_HOST=ambient.example.com HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="${RUNS_SEAM-$WORK/w/runs.json}" \
+        CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
+        CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/proj-gh" \
+        CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="${PACE_SEAM-$WORK/w/pace}" \
+        bash "$SWEEP" --doc "$CHIEF" --workers-from "$WORK/w/fleet.json" --bucket "$B" 2>"$WORK/w/err")
+}
+
+pworld; for_project "$WORK/w/repoB"
+psweep
+has "project: the named repository's READY worker is go-owed" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: the PR list is read from the named repository" "$WORK/w/repoB" "$(cat "$STUB/pr-cwds")"
+check "project: and pinned to its origin whatever GH_REPO the session carries" "acme/repo-b" "$(cat "$STUB/pr-repos")"
+check "project: and to github.com whatever GH_HOST the session carries" "pr list github.com" "$(cat "$STUB/gh-hosts")"
+for_project "$WORK/w/repoA"
+psweep
+hasnt "project: another repository's cache is never read for this one" "go-owed" "$OUT"
+check "project: and its own list is read live" "$WORK/w/repoB
+$WORK/w/repoA" "$(cat "$STUB/pr-cwds")"
+for_project "$WORK/w/repoB"
+psweep
+has "project: the first repository's cache still answers for it" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: without another live read" "2" "$(grep -c . "$STUB/pr-cwds")"
+
+pworld; for_project "$WORK/w/repoB"; masked_runs success cancelled 1
+psweep
+check "project: a masked-CI rerun names the named repository" "run rerun 12 --failed -R acme/repo-b" "$(sed -n 1p "$STUB/gh-calls")"
+check "project: and runs against github.com whatever GH_HOST the session carries" "run rerun github.com" "$(sed -n 2p "$STUB/gh-hosts")"
+
+pworld; for_project "$WORK/w/repoB"; set_origin acme/repo-b.git
+psweep
+has "project: a relative origin leaves the PR list unread" "DUTY? prs unread" "$OUT"
+check "project: and makes no PR list call for it" "" "$(cat "$STUB/pr-cwds")"
+
+pworld; for_project "$WORK/w/repoB"; set_origin ssh://git@github.com/acme/repo-b.git
+psweep
+has "project: an ssh:// origin still lists the READY worker" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: and pins its owner/repo" "acme/repo-b" "$(cat "$STUB/pr-repos")"
+
+pworld; for_project "$WORK/w/repoB"; set_origin ssh://git@github.com/acme/repo-b.git; masked_runs success cancelled 1
+psweep
+check "project: a masked-CI rerun for an ssh:// origin names its owner/repo" "run rerun 12 --failed -R acme/repo-b" "$(sed -n 1p "$STUB/gh-calls")"
+
+pworld; for_project "$WORK/w/repoB"; set_origin file:///srv/git/repo-b.git
+psweep
+has "project: an origin that names no owner/repo leaves the PR list unread" "DUTY? prs unread" "$OUT"
+hasnt "project: and lists no READY worker" "go-owed" "$OUT"
+check "project: and makes no PR list call" "" "$(cat "$STUB/pr-cwds")"
+
+for ghe in https://ghe.example.com/acme/repo-b.git ssh://git@ghe.example.com/acme/repo-b.git git@ghe.example.com:acme/repo-b.git; do
+    pworld; for_project "$WORK/w/repoB"; set_origin "$ghe"
+    psweep
+    has "project: a host other than github.com ($ghe) leaves the PR list unread" "DUTY? prs unread" "$OUT"
+    check "project: and makes no PR list call for $ghe" "" "$(cat "$STUB/pr-cwds")"
+done
+
+pworld; for_project "$WORK/w/repoB"
+psweep
+set_origin https://github.com/acme/repo-c.git
+psweep
+check "project: a changed origin reads its own PR list, never the old origin's cache" "2" "$(grep -c . "$STUB/pr-cwds")"
+
+pworld; for_project "$WORK/w/repoB"; masked_runs success cancelled 1
+printf '%s\n' "$((NOW - 60))" > "$WORK/w/repoB/.git/cancel-runs-pace"
+PACE_SEAM='' psweep
+has "project: the rerun pace is read from the named repository's checkout" "held: drain" "$OUT"
+
+pworld; for_project "$WORK/w/repoB"; masked_runs success cancelled 1
+cp "$WORK/w/runs.json" "$WORK/w/state/tick-ciguard-runs.json"
+RUNS_SEAM='' psweep
+has "project: the kit's own CI-run cache is never read for another repository" "DUTY? ciguard unread" "$OUT"
+hasnt "project: and reports no masked CI from it" "ci-masked" "$OUT"
+check "project: and makes no rerun call" "" "$(cat "$STUB/gh-calls")"
+
+pworld; printf '# chief\n' > "$CHIEF"; masked_runs success cancelled 1; pr_json "$H1" > "$STUB/default-prs.json"
+cp "$WORK/w/runs.json" "$WORK/w/state/tick-ciguard-runs.json"
+RUNS_SEAM='' psweep
+check "project: with no project line the kit's own CI-run cache is read" "run rerun 12 --failed -R $want_slug" "$(sed -n 1p "$STUB/gh-calls")"
+
+pworld; printf '# chief\n' > "$CHIEF"; masked_runs success cancelled 1; pr_json "$H1" > "$STUB/default-prs.json"
+psweep
+has "project: a chief document with no project line leaves this checkout in charge" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: and its list is read from this checkout" "$(cd "$HERE/../../.." && pwd)" "$(cat "$STUB/pr-cwds")"
+check "project: and its rerun names this checkout's remote" "run rerun 12 --failed -R $want_slug" "$(sed -n 1p "$STUB/gh-calls")"
+
 check "no gh call outside the seam" "" "$(cat "$STUB/path-gh-calls")"
 
 bash "$SWEEP" >/dev/null 2>&1; check "usage: no args exits 2" 2 "$?"

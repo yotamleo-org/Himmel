@@ -98,18 +98,34 @@ if ! jq -e '(.workers // .legs) | type == "array" and all(.[]; type == "object" 
     fleet_ok=0
 fi
 
+proj_repo="$REPO"
+if [ -f "$doc" ]; then
+    # shellcheck disable=SC2016
+    doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$doc" 2>/dev/null | head -n 1)"  # swallow-ok: an unreadable doc names no project, so this checkout stands in
+    case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
+fi
+origin_slug() {
+    local s
+    s=$(git -C "$1" remote get-url origin 2>/dev/null | sed -nE 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)(.*)$#\4#; T; s#\.git$##; p')  # swallow-ok: no origin means no slug, so the rerun is held
+    case "$s" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) return 0 ;; */*) printf '%s' "$s" ;; esac
+}
+pr_pin=$(origin_slug "$proj_repo")
+slug="$pr_pin"
+proj_key=$(printf '%s\n%s\n' "$proj_repo" "$pr_pin" | cksum | cut -d' ' -f1)
+
 prs_ok=0; prs_tsv=""
 read_prs() {
-    local raw="" cache="$state/chief-duty-sweep-prs.json" age
+    local raw="" cache="$state/chief-duty-sweep-prs-$proj_key.json" age
     if [ -n "${CHIEF_DUTY_SWEEP_PRS:-}" ]; then
         raw=$(cat "$CHIEF_DUTY_SWEEP_PRS" 2>/dev/null) || return 1  # read-sink-ok: a test seam set by the invoking process, a JSON fixture read once; swallow-ok: an unreadable seam file is an unread input
     else
+        [ -n "$pr_pin" ] || return 1
         if [ -s "$cache" ]; then
             age=$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, so the list is read live
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$REPO" && timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$proj_repo" && GH_HOST=github.com GH_REPO="$pr_pin" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
@@ -266,9 +282,9 @@ if [ -f "$runs_file" ] && jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; 
     runs_ok=1
     if [ -z "${CHIEF_DUTY_SWEEP_RUNS:-}" ] && [ $(( $(date +%s) - $(stat -c %Y "$runs_file" 2>/dev/null || echo 0) )) -gt 1800 ]; then runs_ok=0; fi  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, which is reported as unread
 fi
+if [ -z "${CHIEF_DUTY_SWEEP_RUNS:-}" ] && [ "$pr_pin" != "$(origin_slug "$REPO")" ]; then runs_ok=0; fi
 if [ "$runs_ok" = 0 ]; then unread "ciguard"; fi
 reruns="$state/chief-duty-sweep-reruns"
-slug=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
 if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
     rerun_count=0
     while IFS=$'\t' read -r pr branch head draft fork base; do
@@ -307,13 +323,13 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             continue
         fi
         hold=""
-        pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
+        pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$proj_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
         if [ -z "$hold" ] && [ -r "$pace" ]; then
             newest=$(awk '/^[0-9]+$/ && $1 > m { m = $1 } END { print m + 0 }' "$pace" 2>/dev/null)  # swallow-ok: an unreadable pace file holds nothing back
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
         fi
         [ -n "$hold" ] || [ "${CHIEF_DUTY_AUTORUN:-1}" != 0 ] || hold="autorun off"
-        [ -n "$hold" ] || [ -n "$slug" ] || hold="no repo slug"
+        [ -n "$hold" ] || [ -n "$pr_pin" ] || hold="no repo slug"
         if [ -z "$hold" ] && [ "$rerun_count" -ge 2 ]; then hold="two reruns this sweep"; fi
         if [ -z "$hold" ]; then
             ( flock -w 5 9 || exit 3  # prim-ok: Linux-only kit, flock serialises the reserve row
@@ -337,7 +353,7 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             continue
         fi
         rerun_count=$((rerun_count + 1))
-        timeout -k 1 10 "$gh_bin" run rerun "$rid" --failed -R "$slug" >/dev/null 2>&1; rrc=$?
+        GH_HOST=github.com timeout -k 1 10 "$gh_bin" run rerun "$rid" --failed -R "$slug" >/dev/null 2>&1; rrc=$?
         printf 'result %s %s\n' "$rid" "$rrc" >> "$reruns" 2>/dev/null || true
         ran="$ran$(printf 'DUTY-RAN ci-masked %s rerun %s rc=%s' "$id" "$rid" "$rrc")"$'\n'
         if [ "$rrc" = 0 ]; then
