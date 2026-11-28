@@ -129,11 +129,9 @@ case "$verb" in
                 [ "${STUB_HEAD_UNREADABLE:-0}" = "1" ] && { echo ""; exit 0; }
                 echo "abc123"
             elif [ "${STUB_META_FAIL:-0}" = "1" ]; then
-                # The gates' selector does not resolve (their rc 3).
                 echo "gh: could not resolve to a PullRequest" >&2
                 exit 1
             elif [ "${STUB_META_JUNK:-0}" = "1" ]; then
-                # Non-JSON: the gates cannot read the PR (a degraded, unknown verdict).
                 echo "degraded-non-json"
             else
                 echo '{"number":42,"headRefOid":"abc123","url":"https://github.com/o/r/pull/42"}'
@@ -156,10 +154,6 @@ case "$verb" in
         echo "merged"
         ;;
     "api graphql")
-        # CR-gate reviewThreads query. The world is green (resolved coderabbit
-        # threads) so every gate passes; STUB_CR_BLOCK=1 adds one unresolved
-        # coderabbitai thread, which arms the CR block (fixture from
-        # test-cr-merge-gate.sh).
         if [ "${STUB_CR_BLOCK:-0}" = "1" ]; then
             echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}'
         else
@@ -173,8 +167,6 @@ case "$verb" in
         # STUB_CI_BLOCK=1 returns a FAILED non-CodeRabbit check-run so the CI
         # gate blocks while the CR gate still passes.
         if printf ' %s ' "$@" | grep -q 'check-runs'; then
-            # STUB_CI_UNKNOWN=1: the CI lookup itself fails (the gate's
-            # "check-runs query failed" degrade).
             [ "${STUB_CI_UNKNOWN:-0}" = "1" ] && { echo "gh: HTTP 502" >&2; exit 1; }
             if [ "${STUB_CI_BLOCK:-0}" = "1" ]; then
                 echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}'
@@ -182,8 +174,6 @@ case "$verb" in
                 echo '{"check_runs":[]}'
             fi
         elif printf ' %s ' "$@" | grep -q 'statuses'; then
-            # STUB_CHECKLESS=1: no check-runs and no statuses at all — a real
-            # exemption (no CI configured), not an unknown.
             [ "${STUB_CHECKLESS:-0}" = "1" ] && { echo '[]'; exit 0; }
             # CodeRabbit's real shape: a commit STATUS with creator identity
             # identity. The CR gate requires it PRESENT + success on the
