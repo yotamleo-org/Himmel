@@ -28,13 +28,13 @@ meta="$(printf '%s' "$input" | jq -r '
     def str: if type == "string" then . else "" end;
     (if has("workspace_paths") then .workspace_paths else [] end) as $ws
     | ($ws | type == "array" and all(.[]; type == "string")) as $ws_ok
-    | @sh "TOOL=\(.tool_name | str) CMD=\(.tool_input | if type == "object" then .command else null end | str) CWD=\(.cwd | str) CWD_OK=\(if (.cwd | type) == "string" then 1 else 0 end) WS_OK=\(if $ws_ok then 1 else 0 end) WS_N=\(if ($ws | type) == "array" then ($ws | length) else 0 end)",
+    | @sh "TOOL=\(.tool_name | str) CMD=\(.tool_input | if type == "object" then .command else null end | str) CWD=\(.cwd | str) CWD_VALID=\(if (.cwd | type) == "string" then 1 else 0 end) WS_VALID=\(if $ws_ok then 1 else 0 end) WS_N=\(if ($ws | type) == "array" then ($ws | length) else 0 end)",
       "WS=(\(if $ws_ok then ($ws | @sh) else "" end))"
 ' 2>/dev/null)" || {
     printf 'block-agy-salus-egress: unparseable hook payload — refused fail-closed\n' >&2
     exit 2
 }
-TOOL="" CMD="" CWD="" CWD_OK=0 WS_OK=0 WS_N=0
+TOOL="" CMD="" CWD="" CWD_VALID=0 WS_VALID=0 WS_N=0
 WS=()
 eval "$meta"
 
@@ -47,12 +47,12 @@ else
     CLASS="${TOOL:-unnamed tool}"
 fi
 
-[ "$CWD_OK" = 1 ] || refuse "$CLASS" "scope undecidable: cwd is missing or not a string, counted as salus"
+[ "$CWD_VALID" = 1 ] || refuse "$CLASS" "scope undecidable: cwd is missing or not a string, counted as salus"
 case "$CWD" in
     /*) ;;
     *) refuse "$CLASS" "scope undecidable: cwd '$CWD' is empty or relative, counted as salus" ;;
 esac
-[ "$WS_OK" = 1 ] || refuse "$CLASS" "scope undecidable: workspace_paths is not an array of strings, counted as salus"
+[ "$WS_VALID" = 1 ] || refuse "$CLASS" "scope undecidable: workspace_paths is not an array of strings, counted as salus"
 [ "$WS_N" -le 8 ] || refuse "$CLASS" "scope undecidable: $WS_N workspace paths, more than 8, counted as salus"
 for w in ${WS[@]+"${WS[@]}"}; do
     case "$w" in
