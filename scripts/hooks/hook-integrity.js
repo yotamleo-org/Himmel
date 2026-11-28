@@ -1462,6 +1462,33 @@ function verifyRunnerLibs(runnerDir, sessionId) {
   return { ok: true };
 }
 
+const GUARD_DATA = /^scripts\/(?:harnesses\/(?:[^/]+\.json|registry\.jq)|himmelctl\/lib\/bypass-flags\.json)$/;
+const GUARD_DATA_DIRS = ['scripts/harnesses', 'scripts/himmelctl/lib'];
+const guardDataVerdicts = new Map();
+
+function verifyGuardData(sessionId) {
+  if (guardDataVerdicts.has(sessionId)) return guardDataVerdicts.get(sessionId);
+  const projectDir = process.env.CLAUDE_PROJECT_DIR;
+  const pins = recordPins(loadIntegrityRecord(sessionId)) || {};
+  const rels = new Set(Object.keys(pins).filter((rel) => GUARD_DATA.test(rel)));
+  for (const dir of GUARD_DATA_DIRS) {
+    let names = [];
+    try {
+      names = fs.readdirSync(path.join(projectDir, dir));
+    } catch (_e) {
+      continue;
+    }
+    for (const name of names) if (GUARD_DATA.test(`${dir}/${name}`)) rels.add(`${dir}/${name}`);
+  }
+  let verdict = { ok: true };
+  for (const rel of [...rels].sort()) {
+    verdict = verifyOneFile(path.join(projectDir, rel), sessionId, true);
+    if (!verdict.ok) break;
+  }
+  guardDataVerdicts.set(sessionId, verdict);
+  return verdict;
+}
+
 function verifyIntegrityUnbypassed(scriptPath, sessionId) {
   const member = verifyOneFile(scriptPath, sessionId, false);
   if (!member.ok || !member.walk) return member;
@@ -1497,7 +1524,7 @@ function verifyIntegrityUnbypassed(scriptPath, sessionId) {
       queue.push(lib);
     }
   }
-  return { ok: true };
+  return verifyGuardData(sessionId);
 }
 
 function pathLocality(scriptPath, projectDir) {
