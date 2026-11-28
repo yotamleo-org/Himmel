@@ -69,7 +69,14 @@ EOF
 
 dead="$(
     dead_commands "$TPL/_CLAUDE.md" "$TPL/AGENTS.md"
-    find "$TPL/docs" -type f -name '*.md' | while IFS= read -r f; do dead_commands "$f"; done
+    if ! docs="$(find -L "$TPL/docs" -type f -name '*.md')" || [ -z "$docs" ]; then
+        echo "templates/luna-second-brain/docs: no reference file could be listed"
+    fi
+    while IFS= read -r f; do
+        [ -n "$f" ] && dead_commands "$f"
+    done <<EOF
+$docs
+EOF
 )"
 if [ -z "$dead" ]; then
     ok "the vault manual names only commands a plugin provides"
@@ -78,7 +85,8 @@ else
     printf '%s\n' "$dead" | sed 's/^/  /' >&2
 fi
 
-if [ "$(named_commands "$TPL/_CLAUDE.md" | grep -c ':/contra$')" -gt 0 ] && provided contra; then
+if control="$(named_commands "$TPL/_CLAUDE.md")" \
+    && [ "$(printf '%s\n' "$control" | grep -c ':/contra$')" -gt 0 ] && provided contra; then
     ok "control: /contra is named in _CLAUDE.md and provided"
 else
     bad "control: /contra is not named in _CLAUDE.md or no plugin provides it"
