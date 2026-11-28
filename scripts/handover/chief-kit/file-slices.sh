@@ -121,6 +121,8 @@ if lines and lines[0].strip() == '---':
 def para(ls, k, first):
     out = [first.strip()] if first.strip() else []
     for line in ls[k + 1:]:
+        if line is None:
+            continue
         if not line.strip():
             break
         out.append(line.strip())
@@ -140,12 +142,12 @@ for k in range(start, len(lines)):
         if fm and fm.group(1)[0] == fence[0] and len(fm.group(1)) >= len(fence) and not line.strip()[len(fm.group(1)):].strip():
             fence = None
         if cur is not None:
-            cur['lines'].append('')
+            cur['lines'].append(None)
         continue
     if fm:
         fence = fm.group(1)
         if cur is not None:
-            cur['lines'].append('')
+            cur['lines'].append(None)
         continue
     if re.match(r'^#{1,2}\s', line):
         cur = None
@@ -182,7 +184,7 @@ def parse(sec):
 
     def find(name):
         for k, line in enumerate(ls):
-            if line.startswith(name + ':'):
+            if line is not None and line.startswith(name + ':'):
                 return k
         return None
 
@@ -192,6 +194,8 @@ def parse(sec):
         if first:
             out.append(first)
         for line in ls[k + 1:]:
+            if line is None:
+                continue
             if not line.strip():
                 break
             m = re.match(r'^\s*[-*+]\s+(.*)$', line)

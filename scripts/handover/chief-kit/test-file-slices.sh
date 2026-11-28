@@ -175,7 +175,8 @@ mv "$F/wrapped2.md" "$F/wrapped.md"
   slice S1 'the list' 'none.' 'scripts/himmelctl/lib/state.js' 'test-himmelctl-projects.sh'
   printf '%s\n' '## S2: the adopted chain' '' 'Interfaces:' '' '```text' 'Depends on: S9.' 'Writes:' '- `scripts/lib/fenced-example.sh`' \
     'RED: `test-fenced.sh`' '```' '' 'Depends on: S1.' '' 'Writes:' '- `scripts/lib/launch-guard-p.mjs` (adopted mode)' '' \
-    'RED: `test-launch-guard-p-adopted.sh`: adopted mode passes.' '' 'Done:' '- the RED passes.' ''; } > "$F/fenced.md"
+    'RED: `test-launch-guard-p-adopted.sh`: adopted mode passes.' '' 'Done:' '- the RED passes, printing:' '  ```text' '  ok' '  ```' \
+    '- the second result holds.' ''; } > "$F/fenced.md"
 
 row r1; run "$F/base.md" --parent "$P"
 check "R1 the dry run exits 0" 0 "$RC"
@@ -349,6 +350,8 @@ row r14c; run "$F/fenced.md" --parent "$P"
 check "R14 a field line inside a fenced block is body, not a field" 0 "$RC"
 check "R14 the fenced Writes path never reaches the Writes line" 'Writes: scripts/lib/launch-guard-p.mjs' "$(body S2 | grep '^Writes:')"
 has "R14 the fenced Depends on never becomes a link" "$(body S2)" 'Edges: S1 (not filed yet) blocks S2 (hard)'
+has "R14 the fenced RED line never becomes the RED test" "$(body S2)" 'The RED row `test-launch-guard-p-adopted.sh` fails'
+has "R14 a fence nested in a Done bullet keeps the bullets after it" "$(body S2)" '- the second result holds.'
 row r14b; run "$F/tbd-dep.md" --parent "$P"
 check "R14 Depends on: TBD exits 1" 1 "$RC"; has "R14 Depends on: TBD is refused" "$OUT" 'REFUSED S2: Depends on names no slice'
 
