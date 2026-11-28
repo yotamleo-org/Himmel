@@ -397,6 +397,11 @@ free_trust_text() {
 free_operator_text() {
     printf '%s is a settings or CI-workflow path outside your brief Writes, held by no one. Keep working on other files. This deny is logged: your chief sees it on its tick (hreg=), and only the operator grants it, in a real terminal. Otherwise the operator launches with WRITE_HOLD_OK=1' "$1"
 }
+w "$KT" "$R/scripts/lib/no-list-11544.sh"
+same "a repo with no CI trust list: a free scripts/lib file outside Writes: exit 0" "$RC" 0
+hasrow "a repo with no CI trust list: that write claims the file" scripts/lib/no-list-11544.sh
+mkdir -p "$R/scripts/ci"
+: > "$R/scripts/ci/ci-trust-paths.txt"
 before="$(ev_count)"
 fx Edit file_path "$WT/scripts/ci/run-shell-tests.sh" "$WT"
 as_worker "$KT"
@@ -426,6 +431,38 @@ same "control: that row is the brief's" "$(row_field scripts/ci/seeded-11544.sh 
 fx Write file_path "$R/scripts/ci/bypass-11544.sh"
 as_worker "$KT" WRITE_HOLD_OK=1
 same "WRITE_HOLD_OK=1 on a free trust path: exit 0" "$RC" 0
+w "$KT" scripts/ci/v-rel.sh "$R"
+same "free trust path, a relative spelling: exit 2" "$RC" 2
+contains "free trust path, a relative spelling: the deny names the repo path" "$ERR" "scripts/ci/v-rel.sh is a trust path outside your brief Writes"
+w "$KT" "$R/./scripts/ci/./v-dot.sh"
+same "free trust path, ./ segments: exit 2" "$RC" 2
+contains "free trust path, ./ segments: the deny names the repo path" "$ERR" "scripts/ci/v-dot.sh is a trust path outside your brief Writes"
+w "$KT" "$R/scripts/lib/../ci/v-up.sh"
+same "free trust path, a ../ segment: exit 2" "$RC" 2
+contains "free trust path, a ../ segment: the deny names the repo path" "$ERR" "scripts/ci/v-up.sh is a trust path outside your brief Writes"
+w "$KT" "$R/scripts//ci//v-dbl.sh"
+same "free trust path, doubled slashes: exit 2" "$RC" 2
+contains "free trust path, doubled slashes: the deny names the repo path" "$ERR" "scripts/ci/v-dbl.sh is a trust path outside your brief Writes"
+ln -s "$R/scripts/ci" "$R/cilink"
+w "$KT" "$R/cilink/v-link.sh"
+same "free trust path, through a symlinked directory: exit 2" "$RC" 2
+contains "free trust path, through a symlinked directory: the deny names the real file" "$ERR" "scripts/ci/v-link.sh is a trust path outside your brief Writes"
+ln -s scripts/ci/v-flink.sh "$R/flink"
+w "$KT" "$R/flink"
+same "free trust path, a symlinked last component: exit 2" "$RC" 2
+contains "free trust path, a symlinked last component: the deny names the real file" "$ERR" "scripts/ci/v-flink.sh is a trust path outside your brief Writes"
+w "$KT" "$R/scripts/ci/v-slash.sh/"
+same "free trust path, a trailing slash: exit 2" "$RC" 2
+contains "free trust path, a trailing slash: the deny names the file" "$ERR" "scripts/ci/v-slash.sh is a trust path outside your brief Writes"
+norow "free trust path, a trailing slash: no row" scripts/ci/v-slash.sh
+mkdir -p "$R/scripts/CI"
+if [ -e "$R/scripts/ci/.." ] && [ "$(cd "$R/scripts/CI" && pwd -P)" != "$(cd "$R/scripts/ci" && pwd -P)" ]; then
+    w "$KT" "$R/scripts/CI/v-case.sh"
+    same "control: on a case-sensitive file system scripts/CI is another directory, no trust path: exit 0" "$RC" 0
+    hasrow "control: that write claims scripts/CI/v-case.sh" scripts/CI/v-case.sh
+else
+    printf 'SKIP - the case-variant row needs a case-sensitive file system\n'
+fi
 
 # ---- multi-key docs: only the first key is the worker's identity
 K3A=HIMMEL-311

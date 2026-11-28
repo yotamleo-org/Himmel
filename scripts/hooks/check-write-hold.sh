@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # check-write-hold.sh — PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit, LAST in that chain): the write half of the
 # single-writer barrier. A worker's write onto a file another live worker or open PR holds is denied; a
-# write onto a free file publishes the worker's row in the register holds.py owns, unless holds.py grant-route names it
-# a trust path, settings file or CI workflow: then the first write waits for a grant.
+# write onto a free file publishes the worker's row in the register holds.py owns, unless the repo carries
+# scripts/ci/ci-trust-paths.txt and holds.py grant-route names the file a trust path, settings file or CI workflow:
+# then the first write waits for a grant.
 #
 # Blocks only on a positive answer: a readable row, another holder, that holder alive, no grant; or no row, no grant,
 # and a grant-route of chief or operator. Every other answer passes. A coordination guard, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs fail-closed"): no jq, bad
@@ -202,7 +203,7 @@ printf -v q_repo '%q' "$primary"
 printf -v q_rel '%q' "$rel"
 
 if [ ! -e "$row" ]; then
-    if [ ! -e "$row.grant.$KEY" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
+    if [ ! -e "$row.grant.$KEY" ] && [ -f "$primary/scripts/ci/ci-trust-paths.txt" ] && scratch=$(mktemp "${TMPDIR:-/tmp}/himmel-hold.XXXXXX"); then
         route=any
         if bounded 2 "$scratch" /dev/null python3 -I "$HOLDS" grant-route --repo "$primary" -- "$rel"; then
             IFS= read -r route < "$scratch" || route=any
