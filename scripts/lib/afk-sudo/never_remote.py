@@ -193,8 +193,9 @@ def _short_force(w):
 
 
 def _runs(ws, prog):
-    """A word that names prog, with any quotes and backslashes in it dropped (`g'i't`, `\\git`, `/usr/bin/git`)."""
-    return any(os.path.basename(re.sub(r"[\"'\\]", "", w)) == prog for w in ws)
+    """A word that names prog, with any quotes and backslashes in it dropped (`g'i't`, `\\git`, `/usr/bin/git`) and cut
+    at the shell's and a script's punctuation (`$(git`, `` `git ``, `os.system("git`)."""
+    return any(os.path.basename(p) == prog for w in ws for p in re.split(r"[^\w./-]+", re.sub(r"[\"'\\]", "", w)))
 
 
 def _flags(ws):
@@ -207,18 +208,16 @@ def _flags(ws):
 
 
 def _computed(words):
-    """A `$` or backtick word, quotes before it dropped, where shell text starts a command (first, or after ; & | or
-    (, attached or not), which may name any program."""
-    toks = [p for w in words for p in re.findall(r"[;&|(]+|[^;&|(]+", w)]
-    return any(t.lstrip("\"'")[:1] in ("$", "`") and (i == 0 or toks[i - 1][-1] in ";&|(") for i, t in enumerate(toks))
+    """A `$` or backtick word in shell text, which may name any program, after any wrapper or assignment word."""
+    return any("$" in w or "`" in w for w in words)
 
 
 def units(argv, texts, cwd, home):
     """The facts of each command main-history judges: the argv, and each line of a file copy or stdin, read both as
     written and with each backslash and newline dropped (a heuristic: the shell keeps them in a comment or single
-    quotes). A line that
-    expands a `$` word also holds the facts of the argv words and the text's `key=value` words, which a script reads
-    through its arguments and variables. None for a word with too many forms."""
+    quotes). A line that expands a `$` word also holds the facts of the argv words and of every line of the text that
+    binds a value (a `key=value` word, whose quoted or array value spans words, or a `for`, `select`, `set` or `read`
+    line), which a script reads through its arguments and variables. None for a word with too many forms."""
     memo = {}
 
     def facts(items):
@@ -238,7 +237,8 @@ def units(argv, texts, cwd, home):
     yield args
     for t in texts:
         reads = {t, t.replace("\\\n", "")}
-        assigned = facts([(w, False) for text in reads for w in text.split() if "=" in w])
+        assigned = facts([(w, False) for text in reads for line in text.split("\n")
+                          if "=" in line or line.split()[:1] in (["for"], ["select"], ["set"], ["read"]) for w in line.split()])
         for text in reads:
             for line in text.split("\n"):
                 words = line.split()

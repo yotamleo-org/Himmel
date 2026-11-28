@@ -267,18 +267,17 @@ same walk as the binding above), is refused as `rule=oversize`:
 `main-history` judges one command at a time, not the whole word set: the argv is one
 command, and each line of a file copy or the stdin is one, read both as written and with
 each backslash and newline dropped (a heuristic for the shell, which keeps them in a comment
-or single quotes). The command
-must also hold a word naming `git` (or `gh` for the two delete forms), with quotes and
-backslashes dropped (`g'i't`, `/usr/bin/git`), or a `$` or backtick word where its shell
-text starts a command (first, or after `;`, `&`, `|` or `(`, attached or not; quotes before
-it dropped), which may
-name any program. A line that
-expands a `$` word also holds the argv words and the file's `key=value` words, so
-`git push "$@"` and `B=main` then `git push -f origin "$B"` still match. A read-only
-lint whose arguments or brief lines name push, a force word and main apart is not
-refused. The cost: a git wrapper, alias or shell function under another
-name, a computed program after an assignment or wrapper word (`FOO=1 $g`, `env $g`), or a
-push whose words a quote or heredoc carries across lines, misses the floor
+or single quotes). The command must also hold a word naming `git` (or `gh` for the two
+delete forms), with quotes and backslashes dropped and cut at punctuation (`g'i't`,
+`/usr/bin/git`, `$(git`, `os.system("git`), or, in shell text (a file line, or an argv
+element of several words), a `$` or backtick word, which may name any program. A line that
+expands a `$` word also holds the argv words and every line of the file that binds a value
+(a `key=value` word, whose quoted or array value spans words, or a `for`, `select`, `set`
+or `read` line), so `git push "$@"` and `B=main` then `git push -f origin "$B"` still
+match. A read-only lint whose arguments or brief lines name push, a force word and main
+apart is not refused, nor is a lone `$x` argument, which no shell expands. The cost: a git
+wrapper, alias or shell function under another name, a value a loop reads from another
+file or a pipe, or a push whose words a quote or heredoc carries across lines, misses the floor
 and reaches the operator's phone ask instead.
 
 Config `never_remote_extra` only adds fnmatch patterns. A match answers
