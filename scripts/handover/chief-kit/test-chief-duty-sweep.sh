@@ -597,7 +597,7 @@ pworld() {
     pr_json "$H1" > "$WORK/w/repoB/prs.json"
     set_tail "- 10:05 READY 101 $H1 GREEN"
 }
-# shellcheck disable=SC2016  # the backticks are the project line's literal text
+# shellcheck disable=SC2016
 for_project() { printf '# chief\n\nThe project this console is FOR is **`%s`**.\n' "$1" > "$CHIEF"; }
 psweep() {
     OUT=$(GH_REPO=ambient/other GH_HOST=ambient.example.com HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \

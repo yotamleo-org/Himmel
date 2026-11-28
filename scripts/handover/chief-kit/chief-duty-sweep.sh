@@ -100,7 +100,7 @@ fi
 
 proj_repo="$REPO"
 if [ -f "$doc" ]; then
-    # shellcheck disable=SC2016  # single-quoted sed pattern; no expansion wanted
+    # shellcheck disable=SC2016
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$doc" 2>/dev/null | head -n 1)"  # swallow-ok: an unreadable doc names no project, so this checkout stands in
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
