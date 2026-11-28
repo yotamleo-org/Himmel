@@ -1586,7 +1586,7 @@ function requireCarried(carried: readonly Carried[]): void {
   if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
 }
 
-function closureCarries(rows: Rows, spec: string, older: { sha: string; bytes: Buffer }, current: { sha: string; bytes: Buffer }): boolean {
+export function closureCarries(rows: Rows, spec: string, older: { sha: string; bytes: Buffer }, current: { sha: string; bytes: Buffer }): boolean {
   const texts = [older.bytes.toString("utf8"), current.bytes.toString("utf8")];
   if (!Buffer.from(texts[0]).equals(older.bytes) || !Buffer.from(texts[1]).equals(current.bytes)) return false;
   const fronts = texts.map(text => FRONT_MATTER.exec(text)); const keys = texts.map(declaredTickets);

@@ -8726,6 +8726,7 @@ test("T-T5: v1, v2, the signer's binding and sign-shape agree on one tickets tab
     const f = await cappedFixture({ specText, ...(line.startsWith("ticket:") ? { firstSpecText: specText.replace(line, `tickets: ${cappedKey}`) } : {}) });
     const declares = (r: P1Run) => !/(?:tickets|header) must declare only/.test(r.err);
     const signer = JSON.stringify(declaredTickets(specText)) === JSON.stringify([cappedKey]);
+    if (line.startsWith("ticket:")) for (const run of [p1Fold(f.args), v2Cli(f.args)]) expect(run, `${line}: the fold itself passes`).toMatchObject({ code: 0, err: "" });
     return [declares(p1Fold(f.args)), declares(p1Cli("--keys", cappedKey, ...p1Flags(f.args).slice(2))), signer, signShape(f.spec).code === 0];
   }));
   expect(got).toEqual(rows.map(([, ok]) => [ok, ok, ok, ok]));
@@ -8820,6 +8821,16 @@ test("N5, N7, N8: a carried seal keeps the snapshot, quote and ledger checks", a
   const { returnSha } = await import("./chief-route"); const planSum = returnSha(readFileSync(n8.args.planReturn, "utf8"));
   editLedger(n8, rows => { const r = rows.find(x => x.row === "seal" && x.return_sha === planSum && x.read_path === n8.spec && x.read_sha === n8.A)!; r.read_sha = n8.S; });
   expect(v2Cli(n8.args), "N8: the ledger seal row does not record A").toMatchObject({ code: 1, out: "", err: ccRefusal(n8.spec) });
+});
+
+test("closure carry: spec bodies are compared as bytes, so distinct malformed UTF-8 that decodes alike does not carry", async () => {
+  const route = await import("./chief-route"); const f = await ccBuild("carry");
+  const rows = await route.cappedLedger(f.specsRoot, f.key, route.cappedReader(f.specsRoot, f.key));
+  const older = readFileSync(f.snapshot); const current = readFileSync(f.spec);
+  expect(route.closureCarries(rows, f.spec, { sha: f.A, bytes: older }, { sha: f.S, bytes: current }), "control: the carry bytes carry").toBe(true);
+  const [badOlder, badCurrent] = [Buffer.concat([older, Buffer.from([0xff])]), Buffer.concat([current, Buffer.from([0xfe])])];
+  expect(badOlder.toString("utf8").slice(-1) === badCurrent.toString("utf8").slice(-1), "the two tails decode alike").toBe(true);
+  expect(route.closureCarries(rows, f.spec, { sha: f.A, bytes: badOlder }, { sha: f.S, bytes: badCurrent })).toBe(false);
 });
 
 test("N6: the closure carry is v2-only", async () => {
