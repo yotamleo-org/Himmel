@@ -1252,16 +1252,20 @@ rc=0; out=$(wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE
 check "32 row 8: a registry that cannot be read refuses rc 3" "$rc" 3
 contains "32 row 8: ...naming the unreadable registry" "$out" "judge-desk/sessions cannot be read"
 check "32 row 8: ...and no verdicts/q32u/ exists" "$(gone32 q32u)" none
-rmdir "$root/$scope/judge-desk/sessions" "$root/$scope/judge-desk"
-mkdir -p "$root/$scope/judge-desk" "$tmp/grep32" || { echo "FAIL: 32 grep-error setup" >&2; exit 1; }
-printf 'sess-desk-32\n' > "$root/$scope/judge-desk/sessions"
-printf '#!/usr/bin/env bash\ncase " $* " in *" %s "*) exit 2 ;; esac\nexec %q "$@"\n' "$root/$scope/judge-desk/sessions" "$(command -v grep)" > "$tmp/grep32/grep"
-chmod +x "$tmp/grep32/grep"
+rmdir "$root/$scope/judge-desk/sessions" "$root/$scope/judge-desk" || { echo "FAIL: 32 unreadable-registry teardown" >&2; exit 1; }
+reg32="$root/$scope/judge-desk/sessions"
+{ mkdir -p "$root/$scope/judge-desk" "$tmp/grep32" && printf 'sess-desk-32\n' > "$reg32" && [ -f "$reg32" ] && [ -r "$reg32" ]; } \
+    || { echo "FAIL: 32 grep-error setup" >&2; exit 1; }
+# shellcheck disable=SC2016  # the stub's own $@, $a and $reg expand when it runs
+printf '#!/usr/bin/env bash\nreg=%q\nfor a in "$@"; do [ "$a" != "$reg" ] || { : > %q; exit 2; }; done\nexec %q "$@"\n' \
+    "$reg32" "$tmp/grep32.ran" "$(command -v grep)" > "$tmp/grep32/grep" && chmod +x "$tmp/grep32/grep" \
+    || { echo "FAIL: 32 grep stub setup" >&2; exit 1; }
 rc=0; out=$(PATH="$tmp/grep32:$PATH" wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=q32g CLAUDE_CODE_SESSION_ID=sess-4689 bash "$SCRIPT" q32g GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 8: the registry lookup reached the failing grep" "$([ -e "$tmp/grep32.ran" ] && echo ran || echo not-run)" ran
 check "32 row 8: a registry lookup that errors on a readable file refuses rc 3" "$rc" 3
 contains "32 row 8: ...naming the unreadable registry (lookup error)" "$out" "judge-desk/sessions cannot be read"
 check "32 row 8: ...and no verdicts/q32g/ exists" "$(gone32 q32g)" none
-rm -f "$root/$scope/judge-desk/sessions" "$tmp/grep32/grep"
+rm -f "$reg32" "$tmp/grep32/grep" "$tmp/grep32.ran"
 rmdir "$root/$scope/judge-desk" "$tmp/grep32"
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
