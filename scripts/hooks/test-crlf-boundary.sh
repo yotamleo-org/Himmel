@@ -439,6 +439,22 @@ check_verdict _decide_cadence cadence-approve-engines ALLOW \
     "$(printf 'cd "%s"\npython "%s" vault' "$CADENCE_ROOT" "$CADENCE_ENGINE_BS")" \
     "allow across a nav-then-engine two-line command"
 
+RTK_SILENT="$TMP/rtk-silent"
+mkdir -p "$RTK_SILENT"
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$RTK_SILENT/rtk"
+chmod +x "$RTK_SILENT/rtk"
+_decide_rtk_commit() {
+    local cmd="$1"; shift
+    local out
+    out=$(printf '{"tool_name":"Bash","cwd":"/w/.claude/worktrees/x","tool_input":{"command":%s}}' "$(printf '%s' "$cmd" | jq -Rs .)" \
+        | ${_TIMEOUT_BIN:+$_TIMEOUT_BIN 20} env PATH="$RTK_SILENT:$PATH" "$@" bash "$SCRIPT_DIR/rtk-hook-guard.sh" 2>/dev/null)
+    if grep -q '"permissionDecision":"allow"' <<< "$out"; then echo REWRITE; else echo PASS; fi
+}
+check_verdict _decide_rtk_commit rtk-hook-guard REWRITE \
+    "gi""t commit -F msg" "a worker's lone commit keeps the rtk rewrite" HIMMEL_CONSOLE_LEG=1
+check_verdict _decide_rtk_commit rtk-hook-guard PASS \
+    "$(printf 'echo hello\ngi''t commit -F msg')" "never rewrite a two-line command" HIMMEL_CONSOLE_LEG=1
+
 # ── check-cr-marker-on-pr-create.sh ──────────────────────────────────────────
 # Same --head-as-last-token family, the dangerous direction this time: a
 # marker that IS pending must still block a PR create when a stray CR lands
