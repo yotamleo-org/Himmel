@@ -416,6 +416,23 @@ silent "judge KEY closure spiral (a judge, not a closure check) -> unchanged, no
     "$(described 'Judge PROJ-1 closure spiral' "$(agent judge opus "x"$'\n'"$JBL")")"
 check "a judge whose prompt only says closure check -> unchanged allow" allow \
     "$(agent judge opus $'judge the PR that changes the closure check\nand report findings')"
+CHARTER_S=$'Red-team this design spec. You are adversarial: find problems, do not\nrubber-stamp.'
+CHARTER_P=$'Red-team this implementation plan. You are adversarial. Check ONLY these'
+PACK=$'CLOSURE-CHECK PROJ-1 spec r5 0123456789ab\n\n## open blocking findings'
+check "a critic labelled 'Judge spec critic round 2' with the spec charter in its prompt -> deny" block \
+    "$(described 'Judge spec critic round 2' "$(agent judge opus "$CHARTER_S")")"
+check "a critic labelled 'Review plan round 2' with the plan charter in its prompt -> deny" block \
+    "$(described 'Review plan round 2' "$(agent judge opus "$CHARTER_P")")"
+check "a closure pack's CLOSURE-CHECK line on judge-ro, any description -> deny" block \
+    "$(described 'Review spec round 6' "$(agent judge-ro opus "x"$'\n'"$PACK")")"
+silent "a judge on the critical finding (critical is not critic) -> unchanged, no output" \
+    "$(described 'Rule on the critical finding' "$(agent judge-ro opus "x"$'\n'"$JBL")")"
+silent "a closure checklist audit (not a closure check) -> unchanged, no output" \
+    "$(described 'Closure checklist audit' "$(agent judge opus "x"$'\n'"$JBL")")"
+silent "a judge whose prompt quotes a charter diff line (+Red-team ...) -> unchanged, no output" \
+    "$(described 'Judge PR 6300' "$(agent judge opus "$JBL"$'\n'"+Red-team this design spec. You are adversarial")")"
+silent "a judge whose prompt mentions the charter mid-line -> unchanged, no output" \
+    "$(described 'Judge PR 6300' "$(agent judge opus "$JBL"$'\n'"the charter opens: Red-team this design spec.")")"
 btxt="$(deny_text "$(agent general-purpose fable 'do the review')")"
 needs "fable with no ESCALATION line -> text names the line and the dispatch that keeps fable" "$btxt" \
     "keep model: fable" "ESCALATION: <reason>" "line of its own"
