@@ -74,6 +74,21 @@ _mba_send() {
     $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply ${kind:+--kind "$kind"} "$chat" "$text" >/dev/null 2>&1
 }
 
+_mba_sentinel_dir() {
+    local dir="${MERGE_BLOCK_ALERT_DIR:-}"
+    if [ -z "$dir" ]; then
+        dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+        dir="$dir/himmel-merge-block-alert"
+    fi
+    printf '%s\n' "$dir"
+}
+
+_mba_sentinel_path() {
+    local dir
+    dir=$(_mba_sentinel_dir) || return 1
+    printf '%s/%s__%s__%s%s\n' "$dir" "${1//\//_}" "$2" "$3" "${4:-}"
+}
+
 merge_block_alert() {
     local repo="${1:-}" pr="${2:-}" head="${3:-}"
     shift 3 2>/dev/null || shift $#
@@ -84,30 +99,26 @@ merge_block_alert() {
     case "$repo$pr$head" in *[!A-Za-z0-9._/-]*|'') return 0 ;; esac
     [ -n "$repo" ] && [ -n "$pr" ] && [ -n "$head" ] || return 0
 
-    local dir="${MERGE_BLOCK_ALERT_DIR:-}"
-    if [ -z "$dir" ]; then
-        dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
-        dir="$dir/himmel-merge-block-alert"
-    fi
-    mkdir -p "$dir" 2>/dev/null || return 0
-    local key="${repo//\//_}__${pr}__${head}"
+    mkdir -p "$(_mba_sentinel_dir)" 2>/dev/null || return 0
+    local sentinel
+    sentinel=$(_mba_sentinel_path "$repo" "$pr" "$head") || return 0
     # Atomic create: the loser of a race sees the file and stays silent.
-    ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null || return 0
+    ( set -o noclobber; : > "$sentinel" ) 2>/dev/null || return 0
 
     local chat
     chat=$(_mba_operator_chat) || chat=""
     if [ -z "$chat" ]; then
-        rm -f "$dir/$key" 2>/dev/null
+        rm -f "$sentinel" 2>/dev/null
         echo "merge-block-alert: no operator chat id readable — DM not sent (the line above is the only alert)" >&2
         return 0
     fi
     local send_rc=0
     _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" merge-blocked || send_rc=$?
     if [ "$send_rc" != 0 ]; then
-        rm -f "$dir/$key" 2>/dev/null
+        rm -f "$sentinel" 2>/dev/null
         echo "merge-block-alert: DM delivery failed — exit code unchanged" >&2
     elif [ "${_MBA_REFUSED:-0}" = 1 ]; then
-        rm -f "$dir/$key" 2>/dev/null
+        rm -f "$sentinel" 2>/dev/null
         echo "merge-block-alert: refused by the test guard, nothing sent" >&2
     fi
     return 0
@@ -128,11 +139,11 @@ merge_block_alert() {
 # genuinely refused merge, so those always DM the operator regardless of
 # chief context.
 #
-# The chief route below applies ONLY post-GO
-# (MERGE_WATCH_POST_GO=1, set by merge-on-green.sh around its check-ci call). A
-# chief-spawned worker's own pre-GO watch red prints the MERGE-BLOCKED line and
-# stops: the worker has the exit code and owns the fix, and nothing wakes the
-# chief or pages the operator.
+# --red marks a red check-ci saw (a required check ran and FAILED). A pre-GO --red call whose head is an ancestor of this
+# checkout's HEAD is the author's own watch: it prints the MERGE-BLOCKED line with "(your own PR's watch: not sent)",
+# records <key>.author once (lane=leg|unmarked cwd= at=) and sends nothing. A chief-spawned worker's other pre-GO --red
+# stops the same way, unsent; its pre-GO call without --red falls through to merge_block_alert. The chief route below
+# applies ONLY post-GO (MERGE_WATCH_POST_GO=1, set by merge-on-green.sh around its check-ci call).
 #
 # When this worker is chief-spawned (chief_worker(), from go-gate.sh) AND its
 # chief's session name is known (HIMMEL_CONSOLE_NAME — exported into every
@@ -144,7 +155,7 @@ merge_block_alert() {
 # exists, never create one) -> falls through to merge_block_alert, i.e.
 # today's behaviour, one operator DM.
 #
-#   merge_watch_alert <owner/repo> <pr-number> <head-sha> <rule text...>
+#   merge_watch_alert [--red] <owner/repo> <pr-number> <head-sha> <rule text...>
 #
 # Always returns 0. Dedupe: a SEPARATE sentinel per (repo, PR, head) from
 # merge_block_alert's own (suffixed .watch), so a chief-routed watch alert
@@ -227,6 +238,8 @@ _mba_route_chief() {
 }
 
 merge_watch_alert() {
+    local red=0
+    if [ "${1:-}" = "--red" ]; then red=1; shift; fi
     local repo="${1:-}" pr="${2:-}" head="${3:-}"
     shift 3 2>/dev/null || shift $#
     local rule="$*"
@@ -238,30 +251,34 @@ merge_watch_alert() {
         return 0
     fi
 
-    if chief_worker; then
-        # A red on the worker's OWN pre-GO watch is the worker's to fix —
-        # it already has check-ci's exit code, so neither the chief inbox
-        # (which wakes a full-context chief) nor the operator is told.
-        # merge-on-green.sh runs only after the chief's GO and marks its
-        # check-ci call MERGE_WATCH_POST_GO=1: that red is the chief's.
-        if [ "${MERGE_WATCH_POST_GO:-}" != "1" ]; then
+    if [ "$red" = 1 ] && [ "${MERGE_WATCH_POST_GO:-}" != "1" ] && git merge-base --is-ancestor "$head" HEAD 2>/dev/null; then
+        echo "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule} (your own PR's watch: not sent)" >&2
+        if [ "${HIMMEL_TEST_FIXTURE:-}" != "1" ] || [ -n "${MERGE_BLOCK_ALERT_DIR:-}" ]; then
+            local lane=unmarked author
+            if chief_worker; then lane=leg; fi
+            if mkdir -p "$(_mba_sentinel_dir)" 2>/dev/null && author=$(_mba_sentinel_path "$repo" "$pr" "$head" .author); then
+                ( set -o noclobber; printf 'lane=%s cwd=%s at=%s\n' "$lane" "$PWD" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$author" ) 2>/dev/null || true
+            fi
+        fi
+        return 0
+    fi
+
+    if chief_worker && [ "${MERGE_WATCH_POST_GO:-}" != "1" ]; then
+        # A pre-GO --red is the worker's to fix: it has check-ci's exit code, so neither the chief inbox nor the operator is told.
+        if [ "$red" = 1 ]; then
             echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
             return 0
         fi
-        local dir key
-        dir="${MERGE_BLOCK_ALERT_DIR:-}"
-        if [ -z "$dir" ]; then
-            dir=$(git rev-parse --git-common-dir 2>/dev/null) && dir="$dir/himmel-merge-block-alert"
-        fi
-        if [ -n "$dir" ] && mkdir -p "$dir" 2>/dev/null; then
-            key="${repo//\//_}__${pr}__${head}.watch"
-            if ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then
+    elif chief_worker; then
+        local key
+        if mkdir -p "$(_mba_sentinel_dir)" 2>/dev/null && key=$(_mba_sentinel_path "$repo" "$pr" "$head" .watch); then
+            if ( set -o noclobber; : > "$key" ) 2>/dev/null; then
                 if _mba_route_chief "$repo" "$pr" "${HIMMEL_CONSOLE_NAME:-}" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}"; then
                     echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
                     return 0
                 fi
-                rm -f "$dir/$key" 2>/dev/null
-            elif [ -e "$dir/$key" ]; then
+                rm -f "$key" 2>/dev/null
+            elif [ -e "$key" ]; then
                 # Sentinel already exists: already alerted for this
                 # (repo, pr, head) — dedup, stay silent (no fallback).
                 echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
