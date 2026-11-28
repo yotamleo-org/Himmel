@@ -2541,6 +2541,13 @@ test('maintainer-hooks resolves to settings whose env holds exactly the marker a
   assert.deepEqual(resolveProfile(REG, 'maintainer-hooks', { installed: [] }).env, MAINTAINER_ENV_WANT);
 });
 
+test('maintainer-hooks carries the grant on the native lane only', () => {
+  assert.deepEqual(resolveProfile(REG, 'maintainer-hooks', { installed: [], lane: 'native' }).env, MAINTAINER_ENV_WANT);
+  for (const lane of ['claudex', 'openrouter', 'deepseek']) {
+    assert.equal(Object.hasOwn(resolveProfile(REG, 'maintainer-hooks', { installed: [], lane }), 'env'), false, `${lane} must carry no env block`);
+  }
+});
+
 test('worker-impl and every other profile resolve with no env block', () => {
   for (const name of Object.keys(REG.profiles)) {
     if (name === 'operator' || name === 'maintainer-hooks') continue;

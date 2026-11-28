@@ -22,6 +22,8 @@
 #   rc 2:   FAIL CLOSED - unknown profile / resolver failure / unwritable dir.
 #           A launch that silently runs with the full plugin set is exactly the
 #           gap this exists to close, so callers must refuse on rc != 0.
+#   rc 4:   the profile's settings carry a maintainer grant (a settings env), so no
+#           file is written: a profile line in a doc must not relaunch it.
 # Env: HIMMEL_PROFILE_SETTINGS_DIR (default $HOME/.himmel/launch-profiles),
 #      HIMMEL_PROFILE_REPO (resolve cwd; default this checkout).
 # Platform: POSIX bash 3.2+, node.
@@ -45,6 +47,10 @@ if ! JSON="$(cd "$CWD" && node "$HERE/plugin-profiles.mjs" "$PROFILE" 2>&1)" || 
     exit 2
 fi
 case "$JSON" in '{'*) ;; *) echo "profile-settings: profile '$PROFILE' resolver output is not JSON: $JSON" >&2; exit 2 ;; esac
+if printf '%s' "$JSON" | node -e 'process.exit(Object.hasOwn(JSON.parse(require("fs").readFileSync(0, "utf8")), "env") ? 0 : 1)'; then
+    echo "profile-settings: profile '$PROFILE' carries a maintainer grant; only headed-arm-worker.sh launches it, so this path refuses it" >&2
+    exit 4
+fi
 if command -v sha256sum >/dev/null 2>&1; then HASH="$(printf '%s\n' "$JSON" | sha256sum | cut -c1-12)"
 elif command -v shasum >/dev/null 2>&1; then HASH="$(printf '%s\n' "$JSON" | shasum -a 256 | cut -c1-12)"
 else HASH=""; fi

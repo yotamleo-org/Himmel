@@ -109,10 +109,13 @@ for list in readiness,worker-impl worker-impl,readiness; do
 done
 
 envof() { python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("env"), sort_keys=True))' "$1"; }
-MH=$(bash "$PS" maintainer-hooks); rc=$?
-[ "$rc" = 0 ] && ok "T14 maintainer-hooks resolves rc=0" || bad "T14 rc=$rc"
-[ "$(envof "$MH" 2>/dev/null)" = '{"HIMMEL_HOOK_INTEGRITY_BYPASS_OK": "1", "HIMMEL_MAINTAINER_ACTION": "hook-edit"}' ] \
-    && ok "T14 maintainer-hooks file env holds exactly the marker and the hook bypass" || bad "T14 env wrong: $(envof "$MH" 2>/dev/null)"
+for mode in '' --mcp-config; do
+    E14=$(bash "$PS" maintainer-hooks ${mode:+"$mode"} 2>&1 >/dev/null); rc=$?
+    case "$E14" in *'carries a maintainer grant'*) [ "$rc" = 4 ] && ok "T14 maintainer-hooks ${mode:-settings} refused rc=4" || bad "T14 ${mode:-settings} rc=$rc" ;;
+        *) bad "T14 maintainer-hooks ${mode:-settings} not refused (rc=$rc): $E14" ;; esac
+done
+written=$(find "$HIMMEL_PROFILE_SETTINGS_DIR" -name 'maintainer-hooks.*' 2>/dev/null)
+[ -z "$written" ] && ok "T14 no maintainer-hooks settings file written" || bad "T14 wrote $written"
 WI=$(bash "$PS" worker-impl); rc=$?
 [ "$rc" = 0 ] && [ "$(envof "$WI")" = null ] && ok "T14 worker-impl file carries no env block (control)" || bad "T14 worker-impl rc=$rc env=$(envof "$WI" 2>/dev/null)"
 

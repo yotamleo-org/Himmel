@@ -78,7 +78,7 @@ const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_P
 const MAINTAINER_ENV = {
   'maintainer-hooks': { HIMMEL_MAINTAINER_ACTION: 'hook-edit', HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '1' },
 };
-const envOf = (name) => (Object.hasOwn(MAINTAINER_ENV, name) ? { env: { ...MAINTAINER_ENV[name] } } : {});
+const envOf = (name, lane) => ((lane ?? 'native') === 'native' && Object.hasOwn(MAINTAINER_ENV, name) ? { env: { ...MAINTAINER_ENV[name] } } : {});
 const WORKER_SESSION_PROFILES = new Set(['maintainer-hooks', 'lane-impl', 'worker-impl','worker-bus', 'worker-eval', 'worker-docs', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
 
 // The readiness role. Its whole model-facing capability is these two MCP tools, served by
@@ -700,7 +700,7 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts), ...envOf(name) };
+    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts), ...envOf(name, opts.lane) };
   }
   const chiefAllow = spec?.chiefAllow === true ? (registry.chiefAllow ?? []) : [];
   const allow = [...chiefAllow, ...mcpAllow];
