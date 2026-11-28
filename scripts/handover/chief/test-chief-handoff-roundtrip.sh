@@ -22,6 +22,8 @@ REPO_REAL="$(cd "$HERE/../../.." && pwd)"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-roundtrip.XXXXXX")" || { echo "test-chief-handoff-roundtrip: mktemp -d failed" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
+export HOME="$tmp/home"; mkdir -p "$HOME"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 export HIMMELCTL_CACHE_DIR="$tmp/himmelctl-cache"
 export HANDOVER_REGISTRY="$tmp/no-registry-for-this-suite.json"

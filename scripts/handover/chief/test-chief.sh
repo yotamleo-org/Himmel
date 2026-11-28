@@ -45,6 +45,8 @@ HOST_MODES_STICK=0; host_modes_stick && HOST_MODES_STICK=1
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-test.XXXXXX")" || { echo "test-chief: mktemp -d failed" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
+export HOME="$tmp/home"; mkdir -p "$HOME"
+unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
 # Root/slug fallback cases must not read the operator's config, and a worker's
 # launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
@@ -4901,4 +4903,63 @@ for p11277 in on off; do
     clean11277 "CN14 $p11277 second" CJ-N9-0f0f0f0f
     rel11277
 done
+
+WT11407="$REPO_REAL/scripts/handover/chief-kit/worker-token.sh"
+wt11407() { HANDOVER_DIR="$root" bash "$WT11407" "$@" 2>/dev/null; }
+relayed11407='- 10:05 SUCCESSION accepted: X-chief replaces W-chief'
+mk11407() {
+    local w="$root/tester/$1" i n d rows="" spans=""
+    D11277="$w"; T11277=()
+    A11277="$w/DEMO-nextleg-${today}A-chief.md"
+    TA11277="$(token_of "$(chief new --bucket "$1")")"
+    for i in $(seq 1 "$2"); do
+        n=$((100 + i)); d="$w/DEMO-$n-N$n-worker.md"
+        R11407[n]="$(wt11407 mint "$d" "CJ-N$n")"
+        printf '%s\n' '# worker' "> **RETASK:** your nonce is \`CJ-N$n-stale\`." '## Results' '- 10:00 LIVE — fixture' "$relayed11407" > "$d"
+        lock11277 "$d"
+        rows="$rows${rows:+,}{\"label\":\"N$n\",\"doc\":\"$d\"}"
+        spans="$spans \`N$n:NONCE-UNKNOWN:lock-$n:$n\`"
+    done
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' "$relayed11407" > "$w/DEMO-118-N118-worker.md"
+    lock11277 "$w/DEMO-118-N118-worker.md"
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$w/DEMO-119-N119-worker.md"
+    wt11407 mint "$w/DEMO-119-N119-worker.md" CJ-N119 >/dev/null
+    lock11277 "$w/DEMO-119-N119-worker.md"
+    rows="$rows,{\"label\":\"N118\",\"doc\":\"$w/DEMO-118-N118-worker.md\"},{\"label\":\"N119\",\"doc\":\"$w/DEMO-119-N119-worker.md\"}"
+    printf '{"schema":1,"workers":[%s]}\n' "$rows" > "${A11277%.md}.fleet.json"
+    # shellcheck disable=SC2016  # the backticks are literal span delimiters
+    W11277="workers:$spans"' `N118:NONCE-UNKNOWN:lock-118:118` `N119:CJ-N119-feedbeef:lock-119:119`' awk '/^workers:/ { print ENVIRON["W11277"]; next } { print }' "$A11277" > "$A11277.new" && mv "$A11277.new" "$A11277"
+}
+R11407=()
+mk11407 tr1-11407 17
+nx11277 tr1-11407 "$A11277" tr1dst-11407
+check "11407 TR1 next exits 0" "$RC11277" "0"
+check "11407 TR1 17 carried relayed workers each with a dispatch row: 17 @record, zero NONCE-UNKNOWN among them" \
+    "$(for n in $(seq 101 117); do shape11277 "$S11277" "N$n"; echo; done | sort -u)" "$(for n in $(seq 101 117); do echo "N$n:@record"; done | sort -u)"
+check "11407 TR1 no record token is written into the successor doc" "$(for n in $(seq 101 117); do grep -cF -- "${R11407[n]}" "$S11277"; done | sort -u)" "0"
+check "11407 TR1c a worker with no row stays NONCE-UNKNOWN" "$(shape11277 "$S11277" N118)" "N118:NONCE-UNKNOWN"
+# shellcheck disable=SC2016  # the backticks are literal span delimiters
+check "11407 TR1c a usable span with a record is kept byte for byte" "$(spans11277 "$S11277" N119)" '`N119:CJ-N119-feedbeef:lock-119:119`'
+check "11407 TR1 the span keeps its session fields" "$(spans11277 "$S11277" N101)" "\`N101:@record:lock-101:101\`"
+ROT11407="$(wt11407 rotate "$D11277/DEMO-101-N101-worker.md" --to Y-chief)"
+printf '%s\n' '- 11:00 SUCCESSION accepted: Y-chief replaces X-chief' >> "$D11277/DEMO-101-N101-worker.md"
+gd11407() ( HANDOVER_DIR="$root"; export HANDOVER_DIR; . "$fixture_repo/scripts/handover/chief-kit/go-deliver.sh" || exit 9; gd_worker_token "$S11277" "$1" "$D11277/DEMO-${1#N}-$1-worker.md" )
+check "11407 TR2 a rotated and confirmed worker: the successor's GO reader quotes its gen-2 token" "$(gd11407 N101)|$([ -n "$ROT11407" ] && [ "$ROT11407" != "${R11407[101]}" ] && echo fresh)" "$ROT11407|fresh"
+check "11407 TR2c an unrotated worker: its gen-1 token" "$(gd11407 N102)|$([ -n "${R11407[102]}" ] && echo minted)" "${R11407[102]}|minted"
+rel11277
+
+mk11277 tr3km-11407 on "$tok11277" "" "$relayed11407"
+mkdir -p "$tmp/home2-11407"
+HOME="$tmp/home2-11407" wt11407 mint "$N9doc11277" CJ-N9 >/dev/null
+check "11407 TR3 fixture: the other-key record reads keymismatch" "$(wt11407 gen "$N9doc11277")" "current=1 pending=-:- state=keymismatch"
+nx11277 tr3km-11407 "$A11277" tr3kmdst-11407
+check "11407 TR3 state=keymismatch: NONCE-UNKNOWN as today" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
+mk11277 tr3bad-11407 on "$tok11277" "" "$relayed11407"
+wt11407 mint "$N9doc11277" CJ-N9 >/dev/null
+for BAD11407 in "$D11277"/*.jsonl; do rm -f "$BAD11407"; mkdir "$BAD11407"; done
+check "11407 TR3 fixture: the replaced record reads bad" "$(wt11407 gen "$N9doc11277")" "current=- pending=-:- state=bad"
+nx11277 tr3bad-11407 "$A11277" tr3baddst-11407
+check "11407 TR3 state=bad: NONCE-UNKNOWN as today" "$RC11277 $(shape11277 "$S11277" N9)" "0 N9:NONCE-UNKNOWN"
+rel11277
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

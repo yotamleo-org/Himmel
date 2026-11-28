@@ -9,7 +9,7 @@
 #                                                 for <label> (legs: too while legacy names are on)
 #   gd_brief_token <worker doc>                   the first backticked value of the last
 #                                                 `> **RETASK:**` line above `## Results`
-#   gd_worker_token <chief doc> <label> <worker doc>  the live token if usable, else the brief's
+#   gd_worker_token <chief doc> <label> <worker doc> [<root>]  the record's under <root>, else (exit 1/3) the live one, else the brief's; rc 2 unreadable record
 #   gd_worker_map <manifest>                      <pr> TAB <label> TAB <doc> TAB <lane> per manifest
 #                                                 row whose doc's newest READY or MERGED bullet names a PR
 #   gd_pr_worker <manifest> <pr>                  <label> TAB <doc> TAB <lane> of the last row for <pr>
@@ -74,7 +74,17 @@ gd_brief_token() {
 }
 
 gd_worker_token() {
-    local t
+    local t rc=0
+    if [ -n "${4:-}" ]; then
+        t=$(HANDOVER_DIR="$4" bash "$_GD_HERE/worker-token.sh" current "$3" 2>/dev/null) || rc=$?  # swallow-ok: every exit is handled below
+    else
+        t=$(bash "$_GD_HERE/worker-token.sh" current "$3" 2>/dev/null) || rc=$?  # swallow-ok: every exit is handled below
+    fi
+    case "$rc" in
+        0) printf '%s\n' "$t"; return 0 ;;
+        1|3) ;;
+        *) return 2 ;;
+    esac
     t=$(gd_live_token "$1" "$2") || t=""  # swallow-ok: no live token falls to the brief's below
     gd_token_usable "$t" || t=$(gd_brief_token "$3") || t=""  # swallow-ok: no brief token is rc 1 below
     gd_token_usable "$t" || return 1
