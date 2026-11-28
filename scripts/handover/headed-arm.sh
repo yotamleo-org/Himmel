@@ -1187,7 +1187,7 @@ headless_launch() {
     # Only a launcher the operator started with the bypass hands it on; a
     # daemon spawned from a bypass shell never does.
     val=""
-    [ "${HIMMEL_HOOK_INTEGRITY_BYPASS_OK:-}" = "1" ] && val=1
+    [ "${HIMMEL_HOOK_INTEGRITY_BYPASS_OK:-}" = "1" ] && [ -z "${HIMMEL_MAINTAINER_ACTION:-}" ] && val=1
     _hl_set HIMMEL_HOOK_INTEGRITY_BYPASS_OK "$val"
     pids="$("$PGREP" -u "$(id -u)" -f '[c]laude daemon run' 2>/dev/null)"  # t13b-ok: read-only pgrep lookup of the Claude Code service, starts nothing; scoped to the launching user, never host-wide
     pg_rc=$?

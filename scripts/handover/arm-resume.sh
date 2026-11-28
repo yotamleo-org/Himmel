@@ -5138,6 +5138,8 @@ fi"
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(chief_context_launch_seam_env_names | tr '\n' ' ')
 "
+                [ -n "${HIMMEL_MAINTAINER_ACTION:-}" ] && at_safety_child="${at_safety_child}unset HIMMEL_HOOK_INTEGRITY_BYPASS_OK HIMMEL_MAINTAINER_ACTION
+"
                 _arm_bridge_marked && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
 "
                 if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then

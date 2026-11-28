@@ -107,7 +107,7 @@ test('the shipped registry sets 850k per profile: impl and eval compact, docs st
 test('decision 751: every worker profile carries the Opus numbers, and no other profile does', () => {
   const real = PP.loadRegistry();
   const carrying = Object.entries(real.profiles).filter(([, spec]) => spec?.opusAutocompact !== undefined).map(([name]) => name).sort();
-  assert.deepEqual(carrying, ['worker-bus', 'worker-docs', 'worker-e2e', 'worker-eval', 'worker-impl', 'worker-vm']);
+  assert.deepEqual(carrying, ['maintainer-hooks', 'worker-bus','worker-docs', 'worker-e2e', 'worker-eval', 'worker-impl', 'worker-vm']);
   for (const name of carrying) {
     assert.equal(real.profiles[name].opusAutocompact, 850000, name);
     assert.equal(real.profiles[name].opusContextShare, 87, name);
