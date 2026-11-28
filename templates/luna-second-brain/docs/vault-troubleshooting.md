@@ -1,7 +1,20 @@
 # Vault troubleshooting
 
 Traps a running luna vault hits, each with its symptom and its fix. The
-pre-commit stash trap is in `_CLAUDE.md` ("pre-commit trap").
+pre-commit stash rule is in `_CLAUDE.md` ("pre-commit trap"); its recovery is
+below.
+
+## A pre-commit rollback reverted unstaged work
+
+**Symptom:** unstaged edits from other sessions vanished from disk after a
+commit, and pre-commit printed "patch does not apply". **Cause:** a
+pre-commit-stage hook installed with `pre-commit install` stashed every
+unstaged change, Obsidian rewrote `.obsidian/plugins/*` mid-hook, and the
+re-apply failed and rolled back. **Fix:** pre-commit keeps the stashed patch in
+its cache dir: `$PRE_COMMIT_HOME` if non-empty, else
+`$XDG_CACHE_HOME/pre-commit/` if non-empty, else `~/.cache/pre-commit/`.
+Re-apply it from there, then put the stash-free hooks back with
+`bash scripts/hooks/install-nostash-hooks.sh`.
 
 ## A vault commit STALL: paths staged, no new commit
 
@@ -64,7 +77,8 @@ triaged clip and reports a false negative ("clip never captured"). Search
 ## Searching and pushing
 
 <!-- mem:a552ac14a466 -->
-The obsidian-vault MCP's `obsidian_simple_search` matches each space-separated
+No vault MCP is loaded by default. If you connect the obsidian-vault MCP
+yourself, its `obsidian_simple_search` matches each space-separated
 query word as a substring anywhere in a note, not as a whole word, a phrase or
 a fuzzy match, so a hit is only a candidate to read and a misspelled word finds
 nothing. On the push side, a
