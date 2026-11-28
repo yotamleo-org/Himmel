@@ -24,8 +24,9 @@
 #      the parent model and ignores `model`, so a missing one says nothing.
 #
 # DENY CONDITION 2, Haiku is a leaf (both must hold):
-#   1. tool_input.model names Haiku: haiku or claude-haiku, alone or followed
-#      by a non-alphanumeric (claude-haiku-5-5), any case.
+#   1. tool_input.model names Haiku: the word haiku, bounded by a
+#      non-alphanumeric or an end of the value, any case (haiku,
+#      claude-haiku-5-5, claude-3-5-haiku-20241022).
 #   2. tool_input.subagent_type keeps the Agent tool, so the Haiku child could
 #      spawn (and a built-in Explore it calls runs on the MAIN session's model,
 #      a tier up): it is absent, null, empty, "general-purpose" or "claude", or
@@ -35,7 +36,8 @@
 #      and leaves Agent available: no `tools:` key, or one listing Agent, the
 #      old name Task or the `*` wildcard, and no `disallowedTools:` naming it.
 #      A `#` inside quotes is not a comment. A key's value is its own line plus every
-#      indented or `- ` continuation line up to the next top-level key, so
+#      indented or `- ` continuation line up to the next top-level key, read
+#      as one value (a specifier wrapped over lines stays one specifier), so
 #      inline, quoted, flow, block-scalar and list forms all count; comments
 #      and blank lines are skipped. The deny names
 #      haiku-worker (.claude/agents/haiku-worker.md, Agent disallowed). A type
@@ -85,17 +87,16 @@ agent_def_keeps_agent() {
                     }
                     return v
                 }
-                function has_agent(v,   n, a, i, t) {
-                    v = uncomment(v)
+                function has_agent(v, k,   n, a, i, t) {
                     gsub(/\([^)]*\)/, "", v)
                     gsub(/["'\''\[\]{}>|]/, " ", v)
                     n = split(v, a, /[[:space:],]+/)
-                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || (t == "*" && key == "tools")) return 1 }
+                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || (t == "*" && k == "tools")) return 1 }
                     return 0
                 }
                 function take(v) {
-                    if (key == "tools" && has_agent(v)) listed = 1
-                    if (key == "drop" && has_agent(v)) dropped = 1
+                    if (key == "tools") tval = tval " " uncomment(v)
+                    if (key == "drop") dval = dval " " uncomment(v)
                 }
                 NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
                 /^---[[:space:]]*$/ { done = 1; exit }
@@ -107,7 +108,7 @@ agent_def_keeps_agent() {
                 /^disallowedTools:/ { key = "drop"; v = $0; sub(/^disallowedTools:/, "", v); take(v); next }
                 END {
                     if (!done || (name == "" ? stem : name) != want) exit 2
-                    exit (dropped || (tools && !listed)) ? 1 : 0
+                    exit (has_agent(dval, "drop") || (tools && !has_agent(tval, "tools"))) ? 1 : 0
                 }
             ' "$f" || rc=$?
             case "$rc" in
@@ -170,7 +171,7 @@ model_trimmed=$(printf '%s' "$model" | tr -d '[:space:]')
 if [ -n "$model_trimmed" ]; then
     model_lc=$(printf '%s' "$model_trimmed" | tr '[:upper:]' '[:lower:]')
     case "$model_lc" in
-        haiku|haiku[!a-z0-9]*|claude-haiku|claude-haiku[!a-z0-9]*) ;;
+        haiku|haiku[!a-z0-9]*|*[!a-z0-9]haiku|*[!a-z0-9]haiku[!a-z0-9]*) ;;
         *) exit 0 ;;
     esac
     case "$subagent_type" in

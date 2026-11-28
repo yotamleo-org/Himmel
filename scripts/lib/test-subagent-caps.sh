@@ -39,7 +39,7 @@ check "helper: SUBAGENT_CAPS_ENV holds exactly the two pairs" "${SUBAGENT_CAPS_E
 got=$(env -u CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH -u CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS \
     bash -c '. "$1"; subagent_caps_export; printf "%s %s" "$CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH" "$CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS"' _ "$LIB")
 check "helper: subagent_caps_export exports 2 and 20" "$got" "2 20"
-for m in haiku claude-haiku-5-5 Haiku 'haiku[1m]'; do
+for m in haiku claude-haiku-5-5 Haiku 'haiku[1m]' claude-3-5-haiku-20241022; do
     if subagent_caps_is_haiku "$m"; then ok "helper: $m is Haiku"; else bad "helper: $m is Haiku"; fi
 done
 for m in sonnet opus claude-opus-5-5 fable '' haikus; do
@@ -194,8 +194,7 @@ pc_runner() {
     ( set +u
       # shellcheck disable=SC2034  # read by the extracted emit_runner
       CADENCE_PERMISSION_MODE=acceptEdits
-      # shellcheck source=subagent-caps.sh
-      . "$LIB"
+      eval "$(sed -n '/^SUBAGENT_CAPS_ENV=()/,/^fi$/p' "$PC" | sed "s|\${BASH_SOURCE\[0\]}|$PC|")"
       eval "$(sed -n '/^emit_runner() {/,/^}/p' "$PC")"
       emit_runner health /vault claude prompt /log /settings "" "$1" health "" "" "" "" "" ) 2>/dev/null
 }

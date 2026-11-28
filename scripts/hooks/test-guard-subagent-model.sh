@@ -336,6 +336,14 @@ assert_rc "a * inside a Bash(...) specifier does not drop Agent: + haiku is DENI
 printf -- '---\nname: star-wrapped\ndisallowedTools: >-\n  Bash(git\n  * --help)\n---\nbody\n' > "$PROJ/.claude/agents/star-wrapped.md"
 RC59=$(run_hook def-star-wrapped "$(payload star-wrapped haiku)" "${DEFS[@]}")
 assert_rc "a * from a specifier wrapped over lines does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC59"
+printf -- '---\nname: agent-wrapped\ndisallowedTools: >-\n  Bash(echo\n  Agent\n  )\n---\nbody\n' > "$PROJ/.claude/agents/agent-wrapped.md"
+RC60=$(run_hook def-agent-wrapped "$(payload agent-wrapped haiku)" "${DEFS[@]}")
+assert_rc "an Agent word inside a specifier wrapped over lines does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC60"
+printf -- '---\nname: drop-list\ndisallowedTools:\n  - Bash\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/drop-list.md"
+RC61=$(run_hook def-drop-list "$(payload drop-list haiku)" "${DEFS[@]}")
+assert_rc "a disallowedTools list naming Agent drops it: + haiku is allowed (rc=0)" 0 "$RC61"
+RC62=$(run_hook gp-haiku-dated "$(payload general-purpose claude-3-5-haiku-20241022)")
+assert_rc "general-purpose + a dated id claude-3-5-haiku-20241022 is DENIED (rc=2)" 2 "$RC62"
 
 echo ""
 echo "=== escape hatch ==="

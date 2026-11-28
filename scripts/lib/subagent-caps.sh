@@ -8,10 +8,11 @@
 #                                  `env NAME=VALUE ... claude` launch line
 # Functions:
 #   subagent_caps_export           export both into the current shell
-#   subagent_caps_is_haiku <model> 0 if <model> names a Haiku model: haiku or
-#                                  claude-haiku, alone or followed by a
-#                                  non-alphanumeric (claude-haiku-5-5,
-#                                  haiku[1m]), any case; the guard's match
+#   subagent_caps_is_haiku <model> 0 if <model> names a Haiku model: the
+#                                  word haiku, bounded by a non-alphanumeric
+#                                  or an end of the value (claude-haiku-5-5,
+#                                  claude-3-5-haiku-20241022, haiku[1m]),
+#                                  any case; the guard's match
 #   subagent_caps_haiku_args <argv...>
 #                                  set SUBAGENT_CAPS_HAIKU_ARGS to
 #                                  (--disallowedTools Agent) when the argv's
@@ -36,7 +37,7 @@ subagent_caps_is_haiku() {
     local m
     m=$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')
     case "$m" in
-        haiku|haiku[!a-z0-9]*|claude-haiku|claude-haiku[!a-z0-9]*) return 0 ;;
+        haiku|haiku[!a-z0-9]*|*[!a-z0-9]haiku|*[!a-z0-9]haiku[!a-z0-9]*) return 0 ;;
     esac
     return 1
 }
