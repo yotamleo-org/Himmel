@@ -7,8 +7,6 @@ Events (each a JSON list):
   ["text", text]                      an assistant text block
   ["tool", name, input, result, err]  an assistant tool_use and its tool_result (err 0 or 1)
   ["usage", n]                        later assistant rows carry n cache-read input tokens
-
-Timestamps run from 2026-11-28T10:00:00Z, ten seconds apart.
 """
 import json
 import sys
