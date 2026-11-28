@@ -156,6 +156,26 @@ eq "B6 crontab: registered output is the unregistered output plus the helper lin
 cron_mac=$(arm OSTYPE=darwin23 ARM_TERMINAL_APP=none ARM_RESUME_UNAME=Darwin)
 hasnt "B8 crontab on macOS: registered name carries no helper (it reads /proc)" "arm-resume-bus-rebind" "$cron_mac"
 
+if command -v node >/dev/null 2>&1; then
+    MAX="$(node --input-type=module -e "import { SESSION_NAME } from '$HERE/../../marketplace/plugins/himmel-bus/lib/store.mjs'; let m = 0; for (let n = 1; n <= 4096; n++) if (SESSION_NAME.test('L' + 'a'.repeat(n - 1))) m = n; console.log(m);")"
+    if [ -n "$MAX" ] && [ "$MAX" -ge 100 ] 2>/dev/null && [ "$MAX" -le 170 ]; then
+        NMAX="L$(head -c "$((MAX - 1))" /dev/zero | tr '\0' a)"
+        echo '{"role":"worker"}' > "$XDG/himmel/bus/peers/$NMAX.json"
+        at_long=$(arm ARM_NAME_TEMPLATE="$NMAX" OSTYPE=linux-gnu)
+        has "I3 B9a at: the long-name dry-run arm reached its at line" "would at -t" "$at_long"
+        has "I3 B9 at: a registered name of the store's maximum length backgrounds the rebind helper" "arm-resume-bus-rebind.sh" "$at_long"
+        rm -f "$XDG/himmel/bus/peers/$NMAX.json"
+        at_long_unreg=$(arm ARM_NAME_TEMPLATE="$NMAX" OSTYPE=linux-gnu)
+        hasnt "I3 B10 at: the same name unregistered carries no helper" "arm-resume-bus-rebind" "$at_long_unreg"
+        eq "I3 B10b at: unregistered output is the registered output minus the helper line only" \
+            "$(printf '%s\n' "$at_long_unreg" | filter)" "$(printf '%s\n' "$at_long" | filter)"
+    else
+        fail "long-name block: store limit MAX='$MAX' is outside 100..170 (170 keeps the cursor commit temp, name + 85 bytes, under 255)"
+    fi
+else
+    echo "SKIP B9 B10: needs node"
+fi
+
 echo "---"
 if [ "$FAILED" -eq 0 ]; then echo "test-arm-resume-bus-rebind: all passed"; exit 0; fi
 echo "test-arm-resume-bus-rebind: $FAILED failed"; exit 1
