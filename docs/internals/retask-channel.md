@@ -98,11 +98,11 @@ sealed scope and reports).
 
 **The sealed scope is not a write fence.** A worker's write onto a file another
 live worker or open PR holds is denied, and the deny says how to ask the chief. A
-write onto a free file outside the brief's `Writes` passes, a trust path excepted (its
-first write waits for a grant): it is claimed, recorded
+write onto a free file outside the brief's `Writes` passes, a trust path excepted in a
+repo with `scripts/ci/ci-trust-paths.txt` (its first write waits for a grant): it is claimed, recorded
 and named on the PR's `outside-writes:` line, so scope creep is refused by review
 and `## Ticket coverage`, not at the write. A `holds.py grant` lets one worker write
-one held file and widens nothing else; only a token-bearing revision widens the scope.
+one held file or free trust path and widens nothing else; only a token-bearing revision widens the scope.
 
 **Completion condition (required alongside the block):** every
 brief this token protects must also state its own completion condition

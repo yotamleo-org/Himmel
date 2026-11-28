@@ -455,8 +455,7 @@ w "$KT" "$R/scripts/ci/v-slash.sh/"
 same "free trust path, a trailing slash: exit 2" "$RC" 2
 contains "free trust path, a trailing slash: the deny names the file" "$ERR" "scripts/ci/v-slash.sh is a trust path outside your brief Writes"
 norow "free trust path, a trailing slash: no row" scripts/ci/v-slash.sh
-mkdir -p "$R/scripts/CI"
-if [ ! "$R/scripts/CI" -ef "$R/scripts/ci" ]; then
+if mkdir -p "$R/scripts/CI" && [ -d "$R/scripts/ci" ] && [ ! "$R/scripts/CI" -ef "$R/scripts/ci" ]; then
     w "$KT" "$R/scripts/CI/v-case.sh"
     same "control: on a case-sensitive file system scripts/CI is another directory, no trust path: exit 0" "$RC" 0
     hasrow "control: that write claims scripts/CI/v-case.sh" scripts/CI/v-case.sh
