@@ -395,7 +395,7 @@ retire_verdict() {
         *) printf 'keep\tdoc unreadable\n'; return 0 ;;
     esac
     if [ "$mrc" = 0 ]; then
-        young=$(find "$doc" -prune -mmin -60) || { printf 'keep\tdoc age unread\n'; return 0; }
+        young=$(find -L "$doc" -prune -mmin -60) || { printf 'keep\tdoc age unread\n'; return 0; }
         [ -z "$young" ] || { printf 'keep\tdoc changed under 1 h ago\n'; return 0; }
     fi
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
@@ -430,7 +430,7 @@ retire_sessions() {
         { while IFS= read -r -d '' kv; do
             case "$kv" in WORKER_SESSION_DOC=*) RETIRE_SESSIONS="$RETIRE_SESSIONS${kv#WORKER_SESSION_DOC=}"$'\n' ;; esac
         done; } 2>/dev/null < "$p/environ" && continue
-        IFS= read -r st 2>/dev/null < "$p/stat" || continue
+        IFS= read -r st 2>/dev/null < "$p/stat" || { [ -d "$p" ] || continue; RETIRE_SESSIONS=unreadable; return 0; }
         st=${st##*) }
         case "${st%% *}" in Z|X) continue ;; esac
         RETIRE_SESSIONS=unreadable; return 0
