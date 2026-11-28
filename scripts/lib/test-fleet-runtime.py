@@ -302,9 +302,126 @@ class Runtime(unittest.TestCase):
         self.assertTrue(all((entry / 'managed.json').exists() for entry in slots), report)
         self.assertNotIn('family target reached', report)
         self.assertIn('admission lock lost (stamp) — re-running admission (1 of 2)', results[0][2])
+        for _, _, err, _ in results:
+            self.assertIn('bank-preflight: cap-source=family-target target=20 policy-cap=30', err)
         holds = [int(h) for _, _, err, _ in results for h in re.findall(r'admission lock held (\d+)s', err)]
         self.assertEqual(len(holds), 22, report)
         print('W2: largest hold %ss, slowest launch %.1fs' % (max(holds), max(r[3] for r in results)), file=sys.stderr)
+
+    def cap_readers_env(self):
+        """Target 3 under policy cap 4, one wrapped worker in the census and one legacy api reservation: the
+        unmanaged rules count neither, a managed launch counts both."""
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '3', '--expect-gen', '1')
+        (self.bucket / '.himmel').mkdir(exist_ok=True)
+        (self.bucket / '.himmel/config.json').write_text('{"policy":{"HIMMEL_FLEET_CAP":4}}\n')
+        handover = self.bucket / 'handover'
+        handover.mkdir()
+        wrapped = handover / 'wrapped.md'
+        wrapped.write_text('## Results\n- 10:00 WRAPPED — done.\n')
+        proc = self.bucket / 'cap-proc/9701'
+        proc.mkdir(parents=True)
+        (proc / 'comm').write_text('claude')
+        (proc / 'cmdline').write_bytes(b'claude\0--model\0claude-opus-5\0-n\0HIMMEL-t9701-wrapped\0load '
+                                       + str(wrapped).encode() + b' and continue\0')
+        census = self.stub('ps-cap', 'echo "9701 --model claude-opus-5 -n HIMMEL-t9701-wrapped load doc"')
+        api = self.bucket / 'slots/legacy-api'
+        api.mkdir(parents=True)
+        (api / 'expires').write_text('%d\n' % (time.time() + 900))
+        (api / 'pid').write_text('%d\n' % os.getpid())
+        (api / 'lane').write_text('api\n')
+        return dict(self.env, FLEET_PS_CMD=census, FLEET_PROC=str(proc.parent), FLEET_HANDOVER_ROOT_OVERRIDE=str(handover),
+                    CADENCE_USAGE_SKIP_REFRESH='1', CADENCE_USAGE_CACHE=str(self.bucket / 'missing-cache'),
+                    CADENCE_USAGE_LEDGER=str(self.bucket / 'cadence.jsonl'), CADENCE_USAGE_LANE='native')
+
+    def plain_read(self, env, root=None, **extra):
+        env = {key: value for key, value in dict(env, **extra).items() if value is not None}
+        p = self.entry('scripts/lib/usage-preflight.sh', env=env, root=root)
+        self.assertIn(p.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), p.stderr)
+        return p
+
+    def launch_read(self, env, doc=None, aid='one'):
+        doc = doc or self.doc
+        self.rt('begin', aid=aid, doc=doc)
+        return self.entry('scripts/lib/usage-preflight.sh', env=dict(
+            env, FLEET_LAUNCH_DOC=str(doc), FLEET_LAUNCH_MANIFEST=str(self.m), FLEET_LAUNCH_ATTEMPT=aid,
+            CADENCE_USAGE_LAUNCH='1', CADENCE_USAGE_WORKER=doc.stem, CADENCE_USAGE_CALLER_PID=str(os.getpid())))
+
+    @staticmethod
+    def fleet_total(stderr):
+        return re.search(r'FLEET native=.* total=(\d+/\d+)', stderr).group(1)
+
+    def state_stamps(self):
+        return {path.name: (path.stat().st_ino, path.stat().st_mtime_ns) for path in (self.bucket / 'fleet-control.json', self.m)}
+
+    def test_a_plain_read_with_the_launch_locator_prints_the_launch_count_and_cap(self):
+        env = self.cap_readers_env()
+        before = self.state_stamps()
+        plain = self.plain_read(env, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m))
+        self.assertEqual(self.state_stamps(), before, 'the plain read wrote the control or the manifest')
+        launch = self.launch_read(env)
+        self.assertEqual(self.fleet_total(plain.stderr), '2/3', plain.stderr)
+        self.assertEqual(self.fleet_total(launch.stderr), self.fleet_total(plain.stderr), launch.stderr)
+        for p in (plain, launch):
+            self.assertIn('bank-preflight: cap-source=family-target target=3 policy-cap=4', p.stderr)
+
+    def test_a_plain_read_counts_a_settled_attempts_slot_that_the_launch_releases(self):
+        env = self.cap_readers_env()
+        settled = self.bucket / 'TEST-2-N2-settled.md'
+        settled.write_text('---\ndescription: fixture brief\n---\n# settled\n')
+        self.call('add', self.m, settled, '--lane', 'native', '--pending')
+        first = self.launch_read(env, doc=settled, aid='old')
+        self.assertIn(first.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), first.stderr)
+        self.rt('outcome', aid='old', doc=settled, extra=('--phase', 'refused'))
+        self.assertTrue((self.bucket / 'slots' / settled.stem).exists())
+        plain = self.plain_read(env, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m))
+        launch = self.launch_read(env)
+        plain_n, plain_cap = self.fleet_total(plain.stderr).split('/')
+        launch_n, launch_cap = self.fleet_total(launch.stderr).split('/')
+        self.assertEqual((int(plain_n), plain_cap), (int(launch_n) + 1, launch_cap), plain.stderr + launch.stderr)
+        self.assertEqual(plain_cap, '3')
+
+    def test_the_no_write_check_can_fail_when_a_plain_read_runs_check(self):
+        env = self.cap_readers_env()
+        tree = self.anchorless_tree('tree-check')
+        preflight = tree / 'scripts/lib/usage-preflight.sh'
+        text = preflight.read_text()
+        self.assertIn('fleet_runtime.py" resolve --doc', text)
+        preflight.write_text(text.replace('fleet_runtime.py" resolve --doc', 'fleet_runtime.py" check --doc'))
+        before = self.state_stamps()
+        self.plain_read(env, root=tree, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m))
+        self.assertNotEqual(self.state_stamps(), before)
+
+    def test_a_plain_read_without_a_managed_locator_keeps_the_policy_cap(self):
+        env = self.cap_readers_env()
+        loose = self.bucket / 'loose'
+        loose.mkdir()
+        (loose / 'notes.md').write_text('# personal\n')
+        for extra in ({}, {'WORKER_SESSION_DOC': str(self.doc)}, {'FLEET_LAUNCH_DOC': str(loose / 'notes.md')}):
+            p = self.plain_read(env, FLEET_LAUNCH_DOC=None, **extra)
+            self.assertEqual(self.fleet_total(p.stderr), '0/4', (extra, p.stderr))
+            for line in ('cap-source=', 'family target not read', 'timeout-bin:'):
+                self.assertNotIn(line, p.stderr, extra)
+
+    def test_a_plain_read_whose_family_read_is_refused_says_so(self):
+        env = self.cap_readers_env()
+        (self.bucket / 'fleet-control.json').write_text('{')
+        p = self.plain_read(env, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m))
+        self.assertEqual(self.fleet_total(p.stderr), '0/4', p.stderr)
+        self.assertIn('family target not read (runtime refused) — counted as an unmanaged read', p.stderr)
+
+    def test_a_plain_read_whose_family_read_hangs_gives_up_at_its_bound(self):
+        env = self.cap_readers_env()
+        tools = self.bucket / 'slow-tools'
+        tools.mkdir()
+        (tools / 'python3').write_text('#!/bin/sh\nif [ "$3" = resolve ]; then sleep 10; fi\nexec %s "$@"\n' % shlex.quote(shutil.which('python3')))
+        (tools / 'python3').chmod(0o755)
+        started = time.time()
+        p = self.plain_read(env, FLEET_LAUNCH_DOC=str(self.doc), FLEET_LAUNCH_MANIFEST=str(self.m),
+                            PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        self.assertLess(time.time() - started, 9, p.stderr)
+        self.assertEqual(self.fleet_total(p.stderr), '0/4', p.stderr)
+        self.assertIn('family target not read (timeout) — counted as an unmanaged read', p.stderr)
+        self.assertNotIn('fleet-runtime:', p.stderr)
 
     def primary_tree(self, name):
         """A copy of anchorless_tree's layout with no .git and no .env entry, then `git init`ed, so the guard

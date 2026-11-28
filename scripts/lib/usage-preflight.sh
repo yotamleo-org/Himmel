@@ -132,6 +132,33 @@ if [ "$LAUNCH_INTENT" = 1 ]; then
     echo 'bank-preflight: fleet-paused (managed control unavailable or paused)' >&2
     emit SKIPPED-FLEET
   fi
+elif [ -n "${FLEET_LAUNCH_DOC:-}" ]; then
+  # shellcheck source=scripts/lib/timeout-bin.sh
+  . "$PREFLIGHT_LIB/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+  _fleet_read_why=''
+  if [ -z "${_TIMEOUT_BIN:-}" ]; then
+    _fleet_read_why='no timeout binary'
+  else
+    _fleet_read=$("$_TIMEOUT_BIN" 5 env -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_ATTEMPT python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" resolve --doc "$FLEET_LAUNCH_DOC" --manifest "${FLEET_LAUNCH_MANIFEST:-}" 2>/dev/null)
+    _fleet_read_rc=$?
+    case "$_fleet_read_rc" in
+      0)
+        case "$(printf '%s\n' "$_fleet_read" | jq -r '.managed' 2>/dev/null)" in
+          true)
+            if [ -n "$(printf '%s\n' "$_fleet_read" | jq -r '.slots // empty' 2>/dev/null)" ]; then
+              _managed_scope="$_fleet_read"
+            else
+              _fleet_read_why='no slots'
+            fi ;;
+          false) ;;
+          *) _fleet_read_why='unparseable output' ;;
+        esac ;;
+      10) _fleet_read_why='runtime refused' ;;
+      124) _fleet_read_why='timeout' ;;
+      *) _fleet_read_why="exit $_fleet_read_rc" ;;
+    esac
+  fi
+  [ -z "$_fleet_read_why" ] || echo "bank-preflight: family target not read ($_fleet_read_why) — counted as an unmanaged read" >&2
 fi
 
 # fleet-size cap. Concurrency, not bank exhaustion, burned the
@@ -162,7 +189,10 @@ fi
 is_int "$FLEET_CAP" || FLEET_CAP=4
 if [ -n "$_managed_scope" ] && [ "$(printf '%s\n' "$_managed_scope" | jq -r .managed)" = true ]; then
   _managed_target=$(printf '%s\n' "$_managed_scope" | jq -r .target)
-  [ "$FLEET_CAP" -le "$_managed_target" ] || FLEET_CAP="$_managed_target"
+  if [ "$FLEET_CAP" -gt "$_managed_target" ]; then
+    _fleet_cap_source="bank-preflight: cap-source=family-target target=$_managed_target policy-cap=$FLEET_CAP"
+    FLEET_CAP="$_managed_target"
+  fi
   FLEET_CAP_OK=''
 fi
 
@@ -865,7 +895,7 @@ fi
 # anything git-tracked.
 SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
 if [ -n "${_managed_target:-}" ]; then
-  SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) || emit SKIPPED-FLEET
+  if ! SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) && [ "$LAUNCH_INTENT" = 1 ]; then emit SKIPPED-FLEET; fi
 fi
 mkdir -p "$SLOTS" 2>/dev/null
 
@@ -1059,6 +1089,7 @@ if [ "$_fleet_admitted" -eq 1 ] && [ "$(cat "$SLOTS/.admit/pid" 2>/dev/null)" !=
 fi
 
 echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrouter=$fleet_openrouter reserved=$fleet_reserved total=$fleet_n/$FLEET_CAP" >&2
+[ -z "${_fleet_cap_source:-}" ] || echo "$_fleet_cap_source" >&2
 _fleet_own_recheck=false
 if [ -n "${CADENCE_USAGE_RECHECK_ATTEMPT:-}" ]; then
   _fleet_own_recheck=$(python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" reservation \
