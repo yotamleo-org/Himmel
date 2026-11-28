@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Offline integration checks for the public fleet writer and launch gates."""
+import ast
 import collections
+import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import socket
 import subprocess
@@ -18,6 +21,33 @@ os.environ['HIMMEL_CORE_CHECK_BATCH'] = 'off'
 ROOT = Path(__file__).resolve().parents[2]
 WRITER =ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
 ENTRYPOINTS = Path(os.environ.get('FLEET_RUNTIME_ENTRYPOINTS', ROOT))
+
+LOSS_TRIGGER = r'''_lt_n=$(( $(cat "$_lt_marks/passes" 2>/dev/null || echo 0) + 1 ))
+printf '%s\n' "$_lt_n" > "$_lt_marks/passes"
+cat "/proc/$$/environ" > "$_lt_marks/environ.$_lt_n" 2>/dev/null
+cat "/proc/$$/cmdline" > "$_lt_marks/cmdline.$_lt_n" 2>/dev/null
+_lt_fire() {
+  [ "$_lt_mode" = every ] || [ ! -e "$_lt_marks/fired" ] || return 0
+  echo x >> "$_lt_marks/fired"
+  rm -rf "$SLOTS/.admit"
+}
+'''
+
+
+def loss_trigger(tree, where, once):
+    """Replace the tree's key-library symlink with a file that sources the real library by absolute path and
+    removes .admit once or on every call: `top` while sourced, `func` inside fleet_reservation_key. Each pass
+    dumps its own /proc/$$/environ and cmdline into the returned marks directory."""
+    marks = tree / 'loss-marks'
+    marks.mkdir()
+    key = tree / 'scripts/lib/fleet-reservation-key.sh'
+    key.unlink()
+    fire = '_lt_fire\n' if where == 'top' else ('eval "_lt_real_$(declare -f fleet_reservation_key)"\n'
+                                                 'fleet_reservation_key() { _lt_fire; _lt_real_fleet_reservation_key "$@"; }\n')
+    key.write_text('. %s\n_lt_marks=%s\n_lt_mode=%s\n%s%s' % (
+        shlex.quote(str(ENTRYPOINTS / 'scripts/lib/fleet-reservation-key.sh')), shlex.quote(str(marks)),
+        'once' if once else 'every', LOSS_TRIGGER, fire))
+    return marks
 
 
 class Runtime(unittest.TestCase):
@@ -143,7 +173,7 @@ class Runtime(unittest.TestCase):
         self.call('runtime', 'stamp', '--slot', slot, '--attempt-id', 'one', '--pid', os.getpid(), ok=False)
         self.assertFalse((slot / 'managed.json').exists())
 
-    def stamp_after(self, change):
+    def stamp_after(self, change, **extra):
         self.active()
         self.rt('begin')
         tools = self.bucket / 'stamp-tools'
@@ -152,36 +182,218 @@ class Runtime(unittest.TestCase):
         shim.write_text('#!/bin/sh\nif [ "$3" = stamp ]; then touch "$HOME/stamp-raced"; %s; fi\nexec %s "$@"\n'
                         % (change, shlex.quote(shutil.which('python3'))))
         shim.chmod(0o755)
-        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one', PATH=str(tools) + os.pathsep + os.environ['PATH'])
+        env = dict(self.launch_env(), FLEET_LAUNCH_ATTEMPT='one', PATH=str(tools) + os.pathsep + os.environ['PATH'], **extra)
         p = self.entry('scripts/lib/usage-preflight.sh', env=env)
         self.assertTrue((self.bucket / 'stamp-raced').exists(), p.stderr)
         return p
 
-    def refused_as_a_lost_lock(self, change):
-        p = self.stamp_after(change)
+    def refused_as_a_lost_lock(self, change, **extra):
+        p = self.stamp_after(change, **extra)
         self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
         self.assertIn('reservation admission lock is not held by preflight', p.stderr)
         self.assertNotIn('No such file', p.stderr)
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+        return p
 
     def test_a_missing_lock_pid_refuses_the_stamp_by_name(self):
-        self.refused_as_a_lost_lock('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+        p = self.refused_as_a_lost_lock('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"',
+                                        FLEET_ADMIT_LAUNCH_WAIT_SECS='6', FLEET_ADMIT_RETRY_ITERS='3')
+        self.assertIn('admission lock lost (stamp) — re-running admission (1 of 2)', p.stderr)
+        self.assertIn('could not acquire the fleet admission lock', p.stderr)
 
     def test_a_lock_lost_then_released_by_its_reclaimer_refuses_the_stamp(self):
-        self.refused_as_a_lost_lock('rm -rf "$HIMMEL_FLEET_SLOTS/.admit"')
+        p = self.refused_as_a_lost_lock('rm -rf "$HIMMEL_FLEET_SLOTS/.admit"', FLEET_ADMIT_LAUNCH_WAIT_SECS='10')
+        self.assertIn('admission lock lost (stamp) — re-running admission (2 of 2)', p.stderr)
+        refusal = 'was lost during admission (stamp) and the re-admissions did not keep it'
+        self.assertIn(refusal, p.stderr)
+        self.assertLess(p.stderr.index('(2 of 2)'), p.stderr.index(refusal))
 
     def test_a_lock_held_by_another_pid_still_refuses_the_stamp(self):
-        p = self.stamp_after('echo 1 > "$HIMMEL_FLEET_SLOTS/.admit/pid"')
+        p = self.stamp_after('echo 1 > "$HIMMEL_FLEET_SLOTS/.admit/pid"',
+                             FLEET_ADMIT_LAUNCH_WAIT_SECS='6', FLEET_ADMIT_RETRY_ITERS='3')
         self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
         self.assertIn('reservation admission lock is not held by preflight', p.stderr)
+        self.assertIn('admission lock lost (stamp) — re-running admission (1 of 2)', p.stderr)
+        self.assertIn('could not acquire the fleet admission lock', p.stderr)
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_a_lock_lost_once_at_the_stamp_re_admits(self):
+        p = self.stamp_after('if [ ! -e "$HOME/lost-once" ]; then touch "$HOME/lost-once"; rm -rf "$HIMMEL_FLEET_SLOTS/.admit"; fi')
+        self.assertIn(p.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), p.stderr)
+        self.assertIn('admission lock lost (stamp) — re-running admission (1 of 2)', p.stderr)
+        self.assertNotIn('failed to write reservation metadata', p.stderr)
+        slots = [entry for entry in (self.bucket / 'slots').iterdir() if not entry.name.startswith('.')]
+        self.assertEqual([entry.name for entry in slots], [self.doc.stem], p.stderr)
+        self.assertEqual(json.loads((slots[0] / 'managed.json').read_text())['attempt_id'], 'one')
 
     def test_a_pause_before_the_stamp_still_refuses_with_the_lock_missing(self):
         p = self.stamp_after('rm -f "$HIMMEL_FLEET_SLOTS/.admit/pid"; bash %s control set %s --mode paused --expect-gen 2 >/dev/null'
                              % (shlex.quote(str(WRITER)), shlex.quote(str(self.m))))
         self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
         self.assertIn('fleet-paused or reservation generation changed', p.stderr)
+        self.assertIn('failed to write reservation metadata', p.stderr)
+        self.assertNotIn('re-running admission', p.stderr)
         self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    @staticmethod
+    def preflight_run_timeout(source):
+        """The value `run` bounds its one preflight call with, when that bound is the PREFLIGHT_TIMEOUT constant."""
+        module = ast.parse(source)
+        consts = {target.id: node.value.value for node in module.body if isinstance(node, ast.Assign)
+                  and isinstance(node.value, ast.Constant) for target in node.targets if isinstance(target, ast.Name)}
+        calls = [node for node in ast.walk(module) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == 'run' and node.args and 'usage-preflight.sh' in ast.unparse(node.args[0])]
+        if len(calls) != 1:
+            return None
+        bound = {keyword.arg: keyword.value for keyword in calls[0].keywords}.get('timeout')
+        if isinstance(bound, ast.Name) and bound.id == 'PREFLIGHT_TIMEOUT':
+            return consts.get('PREFLIGHT_TIMEOUT')
+        return None
+
+    def test_run_bounds_its_preflight_by_one_preflights_worst_case(self):
+        path = self.anchorless_tree() / 'scripts/lib/fleet_runtime.py'
+        spec = importlib.util.spec_from_file_location('tree_fleet_runtime', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        worst = 5 + 120 + 78 + 73 + 60
+        self.assertGreaterEqual(getattr(module, 'PREFLIGHT_TIMEOUT', 0), worst)
+        source = path.read_text()
+        self.assertGreaterEqual(self.preflight_run_timeout(source) or 0, worst)
+        self.assertIsNone(self.preflight_run_timeout(source.replace('timeout=PREFLIGHT_TIMEOUT', 'timeout=60')))
+
+    def test_a_managed_wave_of_eleven_all_start_below_the_target(self):
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '20', '--expect-gen', '1')
+        (self.bucket / '.himmel').mkdir(exist_ok=True)
+        (self.bucket / '.himmel/config.json').write_text('{"policy":{"HIMMEL_FLEET_CAP":30}}\n')
+        docs = []
+        for n in range(1, 12):
+            doc = self.bucket / ('TEST-%d-N%d-wave.md' % (100 + n, n))
+            doc.write_text('---\ndescription: wave fixture\n---\n> **Prior art:** none found (offline fixture)\n\n# wave\n')
+            self.call('add', self.m, doc, '--lane', 'native', '--pending')
+            docs.append(doc)
+        plain = self.anchorless_tree()
+        lossy = self.anchorless_tree('tree-loss')
+        marks = loss_trigger(lossy, 'func', once=True)
+        census = self.stub('ps-wave', 'sleep 1\nexit 0')
+        env = dict(self.env, CADENCE_USAGE_SKIP_REFRESH='1', CADENCE_USAGE_CACHE=str(self.bucket / 'missing-cache'),
+                   CADENCE_USAGE_LEDGER=str(self.bucket / 'cadence.jsonl'), FLEET_PS_CMD=census, CADENCE_USAGE_LANE='native')
+        env.pop('FLEET_CAP_OK', None)
+        launcher = ('while [ ! -e "$HOME/wave-go" ]; do sleep 0.01; done; . "$1/scripts/lib/fleet-launch.sh"; '
+                    'fleet_launch_prepare "$2" "$3" "$4" || exit 11; '
+                    'token=$(CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER="$3" CADENCE_USAGE_CALLER_PID=$$ '
+                    'bash "$1/scripts/lib/usage-preflight.sh"); echo "token=$token"; '
+                    'case "$token" in PROCEED|BANK-STALE|BANK-UNKNOWN) ;; *) exit 12 ;; esac; '
+                    'fleet_launch_commit || exit 13; echo committed')
+        started = time.time()
+        procs = [subprocess.Popen(['bash', '-c', launcher, 'wave', str(lossy if n == 0 else plain), str(doc), doc.stem, str(self.m)],
+                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                 for n, doc in enumerate(docs)]
+        (self.bucket / 'wave-go').touch()
+        results = []
+        for proc in procs:
+            out, err = proc.communicate(timeout=400)
+            results.append((proc.returncode, out, err, time.time() - started))
+        report = '\n'.join('rc=%s %s %s' % (rc, out.strip(), err.strip()[-600:]) for rc, out, err, _ in results)
+        self.assertTrue((marks / 'fired').exists(), report)
+        self.assertEqual([rc for rc, *_ in results], [0] * 11, report)
+        self.assertTrue(all('committed' in out for _, out, _, _ in results), report)
+        slots = [entry for entry in (self.bucket / 'slots').iterdir() if not entry.name.startswith('.')]
+        self.assertEqual(sorted(entry.name for entry in slots), sorted(doc.stem for doc in docs), report)
+        self.assertTrue(all((entry / 'managed.json').exists() for entry in slots), report)
+        self.assertNotIn('family target reached', report)
+        self.assertIn('admission lock lost (stamp) — re-running admission (1 of 2)', results[0][2])
+        holds = [int(h) for _, _, err, _ in results for h in re.findall(r'admission lock held (\d+)s', err)]
+        self.assertEqual(len(holds), 22, report)
+        print('W2: largest hold %ss, slowest launch %.1fs' % (max(holds), max(r[3] for r in results)), file=sys.stderr)
+
+    def primary_tree(self, name):
+        """A copy of anchorless_tree's layout with no .git and no .env entry, then `git init`ed, so the guard
+        reads it as its own primary checkout; a fixture .env sets the policy cap."""
+        tree = self.bucket / name
+        tree.mkdir()
+        real = {Path('scripts'), Path('scripts/handover'), Path('scripts/handover/chief-kit'), Path('scripts/lib')}
+        for entry in ENTRYPOINTS.glob('*'):
+            if entry.name not in ('scripts', '.git', '.env'):
+                (tree / entry.name).symlink_to(entry)
+        for directory in sorted(real):
+            (tree / directory).mkdir(parents=True, exist_ok=True)
+            for entry in (ENTRYPOINTS / directory).iterdir():
+                if directory / entry.name not in real:
+                    (tree / directory / entry.name).symlink_to(entry)
+        for copied in ('chokepoint-seam-guard.sh', 'fleet_runtime.py', 'usage-preflight.sh'):
+            (tree / 'scripts/lib' / copied).unlink()
+            shutil.copy2(ENTRYPOINTS / 'scripts/lib' / copied, tree / 'scripts/lib' / copied)
+        subprocess.run(['git', 'init', '-q', str(tree)], check=True, capture_output=True)
+        (tree / '.env').write_text('HIMMEL_FLEET_CAP=1000\n')
+        common = subprocess.run(['git', '-C', str(tree), 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+                                capture_output=True, text=True).stdout.strip()
+        self.assertEqual(common, str(tree / '.git'))
+        return tree
+
+    def detached_preflight(self, tree, env):
+        """Run the tree's preflight by a double fork, so no claude ancestor remains; returns (rc, stdout, stderr)."""
+        out, err, rc = (self.bucket / (tree.name + suffix) for suffix in ('.out', '.err', '.rc'))
+        inner = 'bash "$1" > "$2" 2> "$3" < /dev/null; echo $? > "$4"'
+        outer = '( o=$$; while kill -0 "$o" 2>/dev/null; do sleep 0.05; done; bash -c "$0" _ "$@" ) > /dev/null 2>&1 &'
+        subprocess.run(['bash', '-c', outer, inner, str(tree / 'scripts/lib/usage-preflight.sh'), str(out), str(err), str(rc)],
+                       env=env, timeout=10, check=True)
+        deadline = time.time() + 40
+        while time.time() < deadline and not rc.exists():
+            time.sleep(0.1)
+        time.sleep(0.2)
+        self.assertTrue(rc.exists(), 'the detached preflight did not finish')
+        return int(rc.read_text().strip()), out.read_text(), err.read_text()
+
+    def detached_env(self, tree):
+        return {'PATH': os.environ['PATH'], 'HOME': str(self.bucket), 'CLAUDECODE': '1', 'A-B': '1',
+                'HIMMEL_FLEET_SLOTS': str(self.bucket / (tree.name + '-slots')), 'CADENCE_USAGE_LAUNCH': '1',
+                'CADENCE_USAGE_WORKER': 'TEST-9-N9-detached', 'CADENCE_USAGE_CALLER_PID': str(os.getpid()),
+                'CADENCE_USAGE_SKIP_REFRESH': '1', 'CADENCE_USAGE_LEDGER': str(self.bucket / 'detached.jsonl')}
+
+    def test_a_re_admitted_pass_starts_from_the_entry_environment(self):
+        if not os.access('/proc/self/environ', os.R_OK):
+            self.skipTest('/proc/self/environ is unreadable on this host')
+        tree = self.primary_tree('primary')
+        marks = loss_trigger(tree, 'func', once=True)
+        rc, out, err = self.detached_preflight(tree, self.detached_env(tree))
+        fleet = re.search(r'total=(\d+)/(\d+)', err)
+        if fleet and int(fleet.group(2)) - int(fleet.group(1)) <= 1:
+            self.skipTest('the FLEET line is within 1 of its cap (policy source): ' + fleet.group(0))
+        self.assertNotEqual(rc, 96, err)
+        self.assertIn(out.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN', 'SKIPPED-BANK'), err)
+        self.assertIn('admission lock lost (post-reserve) — re-running admission (1 of 2)', err)
+        environs = [(marks / ('environ.%d' % n)).read_bytes().split(b'\0') for n in (1, 2)]
+        self.assertFalse((marks / 'environ.3').exists(), err)
+        for raw in environs:
+            self.assertIn(b'A-B=1', raw)
+        drop = {b'SHLVL', b'_', b'PWD', b'OLDPWD', b'_FLEET_READMIT_N', b'_FLEET_ADMIT_T0'}
+        first, second = ({e.split(b'=', 1)[0]: e for e in raw if e and e.split(b'=', 1)[0] not in drop} for raw in environs)
+        self.assertEqual(first, second)
+        self.assertIn(b'_FLEET_READMIT_N=1', environs[1])
+        for n in (1, 2):
+            words = (marks / ('cmdline.%d' % n)).read_bytes().split(b'\0')[:-1]
+            self.assertEqual(len(words), 2, words)
+            self.assertEqual(words[1], str(tree / 'scripts/lib/usage-preflight.sh').encode())
+            self.assertFalse([word for word in words if b'=' in word], words)
+            self.assertEqual(words[0] == b'bash', n == 1, words)
+            self.assertEqual(os.path.isabs(words[0].decode()), n == 2, words)
+
+    def test_a_re_admission_without_the_restore_is_refused_by_the_guard(self):
+        if not os.access('/proc/self/environ', os.R_OK):
+            self.skipTest('/proc/self/environ is unreadable on this host')
+        tree = self.primary_tree('primary-norestore')
+        preflight = tree / 'scripts/lib/usage-preflight.sh'
+        text = preflight.read_text()
+        restore = text[text.index('    for name in $(compgen -e); do\n'):text.index('    export _FLEET_READMIT_N=')]
+        self.assertIn('export "$word"', restore)
+        preflight.write_text(text.replace(restore, ''))
+        marks = loss_trigger(tree, 'func', once=True)
+        rc, out, err = self.detached_preflight(tree, self.detached_env(tree))
+        self.assertIn('admission lock lost (post-reserve) — re-running admission (1 of 2)', err)
+        self.assertEqual(rc, 96, err)
+        self.assertEqual(out.strip(), '', err)
+        self.assertRegex(err, r'seam\(s\)[^-]*HIMMEL_FLEET_CAP')
+        self.assertEqual(sorted(path.name for path in marks.glob('environ.*')), ['environ.1'])
 
     def test_missing_locator_is_derived_and_conflicting_locator_refuses(self):
         self.call('runtime', 'check', '--doc', self.doc, ok=False)
@@ -261,12 +473,12 @@ class Runtime(unittest.TestCase):
                     CADENCE_USAGE_LEDGER=str(self.bucket / 'cadence.jsonl'), FLEET_PS_CMD=ps,
                     FLEET_CAP_OK='1', HIMMEL_API_LANE='on')
 
-    def anchorless_tree(self):
+    def anchorless_tree(self, name='tree'):
         """Symlinks to every entry of ENTRYPOINTS, except that scripts/, scripts/handover/, scripts/handover/chief-kit/ and scripts/lib/ are real
         directories and the seam guard, the preflight and the runtime are copies. The guard resolves its root from its own directory, so a launch
         run from this tree is not on a primary checkout, which is what a CI checkout is: there it refuses a Claude Code marker beside a seam,
         and the worker exports a marker. The runtime accepts a stamp only from the preflight beside it, so the two are copied together."""
-        tree = self.bucket / 'tree'
+        tree = self.bucket / name
         if tree.exists():
             return tree
         tree.mkdir()

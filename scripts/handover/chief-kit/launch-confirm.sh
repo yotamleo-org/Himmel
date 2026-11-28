@@ -4,8 +4,9 @@
 # usage: launch-confirm.sh --since <epoch> [--chief <name>] [--secs <n>] <session-name> <log>
 #
 # Run by the chief after it launches a worker (headed-arm-worker.sh, detached), with
-# --since the epoch it took just before that launch. Polls once a second, up to --secs (default 60, or
-# LAUNCH_CONFIRM_SECS), on that launch attempt only: the lines <log> holds after its newest
+# --since the epoch it took just before that launch. Polls once a second, up to --secs (default 240, or
+# LAUNCH_CONFIRM_SECS: a managed launch runs two preflights, each waiting up to its admission budget, so a
+# launch still waiting its turn is not reported unconfirmed), on that launch attempt only: the lines <log> holds after its newest
 # `LAUNCH-START <session> epoch=<s>` line with <s> at or after --since, so an earlier attempt's lines and an earlier
 # session never decide it, and an attempt whose START has not been written yet is waited for.
 #   the attempt wrote LAUNCH-OK and a claude process carries `-n <session-name>` (headed-arm.sh's pattern)
@@ -19,7 +20,7 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() { echo "usage: launch-confirm.sh --since <epoch> [--chief <name>] [--secs <n>] <session-name> <log>" >&2; exit 2; }
-chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-60}" since=''
+chief="${HIMMEL_CONSOLE_NAME:-}" secs="${LAUNCH_CONFIRM_SECS:-240}" since=''
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --chief) [ "$#" -ge 2 ] || usage; chief="$2"; shift 2 ;;
