@@ -1182,9 +1182,7 @@ nrt() { timeout 20 python3 -I -c'import sys; sys.path.insert(0, sys.argv[1]); im
 expect_text() { local want=$1 label=$2 got; shift 2; got=$(nrt "$@"); if [ "$got" = "$want" ]; then pass "floor $want: $label"; else fail "floor $want: $label" "$got"; fi; }
 expect_text none "a brief whose lines name git push, a :: word and main apart" $'A git push is never retried.\nWrite the SWEEP line :: sites=a\nmerge into main\n' bash scripts/handover/brief-lint.sh b.md
 expect_text main-history "a script line that force-pushes main" $'set -e\ngit push -f origin main\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script that pushes its arguments" $'git push "$@"\n' bash s.sh -f origin main
-# shellcheck disable=SC2016
 expect_text main-history "a script that pushes a variable set on another line" $'B=main\ngit push -f origin "$B"\n' bash s.sh
 expect_text main-history "a script line that runs on past a backslash" $'git push -f \\\norigin main\n' bash s.sh
 expect_text main-history "a script whose git runs on past a backslash" $'git \\\npush --force origin main\n' bash s.sh
@@ -1197,32 +1195,22 @@ expect_rule none bash scripts/handover/brief-lint.sh '$x' push -f main
 expect_rule main-history bash -c '"$g" push -f origin main'
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'true;$g push -f origin main'
-# shellcheck disable=SC2016
 expect_text main-history "a script whose assignment of main runs on past a backslash" $'B=ma\\\nin\ngit push -f origin "$B"\n' bash s.sh
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'out=$(git push -f origin main)'
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'echo "$(git push --force origin main)"'
-# shellcheck disable=SC2016
 expect_text main-history "a script line that captures a force push in a command substitution" $'out=$(git push -f origin main)\n' bash s.sh
 expect_text main-history "a python file that runs a force push" $'import os\nos.system("git push -f origin main")\n' python3 p.py
-# shellcheck disable=SC2016
 expect_text main-history "a script whose quoted multi-word value carries the force and main" $'X="--force origin main"\ngit push $X\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script whose array carries the force and main" $'a=(-f origin main)\ngit push "${a[@]}"\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script whose for loop binds main" $'for b in main master; do\n  git push -f origin "$b"\ndone\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script whose set binds the force and main" $'set -- -f origin main\ngit push "$@"\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script whose read binds main" $'read b <<< main\ngit push -f origin "$b"\n' bash s.sh
-# shellcheck disable=SC2016
 expect_text main-history "a script whose array of the force and main spans lines" $'args=(\n  --force\n  origin main\n)\ngit push "${args[@]}"\n' bash s.sh
 # shellcheck disable=SC2016
 expect_rule main-history bash -c 'env -- "$g" push -f origin main'
-# shellcheck disable=SC2016
 expect_rule main-history bash -c "eval '\"\$g\" push -f origin main'"
-# shellcheck disable=SC2016
 expect_text main-history "a script that runs a computed program under a wrapper" $'timeout -s KILL 5 "$g" push -f origin main\n' bash s.sh
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
