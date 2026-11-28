@@ -215,6 +215,18 @@ test('a NO-GO without the class field is UNRECORDED; one with it is recorded', (
   assert.equal(ok.art.verdict, 'NO-GO');
 });
 
+test('under the judge desk marker a valid GO is UNRECORDED: the verdict stays in the artifact, no record is written', () => {
+  const f = fixture();
+  const r = f.run(f.args, { HIMMEL_CONSOLE_JUDGE_NOVERDICT: '1' });
+  assert.equal(r.status, 3, r.stderr);
+  assert.equal(r.art.status, 'UNRECORDED');
+  assert.match(r.art.reason, /HIMMEL_CONSOLE_JUDGE_NOVERDICT is set \(a judge desk writes no verdict\); nothing written/);
+  assert.equal(r.art.verdict, 'GO');
+  assert.equal(r.art.head, HEAD);
+  assert.equal(r.art.verdict_path, null);
+  assert.equal(existsSync(join(f.root, 'tuser')), false);
+});
+
 test('the prompt tells the judge a class other needs a class-reason line', () => {
   const f = fixture();
   f.run(f.args);

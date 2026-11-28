@@ -97,6 +97,7 @@ gh_json() { # <head> [cross] [state]
 export GH_JSON="$tmp/pr.json"
 
 # Run the grant with the given extra env words, args in GR_ARGS.
+unset HIMMEL_CONSOLE_JUDGE_NOVERDICT
 run() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
     HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-5058 \
     GRANT_ROUND_GH="$tmp/gh" GRANT_ROUND_PRIMARY="$prim" "$@" bash "$SCRIPT" "${GR_ARGS[@]}"; }
@@ -171,6 +172,12 @@ GR_ARGS=(501 "$SHA_A" qgood)
 rc=0; out=$(run HIMMEL_CONSOLE_LEG=1 2>&1) || rc=$?
 check "worker caller refuses" "$rc" 3
 contains "worker refusal says why" "$out" "worker"
+rc=0; out=$(run HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 2>&1) || rc=$?
+check "desk caller (LEG unset, marker set) refuses" "$rc" 3
+contains "desk caller refusal says worker" "$out" "worker"
+rc=0; out=$(run HIMMEL_CONSOLE_JUDGE=1 2>&1) || rc=$?
+check "judge caller (LEG and marker unset, JUDGE=1) refuses" "$rc" 3
+contains "judge caller refusal says worker" "$out" "worker"
 rc=0; out=$(run HIMMEL_CONSOLE_RELAY=1 2>&1) || rc=$?
 check "relay caller refuses" "$rc" 3
 check "worker/relay change nothing" "$(snap_state)" "$before"

@@ -564,6 +564,15 @@ OUT=$(HANDOVER_DIR="$WORK/w/hd" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_PRS
     bash "$SWEEP" --doc "$CHIEF" --workers-from "$WORK/w/fleet.json" --bucket "$B" 2>"$WORK/w/err")
 has "ds-r6: the GO root resolves through the library" "DUTY merge-owed 101@$H7_1" "$OUT"
 
+world; set_tail "- 10:05 READY 101 $H1 GREEN"
+verdict j101a 101 "$H2" GO
+verdict dsk6139a 101 "$H1" GO
+printf 'finding\n' > "$STUB/delta.out"
+sweep
+has "dsk: a dsk verdict at the READY head leaves the duty judge-owed" "DUTY judge-owed 101@$H7_1 :: " "$OUT"
+has "dsk: the older verdict still reaches the classifier" "--verdict-file $B/verdicts/j101a/judge.md $H2 $H1" "$(cat "$STUB/delta-calls")"
+hasnt "dsk: the classifier never reads the dsk record" "dsk6139a" "$(cat "$STUB/delta-calls")"
+
 check "no gh call outside the seam" "" "$(cat "$STUB/path-gh-calls")"
 
 bash "$SWEEP" >/dev/null 2>&1; check "usage: no args exits 2" 2 "$?"
