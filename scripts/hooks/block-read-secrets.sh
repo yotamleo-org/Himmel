@@ -2088,7 +2088,7 @@ case "$tool" in
         if [ "$tool" = Bash ] && [ "${READ_SECRETS_OK:-0}" != 1 ]; then
             if rs_unroll deny "$cmd"; then
                 _rs_child=$(jq -cn --arg c "$RS_UNROLLED" '{tool_name:"Bash",tool_input:{command:$c}}') || exit 2
-                if ! _rs_err=$(RS_UNROLL_DEPTH=$((${RS_UNROLL_DEPTH:-0} + 1)) "${BASH:-bash}" "${BASH_SOURCE[0]}" <<<"$_rs_child" 2>&1 >/dev/null); then
+                if ! _rs_err=$(RS_UNROLL_DEPTH=1 "${BASH:-bash}" "${BASH_SOURCE[0]}" <<<"$_rs_child" 2>&1 >/dev/null); then
                     printf '%s\n' "$_rs_err" >&2
                     echo "    (denied in the form the loop runs: each item written in for the loop variable)" >&2
                     exit 2
