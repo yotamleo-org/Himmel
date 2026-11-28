@@ -15,3 +15,5 @@ A worker off the native lane also writes every request or question as a marker b
 
 Send it again for the same head only after a chief succession or when the chief asks.
 A later push needs a fresh judge and GO.
+
+The judge desk's own loop (`wait`, `next`, `claim`, `record`, `draft-go`) is `scripts/handover/chief-kit/judge-desk.sh`, which reads the queue `judge-queue.sh` fills; a worker never calls it.
