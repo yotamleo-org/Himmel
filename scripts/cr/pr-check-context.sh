@@ -697,6 +697,20 @@ if ! [ "$HIMMEL_ROOT" -ef "$anchor" ] && [ "$verified_delegate" = no ]; then
     hand_off_to_anchor
 fi
 
+step0_head_loaded=no
+if [ "$pr_mode" = 0 ]; then
+    # shellcheck source=scripts/cr/pr-check-step0-head.sh
+    # shellcheck disable=SC1091
+    if . "$SCRIPT_DIR/pr-check-step0-head.sh" 2>/dev/null; then
+        step0_head_loaded=yes
+        if [ -n "$branch" ] && ! step0_left="$(step0_head_clear "$branch")"; then
+            echo "pr-check-context: WARNING - could not clear the step 0 head record: $step0_left is still there; remove it" >&2
+        fi
+    else
+        echo "pr-check-context: WARNING - cannot load $SCRIPT_DIR/pr-check-step0-head.sh, so no step 0 head record was cleared or written; pass --head <head> to panel-first-pass.sh" >&2
+    fi
+fi
+
 # guardrails/lib.sh gives default_branch (main OR master).
 # shellcheck source=../guardrails/lib.sh
 # shellcheck disable=SC1091
@@ -1212,6 +1226,10 @@ fi
 no_marker_review=no
 if { [ "$anchor_lane" = adopter ] && [ ! -f "$marker" ]; } || [ "$pr_mode" = 1 ]; then
     no_marker_review=yes
+fi
+
+if [ "$step0_head_loaded" = yes ] && ! step0_head_write "$branch" "$head"; then
+    echo "pr-check-context: WARNING - could not write the step 0 head record ($(step0_head_path "$branch")); pass --head $head to panel-first-pass.sh" >&2
 fi
 
 # Repo + branch FIRST, so the reviewer sees what this run is

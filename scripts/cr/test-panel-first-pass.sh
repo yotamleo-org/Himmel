@@ -88,6 +88,7 @@ unset HIMMEL_SESSION_LANE
 fx="$tmp/fx"
 mkdir -p "$fx/scripts/cr" "$fx/scripts/guardrails" "$fx/scripts/lib"
 cp "$HERE/panel-first-pass.sh" "$fx/scripts/cr/panel-first-pass.sh"
+[ ! -f "$HERE/pr-check-step0-head.sh" ] || cp "$HERE/pr-check-step0-head.sh" "$fx/scripts/cr/pr-check-step0-head.sh"
 cp "$HERE/anchor-handoff.sh" "$fx/scripts/cr/anchor-handoff.sh"
 cp "$HERE/base-resolver.sh" "$fx/scripts/cr/base-resolver.sh"
 cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
@@ -201,14 +202,16 @@ empty_sha="$(git -C "$repo" rev-parse feature-empty)"
 _pre_tmp="$(_list_panel_avail_tmp)"
 
 # =============================================================================
-# T1: missing --head -> exit 2, no panel call.
+# T1 (H6): no step 0 head record and no --head -> exit 2 naming step 0, no panel call, no preflight row.
 rm -f "$CALL_LOG" "$tmp/err"
 out="$( (cd "$repo" && bash "$SCRIPT" --branch feature) 2>"$tmp/err" )"; rc=$?
 err="$(cat "$tmp/err")"
 if [ "$rc" -eq 2 ]; then ok "T1 missing --head exits 2"; else bad "T1 missing --head exit (got $rc)"; fi
-assert_has "$err" "--head is required" "T1 diagnostic on stderr"
+assert_has "$err" "no step 0 head record for 'feature'" "T1 H6 diagnostic names the missing record"
+assert_has "$err" "pr-check-step0.sh" "T1 H6 diagnostic names the step 0 command"
 assert_no_ceilings "$err" "T1 exit 2"
 if [ -f "$CALL_LOG" ]; then bad "T1 panel invoked on a usage error"; else ok "T1 panel never invoked"; fi
+if grep -qF '"kind":"preflight"' "$repo/.git/cr-critic-scores.jsonl" 2>/dev/null; then bad "T1 H6 a preflight row was written"; else ok "T1 H6 no preflight row"; fi
 
 # T2: missing --branch -> exit 2, no panel call.
 rm -f "$CALL_LOG" "$tmp/err"
@@ -364,6 +367,8 @@ out="$( (cd "$repo" && FAKE_RC=0 FAKE_OUT='MUST-NOT-REVIEW' \
 err="$(cat "$tmp/err")"
 if [ "$rc" -eq 7 ]; then ok "T8 unresolvable --head exits 7"; else bad "T8 unresolvable --head exit (got $rc, want 7)"; fi
 assert_has "$err" "--head $BOGUS_SHA does not resolve to a commit in this repo" "T8 ABORT names the argument, not the panel"
+assert_has "$err" "pr-check-step0.sh" "T8 H6 the remedy names step 0"
+assert_lacks "$err" "never expand a short hash by hand" "T8 H6 the old remedy text is gone"
 assert_lacks "$err" "critic panel unavailable" "T8 must NOT report a critic outage for a caller error"
 assert_no_ceilings "$err" "T8 a pre-round exit 7"
 assert_lacks "$out" "MUST-NOT-REVIEW" "T8 no findings from a run that never reviewed"
@@ -1137,6 +1142,148 @@ if [ -n "$rs_empty" ]; then bad "T1.38 an empty diff wrote a row"; else ok "T1.3
 out="$( (cd "$rs7" && bash "$SCRIPT" --head 0000000000000000000000000000000000000000 --branch feature --full) 2>/dev/null )"
 if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 an early refusal writes no row"; else bad "T1.38 an early refusal wrote a row"; fi
 
+rec_common() { (cd "$1" && cd -P -- "$(git rev-parse --git-common-dir)" && pwd -P); }
+rec_path() { printf '%s/cr-step0-head/%s\n' "$(rec_common "$1")" "$(printf '%s' "$2" | git hash-object --stdin)"; }
+seed_record() {
+    local p
+    p="$(rec_path "$1" "$2")"
+    mkdir -p "${p%/*}"
+    printf 'branch=%s\nhead=%s\ntoplevel=%s\n' "$2" "$3" "$4" > "$p"
+    [ -z "${5:-}" ] || printf '%s\n' "$5" >> "$p"
+}
+clear_record() { rm -rf "$(rec_path "$1" "$2")"; }
+h_ledger="$repo/.git/cr-critic-scores.jsonl"
+[ ! -f "$h_ledger" ] || mv "$h_ledger" "$tmp/h-ledger.keep"
+h_top="$(git -C "$repo" rev-parse --show-toplevel)"
+h_rec="$(rec_path "$repo" feature)"
+h_common="$(rec_common "$repo")"
+h_run() {
+    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/err"
+    out="$( (cd "$repo" && FAKE_RC=0 bash "$SCRIPT" "$@") 2>"$tmp/err" )"; rc=$?
+    err="$(cat "$tmp/err")"
+}
+h_pf() { if [ -f "$h_ledger" ]; then grep -cF '"kind":"preflight"' "$h_ledger" | tr -d ' '; else echo 0; fi; }
+h_round() { cksum 2>/dev/null < "$repo/.git/cr-review-rounds/feature.round" || echo absent; }
+h_refused() {
+    if [ "$rc" -eq 7 ]; then ok "$1 exits 7"; else bad "$1 exit (got $rc, want 7; err: $err)"; fi
+    if [ -f "$CALL_LOG" ]; then bad "$1: the panel ran"; else ok "$1: the panel never ran"; fi
+    if [ "$(h_pf)" = 0 ]; then ok "$1: no preflight row"; else bad "$1: a preflight row was written"; fi
+    if [ "$(h_round)" = "$h_round_before" ]; then ok "$1: the round counter is unchanged"; else bad "$1: the round counter changed ($h_round_before to $(h_round))"; fi
+}
+
+rm -rf "$repo/.git/cr-review-rounds"
+seed_record "$repo" feature "$feature_sha" "$h_top"
+h_run --branch feature
+if [ "$rc" -eq 0 ]; then ok "H1 a record and no --head exits 0"; else bad "H1 exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $feature_sha --branch feature" "H1 the panel receives --branch feature and the record's full head"
+assert_has "$(grep -F '"kind":"preflight"' "$h_ledger" 2>/dev/null)" "\"head\":\"$feature_sha\"" "H1 the preflight row carries the full head"
+assert_has "$(grep -F '"kind":"round-scope"' "$h_ledger" 2>/dev/null)" "\"head\":\"$feature_sha\"" "H1 the round-scope row carries the full head"
+if [ "$(cat "$repo/.git/cr-review-rounds/feature.head" 2>/dev/null)" = "$feature_sha" ]; then ok "H1 review-round.sh's .head holds the full head"; else bad "H1 .head (got '$(cat "$repo/.git/cr-review-rounds/feature.head" 2>/dev/null)')"; fi
+
+h_round_before="$(h_round)"
+rm -f "$h_ledger"
+h_bogus="${feature_sha:0:8}deadbeefdeadbeefdeadbeefdeadbeef"
+if git -C "$repo" cat-file -e "$h_bogus" 2>/dev/null; then bad "H2 fixture: the invented sha names an object"; fi
+h_run --branch feature --head "$h_bogus"
+h_refused "H2 an invented tail"
+assert_has "$err" "$feature_sha" "H2 the refusal prints the real full head"
+
+for h_try in "$main_sha" "${main_sha:0:8}"; do
+    h_run --branch feature --head "$h_try"
+    h_refused "H5 --head $h_try"
+    assert_has "$err" "is not the step 0 head. Step 0 recorded $feature_sha" "H5 --head $h_try: the refusal prints the step 0 head"
+done
+
+seed_record "$repo" feature "$main_sha" "$h_top"
+h_run --branch feature
+h_refused "H4 head"
+assert_has "$err" "the checkout moved since step 0" "H4 head: the message names the moved checkout"
+assert_has "$err" "do not pass it as --head; re-run step 0" "H4 head: both heads are diagnostics, not a --head"
+seed_record "$repo" feature "$feature_sha" "/nonexistent/elsewhere"
+h_run --branch feature
+h_refused "H4 toplevel"
+assert_has "$err" "was written in /nonexistent/elsewhere, not this worktree ($h_top)" "H4 toplevel: the message names both trees"
+seed_record "$repo" feature "$feature_sha" "$h_top"
+sed 's/^branch=feature$/branch=other/' "$h_rec" > "$tmp/h-rec" && cat "$tmp/h-rec" > "$h_rec"
+h_run --branch feature
+h_refused "H4 branch"
+assert_has "$err" "names branch other, not feature" "H4 branch: the message names both branches"
+h_malformed() {
+    h_refused "$1"
+    assert_has "$err" "is malformed, not a plain file, or in a format this copy does not read" "$1: the message names the unreadable record"
+    assert_has "$err" "remove $h_rec and re-run step 0" "$1: the message names the path to remove"
+    assert_has "$err" "pass --head $feature_sha" "$1: the message names the full live HEAD"
+}
+seed_record "$repo" feature "$feature_sha" "$h_top" "future=1"
+h_run --branch feature
+h_malformed "H4 a fourth key"
+seed_record "$repo" feature "$feature_sha" ""
+h_run --branch feature
+h_malformed "H4 an empty toplevel="
+clear_record "$repo" feature
+printf 'branch=feature\nhead=%s\ntoplevel=%s\n' "$feature_sha" "$h_top" > "$tmp/h-valid-rec"
+ln -s "$tmp/h-valid-rec" "$h_rec"
+h_run --branch feature
+h_malformed "H4 a symlink at the record path"
+rm -f "$h_rec"
+mkdir -p "$h_rec"
+h_run --branch feature
+h_malformed "H4 a directory at the record path"
+rm -rf "$h_common/cr-step0-head"
+mkdir -p "$tmp/h-linked"
+cp "$tmp/h-valid-rec" "$tmp/h-linked/${h_rec##*/}"
+h_linked_state() { find "$tmp/h-linked" -print | sort | cksum; cksum < "$tmp/h-linked/${h_rec##*/}"; }
+h_linked_before="$(h_linked_state)"
+ln -s "$tmp/h-linked" "$h_common/cr-step0-head"
+h_run --branch feature
+h_refused "H4 cr-step0-head a symlink"
+assert_has "$err" "remove $h_common/cr-step0-head and re-run step 0" "H4 cr-step0-head a symlink: the message names the directory to remove"
+assert_has "$err" "pass --head $feature_sha" "H4 cr-step0-head a symlink: the message names the full live HEAD"
+if [ "$(h_linked_state)" = "$h_linked_before" ]; then ok "H4 cr-step0-head a symlink: the link's target is unchanged"; else bad "H4 cr-step0-head a symlink: the link's target changed"; fi
+rm -f "$h_common/cr-step0-head"
+
+seed_record "$repo" feature "$feature_sha" "$h_top" "future=1"
+for h_try in "$main_sha" "$BOGUS_SHA"; do
+    h_run --branch feature --head "$h_try"
+    h_malformed "H8c --head $h_try"
+done
+
+seed_record "$repo" feature "$feature_sha" "$h_top"
+rm -rf "$repo/.git/cr-review-rounds"
+h_run --branch feature --head "$feature_sha"
+if [ "$rc" -eq 0 ]; then ok "H3a a full --head with a record exits 0"; else bad "H3a exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $feature_sha " "H3a the panel receives the full head"
+rm -rf "$repo/.git/cr-review-rounds"
+h_run --branch feature --head "${feature_sha:0:8}"
+if [ "$rc" -eq 0 ]; then ok "H3b a short --head with a record exits 0"; else bad "H3b exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $feature_sha " "H3b the panel receives the record's full head"
+clear_record "$repo" feature
+rm -rf "$repo/.git/cr-review-rounds"
+h_run --branch feature --head "${feature_sha:0:8}"
+if [ "$rc" -eq 0 ]; then ok "H3c a short --head with no record exits 0"; else bad "H3c exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head ${feature_sha:0:8} " "H3c the panel receives the short head as typed"
+
+seed_record "$repo" feature "$feature_sha" "$h_top" "future=1"
+rm -rf "$repo/.git/cr-review-rounds"
+h_run --branch feature --head "$feature_sha"
+if [ "$rc" -eq 0 ]; then ok "H8a an unreadable record and a full --head exits 0"; else bad "H8a exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $feature_sha " "H8a the panel receives the full head"
+assert_has "$err" "is unreadable by this copy of panel-first-pass.sh; using the typed --head" "H8b the run warns about the unreadable record"
+rm -rf "$repo/.git/cr-review-rounds"
+h_run --branch feature --head "${feature_sha:0:8}"
+if [ "$rc" -eq 0 ]; then ok "H8b an unreadable record and a short --head exits 0"; else bad "H8b exit (got $rc; err: $err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $feature_sha " "H8b the panel receives the full head"
+clear_record "$repo" feature
+rm -rf "$repo/.git/cr-review-rounds"
+
+fxnl="$tmp/fx-nolib"; cp -R "$fx" "$fxnl"; rm -f "$fxnl/scripts/cr/pr-check-step0-head.sh"
+rm -f "$tmp/err"
+(cd "$repo" && CR_PROFILE=none bash "$fxnl/scripts/cr/panel-first-pass.sh" --head "$feature_sha" --branch feature) >/dev/null 2>"$tmp/err"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "H6 a copy without the library exits 2"; else bad "H6 a copy without the library exit (got $rc)"; fi
+assert_has "$(cat "$tmp/err")" "cannot load scripts/cr/pr-check-step0-head.sh" "H6 the refusal names the library"
+rm -f "$h_ledger"
+[ ! -f "$tmp/h-ledger.keep" ] || mv "$tmp/h-ledger.keep" "$h_ledger"
+
 # --- --pr <n>: an outside PR reviewed from its fetched ref, its branch never checked out ---------------
 # The fixture repo sits on another branch; refs/himmel/outside/7 holds the PR commit, whose tree plants
 # a canary that would fire if anything ran a file from it. The gh stub serves the PR, the allowlist
@@ -1460,6 +1607,19 @@ kf_unstub
 rm -rf "$repo/.git/cr-review-rounds"
 mv "$tmp/repo-ledger.keep" "$ledger"
 if [ ! -f "$tmp/kf-pr-args" ] && [ "$rc" -eq 0 ]; then ok "control: a run without --pr finds a preflight row by branch alone"; else bad "control: a run without --pr by branch alone (rc $rc; err: $(cat "$tmp/err"))"; fi
+
+git -C "$prrepo" update-ref refs/himmel/outside/27 "$pr_oid"
+seed_record "$prrepo" feat/outside-thing "$pr_base" "$prrepo"
+h7_rec="$(rec_path "$prrepo" feat/outside-thing)"
+h7_before="$(cksum < "$h7_rec")"
+h7_lib=""
+if [ -f "$fx/scripts/cr/pr-check-step0-head.sh" ]; then h7_lib="$tmp/h7-lib"; mv "$fx/scripts/cr/pr-check-step0-head.sh" "$h7_lib"; fi
+pr_run --pr 27 --head "$pr_oid" --branch feat/outside-thing
+[ -z "$h7_lib" ] || mv "$h7_lib" "$fx/scripts/cr/pr-check-step0-head.sh"
+if [ "$pr_rc" -eq 0 ]; then ok "H7 --pr with a stray record and no library exits 0"; else bad "H7 --pr exit (got $pr_rc; err: $pr_err)"; fi
+assert_has "$(cat "$ARGS_LOG" 2>/dev/null)" "--head $pr_oid " "H7 --pr passes the PR head to the panel"
+if [ "$(cksum < "$h7_rec")" = "$h7_before" ]; then ok "H7 --pr leaves the stray record's bytes unchanged"; else bad "H7 --pr changed the stray record"; fi
+clear_record "$prrepo" feat/outside-thing
 
 ceil_secret="the f.txt reader never handles a CRLF line"
 ceil_ledger="$tmp/ceilings.tsv"
