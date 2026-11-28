@@ -113,7 +113,10 @@ case "${1:-}" in
             if [ -s "$STATE/fail-update" ]; then exit "$(cat "$STATE/fail-update")"; fi
             exit 7
         fi
-        if [ -e "$STATE/slow-update" ]; then sleep 60; fi
+        if [ -e "$STATE/slow-update" ]; then
+            if [ -s "$STATE/slow-update" ]; then echo "SQLiteError: database is locked (errno 5, SQLITE_BUSY)" >&2; fi
+            sleep 60
+        fi
         if [ -e "$STATE/busy-update" ]; then
             want=$(cat "$STATE/busy-update")
             n=$(grep -c '^update' "$STATE/calls" 2>/dev/null || :)
@@ -624,6 +627,13 @@ assert_rc "deadline-cut update rc 3" 3 "$rc"
 assert_contains "deadline-cut update names the deadline" "cut by the 2s deadline (QMD_TIMEOUT_SECS)" "$out"
 assert_not_contains "deadline-cut update is not reported busy" "index BUSY" "$out"
 assert_not_contains "no embed attempted after a deadline-cut update" "embed" "$(calls)"
+reset_state
+echo busy > "$STATE/slow-update"
+rc=0; out=$(QMD_TIMEOUT_SECS=2 QMD_KILL_GRACE_SECS=1 QMD_REINDEX_BUSY_WAIT_SECS=1 QMD_REINDEX_BUSY_RETRY_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "deadline-cut update that printed SQLITE_BUSY rc 3, never busy 75" 3 "$rc"
+assert_contains "deadline-cut busy update names the deadline" "cut by the 2s deadline (QMD_TIMEOUT_SECS)" "$out"
+update_calls=$(calls | grep -c '^update$' || true)
+if [ "$update_calls" -eq 1 ]; then pass "deadline-cut busy update is not retried"; else fail "deadline-cut busy update is not retried" "$update_calls attempts"; fi
 
 echo "TEST: a non-numeric or negative wait/retry value falls back to the default instead of looping"
 reset_state
