@@ -56,6 +56,43 @@ T3's `link_issue` resolves its own issue links and does not resolve a Jira brows
 for Jira: name the ticket key in the thread title and brief, and use the Jira plugin
 (`scripts/jira/dist/index.js`) for anything on the ticket.
 
+## Coordinator schedules and wakes
+
+A T3 coordinator runs as short fresh sessions that read a state file, act, checkpoint and end
+([running-a-chief.md](../handover/running-a-chief.md#a-t3-coordinator-runs-as-fresh-short-sessions)).
+A schedule it needs starts a fresh session on every run:
+
+```json
+{"prompt":"Read <absolute coordinator state file>. Use coordinator owner generation <generation>, act, checkpoint, then end.","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":true}
+```
+
+The thread-tools guard (`scripts/hooks/guard-t3-thread-tools.sh`) refuses an agent's `schedule_task` that
+creates (no `scheduledTaskId`, or `null`) an `interval` schedule, as an object or as one level of JSON text,
+with `bindToCurrentThread` true or omitted and `freshSession` false or omitted. The rule is
+`non-fresh-bound-interval`; the deny prints the form above and never the caller's prompt. Omitted binding
+counts as bound, because T3 binds it to the caller's thread in the caller's own project: a schedule meant to
+run unbound passes `bindToCurrentThread: false`. One-shot, fixed-time and webhook schedules and updates keep
+their existing route. The operator override is `T3_THREAD_TOOLS_OK=1` in the launching shell.
+
+A peer, or the owner of a delegated worker, wakes the coordinator with a queued fresh send. The stable event id
+comes first in the message, so the coordinator's bounded activity read can find it:
+
+```json
+{"threadId":"<coordinator thread id>","message":"Event <stable event id>. Read <absolute coordinator state file>. Use coordinator owner generation <generation>. <one-line result or status>","mode":"queue","freshContext":true}
+```
+
+- **One bounded sweep per scheduled run.** A scheduled fresh run spends one lookup on its own inbound T3
+  activity: one messages page (at most 20 items, at most 300 characters per item) plus the recent run ids and
+  statuses. It compares the terminal event ids with the consumed ids in the state file and sends each missing
+  event id and its run id to the chief for replay. If the page or the run metadata cannot cover every delivery
+  since the last completed sweep, it reports the unresolved interval to the chief.
+- **Event-only coordinators.** A coordinator with no fresh schedule has no automatic recovery in a quiet
+  period. The next relay or an explicit recovery request from the chief runs the same comparison.
+- **Operator requests go through the chief**, which sends them on the queued fresh route above. A raw T3 UI
+  wake that reuses the provider session invalidates a cost or freshness sample.
+- **A stale, retired or missing generation** in the brief makes the turn send the chief a blocker and end
+  before it acts or writes.
+
 ## The steer hook
 
 `marketplace/plugins/himmel-ops/hooks/steer-t3-tool-calls.sh` (PreToolUse, plugin lane, suite

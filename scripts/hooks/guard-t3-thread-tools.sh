@@ -4,6 +4,12 @@
 # a T3 Code tool call that names a bypass provider instance, or one off the
 # optional narrowing list, or that sets a -chief or -console thread title.
 #
+# Fresh schedules: a schedule_task that creates (scheduledTaskId absent or null) an
+# interval schedule (an object, or one level of JSON text) with bindToCurrentThread
+# true or omitted and freshSession false or omitted is refused (rule
+# non-fresh-bound-interval), and the deny prints the freshSession: true form. It reads
+# only the tool input: no settings, state or registry, and never echoes the prompt.
+#
 # Bypass instance: an entry in T3's settings file
 # (${T3CODE_HOME:-$HOME/.t3}/userdata/settings.json, .providerInstances) whose
 # env / environment (on the instance or its config) names a *_OK or *BYPASS*
@@ -118,6 +124,22 @@ findings=$(jq -r '
         | select(gsub("^\\s+|\\s+$"; "") | ascii_downcase | test("-(chief|console)$")) | "title\t" + tojson)
 ' <<<"$input" 2>/dev/null) \
     || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked." walk-failed
+
+if [ "${tool#"$p"}" = schedule_task ] && jq -e '
+    .tool_input
+    | type == "object"
+      and .scheduledTaskId == null
+      and (.schedule | if type == "string" then (try fromjson catch null) else . end
+           | type == "object" and .type == "interval")
+      and (.bindToCurrentThread == null or .bindToCurrentThread == true)
+      and (.freshSession == null or .freshSession == false)
+' <<<"$input" >/dev/null 2>&1; then
+    refuse "$tool creating a bound interval schedule without a fresh session" "Rule non-fresh-bound-interval: an interval schedule bound to this thread (bindToCurrentThread true or omitted)
+with freshSession false or omitted wakes the thread with its whole context on every run. Start each run as a
+fresh session that reads its state file, acts, checkpoints and ends:
+{\"prompt\":\"Read <absolute coordinator state file>. Use coordinator owner generation <generation>, act, checkpoint, then end.\",\"schedule\":{\"type\":\"interval\",\"everyMs\":1800000},\"bindToCurrentThread\":true,\"freshSession\":true}
+A schedule meant to run unbound passes bindToCurrentThread: false." non-fresh-bound-interval
+fi
 [ -n "$findings" ] || exit 0
 
 narrow="" narrow_err="" bypass='{}' settings_err="" drivers='{}' harnesses='[]' harness_err=""
