@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/memory/check-memory-truth.sh.
-#
-# Synthetic fixtures only: a throwaway git repo whose main holds the "real"
-# paths, a throwaway Jira mirror and a sandbox store. Nothing here reads or
-# writes a real memory dir or the station mirror.
-# shellcheck disable=SC2016  # fixture notes carry literal backticks
+# shellcheck disable=SC2016
 set -uo pipefail
 
 CHECK="$(cd "$(dirname "$0")" && pwd)/check-memory-truth.sh"

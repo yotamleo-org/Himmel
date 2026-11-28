@@ -14,15 +14,6 @@
 # password, keyring, private, keys, env) is never opened, only counted; a
 # symlink is never followed.
 #
-# A repo path is a slash-joined token whose first part is a top-level
-# directory of the repo tree. Not one: a token after "/", "~", "$" or ":"
-# (absolute, home, variable, URL), one running into a placeholder or glob
-# ("<", "*", "{", "$", "["), a fragment ending in "-", a path .gitignore
-# covers (a local file that is never on main), and a two-part token with no
-# file extension, trailing "/" or opening backtick ("docs/audit work" is
-# prose). A ticket counts as waited on only inside the phrase's own clause:
-# up to the next ";", "(", ")", "!", "?", " — " or sentence-ending ".".
-#
 # Env: MEMDIR (store; default derived by scripts/lib/memory-slug.sh),
 #      MEMORY_TRUTH_REPO (default this checkout), MEMORY_TRUTH_REF (default
 #      origin/main, else main), MEMORY_TRUTH_MIRROR (default
