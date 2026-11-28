@@ -83,7 +83,7 @@ async function send({ root, proc, pid }, args) {
   return { content: [{ type: 'text', text: `sent #${stamped.n} to ${to}${note}` }], structuredContent: { n: stamped.n, to } };
 }
 
-async function walk(root, name) {
+async function readReportingHalt(root, name) {
   const result = await store.read(root, name);
   if (!result.notice) return result;
   const notice = `${result.notice}; ${name} is halted`;
@@ -117,7 +117,7 @@ async function readOne({ root, proc, pid }, { n }) {
   }
   // Reading is delivery: move the cursor through #n so `bus unread` clears.
   // A later message stays pending; a record the hook already delivered is a no-op.
-  const { records, cursors, notice } = await walk(root, me.name);
+  const { records, cursors, notice } = await readReportingHalt(root, me.name);
   if (notice) return fail(notice);
   const at = records.findIndex(rec => rec.n === n);
   if (at >= 0) await store.commit(root, me.name, cursors[at]);
@@ -129,7 +129,7 @@ async function readOne({ root, proc, pid }, { n }) {
 async function readUnread({ root, proc, pid }) {
   const me = await identity.resolveIdentity(root, { proc, pid });
   if (me.error) return fail(me.error);
-  const first = await walk(root, me.name);
+  const first = await readReportingHalt(root, me.name);
   const refused = refusal(first, me.name);
   if (refused) return refused;
   const delivered = first.next.n - first.records.length;
@@ -143,7 +143,7 @@ async function readUnread({ root, proc, pid }) {
   if (!first.records.length) {
     // A cursor at the end of a closed segment walks nothing while records wait;
     // the same next.n on a second walk rules out a commit that raced this call.
-    const second = await walk(root, me.name);
+    const second = await readReportingHalt(root, me.name);
     const again = refusal(second, me.name);
     if (again) return again;
     if (!second.records.length && second.next.n === first.next.n) footer = STALLED;
