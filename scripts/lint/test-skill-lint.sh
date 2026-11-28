@@ -704,6 +704,16 @@ OUTY6C="$(env -u CI SKILL_LINT_PYTHON="$YD/stub-crash.sh" bash "$LINT" "$YD/plai
 if [ "$ECY6C" -eq 2 ]; then pass "Y6: a helper that exits 1 makes the run exit 2"; else fail "Y6: expected exit 2, got $ECY6C" "$OUTY6C"; fi
 assert_contains "Y6: the helper's stderr is printed" "Traceback boom" "$OUTY6C"
 
+OUTY7="$(ylint "$YD/hint/SKILL.md")"; ECY7=$?
+if [ "$ECY7" -eq 0 ]; then pass "Y7 control: a broken argument-hint beside a good description passes"; else fail "Y7 control: expected exit 0, got $ECY7" "$OUTY7"; fi
+
+OUTY8="$(ylint "$YD/plain/SKILL.md" "$YD/bus/SKILL.md" "$YD/bad/SKILL.md")"; ECY8=$?
+if [ "$ECY8" -eq 1 ]; then pass "Y8: several files, the second and third are checked (exit 1)"; else fail "Y8: expected exit 1, got $ECY8" "$OUTY8"; fi
+assert_contains "Y8: the second file's block names its own path" "$YD/bus/SKILL.md:" "$OUTY8"
+assert_contains "Y8: the third file's block names its own path" "$YD/bad/SKILL.md:" "$OUTY8"
+assert_not_contains "Y8: the clean first file gets no block" "$YD/plain/SKILL.md:" "$OUTY8"
+assert_contains "Y8: two files with findings count as 2 issues" "2 issue(s)" "$OUTY8"
+
 mkdir -p "$YD/cline" "$YD/blanks"
 cat > "$YD/cline/SKILL.md" <<'EOF'
 ---
@@ -721,16 +731,6 @@ if [ "$ECY9" -eq 0 ]; then pass "Y9: an indented comment line after a plain desc
 OUTY10="$(ylint "$YD/blanks/SKILL.md")"; ECY10=$?
 if [ "$ECY10" -eq 1 ]; then pass "Y10: blank lines in a plain scalar do not hide a trailing ' #' cut"; else fail "Y10: expected exit 1, got $ECY10" "$OUTY10"; fi
 assert_contains "Y10: the cut is [desc-truncated]" "[desc-truncated]" "$OUTY10"
-
-OUTY8="$(ylint "$YD/plain/SKILL.md" "$YD/bus/SKILL.md" "$YD/bad/SKILL.md")"; ECY8=$?
-if [ "$ECY8" -eq 1 ]; then pass "Y8: several files, the second and third are checked (exit 1)"; else fail "Y8: expected exit 1, got $ECY8" "$OUTY8"; fi
-assert_contains "Y8: the second file's block names its own path" "$YD/bus/SKILL.md:" "$OUTY8"
-assert_contains "Y8: the third file's block names its own path" "$YD/bad/SKILL.md:" "$OUTY8"
-assert_not_contains "Y8: the clean first file gets no block" "$YD/plain/SKILL.md:" "$OUTY8"
-assert_contains "Y8: two files with findings count as 2 issues" "2 issue(s)" "$OUTY8"
-
-OUTY7="$(ylint "$YD/hint/SKILL.md")"; ECY7=$?
-if [ "$ECY7" -eq 0 ]; then pass "Y7 control: a broken argument-hint beside a good description passes"; else fail "Y7 control: expected exit 0, got $ECY7" "$OUTY7"; fi
 
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

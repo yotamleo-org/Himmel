@@ -63,7 +63,7 @@
 #                     other helper failure (a missing interpreter, a traceback)
 #                     prints the helper's stderr and exits 2.
 #
-#   [size-fail]      body is MORE than SKILL_LINT_FAIL_BYTES (default 20000)
+#   [size-fail]       body is MORE than SKILL_LINT_FAIL_BYTES (default 20000)
 #                     bytes (exactly 20000 passes, 20001 fails; bytes, not
 #                     characters, so a multibyte body is never counted more
 #                     leniently): split it into a core body plus reference
