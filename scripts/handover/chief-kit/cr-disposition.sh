@@ -286,9 +286,9 @@ for(const [k,o] of findings){
 
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
-ROOT=""
+ROOT="" ROOT_WHY=""
 if . "$HERE/../../lib/handover-path.sh" 2>/dev/null; then
-    ROOT=$(go_resolve_root "$ANCHOR" 2>/dev/null) || ROOT=""  # swallow-ok: empty ROOT fails every judge source closed
+    ROOT=$(go_resolve_root "$ANCHOR" 2>/dev/null) || { ROOT_WHY=$(go_resolve_root "$ANCHOR" 2>&1 >/dev/null); ROOT=""; }  # swallow-ok: empty ROOT fails every judge source closed
 fi
 VC_BUILT=0 VC_ERR="" VC_VETO=""
 VC_QIDS=()
@@ -297,8 +297,7 @@ verdict_context() {
     [ "$VC_BUILT" -eq 0 ] || { [ -z "$VC_ERR" ]; return; }
     VC_BUILT=1
     if [ -z "$ROOT" ]; then
-        # shellcheck disable=SC2031
-        VC_ERR="cannot resolve the handover root (HANDOVER_DIR='${HANDOVER_DIR:-}') to read the judge verdicts at this head"
+        VC_ERR="cannot resolve the handover root (${ROOT_WHY:-go_resolve_root printed no reason}) to read the judge verdicts at this head"
         return 1
     fi
     if ! scope=$(go_verdict_scope "$ANCHOR" "$VREPO"); then

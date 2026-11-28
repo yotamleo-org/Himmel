@@ -10,7 +10,6 @@
 #   5. a disposition at another head, a tampered row, fix-here -> exit 9.
 #   6. a Critical needs a judge source whose GO verdict rules this head.
 #   7. an Important on a trust-path PR needs a judge source too.
-#  14. a judge's signed GO carrying the ruling line is the disposition of the deferral it rules.
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
