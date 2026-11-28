@@ -1,6 +1,6 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
-  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
+  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, FRONT_MATTER, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
   FINDING_LINE, FINDING_SEVERITIES, findingTags, criticRounds, parseResidualLines,
   type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { isShort, namesKeyToken, normText, parseQuestion, shortAnswer } from "../jira/src/release/verbatim.ts";
@@ -1192,7 +1192,7 @@ async function sealTarget(verdict: string, readPath: string): Promise<SealTarget
 type SealedFile = { read_path: string; read_sha: string; seeded: boolean };
 const sealedFileOf = (x: { read_path: unknown; read_sha: unknown }, seeded: boolean): SealedFile => ({ read_path: String(x.read_path), read_sha: String(x.read_sha), seeded });
 const distinctFiles = (files: SealedFile[]) => files.filter((s, i) => files.findIndex(o => o.read_path === s.read_path && o.read_sha === s.read_sha) === i);
-function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: SealedFile[] } {
+export function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { return_sha: string }[]; sealed: SealedFile[] } {
   const row = roundRows(rows, kind).filter(x => Number(x.round) === r - 1).at(-1);
   const returns: { return_sha: string }[] = row ? [row as { return_sha: string }] : Number(seedOf(rows)?.[kind]) === r - 1 ? seededReturns(rows, kind) : [];
   const own = row ? [sealedFileOf(row, false)] : seededReturns(rows, kind).flatMap(s => s.seals.map(x => sealedFileOf(x, true)));
@@ -1459,14 +1459,14 @@ export function cappedHeadDeclared(text: string, keys: readonly string[], frontm
   const lines = [...head.matchAll(frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.*)$/gm : /^Keys?:[ \t]*(.*)$/gm)];
   const names = (value: string) => { try { optionalReturnAgreement(`Keys: ${value}`, { keys }); return true; } catch { return false; } };
   if (lines.length > 1 || (lines.length === 1 && !names(lines[0][1]))) throw new Error(`capped-fold: header must declare only ${wanted}`);
-  if (!frontmatter || !/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) return;
+  if (!frontmatter || !/^tickets?:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) return;
   const declared = declaredTickets(text);
   if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${wanted}`);
 }
 
 export function signShapeProblems(path: string, text: string, spec: boolean): string[] {
   const name = basename(path); const problems: string[] = [];
-  if (/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) {
+  if (/^tickets?:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) {
     const declared = declaredTickets(text);
     if (!declared) problems.push(`${name}: the tickets line does not parse (one key per item; an annotation in parentheses names no key)`);
     else {
@@ -1586,6 +1586,19 @@ function requireCarried(carried: readonly Carried[]): void {
   if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
 }
 
+export function closureCarries(rows: Rows, spec: string, older: { sha: string; bytes: Buffer }, current: { sha: string; bytes: Buffer }): boolean {
+  const texts = [older.bytes.toString("utf8"), current.bytes.toString("utf8")];
+  if (!Buffer.from(texts[0]).equals(older.bytes) || !Buffer.from(texts[1]).equals(current.bytes)) return false;
+  const fronts = texts.map(text => FRONT_MATTER.exec(text)); const keys = texts.map(declaredTickets);
+  if (!fronts[0] || !fronts[1] || texts[0].slice(fronts[0][0].length) !== texts[1].slice(fronts[1][0].length)) return false;
+  if (!keys[0] || !keys[1] || [...keys[0]].sort().join(",") !== [...keys[1]].sort().join(",")) return false;
+  const rounds = roundRows(rows, "spec");
+  const seals = (r: LedgerRow, sha: string) => roundBefore(rows, "spec", Number(r.round) + 1).sealed.some(s => s.read_path === spec && s.read_sha === sha);
+  const last = rounds.findLastIndex(r => seals(r, older.sha));
+  const later = rounds.slice(last + 1);
+  return last !== -1 && later.length > 0 && later.every(r => r.mode === "closure" && r.verdict === CLEAN.spec && seals(r, current.sha));
+}
+
 // Precondition for a direct caller: `input.spec` is the canonical path of a spec under a specs root, and `input.reader` was built for
 // that same root (the helper derives the root from the spec and reads the content-addressed snapshots through the reader).
 export async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPolicy): Promise<{ pin: ReturnPin; carried: Carried[] }> {
@@ -1615,7 +1628,7 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
     if (quoted.has(artifact)) throw new Error("capped-fold: duplicate critic READ quotes");
     quoted.set(artifact, quote.sha);
   }
-  const declared = new Map<string, string>();
+  const declared = new Map<string, string>(); let specCarried = false;
   for (const seal of seals) {
     const raw = resolve(dirname(path), seal.rel); const artifact = await reader.canonical(raw);
     if (declared.has(artifact)) {
@@ -1624,14 +1637,18 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
     }
     declared.set(artifact, seal.sha);
     const read = await reader.read(raw, "artifact");
-    if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
+    const snapshotPath = join(ledgerDirOf(specs), ledgerEntryNames(key).folder, seal.sha);
+    const carries = policy.closureReads && kind === "plan" && artifact === spec && seal.sha !== specSha && read.sha256 === specSha
+      && closureCarries(rows, spec, { sha: seal.sha, bytes: (await reader.read(snapshotPath)).bytes }, { sha: specSha, bytes: read.bytes });
+    if ((!carries && read.sha256 !== seal.sha) || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
+    if (carries) specCarried = true;
     if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
-    const snapshot = await reader.read(join(ledgerDirOf(specs), ledgerEntryNames(key).folder, seal.sha));
+    const snapshot = await reader.read(snapshotPath);
     if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
   }
   const unsealed = [...quoted.keys()].filter(artifact => !declared.has(artifact));
   const unsealedOk = policy.closureReads ? unsealed.every(artifact => quoted.get(artifact) === (artifact === spec ? specSha : artifact === plan ? planSha : null)) : quoted.size === declared.size;
-  const specBound = declared.get(spec) === specSha || (policy.closureReads && kind === "plan" && quoted.get(spec) === specSha);
+  const specBound = declared.get(spec) === specSha || (policy.closureReads && kind === "plan" && quoted.get(spec) === specSha) || specCarried;
   if (recorded.length !== declared.size || !unsealedOk || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
     || !specBound || (kind === "plan" && declared.get(plan) !== planSha)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
   return { pin: { kind, path, sha256: got.sha256, round: fileRound, return_sha: sum, residuals: findings.length },

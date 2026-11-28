@@ -22,7 +22,6 @@ set -uo pipefail
 name="${HIMMEL_BUS_NAME:-}"
 [ -n "$name" ] || exit 0
 case "$name" in *[!A-Za-z0-9._-]* | [!A-Za-z0-9]*) exit 0 ;; esac
-[ "${#name}" -le 64 ] || exit 0
 
 root="${XDG_STATE_HOME:-${HOME:-}/.local/state}/himmel/bus"
 log="$root/log/$name.jsonl"

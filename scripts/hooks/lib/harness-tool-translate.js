@@ -9,8 +9,11 @@ const TABLE = path.join(__dirname, 'harness-tool-map.json');
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
+const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === 'string');
+
 function validEntry(entry) {
   if (!isObject(entry) || typeof entry.claude !== 'string') return false;
+  if (!isStrings(entry.allow) || (own(entry, 'empty') && !isStrings(entry.empty))) return false;
   if (!own(entry, 'keys')) return true;
   return isObject(entry.keys) && Object.values(entry.keys).every((v) => typeof v === 'string');
 }
@@ -27,6 +30,32 @@ function loadTable() {
   if (!table.mcp_servers.every((s) => typeof s === 'string')) return null;
   if (!Object.values(table.events).every((e) => typeof e === 'string')) return null;
   return table;
+}
+
+function hasUnsafeNumber(value) {
+  const stack = [value];
+  while (stack.length) {
+    const v = stack.pop();
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v) || Math.abs(v) > Number.MAX_SAFE_INTEGER) return true;
+    } else if (v && typeof v === 'object') {
+      for (const child of Object.values(v)) stack.push(child);
+    }
+  }
+  return false;
+}
+
+function refusal(payload, entry) {
+  const input = payload.tool_input;
+  if (!isObject(input)) return 'tool input is not an object';
+  for (const key of Object.keys(input)) {
+    if (!entry.allow.includes(key)) return `tool input key ${JSON.stringify(key)} is not allowed`;
+  }
+  for (const key of entry.empty || []) {
+    if (own(input, key) && input[key] !== '') return `tool input key ${JSON.stringify(key)} must be empty`;
+  }
+  if (hasUnsafeNumber(payload)) return 'payload holds an out-of-range number';
+  return null;
 }
 
 function renameKeys(input, keys) {
@@ -76,6 +105,10 @@ function translateToolCall(text) {
   const name = payload.tool_name;
   if (own(table.tools, name)) {
     const entry = table.tools[name];
+    if (!postTool) {
+      const why = refusal(payload, entry);
+      if (why) return { refuse: `${name}: ${why}; refusing the tool call` };
+    }
     payload.tool_name = entry.claude;
     if (isObject(payload.tool_input)) {
       const renamed = renameKeys(payload.tool_input, entry.keys);

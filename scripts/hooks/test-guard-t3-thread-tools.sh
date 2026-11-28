@@ -22,14 +22,70 @@ export HOME="$TMP/home"
 export T3CODE_HOME="$TMP/t3home"
 mkdir -p "$HOME/.himmel" "$T3CODE_HOME/userdata"
 T3_SETTINGS="$T3CODE_HOME/userdata/settings.json"
+# shellcheck source=../lib/portable-timeout.sh
+# shellcheck disable=SC1091
+. "$HOOKS/../lib/portable-timeout.sh"
+
+CT="$(cd "$TMP" && pwd)"
+LP="$CT/lp"
+export HIMMEL_PROFILE_SETTINGS_DIR="$LP"
+sha12() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -c1-12; else shasum -a 256 | cut -c1-12; fi; }
+resolved() {
+    local h dir f
+    h=$(printf '%s\n' "$2" | sha12)
+    if [ "${3:-}" = mcp ]; then dir="$LP/mcp-$h" f="$LP/mcp-$h/$1.mcp.json"; else dir="$LP/$h" f="$LP/$h/$1.json"; fi
+    mkdir -p "$dir" && printf '%s\n' "$2" > "$f" && printf '%s\n' "$f"
+}
+WI=$(resolved worker-impl '{"permissions":{"deny":["Artifact"]}}')
+WM=$(resolved worker-impl '{"mcpServers":{}}' mcp)
+MH=$(resolved maintainer-hooks '{}')
+MC=$(resolved Maintainer-Hooks '{"x":1}')
+ED=$(resolved edited '{"env":{"MARKERKEY":"1"}}'); printf 'x' >> "$ED"
+EM=$(resolved edm '{"mcpServers":{"a":{}}}' mcp); printf 'x' >> "$EM"
+mkdir -p "$LP/bbbbbbbbbbbb"
+mkfifo "$LP/bbbbbbbbbbbb/fifo.json" 2>/dev/null
+OH=$(printf '%s\n' '{}' | sha12)
+mkdir -p "$CT/other/$OH" "$CT/Xlp/$OH" "$CT/.lp/$OH"
+printf '%s\n' '{}' > "$CT/other/$OH/x.json"
+printf '%s\n' '{}' > "$CT/Xlp/$OH/x.json"
+printf '%s\n' '{}' > "$CT/.lp/$OH/x.json"
+
 write_t3_settings() {
-    cat > "$T3_SETTINGS" <<'EOF'
+    cat > "$T3_SETTINGS" <<EOF
 {"providerInstances":{
   "antigravity":{"driver":"antigravity","displayName":"Antigravity","enabled":true},
   "orchestratorNeon":{"driver":"antigravity","displayName":"Orchestrator (Neon)","enabled":true,"config":{}},
   "gemini":{"driver":"gemini","displayName":"Gemini","enabled":true},
-  "claudeAgent_worker-impl":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/worker-impl.json"}},
-  "claudeAgent_maintainer-hooks":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/maintainer-hooks.json"}},
+  "claudeAgent_worker-impl":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI"}},
+  "claudeAgent_maintainer-hooks":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $MH"}},
+  "claudeMcp":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --mcp-config $WM --strict-mcp-config"}},
+  "claudeEmpty":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":""}},
+  "claudeNoArgs":{"driver":"claudeAgent","enabled":true},
+  "inlineSettings":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings {\"permissions\":{\"allow\":[\"Bash\"]}}"}},
+  "inlineEq":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings='{\"env\":{\"X\":\"1\"}}'"}},
+  "inlineTwoSpace":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings  {\"env\":{\"X\":\"1\"}}"}},
+  "inlineLeadSpace":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings ' {\"env\":{\"X\":\"1\"}}'"}},
+  "inlineSecond":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --settings {\"env\":{\"X\":\"1\"}}"}},
+  "topInline":{"driver":"claudeAgent","enabled":true,"launchArgs":"--settings {\"env\":{\"X\":\"1\"}}","config":{"launchArgs":"--settings $WI"}},
+  "configInline":{"driver":"claudeAgent","enabled":true,"launchArgs":"--settings $WI","config":{"launchArgs":"--settings {\"env\":{\"X\":\"1\"}}"}},
+  "claudeAgent_nodriver":{"enabled":true,"config":{"launchArgs":"--settings {\"env\":{\"X\":\"1\"}}"}},
+  "nodriverOther":{"enabled":true,"config":{"launchArgs":"--foo {\"x\":1}"}},
+  "handPointed":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings /x/design-full.json"}},
+  "relativePath":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings .himmel/worker-settings.json"}},
+  "secretValue":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings sk-SECRETMARKER-1"}},
+  "secretFlag":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --token=SECRETMARKER2"}},
+  "editedFile":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $ED"}},
+  "editedMcp":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --mcp-config $EM --strict-mcp-config"}},
+  "missingFile":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $LP/aaaaaaaaaaaa/missing.json"}},
+  "fifoFile":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $LP/bbbbbbbbbbbb/fifo.json"}},
+  "maintainerRenamed":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $MH"}},
+  "maintainerCase":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $MC"}},
+  "extraFlag":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --allowedTools Bash"}},
+  "mcpOutside":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI --mcp-config /x/mcp-aaaaaaaaaaaa/a.mcp.json --strict-mcp-config"}},
+  "otherDir":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $CT/other/$OH/x.json"}},
+  "dotDir":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $CT/Xlp/$OH/x.json"}},
+  "codexArgs":{"driver":"codex","enabled":true,"config":{"launchArgs":"--foo {\"x\":1}"}},
+  "trailingNewline":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--settings $WI\\n"}},
   "claudeAgent_maintainer-hooks-other":{"driver":"claudeAgent","enabled":true,"config":{}},
   "grokThread":{"driver":"grok","enabled":true},
   "cursorThread":{"driver":"cursor","enabled":true},
@@ -55,7 +111,9 @@ run() {
     local name="$1" want="$2" grep_for="$3" payload="$4" rc out
     shift 4
     N=$((N+1))
-    out=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>&1 >/dev/null); rc=$?
+    local pre=()
+    [ -z "${RUN_TIMEOUT:-}" ] || pre=(timeout "$RUN_TIMEOUT")
+    out=$(printf '%s' "$payload" | env "$@" ${pre[@]+"${pre[@]}"} bash "$HOOK" 2>&1 >/dev/null); rc=$?
     if [ "$rc" != "$want" ]; then
         echo "FAIL $name: rc=$rc want=$want out=$out"; FAIL=$((FAIL+1)); return
     fi
@@ -70,6 +128,8 @@ run() {
 }
 
 T=mcp__t3-code__
+C=mcp__t3_code__
+D=mcp__t3_code_direct__
 LAUNCH_BAD='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}'
 LAUNCH_OK='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"codex","model":"gpt-5"}}}'
 LAUNCH_PLAIN='{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"model":"claude-opus-5-5"}}}'
@@ -89,6 +149,49 @@ run "a launch onto a driver with no descriptor: refused" 2 '"gemini": its driver
 run "an Orchestrator thread launches a codex thread: allowed" 0 - "$(from_to orchestratorNeon codex)"
 run "create_threads across providers: allowed" 0 - \
     '{"tool_name":"'$T'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"claudeAgent"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+
+CX_LAUNCH_BAD='{"tool_name":"'$C't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}'
+CX_LIST='{"tool_name":"'$C't3_thread_list","tool_input":{}}'
+run "R1: a Codex-spelled launch on a bypass instance: refused" 2 '"claudeBypass": carries a himmel bypass flag (AGENTS_MD_OK)' "$CX_LAUNCH_BAD"
+run "R1: the Codex refusal names the Codex tool name" 2 'refused mcp__t3_code__t3_thread_launch on a provider instance' "$CX_LAUNCH_BAD"
+run "R1 control: a Codex-spelled t3_thread_list: silent allow" 0 - "$CX_LIST"
+run "R2: a Codex-spelled create_threads with a bypass target: refused" 2 '"claudeBypass": carries a himmel bypass flag' \
+    '{"tool_name":"'$C'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"claudeBypass"}}]}}'
+run "R2 control: a Codex-spelled create_threads across providers: allowed" 0 - \
+    '{"tool_name":"'$C'create_threads","tool_input":{"threads":[{"title":"a","target":{"providerInstanceId":"antigravity"}},{"title":"b","target":{"providerInstanceId":"claudeAgent"}},{"title":"c","target":{"providerInstanceId":"codex"}}]}}'
+run "R3: a direct-server delegate_task with a bypass target: refused" 2 '"claudeBypass": carries a himmel bypass flag' \
+    '{"tool_name":"'$D'delegate_task","tool_input":{"task":"x","target":{"providerInstanceId":"claudeBypass"}}}'
+run "R3 control: a direct-server delegate_task onto codex: allowed" 0 - \
+    '{"tool_name":"'$D'delegate_task","tool_input":{"task":"x","target":{"providerInstanceId":"codex"}}}'
+run "R3 control: a direct-server t3_thread_wait: silent allow" 0 - '{"tool_name":"'$D't3_thread_wait","tool_input":{"threadId":"t"}}'
+run "R4: a Codex-spelled rename to X-chief: refused" 2 'chief-shaped' \
+    '{"tool_name":"'$C't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}'
+run "R4 control: a Codex-spelled rename to a plain title: allowed" 0 - \
+    '{"tool_name":"'$C't3_thread_update","tool_input":{"action":"rename","title":"Plain title"}}'
+run "R6: the operator override allows a Codex-spelled bypass launch, on stderr" 0 'override: allowed' "$CX_LAUNCH_BAD" T3_THREAD_TOOLS_OK=1
+R7_NAMES="mcp__t3_code_other__launch mcp__t3_codex__launch mcp__t3-code-x__launch mcp__t3-code-direct__delegate_task"
+r7_payload() {
+    printf '{"tool_name":"%s","tool_input":{"title":"Work","task":"x","target":{"providerInstanceId":"claudeBypass"},"modelSelection":{"instanceId":"claudeBypass","model":"m"}}}' "$1"
+}
+for name in $R7_NAMES; do
+    run "R7: $name is not a T3 prefix: silent allow" 0 - "$(r7_payload "$name")"
+done
+N=$((N+1))
+i1_fail=""
+for body in 't3_thread_launch","tool_input":{"title":"Work","message":"go","modelSelection":{"instanceId":"claudeBypass","model":"m"}}}' \
+            't3_thread_update","tool_input":{"action":"rename","title":"X-chief"}}' \
+            't3_thread_list","tool_input":{}}'; do
+    i1_ref=""
+    for p in "$T" "$C" "$D"; do
+        i1_out=$(printf '{"tool_name":"%s%s' "$p" "$body" | bash "$HOOK" 2>&1 >/dev/null); i1_rc=$?
+        i1_got="$i1_rc:$(printf '%s' "$i1_out" | sed 's/mcp__t3[-_]code[a-z_]*__/PFX__/g')"
+        if [ -z "$i1_ref" ]; then i1_ref="$i1_got"
+        elif [ "$i1_got" != "$i1_ref" ]; then i1_fail="$i1_fail ${p}${body%%\"*}"; fi
+    done
+done
+if [ -z "$i1_fail" ]; then echo "ok   I1: the three prefixes get the same verdict and reason"
+else echo "FAIL I1: a verdict or reason differs from the $T one for:$i1_fail"; FAIL=$((FAIL+1)); fi
+
 run "a launch onto the built-in antigravity instance: allowed" 0 - "$(from_to claudeAgent antigravity)"
 run "a launch onto a grok instance: refused, its descriptor is incomplete" 2 \
     '"grokThread": its driver grok has an incomplete harness descriptor (grok.json)' "$(from_to codex grokThread)"
@@ -143,6 +246,164 @@ run "a non-string instance value: refused" 2 'non-string' \
     '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","modelSelection":{"instanceId":{"id":"claudeBypass"},"model":"m"}}}'
 run "a null instance value counts as absent: allowed" 0 - \
     '{"tool_name":"'$T't3_thread_launch","tool_input":{"title":"w","modelSelection":{"instanceId":null,"model":"m"}}}'
+
+lacks() {
+    local name="$1" absent="$2" payload="$3" out rc
+    shift 3
+    N=$((N+1))
+    out=$(printf '%s' "$payload" | env "$@" bash "$HOOK" 2>&1 >/dev/null); rc=$?
+    if [ "$rc" != 2 ] || ! grep -qF -- 'BLOCKED: guard-t3-thread-tools refused' <<<"$out"; then
+        echo "FAIL $name: want a refusal, got rc=$rc out=$out"; FAIL=$((FAIL+1)); return
+    fi
+    if grep -qF -- "$absent" <<<"$out"; then echo "FAIL $name: stderr holds '$absent': $out"; FAIL=$((FAIL+1)); return; fi
+    echo "ok   $name"
+}
+FRESH_FORM='{"prompt":"Read <absolute coordinator state file>. Use coordinator owner generation <generation>, act, checkpoint, then end.","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":true}'
+sched() { printf '{"tool_name":"%sschedule_task","tool_input":%s}' "$T" "$1"; }
+SCHED_BOUND=$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')
+run "SCHED-BOUND: a bound interval with freshSession false: refused" 2 'non-fresh-bound-interval' "$SCHED_BOUND"
+run "SCHED-BOUND: the refusal prints the fresh-session form" 2 "$FRESH_FORM" "$SCHED_BOUND"
+run "SCHED-DEFAULT: an interval with neither flag: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000}}')"
+run "SCHED-NULL-ID: a null scheduledTaskId is a creation: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"scheduledTaskId":null,"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-TEXT: the interval as JSON text: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"prompt":"coordinate","schedule":"{\"type\":\"interval\",\"everyMs\":1800000}","bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: the fresh-session form: allowed" 0 - "$(sched "$FRESH_FORM")"
+run "SCHED control: an explicit unbound interval: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":false,"freshSession":false}')"
+run "SCHED control: a one-shot schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"once","runAt":"2026-12-01T09:00:00Z"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: a fixed-time schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"fixed_time","timeOfDay":"09:00"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: a webhook schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"webhook"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-UPDATE: the same fields on an update: allowed" 0 - \
+    "$(sched '{"scheduledTaskId":"task-1","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED operator: the override allows the SCHED-BOUND payload, on stderr" 0 'override: allowed' "$SCHED_BOUND" T3_THREAD_TOOLS_OK=1
+run "SCHED-TEXT-BAD: an unparseable schedule string: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":"{\"type\":\"interval\"","bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-EMPTY-ID: an empty scheduledTaskId is left to T3, which rejects a blank ScheduledTaskId: allowed" 0 - \
+    "$(sched '{"scheduledTaskId":"","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-STRING-FRESH: freshSession \"false\" is left to T3, which rejects a non-boolean: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":"false"}')"
+run "SCHED-STRING-BIND: bindToCurrentThread \"true\" is left to T3, which rejects a non-boolean: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":"true","freshSession":false}')"
+SCHED_PRIVATE=$(sched '{"prompt":"PROMPTMARKER-11548 coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')
+SCHED_ROWS="$TMP/sched-rows.jsonl"
+run "SCHED-PRIVATE: a refusal with a prompt marker: refused" 2 'non-fresh-bound-interval' "$SCHED_PRIVATE" HIMMEL_GUARD_REFUSALS_LOG="$SCHED_ROWS"
+lacks "SCHED-PRIVATE: the refusal never prints the prompt" PROMPTMARKER "$SCHED_PRIVATE"
+N=$((N+1))
+if [ -s "$SCHED_ROWS" ] && ! grep -q PROMPTMARKER "$SCHED_ROWS" && [ "$(jq -r .rule "$SCHED_ROWS")" = non-fresh-bound-interval ]; then
+    echo "ok   SCHED-PRIVATE: the refusal row names the rule and holds no prompt"
+else echo "FAIL SCHED-PRIVATE: the refusal row is missing, has another rule or holds the prompt: $(cat "$SCHED_ROWS" 2>/dev/null)"; FAIL=$((FAIL+1)); fi
+NOSTORE="$TMP/nostore"
+run "SCHED-NO-STORE: an instance-bearing SCHED-BOUND is refused without reading storage" 2 'non-fresh-bound-interval' \
+    "$(sched '{"instanceId":"claudeAgent","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')" \
+    HOME="$NOSTORE" T3CODE_HOME="$NOSTORE" HIMMEL_PROFILE_SETTINGS_DIR="$NOSTORE" HIMMEL_GUARD_REFUSALS_LOG="$TMP/nostore-rows.jsonl"
+N=$((N+1))
+if [ ! -e "$NOSTORE" ]; then echo "ok   SCHED-NO-STORE: the isolated directory is still absent"
+else echo "FAIL SCHED-NO-STORE: the guard created $NOSTORE"; FAIL=$((FAIL+1)); fi
+OWN='carries settings of its own in its launchArgs'
+UNKNOWN_DIR='whether its settings files are resolved profile files is unknown (the profile settings directory is not a canonical absolute path)'
+run "S0b: an emitter-shaped instance with an mcp file: allowed" 0 - "$(from_to codex claudeMcp)"
+run "S0b: an empty launchArgs: allowed" 0 - "$(from_to codex claudeEmpty)"
+run "S0b: no launchArgs: allowed" 0 - "$(from_to codex claudeNoArgs)"
+run "S1: inline settings JSON: refused" 2 "\"inlineSettings\": $OWN (inline settings JSON)" "$(from_to codex inlineSettings)"
+lacks "S1: the refusal never prints the inline JSON" '"allow"' "$(from_to codex inlineSettings)"
+for id in inlineEq inlineTwoSpace inlineLeadSpace inlineSecond topInline configInline; do
+    run "S1b/S1c: $id: refused as inline settings JSON" 2 "\"$id\": $OWN (inline settings JSON)" "$(from_to codex "$id")"
+    lacks "S1b/S1c: $id: the refusal never prints the inline JSON" '"env"' "$(from_to codex "$id")"
+done
+run "S1d: a driverless claudeAgent_ id is a Claude instance: refused" 2 "\"claudeAgent_nodriver\": $OWN (inline settings JSON)" "$(from_to codex claudeAgent_nodriver)"
+run "S1d: a driverless non-Claude id is not judged by the Claude rule: allowed as the source" 0 - "$(from_to nodriverOther codex)"
+run "S2: a hand-pointed settings file: refused" 2 "\"handPointed\": $OWN (--settings /x/design-full.json: not a resolved profile file under $LP)" "$(from_to codex handPointed)"
+run "S2b: a relative settings path: refused" 2 "\"relativePath\": $OWN (--settings .himmel/worker-settings.json: not a resolved profile file under $LP)" "$(from_to codex relativePath)"
+S2C_ROWS="$TMP/s2c-rows.jsonl"
+run "S2c: a bare-token settings value is never printed" 2 "\"secretValue\": $OWN (--settings a value that is not a path: not a resolved profile file under $LP)" \
+    "$(from_to codex secretValue)" HIMMEL_GUARD_REFUSALS_LOG="$S2C_ROWS"
+lacks "S2c: secretValue: no marker on stderr" SECRETMARKER "$(from_to codex secretValue)"
+run "S2c: a flag value is never printed, only its name" 2 "\"secretFlag\": $OWN (launchArgs not in the resolved-profile shape: --token)" \
+    "$(from_to codex secretFlag)" HIMMEL_GUARD_REFUSALS_LOG="$S2C_ROWS"
+lacks "S2c: secretFlag: no marker on stderr" SECRETMARKER "$(from_to codex secretFlag)"
+N=$((N+1))
+if [ -s "$S2C_ROWS" ] && ! grep -q SECRETMARKER "$S2C_ROWS"; then echo "ok   S2c: the refusal rows hold no marker"
+else echo "FAIL S2c: the refusal rows are missing or hold a marker"; FAIL=$((FAIL+1)); fi
+run "S3: a settings file edited in place: refused" 2 "\"editedFile\": $OWN (--settings $ED: its content does not match its resolved hash)" "$(from_to codex editedFile)"
+lacks "S3: the refusal never prints the file's content" MARKERKEY "$(from_to codex editedFile)"
+run "S3: an mcp file edited in place: refused" 2 "\"editedMcp\": $OWN (--mcp-config $EM: its content does not match its resolved hash)" "$(from_to codex editedMcp)"
+run "S3: a missing settings file: refused" 2 "\"missingFile\": $OWN (--settings $LP/aaaaaaaaaaaa/missing.json: the file cannot be read)" "$(from_to codex missingFile)"
+N=$((N+1))
+if [ -p "$LP/bbbbbbbbbbbb/fifo.json" ]; then echo "ok   S3b: the FIFO fixture exists"; else echo "FAIL S3b: the test could not create the FIFO"; FAIL=$((FAIL+1)); fi
+RUN_TIMEOUT=5 run "S3b: a FIFO settings file is refused unread, without hanging" 2 "\"fifoFile\": $OWN (--settings $LP/bbbbbbbbbbbb/fifo.json: the file cannot be read)" "$(from_to codex fifoFile)"
+run "S4: an instance of any id on the maintainer-hooks file: refused" 2 \
+    '"maintainerRenamed": is a maintainer-profile instance (its launchArgs point at the maintainer-hooks resolved file)' "$(from_to codex maintainerRenamed)"
+run "S4: the maintainer file name in another case: refused" 2 '"maintainerCase": is a maintainer-profile instance' "$(from_to codex maintainerCase)"
+run "S5: an extra flag: refused" 2 "\"extraFlag\": $OWN (launchArgs not in the resolved-profile shape: --allowedTools)" "$(from_to codex extraFlag)"
+run "S5: an mcp file outside the settings directory: refused" 2 "\"mcpOutside\": $OWN (launchArgs not in the resolved-profile shape" "$(from_to codex mcpOutside)"
+run "S5: a hashed file outside the settings directory: refused" 2 "\"otherDir\": $OWN (--settings $CT/other/$OH/x.json: not a resolved profile file under $LP)" "$(from_to codex otherDir)"
+run "S5b: the settings directory is a string prefix, never a pattern: refused" 2 "\"dotDir\": $OWN (--settings $CT/Xlp/$OH/x.json: not a resolved profile file under $CT/.lp)" \
+    "$(from_to codex dotDir)" HIMMEL_PROFILE_SETTINGS_DIR="$CT/.lp"
+run "S6: an own-settings instance as the source: refused" 2 "\"inlineSettings\": $OWN" "$(from_to inlineSettings codex)"
+run "S7: a codex instance's launch args are not judged by the Claude rule: allowed" 0 - "$(from_to codex codexArgs)"
+run "S8b: a settings directory with a trailing slash: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$LP/"
+run "S8b: a settings directory holding //: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$CT//lp"
+mkdir -p "$TMP/nosha"
+for t in bash jq cat tr cut sort sed date hostname uname mkdir dirname head grep wc awk; do
+    p=$(command -v "$t" 2>/dev/null) && ln -sf "$p" "$TMP/nosha/$t"
+done
+run "S9: no sha256 tool: refused" 2 '"claudeAgent_worker-impl": whether its settings files are resolved profile files is unknown (no sha256 tool)' \
+    "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/nosha"
+lacks "S9: no sha256 tool is not reported as a bad path" 'not a resolved profile file under' \
+    "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/nosha"
+run "S11: the operator override allows an own-settings instance, on stderr" 0 'override: allowed' "$(from_to codex inlineSettings)" T3_THREAD_TOOLS_OK=1
+run "S12: the refusal text names the own-settings rule" 2 'whose launch line carries settings that are not a resolved profile file' "$(from_to codex handPointed)"
+run "S13: a relative settings directory: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR=lp
+run "S13: a settings directory with a space: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$CT/l p"
+mkdir -p "$TMP/shastub"
+cp -P "$TMP/nosha/"* "$TMP/shastub/"
+if SHA_REAL=$(command -v sha256sum); then
+    printf '#!/usr/bin/env bash\n: > %q\nexec %q "$@"\n' "$TMP/sha-called" "$SHA_REAL" > "$TMP/shastub/sha256sum"
+else
+    printf '#!/usr/bin/env bash\n: > %q\nexec %q -a 256 "$@"\n' "$TMP/sha-called" "$(command -v shasum)" > "$TMP/shastub/sha256sum"
+fi
+chmod +x "$TMP/shastub/sha256sum"
+run "S14: a call that names no Claude instance needs no sha256 tool" 0 - "$(from_to codex antigravity)" PATH="$TMP/nosha"
+run "S14: a call that names no Claude instance: allowed" 0 - "$(from_to codex antigravity)" PATH="$TMP/shastub"
+N=$((N+1))
+if [ ! -e "$TMP/sha-called" ]; then echo "ok   S14: it ran no hash tool"; else echo "FAIL S14: a call naming no Claude instance ran the hash tool"; FAIL=$((FAIL+1)); fi
+run "S14 control: a call naming a Claude instance through the stub: allowed" 0 - "$(from_to codex claudeAgent_worker-impl)" PATH="$TMP/shastub"
+N=$((N+1))
+if [ -e "$TMP/sha-called" ]; then echo "ok   S14 control: the stub saw the hash"; else echo "FAIL S14 control: the hash stub was never called"; FAIL=$((FAIL+1)); fi
+run "S16: a settings path ending in a newline is not a resolved profile file" 2 \
+    "\"trailingNewline\": $OWN (--settings a value that is not a path: not a resolved profile file under $LP)" "$(from_to codex trailingNewline)"
+run "S16: a settings directory ending in a newline is not canonical" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" HIMMEL_PROFILE_SETTINGS_DIR="$LP"$'\n'
+run "S15: HOME unset and no settings directory: refused" 2 "\"claudeAgent_worker-impl\": $UNKNOWN_DIR" \
+    "$(from_to codex claudeAgent_worker-impl)" -u HOME -u HIMMEL_PROFILE_SETTINGS_DIR
+
+PIH="$TMP/pihome" PIS="$TMP/pi/userdata/settings.json"
+mkdir -p "$PIH" "$TMP/pi/userdata"
+printf '{"providerInstances":{}}\n' > "$PIS"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/agy-none.sh"
+N=$((N+1))
+if ! command -v node >/dev/null 2>&1; then
+    echo "FAIL S8: node is not on PATH, so the real emitter cannot run"; FAIL=$((FAIL+1))
+elif ! env -u T3_PI_RESOLVER -u T3_PI_EMPTY_OK HOME="$PIH" T3_PI_PROFILES=worker-impl,worker-docs,operator T3_PI_AGY_PROFILES="$TMP/agy-none.sh" \
+        bash "$HOOKS/../t3/provider-instances.sh" --apply --settings-file "$PIS" >"$TMP/pi.out" 2>&1; then
+    echo "FAIL S8: the real emitter failed: $(tail -n 3 "$TMP/pi.out")"; FAIL=$((FAIL+1))
+elif ! jq -e '[.providerInstances[] | select(.driver == "claudeAgent") | .config.launchArgs | select(test("--mcp-config"))] | length > 0' "$PIS" >/dev/null 2>&1; then
+    echo "FAIL S8: no emitted instance carries an --mcp-config file"; FAIL=$((FAIL+1))
+else
+    echo "ok   S8: the real emitter wrote its instances"
+    for id in $(jq -r '.providerInstances | to_entries[] | select(.value.driver == "claudeAgent") | .key' "$PIS"); do
+        run "S8: the emitted $id: allowed" 0 - "$(from_to codex "$id")" T3CODE_HOME="$TMP/pi"
+    done
+fi
 
 printf '{"t3":{"relay_instances":[]}}\n' > "$HOME/.himmel/config.json"
 run "a config with no narrowing key narrows nothing: allowed" 0 - "$(from_to antigravity orchestratorNeon)"
@@ -319,10 +580,10 @@ run "row: a refusal with HIMMEL_GUARD_REFUSALS_LOG set still refuses" 2 '"claude
 check "row: HIMMEL_GUARD_REFUSALS_LOG moves the row" '[ "$(row_count "$ALT")" = 1 ] && [ "$(row_count "$ROWS")" = 5 ]'
 mkdir -p "$TMP/ro"; : > "$TMP/ro/blocker"
 run "row: an unwritable log path never changes the refusal" 2 '"claudeBypass"' "$LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$TMP/ro/blocker/x.jsonl"
+run "S10: an inline-settings launch still refuses" 2 '"inlineSettings"' "$(from_to codex inlineSettings)"
+check "S10: it writes one row naming the own-settings rule and the instance, never the settings" \
+    '[ "$(row_count "$ROWS")" = 6 ] && [ "$(tail -n1 "$ROWS" | jq -r "[.rule, .instance] | join(\"|\")")" = "own-settings-instance|inlineSettings" ] && ! grep -q "permissions\|allow" <<<"$(tail -n1 "$ROWS")"'
 
-# shellcheck source=../lib/portable-timeout.sh
-# shellcheck disable=SC1091
-. "$HOOKS/../lib/portable-timeout.sh"
 FIFO="$TMP/fifo.jsonl"
 N=$((N+1))
 if ! mkfifo "$FIFO" 2>/dev/null || [ ! -p "$FIFO" ]; then
@@ -332,6 +593,17 @@ else
     if [ "$rc" = 2 ]; then echo "ok   row: a log path that is a pipe with no reader never hangs the refusal"
     else echo "FAIL row: a log path that is a pipe with no reader never hangs the refusal: rc=$rc (124 = the guard hung)"; FAIL=$((FAIL+1)); fi
 fi
+
+R5_ROWS="$TMP/r5.jsonl" R5C_ROWS="$TMP/r5c.jsonl" R7_ROWS="$TMP/r7.jsonl"
+run "R5: a Codex-spelled bypass launch still refuses" 2 '"claudeBypass"' "$CX_LAUNCH_BAD" HIMMEL_GUARD_REFUSALS_LOG="$R5_ROWS"
+check "R5: it writes one row naming the bypass-instance rule and the instance" \
+    '[ "$(row_count "$R5_ROWS")" = 1 ] && [ "$(jq -r "[.rule, .instance] | join(\"|\")" "$R5_ROWS")" = "bypass-instance|claudeBypass" ]'
+run "R5 control: a Codex-spelled t3_thread_list still allows" 0 - "$CX_LIST" HIMMEL_GUARD_REFUSALS_LOG="$R5C_ROWS"
+check "R5 control: it writes no row" '[ "$(row_count "$R5C_ROWS")" = 0 ]'
+for name in $R7_NAMES; do
+    run "R7: $name still allows with its own row log" 0 - "$(r7_payload "$name")" HIMMEL_GUARD_REFUSALS_LOG="$R7_ROWS"
+done
+check "R7: a name outside the three prefixes writes no row" '[ "$(row_count "$R7_ROWS")" = 0 ]'
 
 echo "$((N-FAIL))/$N cases; failures=$FAIL"
 [ "$FAIL" = 0 ]

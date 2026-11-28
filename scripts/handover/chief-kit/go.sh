@@ -786,7 +786,7 @@ _go_deliver() {
     row=$(gd_pr_worker "$manifest" "$PR") || { echo "NOT-SENT $PR $h8 reason=no-manifest-worker"; return 0; }
     IFS=$'\t' read -r label wdoc lane <<< "$row"
     [ "$lane" = native ] || { echo "NOT-SENT $PR $h8 reason=lane-$lane"; return 0; }
-    tok=$(gd_worker_token "$cdoc" "$label" "$wdoc") || { echo "NOT-SENT $PR $h8 reason=no-token $label"; return 0; }
+    tok=$(gd_worker_token "$cdoc" "$label" "$wdoc" "$ROOT") || { echo "NOT-SENT $PR $h8 reason=no-token $label"; return 0; }
     msg=$(gd_message "$PR" "$SHA" "$DEST" "$ANCHOR" "${CONTRACT:--}" - "$tok")
     census=$(gd_census "${GO_DELIVER_CENSUS:-}")
     gd_session "$wdoc" "$census"

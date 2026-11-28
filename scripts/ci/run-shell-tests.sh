@@ -391,6 +391,8 @@ _suite_timeout_for() {
       printf '1200' ;;
     scripts/handover/chief-kit/test-chief-wait-pool.sh|*/scripts/handover/chief-kit/test-chief-wait-pool.sh)
       printf '1250' ;;
+    scripts/handover/chief-kit/test-next-dispatchable.sh|*/scripts/handover/chief-kit/test-next-dispatchable.sh)
+      printf '1200' ;;
     scripts/handover/chief-kit/test-auto-go.sh|*/scripts/handover/chief-kit/test-auto-go.sh)
       printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)

@@ -322,7 +322,6 @@ _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
     case "$name" in
         ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) return 0 ;;
     esac
-    [ "${#name}" -le 64 ] || return 0
     [ -f "${XDG_STATE_HOME:-$HOME/.local/state}/himmel/bus/peers/$name.json" ] || return 0
     case "$secs" in ''|*[!0-9]*) secs=15 ;; esac
     bus="${ARM_RESUME_BUS_CLI:-$SCRIPT_DIR/../../marketplace/plugins/himmel-bus/bin/bus}"
@@ -5138,6 +5137,8 @@ fi"
                 # worker or consult carries (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES, the
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(chief_context_launch_seam_env_names | tr '\n' ' ')
+"
+                [ -n "${HIMMEL_MAINTAINER_ACTION:-}" ] && at_safety_child="${at_safety_child}unset HIMMEL_HOOK_INTEGRITY_BYPASS_OK HIMMEL_MAINTAINER_ACTION
 "
                 _arm_bridge_marked && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
 "

@@ -139,7 +139,7 @@ EOF
 
 run() { python3 "$SUT" "$WORK/workers.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$BUCKET" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 "$@"; }
 
-out="$(run --manifest "$WORK/fleet.json" 2>&1)"; rc=$?
+out="$(run --manifest "$BUCKET/fleet.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "a valid workers file generates (rc 0)" || fail "rc=$rc: $out"
 D1="$BUCKET/HIMMEL-9001-N901-plain-fix-2026-10-08.md"
 D2="$BUCKET/HIMMEL-9002-N902-hook-fix-2026-10-08.md"
@@ -256,21 +256,23 @@ lacks "an unflagged worker's brief does not" "$b1" "copied from the real environ
 l1="$(cat "$BUCKET/launch-N901.sh" 2>/dev/null)"; l2="$(cat "$BUCKET/launch-N902.sh" 2>/dev/null)"
 lacks "a plain worker's launcher has NO bypass export" "$l1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK"
 has "a hook worker's launcher exports the bypass" "$l2" "export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1"
-has "the launcher passes the real manifest to headed-arm-worker.sh" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $WORK/fleet.json --profile worker-impl --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief"
+has "the launcher passes the real manifest to headed-arm-worker.sh" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $BUCKET/fleet.json --profile worker-impl --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief"
 has "the launcher passes the deadline and model" "$l1" "1791475000"
 has "the launcher is syntactically valid bash" "$(bash -n "$BUCKET/launch-N901.sh" 2>&1 && echo ok)" "ok"
 [ -x "$BUCKET/launch-N901.sh" ] && pass "launchers are executable" || fail "launcher not executable"
-has "it prints one manifest add per worker" "$out" "fleet-manifest.sh add $WORK/fleet.json $D2"
+has "it prints one manifest add per worker" "$out" "fleet-manifest.sh add $BUCKET/fleet.json $D2"
+{ printf '%s\n' "$out" | grep -Fxq "launch with: bash $BUCKET/launch-N901.sh" && printf '%s\n' "$out" | grep -Fxq "launch with: bash $BUCKET/launch-N902.sh"; } \
+    && pass "H1: it prints one launcher per line" || fail "H1: the launch lines are not one per line: $(printf '%s\n' "$out" | grep 'launch with')"
 # the printed add line carries --lane, so the manifest never stores lane unknown.
-has "the add line for a default worker carries --lane native" "$out" "fleet-manifest.sh add $WORK/fleet.json $D1 --lane native"
-has "and so does the second worker's" "$out" "fleet-manifest.sh add $WORK/fleet.json $D2 --lane native"
+has "the add line for a default worker carries --lane native" "$out" "fleet-manifest.sh add $BUCKET/fleet.json $D1 --lane native"
+has "and so does the second worker's" "$out" "fleet-manifest.sh add $BUCKET/fleet.json $D2 --lane native"
 # The printed lines, run as printed from the repo root, build a manifest relay-batch resolves.
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 # fleet-manifest.sh takes a util-linux flock (its PLATFORM GUARD): without one no manifest row is written, so the relay rows have nothing to read.
 if command -v flock >/dev/null 2>&1; then
 printf '%s\n' "$out" | grep '^bash scripts/handover/chief-kit/fleet-manifest.sh add ' > "$WORK/adds.txt"
 while IFS= read -r addline; do (cd "$REPO_ROOT" && eval "$addline" >/dev/null 2>&1); done < "$WORK/adds.txt"
-cp "$WORK/fleet.json" "$WORK/chief.fleet.json" 2>/dev/null
+cp "$BUCKET/fleet.json" "$WORK/chief.fleet.json" 2>/dev/null
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state
 printf '## Live state\nlegs: `N901:tok1:lock:1` `N902:tok2:lock:2`\n' > "$WORK/chief.md"
 cat > "$WORK/census.sh" <<'EOC'
@@ -285,7 +287,7 @@ else
   echo "SKIP relay-batch rows (no flock on this host, so fleet-manifest.sh writes no row)"
 fi
 # the sidecar Telegram /launch-worker checks is written with the launcher.
-side="$(cat "$WORK/fleet.launchers.sha256" 2>/dev/null)"
+side="$(cat "$BUCKET/fleet.launchers.sha256" 2>/dev/null)"
 # hashlib, not sha256sum: macOS ships shasum only.
 sha_of() { python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
 has "the sha256 sidecar records launcher 1 at write time" "$side" "$(sha_of "$BUCKET/launch-N901.sh")  $BUCKET/launch-N901.sh"
@@ -303,23 +305,23 @@ cp -R "$REPO_ROOT/scripts/lib" "$R7811/scripts/lib"
 cp "$HERE/fleet-manifest.sh" "$R7811/scripts/handover/chief-kit/fleet-manifest.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811.log" > "$R7811/scripts/handover/chief-kit/headed-arm-worker.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin7811/sleep"; chmod +x "$WORK/bin7811/sleep"
-python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/f7811.fleet.json" >/dev/null 2>&1
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/b7811/f7811.fleet.json" >/dev/null 2>&1
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
 [ "$rc7811" -eq 0 ] && pass "the generated launcher exits 0" || fail "the generated launcher exited $rc7811"
 d7811="$(find "$WORK/b7811" -maxdepth 1 -name "$KP-9001-N901-plain-fix-*.md" 2>/dev/null | head -n1)"
-[ -n "$d7811" ] && bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -Fxq -- "$d7811" && pass "the generated launcher leaves its exact worker doc in the fleet manifest" || fail "the fleet manifest does not list the exact worker doc [$d7811]"
+[ -n "$d7811" ] && bash "$HERE/fleet-manifest.sh" list "$WORK/b7811/f7811.fleet.json" 2>&1 | grep -Fxq -- "$d7811" && pass "the generated launcher leaves its exact worker doc in the fleet manifest" || fail "the fleet manifest does not list the exact worker doc [$d7811]"
 l7811="$(cat "$WORK/b7811/launch-N901.sh" 2>/dev/null)"
 add_pos="${l7811%%fleet-manifest.sh add*}"; arm_pos="${l7811%%headed-arm-worker.sh*}"
 [ "${#add_pos}" -lt "${#arm_pos}" ] && pass "the launcher adds the worker to the manifest before it arms" || fail "manifest add does not precede the arm in the launcher"
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
 [ "$rc7811" -eq 0 ] && pass "the re-run launcher exits 0" || fail "the re-run launcher exited $rc7811"
-[ "$(bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -c N901)" = 1 ] && pass "running the launcher twice adds the worker once" || fail "launcher re-run duplicated the manifest row"
+[ "$(bash "$HERE/fleet-manifest.sh" list "$WORK/b7811/f7811.fleet.json" 2>&1 | grep -c N901)" = 1 ] && pass "running the launcher twice adds the worker once" || fail "launcher re-run duplicated the manifest row"
 # A failed manifest add stops the launch: the arm never runs.
 R7811f="$WORK/repo7811f"; mkdir -p "$R7811f/scripts/handover/chief-kit"
 cp -R "$REPO_ROOT/scripts/lib" "$R7811f/scripts/lib"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$R7811f/scripts/handover/chief-kit/fleet-manifest.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\n' "$WORK/arm7811f.log" > "$R7811f/scripts/handover/chief-kit/headed-arm-worker.sh"
-python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/f7811f.fleet.json" >/dev/null 2>&1
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811f" --repo "$R7811f" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/b7811f/f7811f.fleet.json" >/dev/null 2>&1
 has "the launcher for the failed-add check carries the manifest add" "$(cat "$WORK/b7811f/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811f/launch-N901.sh" >/dev/null 2>&1; rc7811f=$?
 [ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero" || fail "launcher exited 0 after a failed manifest add"
@@ -411,16 +413,16 @@ python3 "$SUT" "$WORK/lbl6.json" --base 4ccb59d --chief BZ --bucket "$WORK/bt-lb
 
 # A per-worker lane key is carried through and validated.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-ok.json"
-lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/f5.json" 2>&1)"
+lout="$(python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/b5/f5.json" 2>&1)"
 has "a worker's lane key is printed as --lane" "$lout" "--lane claudex"
 # The launcher itself carries the lane, so a claudex worker needs no hand edit that breaks the sidecar sha.
 has "a claudex worker's launcher passes --lane claudex" "$(cat "$WORK/b5/launch-N901.sh")" "--lane claudex "
-has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
-python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1; rc5n=$?
+has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/b5/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
+python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/b5n/f5n.json" >/dev/null 2>&1; rc5n=$?
 [ "$rc5n" -eq 0 ] && pass "a native worker's generation succeeds" || fail "native worker generation exited $rc5n"
 has "a native worker's launcher has an arm line to check" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
 lacks "a native worker's arm line has no --lane (its manifest add line carries --lane native)" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh")" "--lane"
-has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
+has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/b5n/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-bad.json"
 python3 "$SUT" "$WORK/lane-bad.json" --base 4ccb59d --chief BZ --bucket "$WORK/b6" --repo "$REPO" --handover-root "$WORK/h" --no-worktree >/dev/null 2>"$WORK/lane-bad.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'lane' "$WORK/lane-bad.err" && [ ! -e "$WORK/b6/launch-N901.sh" ] && pass "an invalid lane is refused before anything is written" || fail "bad lane rc=$rc"
@@ -436,7 +438,7 @@ python3 "$SUT" "$WORK/lane-nl.json" --base 4ccb59d --chief BZ --bucket "$WORK/b8
 # an ab_arm key writes the brief ruling line, exports WORKER_SESSION_AUTOCOMPACT_AB in the launcher
 # and passes --arm on the printed manifest add line; a bad value is refused; no key changes nothing.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; l[0]["profile"]="worker-docs"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ab-ok.json"
-about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/f9.json" 2>&1)"
+about="$(python3 "$SUT" "$WORK/ab-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b9" --repo "$REPO" --handover-root "$WORK/h" --no-worktree --manifest "$WORK/b9/f9.json" 2>&1)"
 abdoc="$(cat "$WORK/b9/$KP-9001-N901-plain-fix-"*.md 2>/dev/null)"
 has "ab_arm 400k: the brief carries the ruling line" "$abdoc" "> **Context:** ab-400k — operator-ruling: the operator sanctioned this A/B arm"
 has "ab_arm 400k: the launcher exports WORKER_SESSION_AUTOCOMPACT_AB=400000" "$(cat "$WORK/b9/launch-N901.sh" 2>/dev/null)" "export WORKER_SESSION_AUTOCOMPACT_AB=400000"
@@ -901,7 +903,7 @@ launch_preface="$(sed -n 's#.*PREFACE:-\$HERE/../../../\(docs/handover/[a-z-]*\.
 # (the rows above stub the worktree step, so they skip the existing-worktree check)
 mkdir -p "$WORK/hr/tester" "$WORK/gitcwd"
 git -C "$WORK/gitcwd" init -q 2>/dev/null
-rc=0; (cd "$WORK/gitcwd" && USER_SLUG=tester python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket himmel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree --manifest "$WORK/fb.json" >"$WORK/bb.out" 2>"$WORK/bb.err") || rc=$?
+rc=0; (cd "$WORK/gitcwd" && USER_SLUG=tester python3 "$SUT" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket himmel --repo "$REPO" --handover-root "$WORK/hr" --no-worktree --manifest "$WORK/hr/tester/himmel/fb.json" >"$WORK/bb.out" 2>"$WORK/bb.err") || rc=$?
 [ "$rc" = 0 ] && [ -f "$WORK/hr/tester/himmel/launch-N901.sh" ] && pass "a bare --bucket resolves to <handover-root>/<user>/<bucket>" || fail "bare bucket rc=$rc: $(cat "$WORK/bb.err")"
 [ ! -e "$WORK/gitcwd/himmel" ] && pass "and writes no stray dir under the cwd" || fail "stray himmel/ dir under the cwd"
 grep -q -- "$WORK/hr/tester/himmel/HIMMEL-9001-N901" "$WORK/hr/tester/himmel/launch-N901.sh" 2>/dev/null && pass "the launcher passes an absolute doc path" || fail "launcher doc path not absolute"
@@ -950,12 +952,12 @@ git worktree add -q "$PWD/.claude/worktrees/${1//\//+}" -b "$1"
 EOF
 ADP="$WORK/adapter"; git init -q "$ADP" && git -C "$ADP" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 ADPBASE="$(git -C "$ADP" rev-parse HEAD)"
-rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/adp.fleet.json" >"$WORK/adp.out" 2>"$WORK/adp.err" || rc=$?
+rc=0; env -u GEN_BRIEFS_WORKTREE_CMD python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp" --repo "$ADP" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/hr/tester/adp/adp.fleet.json" >"$WORK/adp.out" 2>"$WORK/adp.err" || rc=$?
 [ "$rc" = 0 ] && pass "an adopted repo generates (rc 0)" || fail "adopted repo rc=$rc: $(cat "$WORK/adp.err") $(cat "$WORK/adp.out")"
 has "the adopter worktree is made by himmel's _new-worktree.sh run inside the adopter, without the install step" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9001-plain-fix|--no-install"
 has "and so is the second worker's" "$(cat "$WORK/adp-wt.log" 2>/dev/null)" "$ADP|fix/himmel-9002-hook-fix|--no-install"
 al="$(cat "$WORK/hr/tester/adp/launch-N901.sh" 2>/dev/null)"
-has "the adopter launcher names himmel's headed-arm-worker.sh and manifest" "$al" "$KIT/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $WORK/adp.fleet.json --profile worker-impl"
+has "the adopter launcher names himmel's headed-arm-worker.sh and manifest" "$al" "$KIT/scripts/handover/chief-kit/headed-arm-worker.sh --fleet $WORK/hr/tester/adp/adp.fleet.json --profile worker-impl"
 lacks "and not a copy under the adopter" "$al" "$ADP/scripts/handover/chief-kit/"
 has "the adopter launcher exports the adopter worktree as WORKER_SESSION_REPO" "$al" "export WORKER_SESSION_REPO=$ADP/.claude/worktrees/fix+himmel-9001-plain-fix"
 has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" "$KIT/scripts/handover/chief-kit/fleet-manifest.sh add"
@@ -1046,7 +1048,7 @@ rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WOR
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["release"]="r"*120; l[0]["state_dir"]=sys.argv[3]+"/"+"r"*120; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-long.json" "$WORK/hr/tester/himmel/release"
 rc=0; python3 "$SUT" "$WORK/rm-long.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-long" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-long.err" || rc=$?
 [ "$rc" = 1 ] && grep -q '128' "$WORK/rm-long.err" && [ ! -e "$WORK/rmb-long/launch-N910.sh" ] && pass "9537 e: an rm worker whose name is over the bus limit is refused naming 128, nothing written" || fail "9537 e: rm over-limit rc=$rc: $(cat "$WORK/rm-long.err")"
-rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
+rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmb/rmf.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "an rm worker generates (rc 0)" || fail "rm rc=$rc: $rmout"
 RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"
 [ -f "$RMD" ] && [ -f "$WORK/rmb/launch-N910.sh" ] && pass "an rm worker writes <KEY>-<label>-rm-<R>-<date>.md and its launcher" || fail "rm files missing in $WORK/rmb"
@@ -1640,6 +1642,7 @@ srbad dupkey 'w[2]["keys"] = ["HIMMEL-9302"]' "more than once"
 srmut mfout 'pass'
 mfo="$(HIMMEL_FLAG_STACKED_SERIES=1 python3 "$SUT" "$WORK/sr-mfout.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/sr-b-mfout" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/srw-mfout" --deadline 1791475000 --manifest "$WORK/elsewhere.fleet.json" 2>&1)"; rc=$?
 [ "$rc" = 1 ] && has "S2a: a manifest outside the bucket is refused" "$mfo" "not in the bucket" || fail "S2a: manifest outside the bucket rc=$rc: $mfo"
+has "G5: the series refusal keeps the series reason" "$mfo" "series ledgers"
 [ -z "$(find "$WORK/sr-b-mfout" -type f -print -quit 2>/dev/null)" ] && pass "S2a: the manifest refusal writes no brief, launcher or ledger" || fail "S2a: the manifest refusal wrote $(find "$WORK/sr-b-mfout" -type f)"
 srmut mfin 'pass'
 mfi="$(HIMMEL_FLAG_STACKED_SERIES=1 python3 "$SUT" "$WORK/sr-mfin.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/sr-b-mfin" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/srw-mfin" --deadline 1791475000 --manifest "$WORK/sr-b-mfin/x.fleet.json" 2>&1)"; rc=$?
@@ -2088,7 +2091,7 @@ MIRROR_LOG="$WORK/mirror98.log" gen98 "$WORK/b98ok.json" "$WORK/bb98ok"; rc=$?
 { [ "$rc" = 0 ] && [ ! -s "$WORK/mirror98.log" ]; } && pass "9598 b: a ticket whose mirror row is complete runs no refresh" || fail "9598 b: rc=$rc, refresh log [$(cat "$WORK/mirror98.log")]"
 
 mk98 'w["keys"]=["HIMMEL-9801"]; w["slug"]="-".join(["wordy"]*30)' "$WORK/c101.json"
-gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/c101-fleet.json"; rc=$?
+gen98 "$WORK/c101.json" "$WORK/bc101" --manifest "$WORK/bc101/c101-fleet.json"; rc=$?
 [ "$rc" = 0 ] && pass "9537 a: a slug too long for the bus is trimmed, not refused" || fail "9537 a: rc=$rc: $(cat "$WORK/g98.err")"
 C101="$(find "$WORK/bc101" -name '*-N901-*.md' -print -quit 2>/dev/null)"; C101="$(basename "$C101" .md)"
 [ -n "$C101" ] && [ "${#C101}" -le 120 ] && pass "9537 a: the trimmed name and its -RESUME form fit the bus limit (${#C101} + 8 of 128)" || fail "9537 a: name [$C101] is ${#C101} characters"
@@ -2104,7 +2107,7 @@ C102="$(basename "$(find "$WORK/bc102" -name '*-N901-*.md' -print -quit 2>/dev/n
 BUSMAX_GB="$(sed -n 's/^BUS_NAME_MAX = \([0-9]*\)$/\1/p' "$SUT")"
 BUSMAX_STORE="$(sed -n 's/^export const SESSION_NAME = .*{0,\([0-9]*\)}\$\/;$/\1/p' "$HERE/../../../marketplace/plugins/himmel-bus/lib/store.mjs" | awk '{print $1+1}')"
 [ -n "$BUSMAX_GB" ] && [ "$BUSMAX_GB" = "$BUSMAX_STORE" ] && pass "9537 d: BUS_NAME_MAX is the bus validator's limit ($BUSMAX_STORE)" || fail "9537 d: BUS_NAME_MAX [$BUSMAX_GB] != store.mjs [$BUSMAX_STORE]"
-gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/c104-fleet.json"; rc=$?
+gen98 "$WORK/a98.json" "$WORK/bc104" --manifest "$WORK/bc104/c104-fleet.json"; rc=$?
 C104="$WORK/bc104/HIMMEL-9801-N901-plain-fix-2026-10-08.md"
 { [ "$rc" = 0 ] && [ -f "$C104" ]; } && pass "9537 c: a short slug keeps its name byte for byte" || fail "9537 c: rc=$rc"
 lacks "9537 c: a short slug prints no trim" "$(cat "$WORK/g98.out")" "trimmed"
@@ -2825,6 +2828,130 @@ gout="$(gb1_run N905 "$KP-9005" false 1)"; grc=$?
 gout="$(gb1_run N906 "$KP-9006" true '')"; grc=$?
 { [ "$grc" = 0 ] && grep -Fq 'export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1' "$WORK/gb1-bucket-N906/launch-N906.sh" 2>/dev/null; } \
     && pass "GB1 the same worker with hook:true generates under a blank bypass and its launcher exports it" || fail "GB1 hook:true rc=$grc: $gout"
+
+G="$WORK/g10356"; mkdir -p "$G"
+GS=HIMMEL-9001-N901-plain-fix-2026-10-08
+g_run() {
+    local n="$1" wf="$2" b="$3" m="$4"; shift 4
+    mkdir -p "$G/in-$n"; cp "$wf" "$G/in-$n/workers.json"
+    python3 "$SUT" "$G/in-$n/workers.json" --base 4ccb59d --chief BZ --bucket "$b" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$G/w-$n" --deadline 1791475000 --manifest "$m" "$@" >"$G/$n.out" 2>"$G/$n.err"
+}
+g_none() {
+    [ -z "$(find "$2" -type f -print -quit 2>/dev/null)" ] && [ ! -e "${3%.json}.launchers.sha256" ] && [ ! -e "$G/in-$1/workers.json.out" ]
+}
+fr_resolve() {
+    python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import fleet_runtime as f
+try:
+    f.resolve(sys.argv[2], sys.argv[3]); print("ok")
+except f.Refused as e:
+    print("Refused %s" % e)
+except Exception as e:
+    print(type(e).__name__)' "$HERE/../../lib" "$1" "$2" 2>&1
+}
+g_run g1 "$WORK/gbr.json" "$G/b1" "$G/x.fleet.json" --no-worktree; g1rc=$?
+{ [ "$g1rc" = 1 ] && g_none g1 "$G/b1" "$G/x.fleet.json"; } && pass "G1: an ordinary worker's manifest in the bucket's parent is refused (rc 1), nothing written" || fail "G1: rc=$g1rc: $(cat "$G/g1.err")"
+has "G1: the refusal says the manifest is not in the bucket" "$(cat "$G/g1.err")" "not in the bucket"
+has "G1: the refusal names the fleet runtime" "$(cat "$G/g1.err")" "fleet runtime"
+lacks "G1: the refusal does not call it a symlink" "$(cat "$G/g1.err")" "is a symlink"
+g_run g1c "$WORK/gbr.json" "$G/b1c" "$G/b1c/x.fleet.json" --no-worktree; g1crc=$?
+{ [ "$g1crc" = 0 ] && grep -Fq -- "--fleet $G/b1c/x.fleet.json" "$G/b1c/launch-N901.sh" 2>/dev/null; } && pass "G1c: a manifest in the bucket generates and the launcher passes it" || fail "G1c: rc=$g1crc: $(cat "$G/g1c.err")"
+g_run g2 "$WORK/rm.json" "$G/b2" "$G/x2.fleet.json"; rc=$?
+{ [ "$rc" = 1 ] && g_none g2 "$G/b2" "$G/x2.fleet.json" && grep -q 'not in the bucket' "$G/g2.err"; } && pass "G2: a release-manager worker's manifest outside the bucket is refused (rc 1), nothing written" || fail "G2: rc=$rc: $(cat "$G/g2.err")"
+g_run g2c "$WORK/rm.json" "$G/b2c" "$G/b2c/x.fleet.json"; rc=$?
+{ [ "$rc" = 0 ] && [ -f "$G/b2c/launch-N910.sh" ]; } && pass "G2c: a release-manager worker with its manifest in the bucket generates" || fail "G2c: rc=$rc: $(cat "$G/g2c.err")"
+mkdir -p "$G/b3" "$G/b3c"; printf '{"schema":1,"legs":[]}\n' > "$G/real3.fleet.json"
+ln -s "$G/real3.fleet.json" "$G/b3/x.fleet.json"; cp "$G/real3.fleet.json" "$G/b3c/x.fleet.json"
+g_run g3 "$WORK/gbr.json" "$G/b3" "$G/b3/x.fleet.json" --no-worktree; g3rc=$?
+{ [ "$g3rc" = 1 ] && [ "$(find "$G/b3" -mindepth 1 -print)" = "$G/b3/x.fleet.json" ] && [ ! -e "$G/in-g3/workers.json.out" ]; } && pass "G3: a symlinked manifest in the bucket is refused (rc 1), the bucket holds only the symlink" || fail "G3: rc=$g3rc, bucket [$(find "$G/b3" -mindepth 1 -print | tr '\n' ' ')]: $(cat "$G/g3.err")"
+has "G3: the refusal says the manifest is a symlink" "$(cat "$G/g3.err")" "is a symlink"
+lacks "G3: the refusal does not say it is outside the bucket" "$(cat "$G/g3.err")" "not in the bucket"
+g_run g3c "$WORK/gbr.json" "$G/b3c" "$G/b3c/x.fleet.json" --no-worktree; rc=$?
+[ "$rc" = 0 ] && pass "G3c: the same path as a plain file generates" || fail "G3c: rc=$rc: $(cat "$G/g3c.err")"
+r="$(fr_resolve "$G/b1/$GS.md" "$G/x.fleet.json")"
+{ [ "$g1rc" = 1 ] && [ "$r" = "Refused conflicting manifest locator" ]; } && pass "G4: the generator and the fleet runtime both refuse the G1 manifest" || fail "G4: G1 generator rc=$g1rc, runtime [$r]"
+r="$(fr_resolve "$G/b3/$GS.md" "$G/b3/x.fleet.json")"
+{ [ "$g3rc" = 1 ] && [ "$r" = "Refused symlink state" ]; } && pass "G4: the generator and the fleet runtime both refuse the G3 manifest" || fail "G4: G3 generator rc=$g3rc, runtime [$r]"
+r="$(fr_resolve "$G/b1c/$GS.md" "$G/b1c/x.fleet.json")"
+{ [ "$g1crc" = 0 ] && [ "$r" = "FileNotFoundError" ]; } && pass "G4c: the fleet runtime does not refuse the G1c manifest (it reads fleet-control.json next)" || fail "G4c: G1c generator rc=$g1crc, runtime [$r]"
+
+REAL_SLEEP="$(command -v sleep)"
+LB="$WORK/l-bin"; LBR="$WORK/l-bin-setsid"; LST="$WORK/l-stubs"; mkdir -p "$LB" "$LBR" "$LST"
+printf '#!/usr/bin/env bash\nexec %s 0.1\n' "$REAL_SLEEP" > "$LB/sleep"
+printf '#!/usr/bin/env bash\nexec "$@"\n' > "$LB/setsid"
+cp "$LB/sleep" "$LBR/sleep"; chmod +x "$LB/sleep" "$LB/setsid" "$LBR/sleep"
+cat > "$LST/refuse.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "headed-arm-worker: launch refused (fleet-paused)" >&2
+exit 10
+EOF
+cat > "$LST/refuse-late.sh" <<EOF
+#!/usr/bin/env bash
+$REAL_SLEEP 1
+echo "headed-arm-worker: launch refused (fleet-paused)" >&2
+exit 10
+EOF
+cat > "$LST/stay.sh" <<EOF
+#!/usr/bin/env bash
+d="\$(dirname "\$0")"
+echo \$\$ > "\$d/arm.pid"
+end=\$(( \$(date +%s) + 30 ))
+while [ ! -e "\$d/release" ] && [ "\$(date +%s)" -lt "\$end" ]; do $REAL_SLEEP 0.2; done
+exit 0
+EOF
+cat > "$LST/hold.sh" <<'EOF'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --no-prior-art-check) shift ;; --*) shift 2 ;; *) break ;; esac; done
+touch -t 200001010000 "$3"
+python3 -c 'import os,sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$3" > "$3.mtime"
+echo "headed-arm-worker: refusing to launch: a write hold holds scripts/x" >&2
+exit 2
+EOF
+printf '#!/usr/bin/env bash\nexit 0\n' > "$LST/zero.sh"
+LS=HIMMEL-9001-N901-plain-fix-2026-10-08; LSR=HIMMEL-9010-N910-rm-R1-2026-10-08
+l_gen() {
+    local r="$WORK/l-$1"; mkdir -p "$r/repo/scripts/handover/chief-kit"
+    cp "$LST/$3" "$r/repo/scripts/handover/chief-kit/headed-arm-worker.sh"
+    python3 "$SUT" "$2" --base 4ccb59d --chief BZ --bucket "$r/b" --date 2026-10-08 --repo "$r/repo" --handover-root "$WORK/hr" --work-dir "$r/w" --deadline 1791475000 ${4:+"$4"} >"$r/gen.out" 2>"$r/gen.err" || fail "$1: generation failed: $(cat "$r/gen.err")"
+}
+l_run() {
+    lo="$(PATH="$1:$PATH" bash "$WORK/l-$2/b/launch-$3.sh" 2>&1)"; lrc=$?
+}
+l_refused() {
+    [ "$lrc" = "$4" ] && pass "$1: the launcher exits $4" || fail "$1: the launcher exited $lrc: $lo"
+    has "$1: the launcher prints the arm's tail" "$lo" "headed-arm-worker: launch refused (fleet-paused)"
+    has "$1: the launcher prints REFUSED with the arm's status" "$lo" "REFUSED sig-$3 rc=$4"
+    lacks "$1: the launcher does not print fired" "$lo" "fired"
+    [ -z "$(find "$WORK/l-$2/w" -name 'sig-*' -print -quit 2>/dev/null)" ] && pass "$1: no signal file is created" || fail "$1: a signal file exists: $(ls "$WORK/l-$2/w")"
+}
+l_fired() {
+    { [ "$lrc" = 0 ] && [ -e "$WORK/l-$2/w/sig-$3" ]; } && has "$1: the launcher exits 0, touches the signal and prints fired" "$lo" "fired sig-$3" || fail "$1: rc=$lrc: $lo"
+}
+l_alive() {
+    p="$(cat "$WORK/l-$2/repo/scripts/handover/chief-kit/arm.pid" 2>/dev/null)"
+    { [ -n "$p" ] && kill -0 "$p" 2>/dev/null; } && pass "$1: the arm is still running when the launcher returns" || fail "$1: the arm [$p] was not running at the cap"
+    : > "$WORK/l-$2/repo/scripts/handover/chief-kit/release"
+}
+l_gen l1 "$WORK/gbr.json" refuse.sh --no-worktree; l_run "$LB" l1 N901; l_refused L1 l1 "$LS" 10
+has "L: the L1 worker launcher is syntactically valid bash" "$(bash -n "$WORK/l-l1/b/launch-N901.sh" 2>&1 && echo ok)" "ok"
+l_gen l1d "$WORK/gbr.json" refuse-late.sh --no-worktree; l_run "$LB" l1d N901; l_refused L1d l1d "$LS" 10
+if command -v setsid >/dev/null 2>&1; then
+    l_gen l1r "$WORK/gbr.json" refuse.sh --no-worktree; l_run "$LBR" l1r N901; l_refused L1r l1r "$LS" 10
+else
+    echo "SKIP L1r (no setsid)"
+fi
+l_gen l1c "$WORK/gbr.json" stay.sh --no-worktree; l_run "$LB" l1c N901; l_alive L1c l1c; l_fired L1c l1c "$LS"
+l_gen l2 "$WORK/rm.json" refuse.sh; l_run "$LB" l2 N910; l_refused L2 l2 "$LSR" 10
+has "L: the L2 release-manager launcher is syntactically valid bash" "$(bash -n "$WORK/l-l2/b/launch-N910.sh" 2>&1 && echo ok)" "ok"
+l_gen l2c "$WORK/rm.json" stay.sh; l_run "$LB" l2c N910; l_alive L2c l2c; l_fired L2c l2c "$LSR"
+l_gen l2d "$WORK/rm.json" zero.sh; l_run "$LB" l2d N910; l_fired L2d l2d "$LSR"
+l_gen l3 "$WORK/gbr.json" hold.sh --no-worktree; l_run "$LB" l3 N901
+[ "$lrc" = 2 ] && pass "L3: a write-hold refusal makes the launcher exit 2" || fail "L3: the launcher exited $lrc: $lo"
+has "L3: the launcher prints the arm's refusal reason" "$lo" "refusing to launch"
+has "L3: the launcher prints REFUSED with the arm's status" "$lo" "REFUSED sig-$LS rc=2"
+lacks "L3: the launcher does not print fired" "$lo" "fired"
+s3="$WORK/l-l3/w/sig-$LS"
+[ "$(python3 -c 'import os,sys; print(int(os.stat(sys.argv[1]).st_mtime))' "$s3" 2>&1)" = "$(cat "$s3.mtime" 2>/dev/null)" ] && pass "L3: the launcher leaves the arm's own signal file untouched" || fail "L3: the signal mtime changed after the arm wrote it"
+l_gen l3c "$WORK/gbr.json" zero.sh --no-worktree; l_run "$LB" l3c N901; l_fired L3c l3c "$LS"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

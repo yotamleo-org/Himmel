@@ -6,7 +6,7 @@ chief rewrites. It NEVER launches: it writes the brief and prints its path and n
   gen-judge-brief.py <spec.json> --chief <session> --bucket <dir>
                      [--date YYYY-MM-DD] [--letter Z] [--handover-root <dir>]
                      [--scratch-root <dir>] [--template <file>]
-  gen-judge-brief.py <spec.json> --chief <session> --dispatch-json [--letter Z]
+  gen-judge-brief.py <spec.json> --chief <session> --dispatch-json [--no-persist] [--letter Z]
 
 --dispatch-json prints ONE native Agent input object for an in-process judge-ro
 call instead of writing a headed-session brief: description, subagent_type judge-ro, model (the
@@ -21,6 +21,11 @@ claude-opus-5-5, claude-sonnet-5-5, claude-fable-5-2 or their aliases map to an 
 other id, a Haiku judge or a session-only setting such as opus[1m] is refused. Fable needs an
 escalation_reason that passes scripts/guardrails/agent-model-policy.json (rendered as its
 ESCALATION line); an escalation_reason on any other model is refused.
+
+--no-persist (with --dispatch-json only; the judge desk's brief) drops the persist step: the prompt
+says not to run judge-dir.sh or write-verdict.sh and to write no file, since the reply is the
+verdict, and its result contract asks for a `class:` line on a NO-GO and one `finding:` line per
+finding, the shape delta-class.sh --verdict-file reads. The DELTA-JUDGE line and the model stay.
 
 spec.json keys. Required: qid (kebab/alnum, e.g. j2599a), ticket (the doc's key), question
 (one line, verbatim), reason, prior (the Prior art line; a bare none or a <placeholder> is
@@ -195,7 +200,12 @@ def judge_effort():
     return m.group(1)
 
 
-def persist_text(s):
+NO_PERSIST = 'Do not run judge-dir.sh or write-verdict.sh, and write no file: your reply is the verdict.'
+
+
+def persist_text(s, no_persist):
+    if no_persist:
+        return NO_PERSIST
     if not (s.get('pr') and s.get('head')):
         return ('**Persist:** this question names no PR head, so no verdict file can record it: your verdict '
                 'is your reply, and your parent persists it.')
@@ -244,12 +254,15 @@ def dispatch_prompt(s, a, alias):
               evidence_text(s),
               '',
               '**Scope:** read-only. Do not: %s' % (s.get('do_not') or (
-                  DISPATCH_DO_NOT if s.get('pr') and s.get('head') else DISPATCH_DO_NOT_NO_HEAD)),
+                  DISPATCH_DO_NOT if s.get('pr') and s.get('head') and not a.no_persist else DISPATCH_DO_NOT_NO_HEAD)),
               '',
-              persist_text(s),
+              persist_text(s, a.no_persist),
               '',
               '**Result contract:** the first line of your reply is `**GO**` or `**NO-GO**` for the head named '
-              'above; then the evidence you checked. Completion condition: %s' % s['_completion']]
+              'above; %sthen the evidence you checked. Completion condition: %s' % (
+                  'for a NO-GO, one `class:` line (a comma set from option-parsing, cwd-indirection, shell-parsing, '
+                  'tool-defaults, reader-allowlist, other); one `finding: <path>[:<a>-<b>]` line per finding; '
+                  if a.no_persist else '', s['_completion'])]
     return '\n'.join(lines) + '\n'
 
 
@@ -373,6 +386,7 @@ def main():
     ap.add_argument('--chief')
     ap.add_argument('--bucket')
     ap.add_argument('--dispatch-json', action='store_true')
+    ap.add_argument('--no-persist', action='store_true')
     ap.add_argument('--date', default=_date.today().isoformat())
     ap.add_argument('--letter', default=None)
     ap.add_argument('--handover-root', default=os.environ.get('HANDOVER_DIR', ''))
@@ -385,6 +399,8 @@ def main():
         sys.exit(2 if e.code else 0)
     if a.chief is None:
         ap.error('the following arguments are required: --chief')
+    if a.no_persist and not a.dispatch_json:
+        ap.error('--no-persist needs --dispatch-json')
     if a.bucket is None and not a.dispatch_json:
         ap.error('the following arguments are required: --bucket (or --dispatch-json)')
     if not re.fullmatch(r'\d{4}-\d\d-\d\d', a.date):

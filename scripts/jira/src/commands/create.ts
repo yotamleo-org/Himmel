@@ -161,6 +161,10 @@ export function nextResidualDepth(parentLabels: string[]): number {
 
 export const BACKLOG_LABEL = 'backlog';
 
+export function holdsRemainderAndResidual(labels: readonly string[]): boolean {
+  return labels.includes('remainder') && labels.some((l) => /(^|-)residual(-|$)/.test(l));
+}
+
 export interface ResidualPlan {
   labels: string[];
   fixVersion?: string;
@@ -695,7 +699,7 @@ const TOPIC_STOP = new Set([
   'could', 'about', 'after', 'before', 'every', 'each', 'other', 'more', 'most', 'only', 'same', 'such', 'some', 'any', 'plain', 'words', 'also', 'both',
   'being', 'been', 'were', 'have', 'does', 'done', 'make', 'made', 'still', 'what', 'which', 'while', 'where', 'there', 'their', 'these', 'those',
 ]);
-const GENERIC_LABEL = /^(standalone|core|residual|operator-directed|chief-miss|backlog|proposed-.*|phase:.*|class-.*)$/;
+const GENERIC_LABEL = /^(standalone|core|residual|remainder|operator-directed|chief-miss|backlog|proposed-.*|phase:.*|class-.*)$/;
 const TOPIC_JQL_TERMS = 8;
 const TOPIC_MIN_SHARED = 5;
 const TOPIC_MIN_OVERLAP = 0.3;
@@ -835,7 +839,7 @@ export async function refuseOpenDuplicate(
   };
   const parent = o.followUpOf ?? (o.residualOf !== undefined && !(o.class && o.area) ? o.residualOf : undefined);
   if (parent !== undefined) {
-    const jql = `project = ${project} AND statusCategory != Done AND labels = residual AND issue in linkedIssues(${jqlQuote(parent)})`;
+    const jql = `project = ${project} AND statusCategory != Done AND labels in (residual, remainder) AND issue in linkedIssues(${jqlQuote(parent)})`;
     const sibling = (await openMatches(jql)).find((h) => !(keyNumber(h.key) < keyNumber(parent)));
     if (sibling) refuse(sibling, `already follows up ${parent}`);
   }
@@ -1055,11 +1059,11 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--follow-up-of <key>',
-      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent in the current unfrozen version is filed into it at its priority) and states parent, status and version",
+      "File this as a follow-up of <key>, linked to it: labelled residual (a review extra beyond <key>'s ask), or remainder with --remainder. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent in the current unfrozen version is filed into it at its priority) and states parent, status and version",
     )
     .option(
       '--remainder',
-      "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
+      "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row): it is labelled remainder, not residual, and with no version of its own follows the parent's version; an INTAKE says the parent cannot close without it",
     )
     .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, a close title, or the same topic worded differently in the title and What section): without it the filing is refused and names the open ticket to extend with jira comment')
     .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')

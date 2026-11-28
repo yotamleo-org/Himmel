@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# guard-t3-thread-tools.sh — PreToolUse hook (matcher mcp__t3-code__.*): refuses
+# guard-t3-thread-tools.sh — PreToolUse hook on the T3 Code MCP tools (mcp__t3-code__* from
+# Claude and Antigravity, mcp__t3_code__* and mcp__t3_code_direct__* from Codex): refuses
 # a T3 Code tool call that names a bypass provider instance, or one off the
 # optional narrowing list, or that sets a -chief or -console thread title.
 #
@@ -12,6 +13,20 @@
 # (claudeAgent_maintainer-hooks or claudeAgent_maintainer-billed, each with an optional
 # _relay suffix) is a bypass instance by id. Any other instance id is
 # allowed, from any provider to any provider.
+#
+# Own settings: a Claude instance (driver claudeAgent, or no driver and an id of
+# claudeAgent or claudeAgent_*) is refused unless each of its launchArgs and
+# config.launchArgs is empty or exactly "--settings <D>/<h>/<n>.json", optionally
+# followed by " --mcp-config <D>/mcp-<h2>/<n2>.mcp.json --strict-mcp-config", the
+# line scripts/t3/provider-instances.sh writes. <D> is
+# ${HIMMEL_PROFILE_SETTINGS_DIR:-$HOME/.himmel/launch-profiles}, matched as a string
+# prefix and usable only when canonical (absolute, [A-Za-z0-9._/-], no //, no
+# trailing /, no . or .. segment). For a named id each file must be a readable
+# regular file whose sha256 starts with its <h>/<h2>. Rule own-settings-instance;
+# a non-canonical <D> or no sha256 tool is own-settings-unverifiable. A <n> of
+# maintainer-hooks or maintainer-billed (any case) is a maintainer instance.
+# A refusal line prints a value only when it is a path, never inline JSON, a
+# file's content or a flag's value.
 #
 # Narrowing: .t3.instance_narrow in $HOME/.himmel/config.json, an array of
 # strings; an absent file or key narrows nothing. .t3.instance_allowlist is not read.
@@ -81,10 +96,12 @@ command -v jq >/dev/null 2>&1 \
 # swallow-ok: a failed parse refuses on the next line
 tool=$(jq -er '.tool_name | strings' <<<"$input" 2>/dev/null) \
     || refuse "a T3 tool call" "The hook input is not JSON with a string tool_name, so it cannot be checked." bad-payload
-case "$tool" in
-    mcp__t3-code__*) ;;
-    *) exit 0 ;;
-esac
+T3_TOOL_PREFIXES="mcp__t3-code__ mcp__t3_code__ mcp__t3_code_direct__"
+judged=0
+for p in $T3_TOOL_PREFIXES; do
+    case "$tool" in "$p"*) judged=1; break ;; esac
+done
+[ "$judged" = 1 ] || exit 0
 
 findings=$(jq -r '
     def key_is($names): ascii_downcase | gsub("_"; "") as $k | any($names[]; . == $k);
@@ -101,6 +118,22 @@ findings=$(jq -r '
         | select(gsub("^\\s+|\\s+$"; "") | ascii_downcase | test("-(chief|console)$")) | "title\t" + tojson)
 ' <<<"$input" 2>/dev/null) \
     || refuse "$tool" "Its tool_input could not be walked, so it cannot be checked." walk-failed
+
+if [ "${tool#"$p"}" = schedule_task ] && jq -e '
+    .tool_input
+    | type == "object"
+      and .scheduledTaskId == null
+      and (.schedule | if type == "string" then (try fromjson catch null) else . end
+           | type == "object" and .type == "interval")
+      and (.bindToCurrentThread == null or .bindToCurrentThread == true)
+      and (.freshSession == null or .freshSession == false)
+' <<<"$input" >/dev/null 2>&1; then
+    refuse "$tool creating a bound interval schedule without a fresh session" "Rule non-fresh-bound-interval: an interval schedule bound to this thread (bindToCurrentThread true or omitted)
+with freshSession false or omitted wakes the thread with its whole context on every run. Start each run as a
+fresh session that reads its state file, acts, checkpoints and ends:
+{\"prompt\":\"Read <absolute coordinator state file>. Use coordinator owner generation <generation>, act, checkpoint, then end.\",\"schedule\":{\"type\":\"interval\",\"everyMs\":1800000},\"bindToCurrentThread\":true,\"freshSession\":true}
+A schedule meant to run unbound passes bindToCurrentThread: false." non-fresh-bound-interval
+fi
 [ -n "$findings" ] || exit 0
 
 narrow="" narrow_err="" bypass='{}' settings_err="" drivers='{}' harnesses='[]' harness_err=""
@@ -123,8 +156,49 @@ case "$findings" in
                 narrow="" narrow_err=".t3.instance_narrow in $CONFIG is not an array of strings"
             fi
         fi
+        if [ -n "${HIMMEL_PROFILE_SETTINGS_DIR:-}" ]; then profile_dir="$HIMMEL_PROFILE_SETTINGS_DIR"
+        elif [ -n "${HOME:-}" ]; then profile_dir="$HOME/.himmel/launch-profiles"
+        else profile_dir=""; fi
         # swallow-ok: jq's error text can quote T3's settings values, which agents may not read; a failure refuses every instance id
-        bypass=$(jq -c --slurpfile reg "$REGISTRY" '
+        bypass=$(jq -c --slurpfile reg "$REGISTRY" --arg D "$profile_dir" '
+            def shown: if test("\\A(/|~/|\\.)") and test("\\A[A-Za-z0-9._/~-]{1,200}\\z") then . else "a value that is not a path" end;
+            def own($text): {rule: "own-settings-instance", text: ("carries settings of its own in its launchArgs (" + $text + ")")};
+            ($D | test("\\A/[A-Za-z0-9._/-]*\\z") and (test("//|/\\z|/\\.\\.?(/|\\z)") | not)) as $dok
+            | ($D + "/") as $Dp
+            | def under($re): type == "string" and startswith($Dp) and (.[($Dp | length):] | test($re));
+              def pfile: under("\\A[0-9a-f]{12}/[A-Za-z0-9._-]+\\.json\\z");
+              def mfile: under("\\Amcp-[0-9a-f]{12}/[A-Za-z0-9._-]+\\.mcp\\.json\\z");
+              def classify:
+                if . == "" then {own: [], files: []}
+                elif test("--settings") and contains("{") then {own: [own("inline settings JSON")], files: []}
+                elif ($dok | not) and test("--settings") then
+                    {own: [{rule: "own-settings-unverifiable", text: "whether its settings files are resolved profile files is unknown (the profile settings directory is not a canonical absolute path)"}], files: []}
+                else split(" ") as $t
+                | if (($t | length) == 2 and $t[0] == "--settings" and ($t[1] | pfile))
+                     or (($t | length) == 5 and $t[0] == "--settings" and ($t[1] | pfile) and $t[2] == "--mcp-config"
+                         and ($t[3] | mfile) and $t[4] == "--strict-mcp-config") then
+                    {own: [], files: ([{flag: "--settings", path: $t[1], shown: ($t[1] | shown), hash: $t[1][($Dp | length):][0:12],
+                                        name: ($t[1] | split("/")[-1] | rtrimstr(".json"))}]
+                                      + (if ($t | length) == 5 then [{flag: "--mcp-config", path: $t[3], shown: ($t[3] | shown),
+                                          hash: $t[3][($Dp | length) + 4:][0:12], name: ""}] else [] end))}
+                  else
+                    ([range(0; $t | length) as $i
+                      | if $t[$i] == "--settings" then ($t[$i + 1] // "")
+                        elif ($t[$i] | startswith("--settings=")) then $t[$i][11:]
+                        else empty end
+                      | select(pfile | not)] | first) as $bad
+                    | if $bad != null then
+                        {own: [own("--settings " + ($bad | shown) + ": not a resolved profile file under " + ($D | shown))], files: []}
+                      else
+                        ([$t[] | select(startswith("--") and (IN("--settings", "--mcp-config", "--strict-mcp-config") | not))
+                           | ((capture("\\A(?<f>--[A-Za-z0-9-]+)").f) // "an extra argument")]
+                         + ([range(0; $t | length) as $i | select($t[$i] == "--mcp-config") | ($t[$i + 1] // "") | select(mfile | not)]
+                            | if length > 0 then ["--mcp-config"] else [] end)
+                         | unique | if length == 0 then ["an extra argument"] else . end) as $out
+                        | {own: [own("launchArgs not in the resolved-profile shape: " + ($out | join(", ")))], files: []}
+                      end
+                  end
+                end;
             ([$reg[0].flags | if type == "array" then .[] else error("the bypass flag registry flags is not an array") end
               | if (.name | type) == "string" then .name
                 else error("a bypass flag registry entry has no string name") end]) as $names
@@ -132,11 +206,14 @@ case "$findings" in
             | (if has("providerInstances") then .providerInstances else {} end)
             | if type == "object" then . else error("providerInstances is not an object") end
             | with_entries(
-                .value as $o
-                | .value = (if ($o | type) != "object" then ["a malformed instance entry"]
-                  elif ($o.config != null and ($o.config | type) != "object") then ["a malformed instance config"]
+                .value as $o | .key as $id
+                | .value = (if ($o | type) != "object" then {flags: ["a malformed instance entry"]}
+                  elif ($o.config != null and ($o.config | type) != "object") then {flags: ["a malformed instance config"]}
                   else ($o.config // {}) as $c
-                  | [
+                  | (if (if $o | has("driver") then $o.driver == "claudeAgent" else ($id == "claudeAgent" or ($id | startswith("claudeAgent_"))) end)
+                     then [($o.launchArgs, $c.launchArgs) | strings | classify] else [] end) as $cls
+                  | {own: ([$cls[].own[]] | unique), files: ([$cls[].files[]] | unique), flags: (
+                    [
                     (($o.env, $o.environment, $c.env, $c.environment) | select(. != null)
                         | if type == "object" then keys[]
                           elif type == "array" then .[]
@@ -154,8 +231,8 @@ case "$findings" in
                         | if type == "string" then
                             (match("dangerously-skip-permissions|bypassPermissions"; "gi").string | "launchArgs " + .)
                           else "malformed launchArgs" end)
-                  ] | unique end))
-            | with_entries(select(.value | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
+                  ] | unique)} end))
+            | with_entries(select(.value | (.flags // []) + (.own // []) + (.files // []) | length > 0))' "$T3_SETTINGS" 2>/dev/null) \
             || { bypass='{}' settings_err="T3's settings file $T3_SETTINGS or the bypass flag registry $REGISTRY could not be read"; }
         # swallow-ok: jq's error text can quote T3's settings values; a failure refuses every instance id
         if ! drivers=$(jq -c '(.providerInstances // {}) | with_entries(.value |= (if type == "object" then .driver else null end))' "$T3_SETTINGS" 2>/dev/null) \
@@ -166,6 +243,7 @@ case "$findings" in
         ;;
 esac
 
+sha256_12() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi | cut -c1-12; }
 bad_instances="" bad_titles="" bad_rules="" bad_ids="" bad_title_vals=""
 note_rule() { bad_rules="$bad_rules$1"$'\n'; }
 note_id() {
@@ -191,14 +269,43 @@ while IFS= read -r line; do
                 note_rule settings-unreadable; note_id "$val"
                 continue
             fi
-            if ! flags=$(jq -rn --argjson m "$bypass" --argjson v "$val" '$m[$v] // [] | join(", ")' 2>&1); then
-                bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown (the bypass lookup failed: ${flags%%$'\n'*})"$'\n'
+            if ! entry=$(jq -cn --argjson m "$bypass" --argjson v "$val" '$m[$v] // {} | {flags: (.flags // []), own: (.own // []), files: (.files // [])}' 2>&1); then
+                bad_instances="$bad_instances  ${val}: whether it carries a bypass flag is unknown (the bypass lookup failed: ${entry%%$'\n'*})"$'\n'
                 note_rule bypass-lookup-failed; note_id "$val"
                 continue
             fi
-            if [ -n "$flags" ]; then
-                bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'
-                note_rule bypass-instance; note_id "$val"
+            maint=$(jq -r '[.files[].name | ascii_downcase | select(. == "maintainer-hooks" or . == "maintainer-billed")] | first // ""' <<<"$entry")
+            if [ -n "$maint" ]; then
+                bad_instances="$bad_instances  ${val}: is a maintainer-profile instance (its launchArgs point at the $maint resolved file)"$'\n'
+                note_rule maintainer-instance; note_id "$val"
+                continue
+            fi
+            flags=$(jq -r '.flags | join(", ")' <<<"$entry")
+            own_lines=""
+            while IFS=$'\t' read -r o_rule o_text; do
+                [ -n "$o_rule" ] || continue
+                own_lines="$own_lines  ${val}: $o_text"$'\n'
+                note_rule "$o_rule"
+            done <<<"$(jq -r '.own[] | [.rule, .text] | @tsv' <<<"$entry")"
+            while IFS=$'\t' read -r f_flag f_path f_shown f_hash; do
+                [ -n "$f_flag" ] || continue
+                if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+                    own_lines="$own_lines  ${val}: whether its settings files are resolved profile files is unknown (no sha256 tool)"$'\n'
+                    note_rule own-settings-unverifiable
+                    break
+                fi
+                if [ ! -f "$f_path" ] || [ ! -r "$f_path" ] || ! f_got=$(sha256_12 <"$f_path") || [ -z "$f_got" ]; then
+                    own_lines="$own_lines  ${val}: carries settings of its own in its launchArgs ($f_flag $f_shown: the file cannot be read)"$'\n'
+                    note_rule own-settings-instance
+                elif [ "$f_got" != "$f_hash" ]; then
+                    own_lines="$own_lines  ${val}: carries settings of its own in its launchArgs ($f_flag $f_shown: its content does not match its resolved hash)"$'\n'
+                    note_rule own-settings-instance
+                fi
+            done <<<"$(jq -r '.files[] | [.flag, .path, .shown, .hash] | @tsv' <<<"$entry")"
+            if [ -n "$flags" ] || [ -n "$own_lines" ]; then
+                [ -z "$flags" ] || { bad_instances="$bad_instances  ${val}: carries a himmel bypass flag (${flags})"$'\n'; note_rule bypass-instance; }
+                bad_instances="$bad_instances$own_lines"
+                note_id "$val"
             elif [ -n "$narrow_err" ]; then
                 bad_instances="$bad_instances  ${val}: the narrowing list cannot be read ($narrow_err)"$'\n'
                 note_rule narrow-config-unreadable; note_id "$val"
@@ -238,7 +345,8 @@ if [ -n "$bad_instances" ]; then
     refuse "$tool on a provider instance an agent may not pick" "Refused instance id(s):
 ${bad_instances}A bypass instance (a T3 instance whose environment or launchArgs carry a himmel bypass flag) is never
 picked by an agent: a hook bypass is granted per session, by the operator choosing that instance in the T3 UI,
-never to every thread T3 starts. An agent launches only onto a T3 driver that has a complete descriptor in
+never to every thread T3 starts. A Claude instance whose launch line carries settings that are not a resolved profile file
+is refused the same way, and the operator still picks it in the T3 UI. An agent launches only onto a T3 driver that has a complete descriptor in
 himmel's scripts/harnesses. Every other instance is allowed, from any provider to any provider, unless
 the operator narrows the list with .t3.instance_narrow in \$HOME/.himmel/config.json, an operator-owned file.
 Omit the instance id to keep the thread's instance, or name an instance without a bypass flag." \

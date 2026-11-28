@@ -7063,6 +7063,17 @@ grep -q '\[exit rc=10\]' "$cr_cur" || fail "cadence-runs-upstream-watch: the fix
 run_cr upstream-watch | jq -e '.actual == "present"' >/dev/null || fail "cadence-runs-upstream-watch: rc=10 is success and must read present"
 echo "ok: cadence-runs-upstream-watch — rc=10 (delta found, handled) reads present"
 
+cr_variant "$cr_fix/qmd.txt" healthy | sed -E 's/\[exit rc=0\]/[exit rc=75]/' > "$cr_cur"
+grep -q '\[exit rc=75\]' "$cr_cur" || fail "cadence-runs-qmd: the busy fixture must carry the rc=75 stamp"
+outCRb=$(run_cr qmd)
+echo "$outCRb" | jq -e '.actual == "present"' >/dev/null \
+  || fail "cadence-runs-qmd: the classified busy exit rc=75 must read present (got: $outCRb)"
+cr_variant "$cr_fix/qmd.txt" healthy | sed -E 's/\[exit rc=0\]/[exit rc=3]/' > "$cr_cur"
+outCRf=$(run_cr qmd)
+echo "$outCRf" | jq -e '.actual == "degraded" and (.detail | contains("rc=3"))' >/dev/null \
+  || fail "cadence-runs-qmd: a failed update rc=3 must still read degraded (got: $outCRf)"
+echo "ok: cadence-runs-qmd — busy rc=75 reads present, failure rc=3 reads degraded"
+
 # the captured graphmap output carries a real failing publish run (rc=3): only that task is named, the healthy ones are not.
 sed -E "s/\(last write: [0-9-]+ [0-9:]+\)/(last write: $cr_fresh)/" "$cr_fix/graphmap.txt" > "$cr_cur"
 outCRg=$(run_cr graphmap)

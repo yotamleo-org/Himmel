@@ -48,7 +48,7 @@ run_claude() {
 
 run_codex() {
     local tool="$1" args="$2" expect="$3" label="$4" want="${5:-}"
-    local full_tool="mcp__t3-code__$tool"
+    local full_tool="${6:-mcp__t3_code__}$tool"
     local cmds="" cmd="" payload="" out="" rc=0 dec="" denied=0
     local -a parts=()
     cmds="$(TOOL_NAME="$full_tool" HOOKS_FILE="$REPO/.codex/hooks.json" node -e '
@@ -175,6 +175,7 @@ run_codex t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries
 run_codex t3_thread_update "$ARGS_CHIEF_TITLE" deny "-chief title denied"
 run_codex unwatch_pull_request "$ARGS_UNWATCH_OPEN" deny "unwatch OPEN PR denied"
 run_codex t3_environment_read "$ARGS_BENIGN" allow "benign T3 read allowed"
+run_codex delegate_task '{"task":"x","target":{"providerInstanceId":"claudeBypass"}}' deny "direct-server bypass instance denied" "carries a himmel bypass flag" mcp__t3_code_direct__
 
 echo "== T3 guard conformance: antigravity =="
 run_antigravity t3_thread_launch "$ARGS_BYPASS" deny "bypass instance denied" "carries a himmel bypass flag"
@@ -206,6 +207,20 @@ for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search 
     for id in $HARNESS_IDS; do
         run_harness "$id" "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
     done
+done
+
+echo "== T3 schedule_task: a bound interval without a fresh session is refused on every registry harness =="
+SCHED_BOUND='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}'
+SCHED_DEFAULT='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000}}'
+SCHED_TEXT='{"prompt":"coordinate","schedule":"{\"type\":\"interval\",\"everyMs\":1800000}","bindToCurrentThread":true,"freshSession":false}'
+SCHED_FRESH='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":true}'
+SCHED_UNBOUND='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":false,"freshSession":false}'
+for id in $HARNESS_IDS; do
+    run_harness "$id" schedule_task "$SCHED_BOUND" deny "SCHED-BOUND denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_DEFAULT" deny "SCHED-DEFAULT denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_TEXT" deny "SCHED-TEXT denied" "non-fresh-bound-interval"
+    run_harness "$id" schedule_task "$SCHED_FRESH" allow "fresh-session interval allowed"
+    run_harness "$id" schedule_task "$SCHED_UNBOUND" allow "unbound interval allowed"
 done
 
 echo "== T3 preview tools (plugin-profiles previewBrowserTools): no lane guard denies one, so the profile option only adds an allow rule =="

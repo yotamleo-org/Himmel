@@ -3290,7 +3290,9 @@ PreToolUse stanza for matcher `mcp__t3-code__unwatch_pull_request`. Spec: `scrip
 ### `guard-t3-thread-tools.sh` — T3 instances and chief titles stay operator choices
 
 Fires on every T3 Code MCP tool (matcher `mcp__t3-code__.*`); any other tool
-exits at once. Each T3 provider instance carries its own environment variables,
+exits at once. Claude and Antigravity (after its adapter) send `mcp__t3-code__`;
+Codex sends `mcp__t3_code__` and `mcp__t3_code_direct__` through its `mcp__.*`
+chain, and the guard judges all three prefixes alike. Each T3 provider instance carries its own environment variables,
 so the operator can make an instance that carries a himmel bypass flag and pick
 it in the T3 UI. The T3 tools also let an agent pick the instance of a new or
 existing thread, and a T3 thread title ending in `-chief` or `-console` is the
@@ -3312,6 +3314,21 @@ name `scripts/lib/session-name.sh` trusts as a chief. Two rules, each a deny
   variables, so this rule allows it. If the settings file or the registry is missing,
   unreadable or malformed, every instance id is denied, since the guard cannot
   tell. A null value counts as absent; any other non-string value denies.
+- **Own settings.** A Claude instance (driver `claudeAgent`, or no driver and an
+  id of `claudeAgent` or `claudeAgent_*`) is denied, rule `own-settings-instance`,
+  unless each of its `launchArgs` and `config.launchArgs` is empty or exactly the
+  line `scripts/t3/provider-instances.sh` writes: `--settings <D>/<h>/<n>.json`,
+  optionally followed by `--mcp-config <D>/mcp-<h2>/<n2>.mcp.json --strict-mcp-config`.
+  Inline settings JSON, a hand-pointed file, an extra flag or a file outside `<D>`
+  denies. `<D>` is `${HIMMEL_PROFILE_SETTINGS_DIR:-$HOME/.himmel/launch-profiles}`,
+  matched as a string prefix and usable only when canonical (absolute,
+  `[A-Za-z0-9._/-]`, no `//`, no trailing `/`, no `.` or `..` segment). For each
+  named id the files must be readable regular files whose sha256 starts with
+  their `<h>` / `<h2>`, so a file edited in place denies. A non-canonical `<D>`
+  or no sha256 tool denies under `own-settings-unverifiable`. A file named
+  `maintainer-hooks` or `maintainer-billed` (any case) makes the instance a
+  maintainer instance, whatever its id. A refusal line prints a value only when
+  it is a path, never inline JSON, a file's content or a flag's value.
 - **Harness registry.** `scripts/harnesses/<id>.json` describes one coding
   harness each, loaded by `scripts/harnesses/registry.jq`. An id outside
   `delegatedFrom` must resolve to a T3 driver (the settings entry's `driver`, or
@@ -3356,7 +3373,8 @@ A security fence: fails CLOSED on a missing `jq`, a payload that does not
 parse, and the unreadable files above. Override: `T3_THREAD_TOOLS_OK=1` (launching shell, session-sticky, tier
 `floor`); the allow is printed to stderr. Wired in `EXPECTED_SCRIPT_ORDER`
 (`wire-hook-bash.mjs`) and the `.claude/settings.json` PreToolUse stanza for
-matcher `mcp__t3-code__.*`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
+matcher `mcp__t3-code__.*`. On Codex it runs in the `.codex/hooks.json` `mcp__.*`
+chain, which sends `mcp__t3_code__` and `mcp__t3_code_direct__`. Spec: `scripts/hooks/test-guard-t3-thread-tools.sh`.
 
 ### `require-quiet-run.sh` — bare test-suite bounce
 
@@ -6671,6 +6689,16 @@ on-disk bytes differ from HEAD, but that blob is not the one that would be
 found by walking `anchor_ref`'s history — still denies. That is the intended
 degrade: only a change that genuinely reached the trusted branch re-pins;
 worktree drift or a not-yet-merged hook edit does not.
+
+**Re-running the recorder adds a pin only for a file that is on main.** The
+recovery path that re-runs `record-hook-integrity.sh` for a session that
+already has a v2 record keeps every existing pin as it is. A path that has no
+pin yet is added only when its HEAD blob is the blob at the record's anchor,
+`origin/<default branch>`. So a new file committed only on the branch, such as
+a new `scripts/harnesses/<id>.json` descriptor, gets no pin from a re-run, and
+the launcher's own check still refuses it. A new descriptor must land on main
+before a session trusts it. Suite: `scripts/hooks/test-record-hook-integrity.sh`
+rows H8 and H9.
 
 **New worker-lane fence — the anchor-tamper class in
 `block-worker-write-fence.sh`.** Re-pinning off `origin/<default>` makes

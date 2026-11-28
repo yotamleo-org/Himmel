@@ -1376,17 +1376,17 @@ fi
 # worktree, a ~/.cache path and a doc with no resume_cwd are untouched, and no
 # resolvable root (nothing to guard) launches as before. Runs before --dry-run's
 # exit, like the denial gate above, so a dry-run predicts the refusal.
-_worker_phys_path() { # <path> -> physical path on stdout; a missing tail is kept verbatim
-    local p="$1" tail="" base
+_worker_phys_path() { # <path> [enter] -> physical ancestor plus tail. Enter mode climbs past inaccessible folders.
+    local p="$1" tail="" base q=""
     case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
-    while [ ! -d "$p" ]; do
+    while if [ "${2:-}" = enter ]; then ! q="$(cd -P -- "$p" 2>/dev/null && pwd -P)"; else [ ! -d "$p" ]; fi; do # swallow-ok: a failed probe climbs to the parent
         base="${p##*/}"
         [ -n "$base" ] || { p="${p%/}"; [ -n "$p" ] || break; continue; }
         tail="/$base$tail"
         p="${p%/*}"
         [ -n "$p" ] || p="/"
     done
-    p="$(cd -P "$p" 2>/dev/null && pwd -P)" || return 1
+    if [ "${2:-}" = enter ]; then p="$q"; else p="$(cd -P "$p" 2>/dev/null && pwd -P)" || return 1; fi
     [ "$p" = "/" ] && p=""
     printf '%s%s\n' "$p" "$tail"
 }
@@ -1404,10 +1404,7 @@ if [ -n "$_worker_rcwd" ]; then
     _worker_rcwd_phys="$(_worker_phys_path "$_worker_rcwd")" || _worker_rcwd_failed=1
     _worker_rcwd_shape="$_worker_rcwd_phys"
     if [ "$_worker_rcwd_failed" -eq 1 ]; then
-        case "$_worker_rcwd" in
-            /*) _worker_rcwd_shape="$_worker_rcwd" ;;
-            *) _worker_rcwd_shape="$PWD/$_worker_rcwd" ;;
-        esac
+        _worker_rcwd_shape="$(_worker_phys_path "$_worker_rcwd" enter)"
     fi
     case "$_worker_rcwd_shape" in
         */.cache/himmel/verdicts//scratch|*/.cache/himmel/verdicts/*/*/scratch)
@@ -1433,9 +1430,9 @@ if [ -n "$_worker_rcwd" ] && [ -n "$_worker_vroot" ]; then
         esac
     fi
 fi
-# A worktree-shaped resume_cwd must name a live Git toplevel. The raw .claude
-# spelling supplies its branch hint. Other shapes use the physical path when
-# available, and exempt judge scratch. Both checks run before the dry-run report.
+# Before dry-run, worktree-shaped paths must name a live Git toplevel. The raw .claude
+# spelling supplies its branch hint. Other shapes exempt judge scratch and use the
+# physical path or the deepest enterable ancestor plus the rest as written.
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 if [ -d "$_worker_rcwd_phys" ]; then
@@ -1804,6 +1801,7 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
         WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
+        HIMMEL_HOOK_INTEGRITY_BYPASS_OK) [ -z "${HIMMEL_MAINTAINER_ACTION:-}" ] && continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
         # cleared at start-up and rewritten from the HANDOVER_DIR propagation on, so scrubbing it here would drop HANDOVER_DIR's line.
