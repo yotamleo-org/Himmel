@@ -103,6 +103,8 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     def s: if type == "string" then . else "" end;
     def clean: gsub("[\\p{Cc}]"; " ") | gsub("^ +| +$"; "");
     def norm: ascii_downcase | gsub("[^a-z0-9]+"; " ") | gsub("^ +| +$"; "");
+    def critic_line: test("^(CLOSURE-CHECK [A-Z][A-Z0-9]*-[0-9]+ (spec|plan) r[0-9]+ [0-9a-f]{12}[ \\t\\r]*$|Red-team this (design spec|implementation plan)\\.)");
+    def critic_desc: test("\\bcritics?\\b|\\bclosure[ -](checks?|rounds?|critics?|r[0-9]+)\\b|\\b(spec|plan)[ -]closure\\b"; "i") and (test("\\bjudge\\b"; "i") | not);
     (($pol[0] // {}) | if type == "object" then . else {} end) as $p
     | [$p.blocked_model_patterns | arrays[] | strings] as $pats
     | [$p.warn_model_patterns | arrays[] | strings] as $wpats
@@ -120,6 +122,9 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
     | ([$p.default_sonnet_agent_types | arrays[] | strings | ascii_downcase] | any(. == $t)) as $dflt
     | ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) as $isj
+    | ($ti.description | s) as $desc
+    | ($isj and (([$ti.prompt | s | split("\n")[] | select(critic_line)] | length > 0)
+       or ($desc | critic_desc))) as $iscrit
     | ($tool == "Agent" and $isj
        and ([$ti.prompt | s | split("\n")[] | select(test("^[ \\t]*JUDGE-BRIEF:[ \\t]*[0-9a-f]{16}[ \\t]*$"))] | length) == 0) as $jbwarn
     | ([$ti.prompt | s | split("\n")[] | capture("^[ \\t]*DELTA-JUDGE:[ \\t]*(?<r>[0-9a-f]{7,40})[ \\t]*$")? | .r]) as $dj
@@ -128,7 +133,9 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $egood
     | ($tool == "Agent" and ($e | test("^(high|xhigh|max)$")) and ($egood | length) == 0
        and $e != ($fe | ascii_downcase | clean)) as $ewarn
-    | (if $tool != "Agent" or $m == "" then "allow"
+    | (if $tool != "Agent" then "allow"
+       elif $iscrit then "critic"
+       elif $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($dj | length) > 0
             and ($m | test("^(claude-)?sonnet(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$")) then "delta"
@@ -177,6 +184,7 @@ if [ "$kind" = "tierdeny" ]; then
     deny_msg="agent-model-deny: a '${model}' dispatch of a general-purpose or untyped helper with no usable TIER: line. These helpers default to Sonnet 5.5: re-dispatch with model: sonnet (raise effort before tier). For ONE genuinely hard call keep the model and add a prompt line 'TIER: <reason>' (or 'ESCALATION: <reason>') with a real reason (docs/handover/running-a-chief.md, helper table). Never leave the model out: guard-subagent-model.sh denies a dispatch with no model."
 else
     case "$kind" in
+        critic) what="a spec or plan critic round or closure check sent as a judge agent" ;;
         blocked) what="model '$model' (blocked by scripts/guardrails/agent-model-policy.json)" ;;
         judge) what="a judge model override '$model' off its frontmatter tier (opus)" ;;
         *) exit 0 ;;
@@ -193,22 +201,20 @@ else
     else
         lead="${what} without an escalation marker"
     fi
-    # The remedy names an explicit model: an omitted one is not a remedy, because
-    # guard-subagent-model.sh denies a dispatch with no model.
-    iscritic=$(printf '%s' "$input" | jq -r '.tool_input.description | strings | test("^\\s*(plan|spec)[ -]critic"; "i")' 2>/dev/null || true)  # swallow-ok: a failed read means the generic judge remedy is named
-    escalate="or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch"
-    if [ "$isj" = "judge" ] && [ "$iscritic" = "true" ] && [ "$kind" = "judge" ]; then
-        remedy="A plan or spec critic is not a judge dispatch (a judge is the Opus verdict agent): re-dispatch the critic as subagent_type: general-purpose with model: sonnet at high effort (what minerva Stage 4 says)"
-        escalate="a judge verdict that really needs another model than Opus takes a prompt line 'ESCALATION: <reason>' with a real reason"
-    elif [ "$isj" = "judge" ]; then
-        remedy="Re-dispatch with model: opus (the judge's frontmatter tier): the first full judge of a PR and a delta that delta-class.sh prints as trust keep Opus. Only the re-judge of a LATER push whose delta-class.sh prints finding may use model: sonnet, with a line of its own 'DELTA-JUDGE: <head sha>' (7 to 40 lowercase hex; it rescues Sonnet only, never haiku or fable)"
-    elif [ "$kind" = "blocked" ]; then
-        remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku), or keep model: fable for the one hard call (general-purpose, high effort) by adding a line of its own 'ESCALATION: <reason>' to the prompt, a real reason, not empty and not a placeholder such as 'test' or 'n/a'"
-        escalate="the marker is the only way to keep a blocked model"
+    if [ "$kind" = "critic" ]; then
+        deny_msg="agent-model-deny: ${lead}. A critic is not a judge dispatch (a judge is the Opus verdict agent, and operator decision 1606 moved critic rounds and closure checks off Opus): re-dispatch it as subagent_type: general-purpose with model: sonnet at high effort and a prompt line 'EFFORT: <reason>' (what minerva Stage 2 and Stage 4 say). If this really is a judge verdict and not a critic, add a prompt line of its own 'ESCALATION: <reason>' with a real reason, not empty and not a placeholder such as 'test' or 'n/a'. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model."
     else
-        remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
+        escalate="or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch"
+        if [ "$isj" = "judge" ]; then
+            remedy="Re-dispatch with model: opus (the judge's frontmatter tier): the first full judge of a PR and a delta that delta-class.sh prints as trust keep Opus. Only the re-judge of a LATER push whose delta-class.sh prints finding may use model: sonnet, with a line of its own 'DELTA-JUDGE: <head sha>' (7 to 40 lowercase hex; it rescues Sonnet only, never haiku or fable)"
+        elif [ "$kind" = "blocked" ]; then
+            remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku), or keep model: fable for the one hard call (general-purpose, high effort) by adding a line of its own 'ESCALATION: <reason>' to the prompt, a real reason, not empty and not a placeholder such as 'test' or 'n/a'"
+            escalate="the marker is the only way to keep a blocked model"
+        else
+            remedy="Re-dispatch with an explicit permitted model (model: opus, model: sonnet or model: haiku)"
+        fi
+        deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; ${escalate}. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
     fi
-    deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). ${remedy}; ${escalate}. Never leave the model out: guard-subagent-model.sh denies a dispatch with no model. A judge call from 'gen-judge-brief.py <spec> --dispatch-json' passes both guards. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 fi
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \

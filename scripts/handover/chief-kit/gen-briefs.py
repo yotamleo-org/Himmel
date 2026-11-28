@@ -1297,7 +1297,7 @@ def writer_round_gate(l, ctx):
             m = re.search(r'\b(?:spec|plan) round (\d+): closure\b', str(s.get('why', '')))
             if not m:
                 die('worker %s: chief-route.ts round-status %s says next=closure but names no closure round: %s' % (label, key, out.strip()[:300]))
-            lines.append('> **Round:** %s writer round %s is a closure check: dispatch the critic with chief-route.ts closure-pack' % (key, m.group(1)))
+            lines.append('> **Round:** %s writer round %s is a closure check: dispatch the critic with chief-route.ts closure-pack as general-purpose on sonnet at high effort with an EFFORT: line, never a judge agent' % (key, m.group(1)))
         elif nxt != 'full':
             die('worker %s: chief-route.ts round-status %s gave next=%r, not full, closure or none' % (label, key, nxt))
     if lines:
