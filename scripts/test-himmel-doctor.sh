@@ -2870,4 +2870,44 @@ out="$(c105_run "$t/no-store")"
 if grepq "$out" 'INFO C105-memory-truth: check not run' && ! grepq "$out" 'OK   C105'; then pass "C105 no memory store -> INFO, not OK"; else fail "C105 no store -> $out"; fi
 rm -rf "$t"
 
+echo "== C106 (HIMMEL-11561): the doctor lists untracked files in the Codex and Antigravity discovery folders =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c106.XXXXXX")" || { fail "C106: mktemp -d failed"; exit 1; }
+mkdir -p "$t/repo" "$t/home" "$t/claude" "$t/plain"
+ln -s "$REPO_ROOT/scripts" "$t/repo/scripts"
+ln -s "$REPO_ROOT/scripts" "$t/plain/scripts"
+git -C "$t/repo" init -q
+c106_run() { env CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --root "${1-$t/repo}" --only C106 --no-color 2>&1; }
+mkdir -p "$t/repo/.agents/skills/kept"
+printf -- '---\nname: kept\n---\n' > "$t/repo/.agents/skills/kept/SKILL.md"
+git -C "$t/repo" add .agents/skills/kept/SKILL.md
+out="$(c106_run)"
+if grepq "$out" 'OK   C106-untracked-agent-files' && ! grepq "$out" 'WARN C106'; then pass "C106 only a tracked skill -> OK"; else fail "C106 tracked skill -> $out"; fi
+mkdir -p "$t/repo/.agents/skills/source-command-planted"
+printf -- '---\nname: planted\n---\n' > "$t/repo/.agents/skills/source-command-planted/SKILL.md"
+out="$(c106_run)"
+if grepq "$out" 'WARN C106-untracked-agent-files: 1 untracked file' && grepq "$out" -F '.agents/skills/source-command-planted/SKILL.md'; then pass "C106 a planted untracked skill folder -> WARN naming the file"; else fail "C106 planted skill -> $out"; fi
+if [ -f "$t/repo/.agents/skills/source-command-planted/SKILL.md" ]; then pass "C106 leaves the planted file in place"; else fail "C106 removed the planted file"; fi
+printf '%s\n' '.agents/skills/source-command-*/' '.codex/*' > "$t/repo/.gitignore"
+mkdir -p "$t/repo/.codex/agents" "$t/repo/.agents/workflows" "$t/repo/.agents/rules" "$t/repo/.codex/skills/graphify"
+printf 'x\n' > "$t/repo/.codex/agents/gemini-subagent.toml"
+printf 'x\n' > "$t/repo/.agents/workflows/graphify.md"
+printf 'x\n' > "$t/repo/.agents/rules/graphify.md"
+printf 'x\n' > "$t/repo/.codex/skills/graphify/SKILL.md"
+out="$(c106_run)"
+if grepq "$out" 'WARN C106-untracked-agent-files: 5 untracked file' && grepq "$out" -F '.codex/agents/gemini-subagent.toml' && grepq "$out" -F '.agents/workflows/graphify.md' && grepq "$out" -F '.agents/rules/graphify.md' && grepq "$out" -F '.codex/skills/graphify/SKILL.md'; then pass "C106 gitignored files in all five folders are listed too"; else fail "C106 five folders -> $out"; fi
+rm -rf "$t/repo/.agents/skills/source-command-planted" "$t/repo/.codex" "$t/repo/.agents/workflows" "$t/repo/.agents/rules"
+out="$(c106_run)"
+if grepq "$out" 'OK   C106-untracked-agent-files' && ! grepq "$out" 'WARN C106'; then pass "C106 planted files removed -> OK"; else fail "C106 after removal -> $out"; fi
+out="$(c106_run "$t/plain")"
+if grepq "$out" 'INFO C106-untracked-agent-files: check not run' && ! grepq "$out" 'OK   C106'; then pass "C106 a root that is no git checkout -> INFO, not OK"; else fail "C106 no checkout -> $out"; fi
+mkdir -p "$t/repo/sub"
+ln -s "$REPO_ROOT/scripts" "$t/repo/sub/scripts"
+out="$(c106_run "$t/repo/sub")"
+if grepq "$out" -F 'INFO C106-untracked-agent-files: check not run: ' && grepq "$out" -F 'is not the top of a git checkout' && ! grepq "$out" 'OK   C106'; then pass "C106 a root inside a checkout, not at its top -> INFO, not OK"; else fail "C106 nested root -> $out"; fi
+printf 'x\n' > "$t/repo/.agents/skills/kept/stray.md"
+printf 'not an index' > "$t/repo/.git/index"
+out="$(c106_run)"
+if grepq "$out" -F 'INFO C106-untracked-agent-files: check not run: ' && grepq "$out" -F 'git could not list the untracked files' && ! grepq "$out" 'OK   C106'; then pass "C106 a git that cannot list files -> INFO, not OK"; else fail "C106 corrupt index -> $out"; fi
+rm -rf "$t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

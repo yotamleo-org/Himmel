@@ -6488,6 +6488,28 @@ check_c105_memory_truth() {
     esac
 }
 
+check_c106_untracked_agent_files() {
+    local files n list prefix root_q
+    if ! prefix="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ]; then
+        emit INFO C106-untracked-agent-files "check not run: $REPO_ROOT is not the top of a git checkout"
+        return 0
+    fi
+    if ! files="$(git -C "$REPO_ROOT" ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills 2>/dev/null)"; then
+        emit INFO C106-untracked-agent-files "check not run: git could not list the untracked files under $REPO_ROOT"
+        return 0
+    fi
+    if [ -z "$files" ]; then
+        emit OK C106-untracked-agent-files "no untracked file under .agents/skills, .agents/rules, .agents/workflows, .codex/agents or .codex/skills"
+        return 0
+    fi
+    n="$(printf '%s\n' "$files" | grep -c .)"
+    list="$(printf '%s\n' "$files" | head -8 | paste -sd ' ' -)"
+    [ "$n" -le 8 ] || list="$list ... (+$((n - 8)) more)"
+    root_q=$(printf '%q' "$REPO_ROOT")
+    emit WARN C106-untracked-agent-files "$n untracked file(s) in a folder Codex or Antigravity loads from, so no review has seen them: $list" \
+        "git -C $root_q ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills lists them all; read each, delete only the ones that are stale copies or point at a missing script, and keep one you wrote on purpose by tracking it in a PR (the doctor never edits them)"
+}
+
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
 # Profile (OVERLORD8, 2026-10-14, full cold run 189 s): C42 67 s, C23 60 s, C40 27 s,
 # C7 19 s; the other ~60 checks 8 s together. C42/C23 delegate to scripts that fork
@@ -6662,6 +6684,7 @@ run_check C102 check_c102_lane_grants
 run_check C103 check_c103_bypass_launcher
 run_check C104 check_c104_agy_profiles
 run_check C105 check_c105_memory_truth
+run_check C106 check_c106_untracked_agent_files
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
