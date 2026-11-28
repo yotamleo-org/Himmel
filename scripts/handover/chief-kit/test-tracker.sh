@@ -1506,13 +1506,14 @@ gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 wgd="$(grep -F 'data-section="waiting"' "$v9611out")"
 cgd="$(grep -F 'data-section="chief-owes"' "$v9611out")"
-contains 'a no-authority hold is chief-visible with its generation age' "$cgd" 'park since 3 chief generations, with no operator words and no wake'
+contains 'a no-authority hold is chief-visible with its generation age' "$cgd" 'park since 3 chief generations, with no operator words and no live holder'
 not_contains 'a no-authority hold is not operator work' "$wgd" 'park since 3 chief generations'
-contains 'and its action' "$cgd" 'action: record the operator&#x27;s words (O- record) or a near wake=, or dispatch it'
+contains 'and its action' "$cgd" 'action: record the operator&#x27;s words (O- record) or a live wake (pr:, done: with a live owner), or dispatch it'
 contains 'an authority row of verb question shows the cited words (I9)' "$wgd" 'question on the operator&#x27;s words: &quot;Approved one more round&quot;'
 contains 'a pr: wake held for 7 days asks the chief to re-decide' "$cgd" 'hold on wake=pr:4999 for 7 days'
 not_contains 'a pr: wake held for 6 days is not shown' "$wgd" 'wake=pr:4998'
 not_contains 'a date: wake is never shown' "$wgd" 'wake=date:'
+contains 'a date-only line holds nothing: it is chief work like any no-authority hold (decisions 1281, 1282)' "$cgd" 'park since 1 chief generations, with no operator words and no live holder'
 equals 'the holds row replaces the chief doc line of the same key' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out" | grep -o 'hold it' | wc -l | tr -d ' ')" 0
 contains 'a pool-disposition line naming the operator and absent from the file is still an item' "$wgd$(grep -F 'data-section="chief-owes"' "$v9611out")" 'still asked'
 not_contains 'a read holds file is not named as unread' "$wgd" 'pool holds unread'

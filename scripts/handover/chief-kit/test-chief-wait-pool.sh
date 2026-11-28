@@ -1416,5 +1416,75 @@ hh_line FULL 'close-cand=HIMMEL-102,HIMMEL-103'
 arm_quiet "$I" "$WORK/hh-c5c.out" 8
 check '(10944 C5) a changed value is queued again, still without a wake' '124:2' "$rc:$(grep -c '^close-candidate ' "$I.wait.housekeeping" 2>/dev/null)"
 
+du="$WORK/du"; DUM="$du/mirror/HIMMEL"; mkdir -p "$du/rel/v1.1.3" "$du/state" "$du/quota" "$DUM"
+printf '{}\n' > "$du/rel/v1.1.3/release.json"
+printf 'v1.1.3\tfalse\t\n' > "$du/mirror/HIMMEL.versions.tsv"
+printf '{"lastSync":"2026-11-22T11:00:00Z"}\n' > "$DUM/.cursor.json"
+: > "$du/open.tsv"; printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
+du_now=2026-11-22T12:00:00Z du_stem=HIMMEL-nextleg-2026-11-22DU-roadmap-chief
+du_doc="$du/$du_stem.md"; du_file="$du/state/pool-holds-$du_stem.json"
+du_mk() { printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "$@" '' '## Results' > "$du_doc"; }
+du_rows() { local k; for k in "$@"; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$k"; done > "$STUB/dispositions"; }
+cat > "$du/gh" <<'EOF'
+#!/usr/bin/env bash
+[ "$(cat "$DU_GH/gh.mode")" = ok ] || exit 1
+printf '{"data":{"repository":{"p5002":{"__typename":"PullRequest","state":"%s"}}}}\n' "$(cat "$DU_GH/gh.state")"
+EOF
+chmod +x "$du/gh"; printf 'ok\n' > "$du/gh.mode"; printf 'OPEN\n' > "$du/gh.state"
+sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/du.line"
+printf '#!/usr/bin/env bash\ncat "%s/du.line"\n' "$STUB" > "$STUB/du-tick.sh"
+du_env() { env TICK_NOW="$du_now" TICK_STATE_DIR="$du/state" HIMMEL_RELEASE_STATE_DIR="$du/rel" NEXT_DISPATCH_MIRROR="$DUM" \
+    TICK_GH_CMD="$du/gh" HIMMEL_QUOTA_DIR="$du/quota" JIRA_PROJECT_KEY="$KP" DU_GH="$du" "$@"; }
+du_holds() {
+    jq -n --arg t "$du_now" '{ts: $t, status: "OK", asks_operator_keys: [], words_records: []}' > "$du/state/release-state-$du_stem.json"
+    du_env bash "$HERE/tick.sh" --pool-holds --doc "$du_doc" --open-prs "$du/open.tsv" --workers-from "$du/manifest.json" > /dev/null 2>&1
+}
+du_arm() {
+    du_env CHIEF_WAIT_TICK="$STUB/du-tick.sh" HOUSEKEEPING_DIGEST_SECS=30 timeout "$2" bash "$WAIT" "$du_inbox" --doc "$du_doc" --workers N1.md > "$1" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+}
+du_wakes() { printf '%s:%s' "$rc" "$(grep -c '^WAKE ' "$1")"; }
+
+du_inbox="$(new_inbox du-arrive)"
+du_mk "pool-disposition: HIMMEL-301 hold x wake=pr:5002"; du_rows 301
+du_holds; du_arm "$WORK/du-a1.out" 6
+check '(10775 arrival) a line held by an open pr: wake gives no pool-unresolved wake' '124:0' "$(du_wakes "$WORK/du-a1.out")"
+printf 'MERGED\n' > "$du/gh.state"; du_holds; du_arm "$WORK/du-a2.out" 8
+check '(10775 arrival) the PR merging wakes once, naming the key' '0:1:1' "$(du_wakes "$WORK/du-a2.out"):$(grep -c 'HIMME[L]-301' "$WORK/du-a2.out")"
+du_holds; du_arm "$WORK/du-a3.out" 6
+check '(10775 arrival) the unchanged re-run does not wake' '124:0' "$(du_wakes "$WORK/du-a3.out")"
+
+du_inbox="$(new_inbox du-date)"
+du_mk "pool-disposition: HIMMEL-7006 hold HIMMEL-7006 wake=date:2026-11-24 (AY 11-22, v1.1.3 cut chain)" \
+    "pool-disposition: HIMMEL-9917 slice HIMMEL-9917 wake=date:2026-11-23 (AY 11-22 AU audit: audit the code rows)" \
+    "pool-disposition: HIMMEL-8620 slice decision 1210 wake=date:2026-11-23 - split follow-up HIMMEL-10713"
+du_rows 7006 9917 8620
+du_holds; du_arm "$WORK/du-d1.out" 8
+check '(10775 date-only) the D1 lines wake once, listing the no-authority keys and not the sliced key' '0:1:1:1:0' \
+    "$(du_wakes "$WORK/du-d1.out"):$(grep -c '^# pool-unresolved no-authority HIMME[L]-7006 ' "$WORK/du-d1.out"):$(grep -c '^# pool-unresolved no-authority HIMME[L]-9917 ' "$WORK/du-d1.out"):$(grep -c 'HIMME[L]-8620' "$WORK/du-d1.out")"
+du_holds; du_arm "$WORK/du-d2.out" 6
+check '(10775 date-only) the same tick re-run does not wake' '124:0' "$(du_wakes "$WORK/du-d2.out")"
+
+du_inbox="$(new_inbox du-flap)"
+du_mk "pool-disposition: HIMMEL-302 hold x wake=pr:5002"; du_rows 302; printf 'OPEN\n' > "$du/gh.state"
+du_fl=""
+for du_r in 1:fail 2:fail 3:ok 4:ok; do
+    printf '%s\n' "${du_r#*:}" > "$du/gh.mode"; du_holds; du_arm "$WORK/du-f${du_r%%:*}.out" 6
+    du_fl="${du_fl:+$du_fl }$(du_wakes "$WORK/du-f${du_r%%:*}.out")"
+    printf '%s\n' "$(DOC='' du_env bash "$HERE/tick.sh" --pool-dispositions --doc "$du_doc" < "$STUB/dispositions" 2>/dev/null | grep '^# pool-unresolved ')" > "$WORK/du-f${du_r%%:*}.blk"
+done
+check '(10775 flap) run 1: the unread PR reads unchecked' 1 "$(grep -c '^# pool-unresolved unchecked HIMME[L]-302 PR 5002 unread: ' "$WORK/du-f1.blk")"
+check '(10775 flap) run 2: the same block' "$(cat "$WORK/du-f1.blk")" "$(cat "$WORK/du-f2.blk")"
+check '(10775 flap) runs 3 and 4: the read recovers, the line is decided: an empty block' ':' "$(cat "$WORK/du-f3.blk"):$(cat "$WORK/du-f4.blk")"
+check '(10775 flap) fail, fail, ok, ok wakes once, on run 1' '0:1 124:0 124:0 124:0' "$du_fl"
+
+du_inbox="$(new_inbox du-aged)"
+du_mk "pool-disposition: HIMMEL-303 hold x wake=date:2026-11-25"; du_rows 303
+du_holds; touch -d '31 minutes ago' "$du_file"; du_arm "$WORK/du-h1.out" 8  # gnu-ok: Linux-only kit
+check '(10775 aged) a holds file 31 min old wakes once, its give-up line unchecked' '0:1:1' \
+    "$(du_wakes "$WORK/du-h1.out"):$(grep -c '^# pool-unresolved unchecked HIMME[L]-303 the holds file is older than 30 min: ' "$WORK/du-h1.out")"
+touch -d '35 minutes ago' "$du_file"; du_arm "$WORK/du-h2.out" 6  # gnu-ok: Linux-only kit
+check '(10775 aged) the same file at 35 min does not wake again (H5: a stable reason)' '124:0' "$(du_wakes "$WORK/du-h2.out")"
+rm -f "$STUB/dispositions"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

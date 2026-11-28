@@ -289,7 +289,7 @@ function handoffItems(bucket: string, terminal: Set<string>): OwedItem[] | undef
         act: answered ? "the chief records the operator answer" : actor === "chief" ? "the chief acts on what the item names" : "answer the open item" };
     });
 }
-const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it", HOLDS_TTL_MS = 30 * 60 * 1000;
+const POOL_HOLD_ACT = "record the operator's words (O- record) or a live wake (pr:, done: with a live owner), or dispatch it", HOLDS_TTL_MS = 30 * 60 * 1000;
 type HoldRow = { key?: unknown; line?: unknown; verb?: unknown; class?: unknown; reason?: unknown; age_gen?: unknown; age_days?: unknown; words?: unknown; wake?: unknown };
 function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedItem[] | undefined {
   const file = join(env.TICK_STATE_DIR ?? join(env.HOME ?? "", ".himmel", "state"), `pool-holds-${basename(doc, ".md")}.json`);
@@ -318,7 +318,7 @@ function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedIt
     if (lines.get(key) !== r.line) { ctx = `${verb} (unchecked: the line changed since the holds run)`; act = POOL_HOLD_ACT; }
     else if (r.class === "invalid") { ctx = `${verb}: ${String(r.reason)}`; act = POOL_HOLD_ACT; }
     else if (r.class === "no-authority" || r.class === "unchecked") {
-      ctx = `${verb} since ${typeof r.age_gen === "number" && r.age_gen > 0 ? r.age_gen : 1} chief generations, with no operator words and no wake`;
+      ctx = `${verb} since ${typeof r.age_gen === "number" && r.age_gen > 0 ? r.age_gen : 1} chief generations, with no operator words and no live holder`;
       if (r.class === "unchecked") ctx += ` (unchecked: ${String(r.reason)})`;
       act = POOL_HOLD_ACT;
     } else if (r.class === "authority") { ctx = `${verb} on the operator's words: "${String(r.words)}"`; act = "none, unless the words do not say this"; }
