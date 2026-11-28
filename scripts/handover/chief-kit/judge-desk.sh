@@ -315,10 +315,18 @@ def command_segments(cmd):
     return segs
 
 
+def unquoted(tok):
+    try:
+        parts = shlex.split(tok)
+    except ValueError:
+        return tok
+    return ''.join(parts) if parts else tok
+
+
 def command_heads(cmd):
     heads = []
     for toks in command_segments(cmd):
-        toks = [t[1:-1] if len(t) > 1 and t[0] == t[-1] and t[0] in '\'"' else t for t in toks]
+        toks = [unquoted(t) for t in toks]
         if toks and os.path.basename(toks[0]) in ('bash', 'sh') and '-c' in toks and toks.index('-c') + 1 < len(toks):
             heads += command_heads(toks[toks.index('-c') + 1])
             continue
