@@ -548,6 +548,15 @@ s17_clear; s17_good; S17_IMPACTED_N=3
 s17_at "$S17_H1"
 s17_falls_back R14 "list file missing or altered" yes
 
+s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_t0=$SECONDS; s17_at "$S17_H1"; s17_dt=$((SECONDS - s17_t0))
+s17_falls_back "R18a a FIFO at the list path" "list file missing or altered" yes
+check "19 R18a: the FIFO is never read (${s17_dt}s)" "$((s17_dt < 60))" "1"
+s17_clear; s17_good; rm -f "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"; mkfifo "$tmp/s17-fifo"; ln -s "$tmp/s17-fifo" "$S17R/.git/impacted-lists/$S17_SUITES_BLOB.txt"
+s17_at "$S17_H1"
+s17_falls_back "R18b a symlink at the list path" "list file missing or altered" yes
+rm -f "$tmp/s17-fifo"
+
 s17_clear; S17_ROW_HEAD="$S17_ORPHAN"; s17_list "$S17_LIST_AB"; S17_MB="$S17_BASE"; S17_LISTER="$S17_LID"; STUB_LISTER_ID="$S17_LID"; S17_LP="[\"$S17_A\"]"
 s17_at "$S17_ORPHAN"
 contains "19 R15 an orphan head with a row: note" "$out" "merge-base unreadable"

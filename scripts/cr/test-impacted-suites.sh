@@ -2021,8 +2021,8 @@ rm -f "$LXD"
 lx_reset; lx_rec
 lx_old 13 "$LXD/$lx_id.txt"; lx_rec
 if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt"; then pass "IS5b(a) a 13-day-old list is reused and renewed"; else fail "IS5b(a) reuse: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
-lx_old 20 "$LXD/$lx_id.txt"; lx_rec
-if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt"; then pass "IS5b(b) a 20-day-old list is pruned and written again"; else fail "IS5b(b) prune then write: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
+chmod 400 "$LXD/$lx_id.txt"; lx_old 20 "$LXD/$lx_id.txt"; lx_rec
+if [ "$lx_rc" -eq 0 ] && [ "$(lx_blob "$LXD/$lx_id.txt")" = "$lx_id" ] && lx_fresh "$LXD/$lx_id.txt" && [ -w "$LXD/$lx_id.txt" ]; then pass "IS5b(b) a 20-day-old list is pruned and written again (a new file, not the read-only old one renewed)"; else fail "IS5b(b) prune then write: rc=$lx_rc $(ls -lA "$LXD" 2>&1)"; fi
 lx_reset; mkdir -p "$LXD"
 printf 'n\n' > "$LXD/notes.md"; printf 'n\n' > "$LXD/$H40.txt.bak"; printf 't\n' > "$LXD/.tmp-x"; printf 't\n' > "$LXD/.tmp-y"
 lx_old 20 "$LXD/notes.md" "$LXD/$H40.txt.bak"; lx_old 3 "$LXD/.tmp-x"
@@ -2070,7 +2070,7 @@ fi
 mkdir -p "$LS/shim-locale-2nd" "$LS/shim-locale-fail"
 printf '%s\n' '#!/usr/bin/env bash' \
     "n=\$(cat '$LS/locale-calls' 2>/dev/null || echo 0); n=\$((n + 1)); echo \"\$n\" > '$LS/locale-calls'" \
-    'if [ "$n" -ge 2 ]; then printf "LC_CTYPE=\"tr_TR.UTF-8\"\nLC_COLLATE=\"tr_TR.UTF-8\"\n"; exit 0; fi' \
+    'if [ "$n" -ge 2 ]; then printf "LC_CTYPE=\"is7_SECOND.UTF-8\"\nLC_COLLATE=\"is7_SECOND.UTF-8\"\n"; exit 0; fi' \
     "exec $(command -v locale) \"\$@\"" > "$LS/shim-locale-2nd/locale"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "$LS/shim-locale-fail/locale"
 chmod +x "$LS/shim-locale-2nd/locale" "$LS/shim-locale-fail/locale"

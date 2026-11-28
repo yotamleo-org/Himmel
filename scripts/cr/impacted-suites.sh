@@ -432,6 +432,7 @@ record=0
 rec_branch=""
 rec_head=""
 lister_mode=0
+n_args=$#
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --lister-id) lister_mode=1; shift ;;
@@ -473,8 +474,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$lister_mode" -eq 1 ]; then
-    if [ "$check" -eq 1 ] || [ "$plan" -eq 1 ] || [ "$shell_only" -eq 1 ] || [ "$record" -eq 1 ] || [ -n "$range$runner_path$run_path$from_file$paths_file$red_file$rec_branch$rec_head" ] \
-        || [ "$runner_check_mode" -eq 1 ] || [ "$selector_miss" -eq 1 ]; then
+    if [ "$n_args" -ne 1 ]; then
         echo "impacted-suites.sh: --lister-id is its own mode: it takes no range and no other flag" >&2; exit 2
     fi
     lister_id

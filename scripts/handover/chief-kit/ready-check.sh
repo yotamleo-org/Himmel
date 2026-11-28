@@ -174,7 +174,9 @@
 #      list, an unresolvable range, no timeout binary or a timed-out read FAILs. Not part
 #      of `--only 7`. The list is the one step 3.6 recorded for the head (the row's
 #      `suites_blob` file) when its four conditions hold, else the live read; a note
-#      names the first failed condition (docs/internals/validation-gates.md item 19).
+#      names the first failed condition, and a failed or timed-out merge-base or
+#      --lister-id read falls back to the live read instead of FAILing
+#      (docs/internals/validation-gates.md item 19).
 #
 # 16. outside-PR full review: for an outside PR (a fork, a deleted author, or a
 #      non-Bot author not in scripts/ci/ticket-id-internal-authors.txt; the same
@@ -2683,7 +2685,8 @@ s17_recorded() {
     if ! s17_hex "$lid"; then s17_cond="lister unreadable"; return 1; fi
     if [ "$lister" != "$lid" ]; then s17_cond="lister moved"; return 1; fi
     lid=""
-    if cp "${common_dir}/impacted-lists/$blob.txt" "$d/imp.rec" 2>/dev/null; then
+    if [ -f "${common_dir}/impacted-lists/$blob.txt" ] && [ ! -L "${common_dir}/impacted-lists/$blob.txt" ] \
+        && cp "${common_dir}/impacted-lists/$blob.txt" "$d/imp.rec" 2>/dev/null; then
         lid=$(git hash-object --no-filters -- "$d/imp.rec" 2>/dev/null) || lid=""  # swallow-ok: an unreadable copy fails condition 4
     fi
     if [ "$lid" != "$blob" ] || [ "$(wc -l < "$d/imp.rec" | tr -d ' ')" != "$n" ]; then
