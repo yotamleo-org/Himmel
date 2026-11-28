@@ -293,40 +293,44 @@ class Transcript:
 
 SKIPPED = {'env', 'bash', 'sh', 'timeout', 'time', 'nice', 'exec', 'command', 'source', '.', 'sudo',
            'if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{'}
-PUNCT = re.compile(r'[;&|()]+')
 
 
 def command_segments(cmd):
-    try:
-        lex = shlex.shlex((cmd or '').replace('\n', ' ; '), posix=False, punctuation_chars=True)
-        lex.whitespace_split = True
-        lex.commenters = ''
-        toks = list(lex)
-    except ValueError:
-        toks = (cmd or '').replace(';', ' ; ').replace('|', ' ; ').replace('&', ' ; ').split()
-    segs, cur = [], []
-    for t in toks:
-        if PUNCT.fullmatch(t):
-            segs.append(cur)
+    text, texts, cur, quote, i = cmd or '', [], [], None, 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            cur.append(ch)
+            if ch == '\\' and quote == '"' and i + 1 < len(text):
+                i += 1
+                cur.append(text[i])
+            elif ch == quote:
+                quote = None
+        elif ch == '\\' and i + 1 < len(text):
+            i += 1
+            cur.append(ch + text[i])
+        elif ch in '\'"':
+            quote = ch
+            cur.append(ch)
+        elif ch in ';&|()\n':
+            texts.append(''.join(cur))
             cur = []
         else:
-            cur.append(t)
-    segs.append(cur)
+            cur.append(ch)
+        i += 1
+    texts.append(''.join(cur))
+    segs = []
+    for t in texts:
+        try:
+            segs.append(shlex.split(t))
+        except ValueError:
+            segs.append(t.split())
     return segs
-
-
-def unquoted(tok):
-    try:
-        parts = shlex.split(tok)
-    except ValueError:
-        return tok
-    return ''.join(parts) if parts else tok
 
 
 def command_heads(cmd):
     heads = []
     for toks in command_segments(cmd):
-        toks = [unquoted(t) for t in toks]
         if toks and os.path.basename(toks[0]) in ('bash', 'sh') and '-c' in toks and toks.index('-c') + 1 < len(toks):
             heads += command_heads(toks[toks.index('-c') + 1])
             continue

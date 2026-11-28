@@ -581,8 +581,13 @@ eq "review: wait returns ENDED for a predecessor session's finished judge" "$out
 
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash /x/'write'-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
 eq "review: a script name split by quotes is still a write-verdict.sh call (rc 3)" "$rc" 3
+stopped "review: a script name split by quotes writes STOP"
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash /x/write\\\\-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
 eq "review: a script name with an escape is still a write-verdict.sh call (rc 3)" "$rc" 3
+stopped "review: a script name with an escape writes STOP"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash \\\"/x/\\\"write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a script path that starts with a quoted fragment is still a call (rc 3)" "$rc" 3
+stopped "review: a script path that starts with a quoted fragment writes STOP"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
