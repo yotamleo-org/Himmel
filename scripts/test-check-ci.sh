@@ -291,8 +291,6 @@ if [ "$cmd" = "api" ]; then
             # the producer read. Raw check-runs JSON through the real
             # --jq expression; "fail" is an unreadable read; anything else keeps the
             # old empty payload every pre-3385 caller sees.
-            # GH_STUB_PRODUCERS_SEQ=<dir>: read n returns <dir>/<n>.json, or the
-            # highest-numbered file once n passes it.
             if [ -n "${GH_STUB_PRODUCERS_SEQ:-}" ]; then
                 _pn=$(cat "$(dirname "$0")/producers-seq-count" 2>/dev/null); _pn=$(( ${_pn:-0} + 1 ))
                 echo "$_pn" > "$(dirname "$0")/producers-seq-count"

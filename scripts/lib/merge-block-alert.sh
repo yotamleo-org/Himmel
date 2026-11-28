@@ -264,7 +264,6 @@ merge_watch_alert() {
     fi
 
     if chief_worker && [ "${MERGE_WATCH_POST_GO:-}" != "1" ]; then
-        # A pre-GO --red is the worker's to fix: it has check-ci's exit code, so neither the chief inbox nor the operator is told.
         if [ "$red" = 1 ]; then
             echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
             return 0
