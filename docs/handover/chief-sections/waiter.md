@@ -726,7 +726,7 @@ recorded included. An ask on settings or `.github/`
     - `nudge=no-window`: no single live window named the worker. Past bound one it also opens an owed row (`owed=`) unless the relaunch is already due; with no nudge sent there is no grace to wait out, so the relaunch is due as soon as silence passes twice the first bound; find the worker with `ListAgents` and nudge it by hand.
     - `nudge=failed`: the bus send failed, there is no bus identity, or the message file could not be made; an owed row names why (`owed=`). Message the worker yourself.
     - `relaunched`: the worker was relaunched from its RESUME doc and the launch was confirmed. Nothing to do; confirm its first bullet.
-    - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause. For an unconfirmed launch, first check with `ListAgents` and `queue-lock.sh status <worker doc>` that no worker started; then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>`).
+    - `relaunch=failed`: no manifest doc, no RESUME doc, no launch record naming profile, lane and model, or an unconfirmed launch; an owed row names why. Write the RESUME doc or fix the cause. For an unconfirmed launch, first check with `ListAgents` and `queue-lock.sh status <worker doc>` that no worker started; then relaunch it yourself (`worker-resume-brief.sh <worker doc>`, `headed-arm-worker.sh --fleet <your manifest>`, `launch-confirm.sh --since <epoch> <session> <log>` with a Bash tool timeout of at least 250000 ms, since its window is 240 s).
     - `live-window`: the `<stem>-RESUME` window already runs. Nothing to relaunch; read its newest bullet.
     - `live-silent`: the old window is still live past bound two after the nudge. It is neither ended nor relaunched, and an owed row names it. First confirm it is not working (`queue-lock.sh status <worker doc>`, `ListAgents`, its newest Results bullet); only then end its stale session (one pid per call), release its lock with the worker's token, then relaunch from the RESUME doc, or take over its blocked step.
     - `census=unknown`: the process census failed, so a live window cannot be ruled out and nothing was relaunched; an owed row follows. Check `ListAgents` and `queue-lock.sh status <worker doc>`, then relaunch or take over.
@@ -740,7 +740,8 @@ recorded included. An ask on settings or `.github/`
     the git facts; name it per `worker-brief-template.md`, and keep the `description:` line
     double-quoted, on one line), end its stale session (one pid per call), release its lock with the worker's token, launch `chief-kit/headed-arm-worker.sh --fleet <your manifest>`
     on the RESUME doc (same branch, worktree and PR; the launcher adds the manifest row), then confirm it with
-    `chief-kit/launch-confirm.sh --since <epoch taken just before the launch> <session> <log>`; or
+    `chief-kit/launch-confirm.sh --since <epoch taken just before the launch> <session> <log>` (Bash tool timeout
+    at least 250000 ms: its window is 240 s); or
     **take over** its one blocked step yourself (a merge after your GO runs as a claudex PR's
     does, `merges.md`). Then send the operator one message saying which you did, for which worker.
 

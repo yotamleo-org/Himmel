@@ -297,12 +297,13 @@ mkdir -p "$WORK/home/.himmel" "$WORK/pa"
 printf '{"t3":{"relay_instances":["claudeAgent_worker-impl"]}}\n' > "$WORK/home/.himmel/config.json"
 PAD="$WORK/pa/chief.md"; printf '# chief\n\n## Results\n' > "$PAD"
 PAM="$WORK/pa/chief.fleet.json"; printf '{"schema":1,"workers":[]}\n' > "$PAM"
-PA_OUT="$(HOME="$WORK/home" bash "$ROOT/scripts/t3/relay-bind.sh" prepare --manifest "$PAM" --ticket PROJ-7 --label N40 --slug waiter-s3 --writes scripts/a.sh)"
+printf "const a = process.argv.slice(2);\nif (a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);\n" > "$WORK/pa-jira.js"
+PA_OUT="$(HOME="$WORK/home" BRIEF_LINT_JIRA_CLI="$WORK/pa-jira.js" BRIEF_LINT_MIRROR="$WORK/pa" bash "$ROOT/scripts/t3/relay-bind.sh" prepare --manifest "$PAM" --ticket PROJ-7 --label N40 --slug waiter-s3 --writes scripts/a.sh)"
 PA_DOC="$(printf '%s\n' "$PA_OUT" | sed -n 's/^DOC //p')"
 check "(pathA) prepare writes the doc named <KEY>-N<k>-t3-<slug>-<date>.md in the manifest's directory" "1" "$(printf '%s\n' "$PA_DOC" | grep -c "^$WORK/pa/PROJ-7-N40-t3-waiter-s3-20[0-9-]*\.md$")"
 check "(pathA) the row is lane t3, lockless, t3_thread pending" "t3 true pending N40" "$(jq -r '.workers[0] | "\(.lane) \(.lockless) \(.t3_thread) \(.label)"' "$PAM")"
 check "(pathA) the brief's command block holds no greater-than character" "0" "$(printf '%s\n' "$PA_OUT" | grep -c '>')"
-HOME="$WORK/home" bash "$ROOT/scripts/t3/relay-bind.sh" attach --manifest "$PAM" --doc "$PA_DOC" --thread 019e2c1a-a001
+HOME="$WORK/home" BRIEF_LINT_JIRA_CLI="$WORK/pa-jira.js" BRIEF_LINT_MIRROR="$WORK/pa" bash "$ROOT/scripts/t3/relay-bind.sh" attach --manifest "$PAM" --doc "$PA_DOC" --thread 019e2c1a-a001
 check "(pathA) attach sets the threadId" "019e2c1a-a001" "$(jq -r '.workers[0].t3_thread' "$PAM")"
 PA_HEAD=abababababababababababababababababababab
 HOME="$WORK/home" bash "$HERE/append-results.sh" "$PA_DOC" "LIVE — the thread started" > /dev/null

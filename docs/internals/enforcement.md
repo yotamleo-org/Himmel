@@ -5949,7 +5949,18 @@ forwards no rewrite that names git as a word when the payload cwd is inside
 `.claude/worktrees/` — the harness sees plain `git`. Cost: rtk's git
 compression is lost in unpinned worktree sessions too; a worktree outside
 `.claude/worktrees/` keeps the rewrite. Evidence and the worker-side recovery:
-[`stuck-playbook.md`](stuck-playbook.md).
+[`stuck-playbook.md`](stuck-playbook.md). One exception: a chief-spawned
+worker (`HIMMEL_CONSOLE_LEG=1`, which works in its worktree by `cd` and is
+never pinned) keeps `rtk git commit` for one simple `git commit`: the
+command names `git` once and has no separator, backtick, `$`, `<` or `>`
+anywhere, even inside a quoted message. A commit that breaks either rule
+runs unwrapped. The
+guard writes that rewrite itself when rtk (1.2.1 skips git under
+`.claude/worktrees/` on its own) stays silent. A passing commit then prints
+`ok <sha>` instead of about 90 pre-commit status lines; a failing one still
+prints every hook line and its exit code. Diffs, pushes and compound
+commands stay unwrapped, so nothing a judge reads or a push gate prints is
+filtered.
 
 **Wiring:** `docs/setup/settings-template.json` registers the guard
 (`<himmel-path>` placeholder, resolved by the setup scripts), and

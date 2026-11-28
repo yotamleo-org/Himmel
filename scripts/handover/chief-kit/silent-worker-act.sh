@@ -206,7 +206,7 @@ if [ "$relaunch_due" -eq 1 ] && [ "$nudged_now" -eq 0 ] && ! done_stage relaunch
                 else
                     nohup bash "$launcher" --fleet "$manifest" --profile "$rprofile" --lane "$rlane" "$session" "$rdoc" "$sig" $((since + 300)) "$llog" "$rmodel" >>"$llog.launcher.out" 2>&1 </dev/null 8>&- 9>&- &  # t13b-ok: one relaunch of a dead worker, bounded by the launcher deadline, not a service
                 fi
-                if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" "$session" "$llog" 2>&1)"; then
+                if conf_out="$(bash "$confirm" --since "$since" --chief "$chief" --secs 60 "$session" "$llog" 2>&1)"; then
                     say="${say:+$say }relaunched"; log="${log:+$log }relaunched $session"
                 else
                     relaunch_err="launch not confirmed: ${conf_out%%$'\n'*}"

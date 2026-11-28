@@ -462,6 +462,24 @@
       "_comment_sonnet": "Operator ruling 2026-10-30 (option 1, Sonnet workers only): impl runs a ceiling plus a compaction guard. Fable keeps autocompact 200000 with no guard; Opus has its own ceiling and guard above (_comment_opus).",
       "_comment_share": "(chief ruling 2026-11-02): sonnetContextShare sets where the context guard denies: the hook rounds share percent of the ceiling up to a whole percent of the 1M window. The share was chosen at the old 450000 ceiling to leave room for a commit, push and CHECKPOINT before the earliest compaction seen; it has not been re-measured at the current ceiling. In compact mode a pushed CHECKPOINT bullet unlocks it and the session carries on to the ceiling."
     },
+    "maintainer-hooks": {
+      "gateAllow": true,
+      "nativeDrop": ["lean-skills@himmel"],
+      "denyTools": ["NotebookEdit", "DesignSync", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "ReportFindings", "RemoteTrigger", "Artifact", "AskUserQuestion", "SendFeedback"],
+      "disableWorkflows": true,
+      "_comment": "worker-impl for a hook-fixing worker. Same fields as worker-impl; the one difference is the settings env the resolver writes for this name on the native lane only (MAINTAINER_ENV in plugin-profiles.mjs): the hook-edit marker and the hook-integrity bypass, so the session running on that file needs no bypass-queue request. The env is never written by hand here, and the name cannot be composed in a profile list. profile-settings.sh refuses it, so a doc's profile line cannot relaunch it and T3 gets no instance of it. Any process that can run the resolver on this name or start claude on its settings file still gets the grant.",
+      "enable": [],
+      "mcpServers": ["qmd", "himmel-bus"],
+      "contextBudget": 55000,
+      "contextMode": "standard",
+      "autocompact": 200000,
+      "opusAutocompact": 850000,
+      "opusContextGuard": "compact",
+      "opusContextShare": 87,
+      "sonnetAutocompact": 850000,
+      "sonnetContextGuard": "compact",
+      "sonnetContextShare": 73
+    },
     "worker-eval": {
       "gateAllow": true,
       "nativeDrop": ["lean-skills@himmel"],

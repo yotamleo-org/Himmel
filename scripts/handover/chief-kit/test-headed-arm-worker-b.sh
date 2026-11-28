@@ -183,6 +183,14 @@ HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 run_headless "$d29z" "$tmp/repo29z" "PROJ-3403
 check "29z bypass-launched headless: exit 0" "$rc" "0"
 check "29z bypass-launched headless: bypass written as 1" "$(jq -r '.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK' "$tmp/c29z/PROJ-3403-hlz.leg-settings.json" 2>/dev/null)" "1"
 
+d29m="$tmp/c29m"; mk_headless_stubs "$d29m" "PROJ-3403-hlm"; mkdir -p "$tmp/repo29m"
+rc=0
+HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_MAINTAINER_ACTION=hook-edit run_headless "$d29m" "$tmp/repo29m" "PROJ-3403-hlm" --headless --profile worker-impl >/dev/null 2>&1 || rc=$?
+check "29z2 maintainer-session headless: exit 0" "$rc" "0"
+check "29z2 maintainer-session headless: bypass not handed on" "$(jq -er '.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK' "$tmp/c29m/PROJ-3403-hlm.leg-settings.json" 2>/dev/null || echo '<nojson>')" ""
+check "29z2 maintainer-session headless: marker not handed on" "$(jq -er '.env.HIMMEL_MAINTAINER_ACTION // ""' "$tmp/c29m/PROJ-3403-hlm.leg-settings.json" 2>/dev/null || echo '<nojson>')" ""
+check "29z2 maintainer-session headless: the launched process env carries no bypass" "$(grep -c '^HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1$' "$d29m/child-env" 2>/dev/null)" "0"
+
 # 29-env: WORKER_SESSION_HEADLESS=1 in the launching shell does the same as the flag.
 d29e="$tmp/c29e"; mk_headless_stubs "$d29e" "PROJ-3403-hle"; mkdir -p "$tmp/repo29e"
 rc=0
