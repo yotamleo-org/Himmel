@@ -208,14 +208,16 @@ def _flags(ws):
 
 
 def _computed(words):
-    """A `$` or backtick word where shell text starts a command (first, or after a word ending in ; & | or (),
-    which may name any program."""
-    return any(w[:1] in "$`" and (i == 0 or words[i - 1][-1] in ";&|(") for i, w in enumerate(words))
+    """A `$` or backtick word, quotes before it dropped, where shell text starts a command (first, or after ; & | or
+    (, attached or not), which may name any program."""
+    toks = [p for w in words for p in re.findall(r"[;&|(]+|[^;&|(]+", w)]
+    return any(t.lstrip("\"'")[:1] in ("$", "`") and (i == 0 or toks[i - 1][-1] in ";&|(") for i, t in enumerate(toks))
 
 
 def units(argv, texts, cwd, home):
     """The facts of each command main-history judges: the argv, and each line of a file copy or stdin, read both as
-    written and with each backslash and newline dropped (the shell drops them outside a comment). A line that
+    written and with each backslash and newline dropped (a heuristic: the shell keeps them in a comment or single
+    quotes). A line that
     expands a `$` word also holds the facts of the argv words and the text's `key=value` words, which a script reads
     through its arguments and variables. None for a word with too many forms."""
     memo = {}
@@ -236,8 +238,9 @@ def units(argv, texts, cwd, home):
         args |= {"computed"}
     yield args
     for t in texts:
-        assigned = facts([(w, False) for w in t.split() if "=" in w])
-        for text in {t, t.replace("\\\n", "")}:
+        reads = {t, t.replace("\\\n", "")}
+        assigned = facts([(w, False) for text in reads for w in text.split() if "=" in w])
+        for text in reads:
             for line in text.split("\n"):
                 words = line.split()
                 f = facts([(w, False) for w in words])

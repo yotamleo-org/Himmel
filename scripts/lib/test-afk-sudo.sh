@@ -1193,6 +1193,12 @@ expect_text main-history "a script whose backslash and newline split the word gi
 expect_text main-history "a script whose comment ends in a backslash before a force push" $'# note\\\ngit push -f origin main\n' bash s.sh
 # shellcheck disable=SC2016 # the literal $x word
 expect_rule none bash scripts/handover/brief-lint.sh '$x' push -f main
+# shellcheck disable=SC2016 # the literal $g and $B words
+expect_rule main-history bash -c '"$g" push -f origin main'
+# shellcheck disable=SC2016
+expect_rule main-history bash -c 'true;$g push -f origin main'
+# shellcheck disable=SC2016
+expect_text main-history "a script whose assignment of main runs on past a backslash" $'B=ma\\\nin\ngit push -f origin "$B"\n' bash s.sh
 expect_rule approval-system cat /etc/himmel/afk-sudo.json
 expect_rule approval-system rm /usr/local/libexec/himmel/afk-sudo
 expect_rule approval-system tee /etc/sudoers

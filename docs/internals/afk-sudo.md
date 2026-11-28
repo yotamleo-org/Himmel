@@ -266,10 +266,12 @@ same walk as the binding above), is refused as `rule=oversize`:
 
 `main-history` judges one command at a time, not the whole word set: the argv is one
 command, and each line of a file copy or the stdin is one, read both as written and with
-each backslash and newline dropped (the shell drops them outside a comment). The command
+each backslash and newline dropped (a heuristic for the shell, which keeps them in a comment
+or single quotes). The command
 must also hold a word naming `git` (or `gh` for the two delete forms), with quotes and
 backslashes dropped (`g'i't`, `/usr/bin/git`), or a `$` or backtick word where its shell
-text starts a command (first, or after a word ending in `;`, `&`, `|` or `(`), which may
+text starts a command (first, or after `;`, `&`, `|` or `(`, attached or not; quotes before
+it dropped), which may
 name any program. A line that
 expands a `$` word also holds the argv words and the file's `key=value` words, so
 `git push "$@"` and `B=main` then `git push -f origin "$B"` still match. A read-only
