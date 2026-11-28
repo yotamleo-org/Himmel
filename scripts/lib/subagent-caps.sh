@@ -3,21 +3,6 @@
 # starts with, and the Agent-tool withdrawal for a Haiku session. Sourced by
 # each launcher; one copy of the values, never one per launcher.
 #
-#   CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=2   layers below the main session:
-#       main -> child -> grandchild, and the grandchild cannot spawn. The
-#       harness default is 3; 2 is the measured value (nested-vs-flat
-#       overhead 1.63-1.84x, coordination layers ate 32-71% of budget).
-#   CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=20  subagents running at once in one
-#       session. This is the documented harness default, written out so the
-#       value is ours to change in one place; no measurement supports a
-#       lower one, and chief fan-outs and judge waves run several at once.
-#
-# A Haiku session is a leaf (CLAUDE.md Subagent policy): a launcher whose
-# session model is Haiku also passes `--disallowedTools Agent`, so the
-# session cannot spawn. The PreToolUse guard guard-subagent-model.sh covers
-# the other half: an Agent dispatch on model haiku must use a type that has
-# no Agent tool.
-#
 # On source it sets:
 #   SUBAGENT_CAPS_ENV              the two NAME=VALUE pairs, an array, for an
 #                                  `env NAME=VALUE ... claude` launch line
@@ -31,10 +16,6 @@
 #                                  set SUBAGENT_CAPS_HAIKU_ARGS to
 #                                  (--disallowedTools Agent) when the argv's
 #                                  --model names Haiku, else to ()
-#
-# Callers: worker-claude-launcher.sh refuses to launch if this file does not
-# load; headed-arm.sh, arm-resume.sh (a partial fixture copy may lack it) WARN
-# and launch at the harness defaults; chief.sh sources it like its other libs.
 #
 # Platform guard: any POSIX bash 3.2+ (macOS ships 3.2); no external commands
 # beyond tr.

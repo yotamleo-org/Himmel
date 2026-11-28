@@ -4,34 +4,6 @@
 # CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=2 and CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=20,
 # and a Haiku session starts with the Agent tool disallowed.
 #
-#   1. HELPER   the values, the Haiku match, the --disallowedTools args.
-#   2. WORKER   worker-claude-launcher.sh (the exec point of every
-#               headed-arm-worker.sh native and claudex worker) hands both
-#               values to the binary it execs; a Haiku --model adds
-#               --disallowedTools Agent in front, any other model adds nothing.
-#   3. HEADED   headed-arm.sh: the dry-run env line and the konsole tab both
-#               carry the values; the tab's session receives them (a konsole
-#               stub runs what follows -e, as a real tab would, and a launcher
-#               stub records its env).
-#   3b. CHIEF   chief.sh's printed chief launch line carries both values in
-#               the env prefix of each of its two claude commands
-#               (fixture: chief/test-chief.sh's shape, scripts/handover and
-#               scripts/lib copied, the rest linked, an always-OK bus).
-#   3c. ARM     arm-resume.sh's relaunch entry exports both values, and a
-#               Haiku --model gets --disallowedTools Agent (fixture: the
-#               cron backend of test-arm-resume.sh case 2545b, HOME pinned).
-#   4. CHAIN    headed-arm-worker.sh launches through headed-arm.sh with
-#               worker-claude-launcher.sh as the launcher.
-#   5. SITES    every launch env line (one that sets
-#               CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1) in a launch site
-#               names the helper's caps on that line or the next to it, and
-#               the site sources the helper. A fixture launch site without the
-#               helper FAILS the check; the same fixture with it passes.
-#   6. NEW      every non-test file under scripts/ with such a line is a
-#               known launch site or a listed hint-only file (one that prints
-#               a relaunch command for the operator and launches nothing), so a
-#               new launch site without the caps fails here.
-#
 # Usage: bash scripts/lib/test-subagent-caps.sh
 # Platform guard: any POSIX bash 3.2+; the HEADED cases stub konsole and
 # pgrep, so they run on Linux and macOS alike (HEADED_ARM_UNAME=Linux).
