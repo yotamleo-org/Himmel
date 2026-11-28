@@ -61,6 +61,7 @@ cleanup() {
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" "$XDG_RUNTIME_DIR" 2>/dev/null
     rmdir "$TMP/dir.jsonl" "$TMP/adopter" "$TMP/fake-anchor/scripts" "$TMP/fake-anchor" 2>/dev/null
     for f in "$TMP"/*.jsonl; do rm -f "$f" 2>/dev/null; done
+    rm -f "$PAYLOAD_FILE" "$TMP/block-out.json" 2>/dev/null
     rmdir "$TMP" 2>/dev/null
 }
 trap cleanup EXIT
@@ -97,9 +98,11 @@ payload() {   # payload <transcript> [stop_hook_active] [session] [cwd]
     fi
 }
 OUT=""; RC=0
+PAYLOAD_FILE="$TMP/payload.in"
 run_guard() {   # run_guard <payload> [ENV=val ...] — sets OUT and RC
     local p="$1"; shift
-    OUT="$(printf '%s' "$p" | env HIMMEL_CONSOLE_LEG=1 "$@" bash "$HOOK")"; RC=$?
+    printf '%s' "$p" > "$PAYLOAD_FILE"
+    OUT="$(env HIMMEL_CONSOLE_LEG=1 "$@" bash "$HOOK" < "$PAYLOAD_FILE")"; RC=$?
 }
 expect_block() {   # expect_block <label> — reads OUT/RC from the last run_guard
     case "$OUT" in
@@ -136,7 +139,8 @@ case "$out" in
     *'HIMMEL-1-N1-fixture-worker.md'*) ok "reason names the held doc" ;;
     *) bad "reason lacks the held doc — got: $out" ;;
 esac
-if printf '%s' "$out" | jq -e '.decision == "block" and (.reason | length > 0)' >/dev/null 2>&1; then
+printf '%s' "$out" > "$TMP/block-out.json"
+if jq -e '.decision == "block" and (.reason | length > 0)' < "$TMP/block-out.json" >/dev/null 2>&1; then
     ok "block output is valid JSON"
 else
     bad "block output is not valid JSON: $out"
@@ -201,7 +205,8 @@ run_guard "$(payload "$T_IDLE" true)"
 expect_allow "stop_hook_active=true -> allow (one refusal per stop)"
 run_guard "$(payload "$T_IDLE" false other-session)"
 expect_allow "another session's stop (lock not ours) -> allow"
-OUT="$(printf '%s' "$(payload "$T_IDLE")" | env -u HIMMEL_CONSOLE_LEG bash "$HOOK")"; RC=$?
+printf '%s' "$(payload "$T_IDLE")" > "$PAYLOAD_FILE"
+OUT="$(env -u HIMMEL_CONSOLE_LEG bash "$HOOK" < "$PAYLOAD_FILE")"; RC=$?
 expect_allow "not a chief worker (HIMMEL_CONSOLE_LEG unset) -> allow"
 run_guard "$(payload "$T_IDLE")" HIMMEL_RELEASE_MANAGER=1
 expect_allow "release manager (HIMMEL_RELEASE_MANAGER=1) holding STANDBY, no background task -> allow"
