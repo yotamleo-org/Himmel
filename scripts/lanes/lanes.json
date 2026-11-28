@@ -31,6 +31,10 @@
         { "id": "gemini-3.8-flash", "tier": null }
       ],
       "probe": { "kind": "path", "cli": "agy" } },
+    { "id": "antigravity-t3-design", "label": "Antigravity T3 designer thread", "class": "t3-thread", "t3Instance": "antigravity_design",
+      "bestFor": "design, image and copywriting work on Gemini in a T3 thread on this row's t3 instance; agents may start it unless .t3.instance_narrow exists and leaves it out (guard-t3-thread-tools.sh). Not in the patient-data vault: no Gemini thread runs the Higgsfield egress fence yet. Its skills and MCP servers are the Antigravity design profile's: bash scripts/t3/antigravity-profiles.sh --profile design prints them. Models, tiers, egress and quota: the antigravity-t3 row",
+      "effort": "see the antigravity-t3 row",
+      "probe": { "kind": "path", "cli": "agy" } },
     { "id": "codex-t3", "label": "Codex T3 thread", "class": "t3-thread", "bestFor": "guarded T3 thread work with GPT-6.2 Sol or Astra", "effort": "explicit per-thread effort; raise effort before model tier", "models": [
         { "id": "gpt-6.2-sol" }, { "id": "gpt-6.2-astra" },
         { "id": "gpt-6.1-sol" }, { "id": "gpt-6.1-terra" },

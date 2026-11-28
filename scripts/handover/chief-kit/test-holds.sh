@@ -1175,6 +1175,33 @@ rm -f "$(rowf scripts/s9626.sh "$R10")"
 : > "$(rowf scripts/check-ci.sh "$R10").grant.PROJ-9626"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 same "9186 a granted ask is no longer pending" "$OUT" ""
+printf '%s\tdeny\tscripts/ci/free-11544.sh\tPROJ-11544\tnobody\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$EVENTS"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "11544 a deny of a trust path nobody holds is a pending chief ask" "$RC:$(printf '%s' "$OUT" | cut -f1-3,5)" "$(printf '0:PROJ-11544\tscripts/ci/free-11544.sh\tnobody\thold-ask-chief')"
+put_row scripts/ci/free-11544.sh PROJ-9627 holder "$(mkdoc PROJ-9627-case.md)" brief "" "$R10"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "11544 a nobody ask stays pending over a row of another key (a dead holder's)" "$RC:$(printf '%s' "$OUT" | cut -f1)" "0:PROJ-11544"
+put_row scripts/ci/free-11544.sh PROJ-11544 asker "$(mkdoc PROJ-11544-case.md)" claim "" "$R10"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "11544 a nobody ask drops once the asker holds the path" "$RC:$OUT" "0:"
+rm -f "$(rowf scripts/ci/free-11544.sh "$R10")"
+put_row scripts/ci/dead-11544.sh PROJ-9627 holder "$(mkdoc PROJ-9627-case.md)" brief "" "$R10"
+before="$(ev_count)"
+run hp claim --key PROJ-11545 --label asker --doc "$(mkdoc PROJ-11545-case.md)" --repo "$R10" --free-route scripts/ci/dead-11544.sh
+same "11544 claim --free-route on a dead holder's trust-path row: exit 1" "$RC" 1
+contains "11544 ... names the route" "$ERR" "holds-free: chief"
+same "11544 ... takes nothing over" "$(cut -f1 "$(rowf scripts/ci/dead-11544.sh "$R10")")" PROJ-9627
+same "11544 ... logs one deny naming no holder" "$(ev_count):$(tail -n 1 "$EVENTS" | cut -f2-5)" "$((before + 1)):$(printf 'deny\tscripts/ci/dead-11544.sh\tPROJ-11545\tnobody')"
+run hp claim --key PROJ-11545 --label asker --doc "$(mkdoc PROJ-11545-case.md)" --repo "$R10" --free-route scripts/d-11544.sh
+same "11544 claim --free-route on a non-trust path: claimed (exit 0)" "$RC" 0
+put_row scripts/d-11544.sh PROJ-9627 holder "$(mkdoc PROJ-9627-case.md)" brief "" "$R10"
+run hp claim --key PROJ-11545 --label asker --doc "$(mkdoc PROJ-11545-case.md)" --repo "$R10" --free-route scripts/d-11544.sh
+same "11544 claim --free-route on a dead holder's non-trust row: taken over (exit 0)" "$RC:$(cut -f1 "$(rowf scripts/d-11544.sh "$R10")")" 0:PROJ-11545
+run hp claim --key PROJ-11545 --label asker --doc "$(mkdoc PROJ-11545-case.md)" --repo "$R10" scripts/ci/dead-11544.sh
+same "11544 claim with no --free-route still takes a dead holder's trust-path row over" "$RC:$(cut -f1 "$(rowf scripts/ci/dead-11544.sh "$R10")")" 0:PROJ-11545
+: > "$(rowf scripts/ci/free-11544.sh "$R10").grant.PROJ-11544"
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
+same "11544 a granted free ask is no longer pending" "$RC:$OUT" "0:"
 run hp summary --repo "$W/repo-9186-no-register"
 same "9186 summary prints nothing when this repo has never had a register directory" "$RC:$OUT" "0:"
 if [ "$(id -u)" != 0 ]; then  # root reads a mode-000 directory
