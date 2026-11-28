@@ -61,7 +61,7 @@ notes=(); skipped=0
 for f in "$MEMDIR"/*.md; do
     [ -f "$f" ] || continue
     b="$(basename "$f" | tr '[:upper:]' '[:lower:]')"
-    if printf '%s\n' "$b" | grep -Eq 'secret|token|credential|password|passwd|keyring|private|(^|[-_.])(keys?|env)([-_.]|$)'; then
+    if grep -Eq 'secret|token|credential|password|passwd|keyring|private|(^|[-_.])(keys?|env)([-_.]|$)' <<< "$b"; then
         skipped=$((skipped + 1)); continue
     fi
     notes+=("$f")
