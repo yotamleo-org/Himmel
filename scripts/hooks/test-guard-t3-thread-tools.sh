@@ -258,6 +258,52 @@ lacks() {
     if grep -qF -- "$absent" <<<"$out"; then echo "FAIL $name: stderr holds '$absent': $out"; FAIL=$((FAIL+1)); return; fi
     echo "ok   $name"
 }
+FRESH_FORM='{"prompt":"Read <absolute coordinator state file>. Use coordinator owner generation <generation>, act, checkpoint, then end.","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":true}'
+sched() { printf '{"tool_name":"%sschedule_task","tool_input":%s}' "$T" "$1"; }
+SCHED_BOUND=$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')
+run "SCHED-BOUND: a bound interval with freshSession false: refused" 2 'non-fresh-bound-interval' "$SCHED_BOUND"
+run "SCHED-BOUND: the refusal prints the fresh-session form" 2 "$FRESH_FORM" "$SCHED_BOUND"
+run "SCHED-DEFAULT: an interval with neither flag: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000}}')"
+run "SCHED-NULL-ID: a null scheduledTaskId is a creation: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"scheduledTaskId":null,"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-TEXT: the interval as JSON text: refused" 2 'non-fresh-bound-interval' \
+    "$(sched '{"prompt":"coordinate","schedule":"{\"type\":\"interval\",\"everyMs\":1800000}","bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: the fresh-session form: allowed" 0 - "$(sched "$FRESH_FORM")"
+run "SCHED control: an explicit unbound interval: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":false,"freshSession":false}')"
+run "SCHED control: a one-shot schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"once","runAt":"2026-12-01T09:00:00Z"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: a fixed-time schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"fixed_time","timeOfDay":"09:00"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED control: a webhook schedule: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"webhook"},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-UPDATE: the same fields on an update: allowed" 0 - \
+    "$(sched '{"scheduledTaskId":"task-1","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED operator: the override allows the SCHED-BOUND payload, on stderr" 0 'override: allowed' "$SCHED_BOUND" T3_THREAD_TOOLS_OK=1
+run "SCHED-TEXT-BAD: an unparseable schedule string: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":"{\"type\":\"interval\"","bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-EMPTY-ID: an empty scheduledTaskId is left to T3, which rejects a blank ScheduledTaskId: allowed" 0 - \
+    "$(sched '{"scheduledTaskId":"","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')"
+run "SCHED-STRING-FRESH: freshSession \"false\" is left to T3, which rejects a non-boolean: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":"false"}')"
+run "SCHED-STRING-BIND: bindToCurrentThread \"true\" is left to T3, which rejects a non-boolean: allowed" 0 - \
+    "$(sched '{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":"true","freshSession":false}')"
+SCHED_PRIVATE=$(sched '{"prompt":"PROMPTMARKER-11548 coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')
+SCHED_ROWS="$TMP/sched-rows.jsonl"
+run "SCHED-PRIVATE: a refusal with a prompt marker: refused" 2 'non-fresh-bound-interval' "$SCHED_PRIVATE" HIMMEL_GUARD_REFUSALS_LOG="$SCHED_ROWS"
+lacks "SCHED-PRIVATE: the refusal never prints the prompt" PROMPTMARKER "$SCHED_PRIVATE"
+N=$((N+1))
+if [ -s "$SCHED_ROWS" ] && ! grep -q PROMPTMARKER "$SCHED_ROWS" && [ "$(jq -r .rule "$SCHED_ROWS")" = non-fresh-bound-interval ]; then
+    echo "ok   SCHED-PRIVATE: the refusal row names the rule and holds no prompt"
+else echo "FAIL SCHED-PRIVATE: the refusal row is missing, has another rule or holds the prompt: $(cat "$SCHED_ROWS" 2>/dev/null)"; FAIL=$((FAIL+1)); fi
+NOSTORE="$TMP/nostore"
+run "SCHED-NO-STORE: an instance-bearing SCHED-BOUND is refused without reading storage" 2 'non-fresh-bound-interval' \
+    "$(sched '{"instanceId":"claudeAgent","prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}')" \
+    HOME="$NOSTORE" T3CODE_HOME="$NOSTORE" HIMMEL_PROFILE_SETTINGS_DIR="$NOSTORE" HIMMEL_GUARD_REFUSALS_LOG="$TMP/nostore-rows.jsonl"
+N=$((N+1))
+if [ ! -e "$NOSTORE" ]; then echo "ok   SCHED-NO-STORE: the isolated directory is still absent"
+else echo "FAIL SCHED-NO-STORE: the guard created $NOSTORE"; FAIL=$((FAIL+1)); fi
 OWN='carries settings of its own in its launchArgs'
 UNKNOWN_DIR='whether its settings files are resolved profile files is unknown (the profile settings directory is not a canonical absolute path)'
 run "S0b: an emitter-shaped instance with an mcp file: allowed" 0 - "$(from_to codex claudeMcp)"
