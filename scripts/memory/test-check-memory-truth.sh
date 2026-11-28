@@ -94,7 +94,7 @@ ok "T8 the second phrase's Done key is reported" has "$out" "closed-wait two.md:
 
 echo "== T9 a note that cannot be read stops the run instead of passing it"
 fresh; note locked.md 'Run `scripts/handover/console/console.sh next`.'
-chmod 000 "$MEM/locked.md"
+chmod 000 "$MEM/locked.md" || { echo "FAIL T9 fixture chmod"; FAILED=1; }
 if [ -r "$MEM/locked.md" ]; then
     echo "SKIP T9 this user can read a mode-000 file"
 else
@@ -105,7 +105,7 @@ chmod 600 "$MEM/locked.md"
 
 echo "== T10 a symlink is never followed, whatever its name"
 fresh; printf 'scripts/handover/console/console.sh\n' > "$SB/outside.md"
-ln -s "$SB/outside.md" "$MEM/innocent.md"
+ln -s "$SB/outside.md" "$MEM/innocent.md" && [ -L "$MEM/innocent.md" ] || { echo "FAIL T10 fixture symlink"; FAILED=1; }
 run
 assert_rc "T10 rc" 0 "$rc"
 
@@ -114,5 +114,9 @@ fresh; note waits.md 'Eval work waits on HIMMEL-9032.'
 out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
 assert_rc "T11 rc" 2 "$rc"
 ok "T11 names the missing mirror" has "$out" "Jira mirror not found"
+note dead.md 'Run `scripts/handover/console/console.sh next`.'
+out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
+assert_rc "T11 a dead path still reports without the mirror" 1 "$rc"
+ok "T11 the dead path is listed" has "$out" "dead-path dead.md:5 scripts/handover/console/console.sh"
 
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAILED"; exit 1; fi
