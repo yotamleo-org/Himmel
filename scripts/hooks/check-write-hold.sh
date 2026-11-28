@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # check-write-hold.sh — PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit, LAST in that chain): the write half of the
-# single-writer barrier. A worker's write onto a file another live worker or open PR holds is denied; a
-# write onto a free file publishes the worker's row in the register holds.py owns, unless the repo carries
-# scripts/ci/ci-trust-paths.txt and holds.py grant-route names the file a trust path, settings file or CI workflow:
-# then the first write waits for a grant.
+# single-writer barrier, over the register holds.py owns.
 #
-# Blocks only on a positive answer: a readable row, another holder, that holder alive, no grant; or no row, no grant,
-# and a grant-route of chief or operator. Every other answer passes. A coordination guard, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs fail-closed"): no jq, bad
+# A coordination guard, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs fail-closed"): no jq, bad
 # stdin or a crash is silent; a register it cannot write says so once per session on stderr.
 #
 # Last in its chain because the chain's first deny short-circuits: an earlier deny never leaves a row (I11). NOT in
@@ -21,8 +17,7 @@
 # primary checkout's root. Marker in a linked worktree only: the barrier stays on (I8).
 #
 #
-# Platform guard: bash 3.2-safe; a write onto a row the worker holds forks only jq and git, and a first write onto a
-# free file adds mktemp, holds.py grant-route, ln and rm.
+# Platform guard: bash 3.2-safe.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow (nothing on stdout), exit 2 = deny (stderr plus a structured
 # hookSpecificOutput.permissionDecision on stdout, the guard-worker-wakeup.sh idiom).

@@ -1687,8 +1687,7 @@ ASK_TAIL = 256 * 1024    # bytes of events.log read for the asks: the log grows 
 
 def pending_asks(repo):
     """[(key, path, holder)]: a trust-path (or settings or CI workflow) deny from the last day that no grant answers, whose
-    holder's row still holds the path here (holder FREE_HOLDER: still no row), whose asker's key is not Done. Local files
-    only."""
+    holder's row still holds the path here, whose asker's key is not Done. Local files only."""
     trust = load_trust()
     if trust is None:
         return []
