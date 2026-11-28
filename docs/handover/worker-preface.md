@@ -73,8 +73,9 @@ A `PROBE <g>` quoting your token: bullet `LIVE — PROBE <g> ok`; else ignore.
 
 - **Do the work yourself** unless the brief says otherwise; never spawn a
   subagent to verify your own work. **No unrequested features, tests or files.** [prose]
-- **A write onto another holder's file is denied, and the deny says how to ask.** A
-  free file outside `Writes` is claimed and named on your PR's `outside-writes:` line. [prose]
+- **Writing another holder's file, or a free trust path, is denied; the deny says
+  how to ask.** A free file outside `Writes` is claimed: list it on
+  `outside-writes:`. [prose]
 - **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:
   `bash scripts/graphify/worker-graph.sh <explain "<symbol>" | path "<a>" "<b>">`;
   `query` on a sentence is noise. One search per response.
