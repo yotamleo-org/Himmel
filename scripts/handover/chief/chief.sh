@@ -54,7 +54,8 @@
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
 # real `## Current direction` block; 10 `next` refused: a launch still writes to the
 # predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait, or that manifest
-# is unreadable; 18 `--project` refused: the project folder would not load the
+# is unreadable; 11 `next` or `wrap` refused: a numbered item of the predecessor's
+# HANDOFF carries no owed-row id (o<N>) and no closed mark; 18 `--project` refused: the project folder would not load the
 # himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
@@ -123,7 +124,9 @@ usage: chief.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
 
 wrap (the predecessor's last step, run from its own session) writes the
 WRAPPED bullet and releases the lock, and refuses (exit 4, nothing written)
-while this session has a live in-process subagent.
+while this session has a live in-process subagent. next and wrap refuse
+(exit 11) while a numbered item of the chief's -HANDOFF.md carries neither an
+owed-row id (o<N>, printed by owe.sh add) nor the word closed.
 
 Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT and the default;
 --context standard or CHIEF_CONTEXT=standard opts down to 200000.
@@ -577,6 +580,22 @@ EOS
     exit 5
 }
 
+check_handoff_items_owed() {
+    local unowed
+    [ -f "$1" ] || return 0
+    unowed="$(awk '
+        function flush() { if (num != "" && tolower(item) !~ /(^|[^a-z0-9_])(o[1-9][0-9]*|closed)([^a-z0-9_]|$)/) printf "  item %s: %s\n", num, substr(first, 1, 160); num = "" }
+        /^[0-9]+[.)][ \t]/ { flush(); num = $0; sub(/[.)].*/, "", num); first = $0; sub(/^[0-9]+[.)][ \t]+/, "", first); item = first; next }
+        /^[ \t]*$/ || /^#/ { flush(); next }
+        num != "" { item = item " " $0 }
+        END { flush() }' "$1")"
+    [ -n "$unowed" ] || return 0
+    err "refusing to hand over: a numbered item of $1 carries no owed-row id (o<N>) and no closed mark:"
+    printf '%s\n' "$unowed" >&2
+    err "  write a row for each, put the o<N> it prints in the item (or mark it closed), and retry: bash $HERE/../chief-kit/owe.sh add --bucket $2 --chief <letter> --kind ticket|proof|ruling|step --text \"<the item>\""
+    return 1
+}
+
 cmd_wrap() {
     if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
         echo "usage: chief.sh wrap <chief-doc> <release-token> [<text>]" >&2
@@ -593,6 +612,7 @@ cmd_wrap() {
         fi
         exit 4
     fi
+    check_handoff_items_owed "${doc%.md}-HANDOFF.md" "$(dirname "$doc")" || exit 11
     # prove the token first (heartbeat refuses a wrong one and changes nothing),
     # so neither a wrong token nor a failed append leaves a half-done wrap, and
     # the gate below never stops the waiter for a wrap that will be refused
@@ -3059,6 +3079,7 @@ cmd_next() {
     check_workers_listed "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_no_orphan_pr "$predecessor_doc" || exit 8
     check_owed_ledger "$(dirname "$predecessor_doc")" || exit 9
+    check_handoff_items_owed "${predecessor_doc%.md}-HANDOFF.md" "$(dirname "$predecessor_doc")" || exit 11
     # The outgoing direction rides into the successor doc and the HANDOFF; the
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction

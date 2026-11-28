@@ -1161,6 +1161,12 @@ midnight, instead of waiting for the date to roll over. Fill in the HANDOFF
 the held queue in launch order, what wrapped), then `touch` the signal path
 that `next --arm` printed and hand your live workers over by name.
 
+**Every numbered HANDOFF item carries its owed id.** A line `<n>.` or `<n>)` in the
+HANDOFF names the `o<N>` row it rides on (`owe.sh add` prints the id), or says
+`closed`. Free text with no row is lost by the next chief. `chief.sh wrap`, and
+`next` on a HANDOFF that already exists, refuse (exit 11) and name each item
+that has neither. Write the row, put its id in the item, and retry.
+
 **Re-brief your live workers before you release**. Each
 worker's brief names *you* as its chief, and a successor is a different session
 on a different socket: the successor names itself to you during its ACTION ZERO,

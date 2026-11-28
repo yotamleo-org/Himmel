@@ -199,4 +199,54 @@ foreignB="$root/tester/foreign-project/DEMO-nextleg-${today}B-chief.md"
 check "4 foreign next writes a nonempty doc" "$([ -s "$foreignB" ] && echo yes)" "yes"
 check "4 foreign next never seeds the primary checkout's release" "$(live_state "$foreignB" | grep '^release:')" ""
 
+chief new --bucket owedgate >/dev/null 2>&1
+gateA="$root/tester/owedgate/DEMO-nextleg-${today}A-chief.md"
+gateB="$root/tester/owedgate/DEMO-nextleg-${today}B-chief.md"
+gate_handoff="${gateA%.md}-HANDOFF.md"
+write_gate_handoff() {
+    printf '%s\n' '# A → B handoff state' '' '## Rulings and judgement notes — the only part the chief writes' '' \
+        '1. The first ticket merged as #5, closed.' '2. The second ticket owes a live proof: o7.' \
+        "8. $1" '   (a continuation line of item 8)' '' '## Open operator items' '' 'none' > "$gate_handoff"
+}
+write_gate_handoff 'Operator asks still open: (a) status page "RESUME briefs (1634), newest 8 h old" looks like a bug; (b) "12 started, no one on it": bug or current work?; (c) launch a design leg'
+rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
+check "5 next refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
+check "5 the refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: Operator asks still open')" "1"
+check "5 the refusal names the owe.sh add command" "$(printf '%s\n' "$out" | grep -c 'owe.sh add --bucket .*owedgate')" "1"
+check "5 items carrying o<N> or closed are not named" "$(printf '%s\n' "$out" | grep -c 'item [12]:')" "0"
+check "5 the refused next writes no successor doc" "$([ -e "$gateB" ] && echo yes || echo no)" "no"
+write_gate_handoff 'Operator asks still open, rows o8 o9 o10: (a) status page; (b) 12 started; (c) a design leg'
+rc=0; chief next --bucket owedgate --doc "$gateA" >/dev/null 2>&1 || rc=$?
+check "5 control: every item carries o<N> or closed, next hands over" "$rc" "0"
+
+wg="$tmp/wrapgate"; mkdir -p "$wg"
+printf '#!/usr/bin/env bash\necho live-subagents=0\n' > "$wg/lsa.sh"
+printf '#!/usr/bin/env bash\necho "CLOSABLE: no non-harness process"\n' > "$wg/subtree.sh"
+chmod +x "$wg/lsa.sh" "$wg/subtree.sh"
+QL="$fixture_repo/scripts/handover/queue-lock.sh"
+wrap_gate() {
+    ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/work" \
+        LIVE_SUBAGENTS_BIN="$wg/lsa.sh" WRAP_SUBTREE_CHECK_BIN="$wg/subtree.sh" bash "$C" wrap "$1" "$2" ) 2>&1
+}
+mk_wrap_doc() {
+    wdoc="$wg/$1.md"
+    printf '%s\n' '# chief' '## Results' '- 10:00 LIVE — up' > "$wdoc"
+    # shellcheck disable=SC2016  # the backticks are literal: they wrap the token in queue-lock's output
+    wtok="$(HANDOVER_DIR="$root" bash "$QL" acquire "$wdoc" 2>&1 | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+}
+mk_wrap_doc unowed
+gate_handoff="${wdoc%.md}-HANDOFF.md"
+write_gate_handoff 'The build brief owed once worker N35 wraps'
+rc=0; out="$(wrap_gate "$wdoc" "$wtok")" || rc=$?
+check "5 wrap refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
+check "5 the wrap refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: The build brief owed')" "1"
+check "5 the refused wrap writes no WRAPPED" "$(grep -c WRAPPED "$wdoc")" "0"
+write_gate_handoff 'The build brief owed once worker N35 wraps: o12'
+rc=0; wrap_gate "$wdoc" "$wtok" >/dev/null || rc=$?
+check "5 control: wrap passes once the item carries its owed id" "$rc" "0"
+check "5 control: WRAPPED written" "$(grep -c '^- .*WRAPPED' "$wdoc")" "1"
+mk_wrap_doc nohandoff
+rc=0; wrap_gate "$wdoc" "$wtok" >/dev/null || rc=$?
+check "5 control: wrap with no HANDOFF passes" "$rc" "0"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
