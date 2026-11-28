@@ -1942,6 +1942,14 @@ check "36k control: a chief launch (no HIMMEL_CONSOLE_LEG) is unchanged" "$(run3
 check "36k control: a launcher-env line still carries the lane from a worker-side wrapper" \
   "$(run36k HIMMEL_CONSOLE_LEG=1 HEADED_ARM_LAUNCHER_ENV_LINES=HIMMEL_API_LANE=on)" "HIMMEL_API_LANE=on"
 
+bypass36m() {
+  printf '{}\n' > "$d36k/settings.json"
+  run36k "$@" >/dev/null
+  jq -r '.env.HIMMEL_HOOK_INTEGRITY_BYPASS_OK' "$d36k/settings.json" 2>/dev/null || echo MISSING
+}
+check "36m a launch from a maintainer session does not hand the bypass on" "$(bypass36m HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 HIMMEL_MAINTAINER_ACTION=hook-edit)" ""
+check "36m control: the operator's bypass shell (no maintainer marker) hands it on" "$(bypass36m -u HIMMEL_MAINTAINER_ACTION HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1)" "1"
+
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
 # (unset) launcher - proves that assertion is not vacuous. -----------------

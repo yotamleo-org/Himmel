@@ -86,6 +86,7 @@ crit_n="" imp_n="" sug_n="" dropped_n="" raw_path=""
 target_head="" disposition="" source="" attest="" pr="" mac=""
 scope="" base_sha="" from_sha="" impacted_n="" unverdicted_n="" skip_n="" rc_n="" hard="-" critic_exit="" persp_sha="" report="" report_sha=""
 local_pass_file="" ruled_skip_file="" count_n="" rekey_mode=0
+suites_blob="" list_mb="" lister_id=""
 while [ $# -gt 0 ]; do case "$1" in
   --branch) branch="$2"; shift 2;; --head) head="$2"; shift 2;;
   --model) model="$2"; shift 2;; --responding-model) responding_model="$2"; shift 2;;
@@ -116,6 +117,7 @@ while [ $# -gt 0 ]; do case "$1" in
   --impacted) impacted_n="$2"; shift 2;; --unverdicted) unverdicted_n="$2"; shift 2;;
   --skip) skip_n="$2"; shift 2;; --rc) rc_n="$2"; shift 2;;
   --local-pass-file) local_pass_file="$2"; shift 2;; --ruled-skip-file) ruled_skip_file="$2"; shift 2;;
+  --suites-blob) suites_blob="$2"; shift 2;; --mb) list_mb="$2"; shift 2;; --lister) lister_id="$2"; shift 2;;
   --hard) hard="$2"; shift 2;; --critical-n) crit_n="$2"; shift 2;;
   --important-n) imp_n="$2"; shift 2;; --dropped-n) dropped_n="$2"; shift 2;;
   --critic-exit) critic_exit="$2"; shift 2;; --perspective-sha256) persp_sha="$2"; shift 2;;
@@ -566,6 +568,11 @@ if [ "$kind" = "impacted" ]; then
       done < "$_f"
     done
   fi
+  if [ -n "$suites_blob$list_mb$lister_id" ]; then
+    for _v in "$suites_blob" "$list_mb" "$lister_id"; do
+      _la9050_hex 40 "$_v" || _la9050_hex 64 "$_v" || _la9050_die "--suites-blob, --mb and --lister go together, each 40 or 64 lowercase hex (got '$_v')"
+    done
+  fi
 fi
 if [ "$kind" = "security-audit" ]; then
   LC_ALL=C expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || _la9050_die "--pr must be a positive integer (got '$pr')"
@@ -749,7 +756,7 @@ FILE="$file" LINE="$line" VERDICT="$verdict" STATUS="$status" BATCH_FILE="$batch
 PROMPT_CHARS="$prompt_chars" RESPONSE_CHARS="$response_chars" TS="$ts" LEDGER="$ledger" ARTIFACT="$artifact" PERSPECTIVE="$perspective" \
 ATTEMPT_NUM="$attempt_num" DURATION_SECS="$duration_secs" ROUND="$round" DISPOSITION_ROUND="$disposition_round" \
 CRIT_N="$crit_n" IMP_N="$imp_n" SUG_N="$sug_n" DROPPED_N="$dropped_n" RAW_PATH="$raw_path" \
-REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" COUNT_N="$count_n" REKEY="$rekey_mode" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
+REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class" FU_WHY="$fu_why" TEXT="$text" RAW_TEXT="$raw_text" SET_PAIRS="$set_pairs" HIT_PAIRS="$hit_pairs" TARGET_HEAD="$target_head" DISPOSITION="$disposition" SOURCE="$source" ATTEST="$attest" PR="$pr" MAC="$mac" SCOPE="$scope" BASE_SHA="$base_sha" FROM_SHA="$from_sha" IMPACTED_N="$impacted_n" UNVERDICTED_N="$unverdicted_n" SKIP_N="$skip_n" RC_N="$rc_n" LOCAL_PASS_FILE="$local_pass_file" RULED_SKIP_FILE="$ruled_skip_file" SUITES_BLOB="$suites_blob" LIST_MB="$list_mb" LISTER_ID="$lister_id" HARD="$hard" CRITIC_EXIT="$critic_exit" PERSP_SHA="$persp_sha" REPORT="$report" REPORT_SHA="$report_sha" COUNT_N="$count_n" REKEY="$rekey_mode" KF_FILE="${KNOWN_FINDINGS_FILE:-$_kf_default}" AMEND_AUTH="${_kf_default%/*}/ledger-amend-auth.js" DISPROVAL_JS="$DISPROVAL_JS" node - <<'JS'
   const fs=require("fs"), cp=require("child_process"), crypto=require("crypto"), e=process.env;
   // The disproved-verdict bar's text test (see DISPROVAL_JS above).
   const {measured,scan}=new Function(e.DISPROVAL_JS+"; return {measured,scan};")();
@@ -1477,6 +1484,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     // the path lists, validated by the shell above: sorted, no duplicates
     const lst=f=>[...new Set(fs.readFileSync(f,"utf8").split("\n").filter(Boolean))].sort();
     if(e.LOCAL_PASS_FILE){ rec.local_pass=lst(e.LOCAL_PASS_FILE); rec.ruled_skip=lst(e.RULED_SKIP_FILE); }
+    if(e.SUITES_BLOB){ rec.suites_blob=e.SUITES_BLOB; rec.mb=e.LIST_MB; rec.lister=e.LISTER_ID; }
     dup=false;
   } else if(e.KIND==="security-audit"){
     rec={kind:"security-audit",ts:e.TS,pr:Number(e.PR),branch:e.BRANCH,head:e.HEAD_,base_sha:e.BASE_SHA,
