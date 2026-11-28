@@ -159,7 +159,8 @@ done
 mkdir -p "$CFX/marketplace/plugins/himmel-bus/bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$CFX/marketplace/plugins/himmel-bus/bin/bus"
 chmod +x "$CFX/marketplace/plugins/himmel-bus/bin/bus"
-cline="$( cd "$CFX" && env -u CHIEF_CONTEXT HANDOVER_DIR="$TMP/chief-root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
+mkdir -p "$TMP/chief-home"
+cline="$( cd "$CFX" && env -u CHIEF_CONTEXT HOME="$TMP/chief-home" HANDOVER_DIR="$TMP/chief-root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$TMP/chief-work" bash "$CFX/scripts/handover/chief/chief.sh" new --bucket capsrepo --dry-run 2>&1 | grep -E '^(would-)?launch: ' )"
 has "chief: the printed launch line exports the spawn depth" "$cline" "$DEPTH"
 has "chief: the printed launch line exports the concurrency cap" "$cline" "$CONC"
