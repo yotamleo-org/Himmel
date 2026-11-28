@@ -203,19 +203,34 @@ chief new --bucket owedgate >/dev/null 2>&1
 gateA="$root/tester/owedgate/DEMO-nextleg-${today}A-chief.md"
 gateB="$root/tester/owedgate/DEMO-nextleg-${today}B-chief.md"
 gate_handoff="${gateA%.md}-HANDOFF.md"
+OWE="$fixture_repo/scripts/handover/chief-kit/owe.sh"
+owe_row() { bash "$OWE" add --bucket "$1" --chief A --kind ticket --text "$2"; }
 write_gate_handoff() {
     printf '%s\n' '# A → B handoff state' '' '## Rulings and judgement notes — the only part the chief writes' '' \
-        '1. The first ticket merged as #5, closed.' '2. The second ticket owes a live proof: o7.' \
-        "8. $1" '   (a continuation line of item 8)' '' '## Open operator items' '' 'none' > "$gate_handoff"
+        '1. The first ticket merged as #5, closed.' "2. The second ticket owes a live proof: $1." "8. $2" \
+        '   (a continuation line of item 8)' "${@:3}" '' '## Open operator items' '' 'none' > "$gate_handoff"
 }
-write_gate_handoff 'Operator asks still open: (a) status page "RESUME briefs (1634), newest 8 h old" looks like a bug; (b) "12 started, no one on it": bug or current work?; (c) launch a design leg'
+gate_id="$(owe_row "$root/tester/owedgate" 'the second ticket live proof')"
+gate_ids="$(owe_row "$root/tester/owedgate" 'status page ask a') $(owe_row "$root/tester/owedgate" 'status page ask b')"
+write_gate_handoff "$gate_id" 'Operator asks still open: (a) status page "RESUME briefs (1634), newest 8 h old" looks like a bug; (b) "12 started, no one on it": bug or current work?; (c) launch a design leg' \
+    '9. Not closed; waiting for proof' '  10. An indented item with no row' '11. A row that is not in the ledger: o99'
 rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
 check "5 next refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
 check "5 the refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: Operator asks still open')" "1"
 check "5 the refusal names the owe.sh add command" "$(printf '%s\n' "$out" | grep -c 'owe.sh add --bucket .*owedgate')" "1"
 check "5 items carrying o<N> or closed are not named" "$(printf '%s\n' "$out" | grep -c 'item [12]:')" "0"
+check "5 not closed is no closed mark" "$(printf '%s\n' "$out" | grep -c 'item 9: Not closed')" "1"
+check "5 an item indented by two spaces is checked" "$(printf '%s\n' "$out" | grep -c 'item 10: An indented item')" "1"
+check "5 an o<N> the ledger does not hold is no owed id" "$(printf '%s\n' "$out" | grep -c 'item 11: A row that is not')" "1"
 check "5 the refused next writes no successor doc" "$([ -e "$gateB" ] && echo yes || echo no)" "no"
-write_gate_handoff 'Operator asks still open, rows o8 o9 o10: (a) status page; (b) 12 started; (c) a design leg'
+write_gate_handoff "$gate_id" "Operator asks still open, rows $gate_ids: (a) status page; (b) 12 started; (c) a design leg"
+chmod 000 "$gate_handoff"
+if [ ! -r "$gate_handoff" ]; then
+    rc=0; out="$(chief next --bucket owedgate --doc "$gateA" 2>&1)" || rc=$?
+    check "5 next refuses a HANDOFF it cannot read (rc 11)" "$rc" "11"
+    check "5 the unreadable refusal names the file" "$(printf '%s\n' "$out" | grep -c 'cannot read .*-HANDOFF.md')" "1"
+fi
+chmod 644 "$gate_handoff"
 rc=0; chief next --bucket owedgate --doc "$gateA" >/dev/null 2>&1 || rc=$?
 check "5 control: every item carries o<N> or closed, next hands over" "$rc" "0"
 
@@ -236,12 +251,13 @@ mk_wrap_doc() {
 }
 mk_wrap_doc unowed
 gate_handoff="${wdoc%.md}-HANDOFF.md"
-write_gate_handoff 'The build brief owed once worker N35 wraps'
+wrap_id="$(owe_row "$wg" 'the second ticket live proof')"
+write_gate_handoff "$wrap_id" 'The build brief owed once worker N35 wraps'
 rc=0; out="$(wrap_gate "$wdoc" "$wtok")" || rc=$?
 check "5 wrap refuses a HANDOFF item with no owed id (rc 11)" "$rc" "11"
 check "5 the wrap refusal names item 8" "$(printf '%s\n' "$out" | grep -c 'item 8: The build brief owed')" "1"
 check "5 the refused wrap writes no WRAPPED" "$(grep -c WRAPPED "$wdoc")" "0"
-write_gate_handoff 'The build brief owed once worker N35 wraps: o12'
+write_gate_handoff "$wrap_id" "The build brief owed once worker N35 wraps: $(owe_row "$wg" 'the build brief')"
 rc=0; wrap_gate "$wdoc" "$wtok" >/dev/null || rc=$?
 check "5 control: wrap passes once the item carries its owed id" "$rc" "0"
 check "5 control: WRAPPED written" "$(grep -c '^- .*WRAPPED' "$wdoc")" "1"

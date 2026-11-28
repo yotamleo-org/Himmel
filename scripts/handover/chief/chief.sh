@@ -581,16 +581,32 @@ EOS
 }
 
 check_handoff_items_owed() {
-    local unowed
+    local unowed known check_ids=1
     [ -f "$1" ] || return 0
-    unowed="$(awk '
-        function flush() { if (num != "" && tolower(item) !~ /(^|[^a-z0-9_])(o[1-9][0-9]*|closed)([^a-z0-9_]|$)/) printf "  item %s: %s\n", num, substr(first, 1, 160); num = "" }
-        /^[0-9]+[.)][ \t]/ { flush(); num = $0; sub(/[.)].*/, "", num); first = $0; sub(/^[0-9]+[.)][ \t]+/, "", first); item = first; next }
+    if known="$(bash "$HERE/../chief-kit/owe.sh" list --bucket "$2" --all)"; then
+        known="$(printf '%s\n' "$known" | cut -f1 | tr '\n' ' ')"
+    else
+        check_ids=0
+        err "warning: the owed ledger $2/owed.jsonl is unreadable: a HANDOFF item's o<N> is not checked against it"
+    fi
+    unowed="$(KNOWN=" $known " CHECK_IDS="$check_ids" awk '
+        function covered(s,   t, id) {
+            t = tolower(s); gsub(/not[ \t]+closed/, "", t)
+            if (t ~ /(^|[^a-z0-9_])closed([^a-z0-9_]|$)/) return 1
+            while (match(t, /(^|[^a-z0-9_])o[1-9][0-9]*([^a-z0-9_]|$)/)) {
+                id = substr(t, RSTART, RLENGTH); gsub(/[^o0-9]/, "", id)
+                if (ENVIRON["CHECK_IDS"] != 1 || index(ENVIRON["KNOWN"], " " id " ")) return 1
+                t = substr(t, RSTART + RLENGTH - 1)
+            }
+            return 0
+        }
+        function flush() { if (num != "" && !covered(item)) printf "  item %s: %s\n", num, substr(first, 1, 160); num = "" }
+        /^[ ]?[ ]?[ ]?[0-9]+[.)][ \t]/ { flush(); first = $0; sub(/^[ ]*/, "", first); num = first; sub(/[.)].*/, "", num); sub(/^[0-9]+[.)][ \t]+/, "", first); item = first; next }
         /^[ \t]*$/ || /^#/ { flush(); next }
         num != "" { item = item " " $0 }
-        END { flush() }' "$1")"
+        END { flush() }' "$1")" || { err "refusing to hand over: cannot read $1"; return 1; }
     [ -n "$unowed" ] || return 0
-    err "refusing to hand over: a numbered item of $1 carries no owed-row id (o<N>) and no closed mark:"
+    err "refusing to hand over: a numbered item of $1 carries no closed mark and no owed-row id (o<N>) that $2/owed.jsonl holds:"
     printf '%s\n' "$unowed" >&2
     err "  write a row for each, put the o<N> it prints in the item (or mark it closed), and retry: bash $HERE/../chief-kit/owe.sh add --bucket $2 --chief <letter> --kind ticket|proof|ruling|step --text \"<the item>\""
     return 1
