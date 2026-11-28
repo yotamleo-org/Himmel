@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/find/mktemp.
 #
 # Usage: bash scripts/docs/test-vendored-skill-links.sh
