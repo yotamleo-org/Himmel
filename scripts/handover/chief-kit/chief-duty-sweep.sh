@@ -105,7 +105,7 @@ if [ -f "$doc" ]; then
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
 proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
-slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
+slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -nE 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)(.*)$#\4#; T; s#\.git$##; p')  # swallow-ok: no origin means no slug, so the rerun is held
 pr_pin=""
 case "$slug" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) ;; */*) pr_pin="$slug" ;; esac
 
@@ -121,7 +121,7 @@ read_prs() {
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$proj_repo" && GH_REPO="$pr_pin" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$proj_repo" && GH_HOST=github.com GH_REPO="$pr_pin" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
@@ -348,7 +348,7 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             continue
         fi
         rerun_count=$((rerun_count + 1))
-        timeout -k 1 10 "$gh_bin" run rerun "$rid" --failed -R "$slug" >/dev/null 2>&1; rrc=$?
+        GH_HOST=github.com timeout -k 1 10 "$gh_bin" run rerun "$rid" --failed -R "$slug" >/dev/null 2>&1; rrc=$?
         printf 'result %s %s\n' "$rid" "$rrc" >> "$reruns" 2>/dev/null || true
         ran="$ran$(printf 'DUTY-RAN ci-masked %s rerun %s rc=%s' "$id" "$rid" "$rrc")"$'\n'
         if [ "$rrc" = 0 ]; then

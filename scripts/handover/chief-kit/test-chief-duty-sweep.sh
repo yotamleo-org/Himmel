@@ -575,6 +575,7 @@ hasnt "dsk: the classifier never reads the dsk record" "dsk6139a" "$(cat "$STUB/
 
 cat > "$STUB/proj-gh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s %s %s\n' "$1" "$2" "${GH_HOST:-}" >> "$STUB/gh-hosts"
 if [ "$1 $2" = "pr list" ]; then
     printf '%s\n' "$PWD" >> "$STUB/pr-cwds"
     printf '%s\n' "${GH_REPO:-}" >> "$STUB/pr-repos"
@@ -587,7 +588,7 @@ chmod +x "$STUB/proj-gh"
 pr_json() { printf '[{"number":101,"headRefName":"feat/x","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$1"; }
 pworld() {
     world
-    : > "$STUB/pr-cwds"; : > "$STUB/pr-repos"; rm -f "$STUB/default-prs.json"
+    : > "$STUB/pr-cwds"; : > "$STUB/pr-repos"; : > "$STUB/gh-hosts"; rm -f "$STUB/default-prs.json"
     for r in repoA:repo-a repoB:repo-b; do
         mkdir -p "$WORK/w/${r%%:*}"; git -C "$WORK/w/${r%%:*}" init -q
         git -C "$WORK/w/${r%%:*}" remote add origin "https://github.com/acme/${r##*:}.git"
@@ -599,7 +600,7 @@ pworld() {
 # shellcheck disable=SC2016  # the backticks are the project line's literal text
 for_project() { printf '# chief\n\nThe project this console is FOR is **`%s`**.\n' "$1" > "$CHIEF"; }
 psweep() {
-    OUT=$(GH_REPO=ambient/other HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    OUT=$(GH_REPO=ambient/other GH_HOST=ambient.example.com HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/proj-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
@@ -611,6 +612,7 @@ psweep
 has "project: the named repository's READY worker is go-owed" "DUTY go-owed 101@$H7_1 :: " "$OUT"
 check "project: the PR list is read from the named repository" "$WORK/w/repoB" "$(cat "$STUB/pr-cwds")"
 check "project: and pinned to its origin whatever GH_REPO the session carries" "acme/repo-b" "$(cat "$STUB/pr-repos")"
+check "project: and to github.com whatever GH_HOST the session carries" "pr list github.com" "$(cat "$STUB/gh-hosts")"
 for_project "$WORK/w/repoA"
 psweep
 hasnt "project: another repository's cache is never read for this one" "go-owed" "$OUT"
@@ -624,6 +626,12 @@ check "project: without another live read" "2" "$(grep -c . "$STUB/pr-cwds")"
 pworld; for_project "$WORK/w/repoB"; masked_runs success cancelled 1
 psweep
 check "project: a masked-CI rerun names the named repository" "run rerun 12 --failed -R acme/repo-b" "$(sed -n 1p "$STUB/gh-calls")"
+check "project: and runs against github.com whatever GH_HOST the session carries" "run rerun github.com" "$(sed -n 2p "$STUB/gh-hosts")"
+
+pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin acme/repo-b.git
+psweep
+has "project: a relative origin leaves the PR list unread" "DUTY? prs unread" "$OUT"
+check "project: and makes no PR list call for it" "" "$(cat "$STUB/pr-cwds")"
 
 pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin ssh://git@github.com/acme/repo-b.git
 psweep
