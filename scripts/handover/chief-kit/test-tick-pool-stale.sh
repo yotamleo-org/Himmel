@@ -558,7 +558,7 @@ du_stem=HIMMEL-nextleg-2026-11-22DU-roadmap-chief
 du_doc="$du/$du_stem.md"; du_file="$du/state/pool-holds-$du_stem.json"
 du_mk() { printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "$@" '' '## Results' > "$du_doc"; }
 du_rows() { local k; for k in "$@"; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$k"; done > "$du/rows"; }
-du_env() { env TICK_NOW="$du_now" TICK_STATE_DIR="$du/state" HIMMEL_RELEASE_STATE_DIR="$du/rel" NEXT_DISPATCH_MIRROR="$DUM" "$@"; }
+du_env() { env -u TICK_POOL_MIRROR_MAX TICK_NOW="$du_now" TICK_STATE_DIR="$du/state" HIMMEL_RELEASE_STATE_DIR="$du/rel" NEXT_DISPATCH_MIRROR="$DUM" "$@"; }
 du_holds() {
     jq -n --arg t "$du_now" '{ts: $t, status: "OK", asks_operator_keys: [],
         words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-207", "HIMMEL-213", "HIMMEL-214"], op: "none", verbatim: "keep it held"}]}' \
@@ -682,6 +682,9 @@ check 'D9 owner: no open-PR list leaves done: unchecked, never no-authority (S1)
 printf '{"schema":' > "$du/manifest.json"
 du_holds "${du_in[@]}"
 check 'D9 owner: a corrupt manifest leaves done: unchecked, never no-authority (S1)' unchecked "$(du_class 216)"
+printf '{"schema":1,"workers":"unread"}\n' > "$du/manifest.json"
+du_holds "${du_in[@]}"
+check 'D9 owner: a workers value that is not a list leaves done: unchecked, never no-authority' unchecked "$(du_class 216)"
 printf '{"schema":1,"workers":[]}\n' > "$du/manifest.json"
 du_holds "${du_in[@]}"
 check 'D9 mirror: a fresh complete cursor writes mirror_fresh true' true "$(jq -r '.mirror_fresh' "$du_file")"
