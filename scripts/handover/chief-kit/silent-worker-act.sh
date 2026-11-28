@@ -7,7 +7,9 @@
 #
 # Output, one line, rc 0:
 #   SILENT-ACT <label> none|fresh|done
-#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window|live-silent|census=unknown] [owed=<id>[,<id>]]
+#   SILENT-ACT <label> [nudged|nudge=no-window|nudge=failed] [relaunched|relaunch=failed|live-window|live-silent|census=unknown] [owed=<id>[,<id>]] [last="<text>"]
+# last= follows live-silent: the last assistant text of the newest session transcript written
+# since the worker's doc whose start names the worker (one line, at most 300 characters).
 # Exit 2: usage.
 # PLATFORM GUARD: Linux-only kit (GNU stat, setsid), bash 3.2-safe; needs jq.
 set -uo pipefail
@@ -63,7 +65,27 @@ if [ "$silent" -lt "$bound1" ]; then echo "SILENT-ACT $label none"; exit 0; fi
 done_stage() { grep -qxF -- "$label $1 $mtime" "$state" 2>/dev/null; }  # swallow-ok: no state file yet reads empty, so the first sight acts
 mark_stage() { printf '%s %s %s\n' "$label" "$1" "$mtime" >> "$state" 2>/dev/null || true; }  # swallow-ok: an unwritable state only repeats an action
 
-oneline() { printf '%s' "$1" | tr '\r\n\t<>' '    ' | tr -s ' ' | cut -c1-160; }
+oneline() { printf '%s' "$1" | tr '\r\n\t<>' '    ' | tr -s ' ' | cut -c1-"${2:-160}"; }
+
+last_words() {
+    local projects="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" files f title n text
+    [ -d "$projects" ] && [ -n "$wdoc" ] && [ -f "$wdoc" ] || return 0
+    files="$(find "$projects" -mindepth 2 -maxdepth 2 -name '*.jsonl' -newer "$wdoc" -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)"  # gnu-ok: Linux-only kit; swallow-ok: an unreadable projects dir yields no transcript and no last words
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        title="$(head -n 20 "$f" 2>/dev/null | jq -rR 'fromjson? | select(.type == "custom-title" or .type == "agent-name") | .customTitle // .agentName // empty' 2>/dev/null)"  # swallow-ok: an unreadable or non-JSON start names no worker, so the file is skipped  # read-sink-ok: the start of a session file, to match it to this worker's names
+        for n in $(printf '%s' "$cands" | tr ',' ' '); do
+            case $'\n'"$title"$'\n' in *$'\n'"$n"$'\n'*) ;; *) continue ;; esac
+            text="$(tail -c 1048576 "$f" 2>/dev/null | jq -nrR '[inputs | fromjson? | select(.type == "assistant") | .message.content[]? | select(.type == "text") | .text] | last // empty' 2>/dev/null)"  # swallow-ok: an unreadable tail gives no last words and the line stays as before  # read-sink-ok: the tail of this worker's own transcript, for its last assistant text
+            text="$(oneline "$text" 300 | tr '"' "'")"
+            text="${text% }"
+            [ -z "$text" ] || printf 'last="%s"' "$text"
+            return 0
+        done
+    done <<EOF
+$files
+EOF
+}
 
 nudge_epoch() {
     [ -f "$state" ] || { echo 0; return; }
@@ -101,7 +123,7 @@ $census
 EOF
 fi
 
-owed=""; say=""; log=""
+owed=""; say=""; log=""; last=""
 owe_row() {
     local id
     id="$(bash "$HERE/owe.sh" add --bucket "$bucket" --chief "$chief" --kind step \
@@ -154,6 +176,7 @@ if [ "$relaunch_due" -eq 1 ] && [ "$nudged_now" -eq 0 ] && ! done_stage relaunch
     elif [ "$stale_hits" -ge 1 ]; then
         say="${say:+$say }live-silent"; log="${log:+$log }live-silent (pid $stale_pid, never ended)"
         owe_row relaunch "the worker still has a live window (pid $stale_pid), silent past bound two after the nudge; it is not ended and not relaunched, its blocked step needs the chief"
+        last="$(last_words)"
     elif [ "$census_ok" -eq 0 ]; then
         say="${say:+$say }census=unknown"; log="${log:+$log }census=unknown (not relaunched)"
         owe_row relaunch "the process census failed or was incomplete, so a live window cannot be ruled out; the worker is not relaunched, its blocked step needs the chief"
@@ -199,6 +222,7 @@ fi
 
 if [ -z "$say" ]; then echo "SILENT-ACT $label done"; exit 0; fi
 [ -z "$owed" ] || { say="$say owed=$owed"; log="$log owed=$owed"; }
+[ -z "$last" ] || { say="$say $last"; log="$log $last"; }
 bash "$HERE/append-results.sh" "$doc" "SILENT-ACT $label $log silent=${silent}m signal=$signal" >/dev/null 2>&1 9>&- || true  # swallow-ok: a doc that cannot take the bullet still printed the line and kept the owed row
 echo "SILENT-ACT $label $say"
 exit 0
