@@ -303,6 +303,12 @@ release is declared (`jira release state <R>` prints a status other than
   commands: an already-ruled BACKLOG key can reappear in this mirror-only plan.
   The RM still decides version versus backlog; no fixVersion is written by this
   tool and there is no bulk override.
+- **File a signed plan's slices.** Once the spec and plan are signed, a haiku helper runs
+  `bash scripts/handover/chief-kit/file-slices.sh <plan> --parent <KEY> [--skip <id>,...]`, which only
+  reads Jira, and posts the output. You read the rows: add a slice filed by hand without its `(<id>)`
+  title suffix to `--skip`, and check the header's Sector, version and `spec-check` line. Then the
+  helper runs the same command once with `--apply`. On exit 3 it re-runs nothing and reports to you.
+  On success, run the printed `NEXT chief:` line so the new slice keys pass the core brief gate.
 - **STATUS, BURN-DOWN and READY** remain release-manager verbs, run by an
   on-demand session armed from `docs/handover/rm-brief-template.md` only when
   you need one of them. That session does the verb, reports, releases the
