@@ -757,6 +757,14 @@ for blank in $'\t' $'\r' $' \t'; do
     bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >/dev/null 2>&1; rc=$?
     check "14. attach refuses a Writes line holding only whitespace ($(printf '%s' "$blank" | od -An -c | tr -s ' '))" 3 "$rc"
 done
+check '14. prepare refuses a lower-case ticket key the gate would not read, rc 2' 2 "$(gate demo-400 N9 scripts/handover/chief-kit/go.sh)"
+check '14. and writes no doc for it' absent "$([ -e "$(gdoc demo-400 N9)" ] && echo present || echo absent)"
+ld="$B/demo-400-N10-t3-lower-$today.md"
+printf '# demo-400 - lower\n\n> **Writes:** scripts/handover/chief-kit/go.sh\n\n> **Launch gate:** passed\n' > "$ld"
+fmx add "$M" --lane t3 --lockless "$ld"
+bash "$BIND" attach --manifest "$M" --doc "$ld" --thread lower1 >/dev/null 2>&1; rc=$?
+check '14. attach refuses a doc whose name carries a lower-case ticket key, rc 3' 3 "$rc"
+check '14. and binds nothing' pending "$(jq -r --arg d "$ld" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"

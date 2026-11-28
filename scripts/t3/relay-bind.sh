@@ -122,6 +122,10 @@ today="$(date -u +%Y-%m-%d)"
 gate_out=""
 launch_gate() {
     local rc=0
+    if ! [[ $2 =~ ^[A-Z]+-[0-9]+$ ]] || ! sed -n '/^# /{p;q;}' "$1" | grep -qE "^# $2( |$)"; then
+        echo "relay-bind: launch gate refused $2: the brief title does not carry it as an upper-case ticket key, so core-check would read no key" >&2
+        return 3
+    fi
     gate_out="$(env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK JIRA_PROJECTS="$(printf '%s' "${2%%-*}" | tr '[:lower:]' '[:upper:]')" \
         bash "$KIT/brief-lint.sh" --core-only --skip-bucket "$1" 2>&1)" || rc=$?
     [ "$rc" -ne 0 ] || return 0
@@ -134,7 +138,7 @@ launch_gate() {
 }
 
 if [ "$verb" = prepare ]; then
-    [[ $ticket =~ ^[A-Za-z]+-[0-9]+$ ]] || die 2 "--ticket must look like ABC-123"
+    [[ $ticket =~ ^[A-Z]+-[0-9]+$ ]] || die 2 "--ticket must look like ABC-123 (an upper-case project key)"
     [[ $label =~ ^N[0-9]+[a-z]*$ ]] || die 2 "--label must look like N12 or N12b"
     [[ $slug =~ ^[a-z0-9-]{1,32}$ ]] || die 2 "--slug must match [a-z0-9-]{1,32}"
     case "$completes" in yes|no) ;; *) die 2 "--completes must be yes or no" ;; esac
@@ -191,7 +195,7 @@ if [ "$verb" = attach ]; then
     jq -e --arg d "$doc" 'any((.workers // [])[]; .doc == $d)' "$manifest" >/dev/null 2>&1 || die 2 "the doc is not listed in $manifest: nothing attached"
     grep -Eq '^> \*\*Launch gate:\*\* passed( |$)' "$doc" 2>/dev/null \
         || die 3 "$doc has no launch gate record (a '> **Launch gate:** passed' line that prepare writes once core-check, spec-check and the guard-lib rule pass): nothing attached; run relay-bind.sh prepare for the ticket"
-    [[ ${doc##*/} =~ ^([A-Za-z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
+    [[ ${doc##*/} =~ ^([A-Z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
     akey="${BASH_REMATCH[1]}"
     wline="$(grep -m 1 -E '^> \*\*Writes:\*\* [A-Za-z0-9._/@+-]+( [A-Za-z0-9._/@+-]+)*$' "$doc")" \
         || die 3 "$doc has no '> **Writes:**' line in the shape prepare writes (one or more paths, single spaces), so the pinned-guard check has nothing to read: nothing attached"
