@@ -17,6 +17,7 @@ mkdir -p "$WFDIR" "$RUNDIR"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci.yml > "$WFDIR/ci.yml"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/pr-title-lint.yml > "$WFDIR/pr-title-lint.yml"
 git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/ci-image.yml > "$WFDIR/ci-image.yml"
+git -C "$WF_REPO_ROOT" show HEAD:.github/workflows/macos-cadence.yml > "$WFDIR/macos-cadence.yml"
 cp "$WFDIR/pr-title-lint.yml" "$WFDIR/new-thing.yml"
 real_run() {  # <status> <conclusion> <headSha>
     printf '[{"conclusion":"%s","databaseId":38329960360,"event":"workflow_dispatch","headSha":"%s","status":"%s","workflowName":"CI"}]' "$2" "$3" "$1"
@@ -49,13 +50,15 @@ contains "workflow PR, failed dispatch at head: check 10 fails" "$out" "[FAIL] 1
 
 # A failed dispatch run passes as PRE-EXISTING only when every failed job of it
 # also failed in main's latest scheduled/push run of the same workflow.
-jobs_json() {  # <failed job name>... -> a `gh run view --json jobs` body
+# shellcheck disable=SC2016  # the step name is the literal script line, $SUITES unexpanded
+SUITE_STEP='Run if [ -n "$SUITES" ]; then'
+jobs_json() {  # <job>[|<conclusion>[|<failed step>...]]... -> a `gh run view --json jobs` body
     local j
-    printf '{"jobs":['
-    for j in "$@"; do
-        printf '{"name":"%s","conclusion":"failure"},' "$j"
-    done
-    printf '{"name":"lint","conclusion":"success"}]}'
+    for j in "$@"; do printf '%s\n' "$j"; done | jq -R -s -c --arg d "$SUITE_STEP" '
+        {jobs: ([split("\n")[] | select(length > 0) | split("|")
+            | (if (.[1] // "") == "" then "failure" else .[1] end) as $c
+            | {name: .[0], conclusion: $c, steps: ((if length > 2 then .[2:] else [$d] end) | map({name: ., conclusion: $c}))}]
+          + [{name: "lint", conclusion: "success", steps: [{name: "Run lint", conclusion: "success"}]}])}'
 }
 main_run() {  # <event> <conclusion> <id>
     printf '[{"conclusion":"%s","databaseId":%s,"event":"%s","headSha":"deadbeef","status":"completed"}]' "$2" "$3" "$1"
@@ -194,13 +197,118 @@ wf_run ".github/workflows/ci.yml"
 check "one moved job, one job with no failed suite in its log: exit 1" "$rc" "1"
 notcontains "one moved job, one job with no failed suite in its log: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 
-# the job-name comparison stays first: same job names on both runs pass with no log at all
 jobs_json "macos / shell (3)" > "$RUNDIR/jobs-111.json"
 rm -f "$RUNDIR/log-111.txt" "$RUNDIR/log-222.txt"
 wf_run ".github/workflows/ci.yml"
-check "same job red on both runs, no logs: exit 0 (job-name check first)" "$rc" "0"
-contains "same job red on both runs, no logs: PRE-EXISTING line" "$out" "PRE-EXISTING"
+check "A-R2 same job red on both runs, no logs: exit 1" "$rc" "1"
+contains "A-R2 same job red on both runs, no logs: UNRESOLVED, the PR log first" "$out" "UNRESOLVED: the log of run 111 cannot be read"
+notcontains "A-R2 same job red on both runs, no logs: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
 rm -f "$RUNDIR/ci.yml.main.json" "$RUNDIR/ci.yml.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-111.txt "$RUNDIR"/log-222.txt
+
+MC=.github/workflows/macos-cadence.yml
+J2="macos-cadence / shell (macos-latest, 2)"; J3="macos-cadence / shell (macos-latest, 3)"
+J4="macos-cadence / shell (macos-latest, 4)"; J8="macos-cadence / shell (macos-latest, 8)"
+JS="macos-cadence / summary"; JS_STEP="macOS jobs must have passed"
+SA=scripts/lib/test-a.sh; SB=scripts/lib/test-b.sh
+no_suite_log() {  # <job>... -> run-log lines that name no failed suite
+    local j
+    for j in "$@"; do printf '%s\tRun suites\t2026-10-29T10:00:00.1Z all suites ran\n' "$j"; done
+}
+printf '[{"conclusion":"failure","databaseId":111,"event":"workflow_dispatch","headSha":"%s","status":"completed"}]' "$SHA" > "$RUNDIR/macos-cadence.yml.json"
+main_run schedule failure 222 > "$RUNDIR/macos-cadence.yml.main.json"
+
+jobs_json "$J4" > "$RUNDIR/jobs-111.json"; jobs_json "$J4" > "$RUNDIR/jobs-222.json"
+log_fail "$J4" "$SA" > "$RUNDIR/log-111.txt"; log_fail "$J4" "$SA" > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-C1 same job, same suite red on both runs: exit 0" "$rc" "0"
+contains "A-C1 same job, same suite red on both runs: PRE-EXISTING line" "$out" "PRE-EXISTING"
+contains "A-C1 same job, same suite red on both runs: the note names the suite" "$out" "failed only on suites already red on main (schedule run 222): $SA"
+contains "A-C1 same job, same suite red on both runs: the note names the job" "$out" "failed job(s): $J4"
+
+log_fail "$J4" "$SB" > "$RUNDIR/log-111.txt"
+wf_run "$MC"
+check "A-R1 same job, another suite on the PR: exit 1" "$rc" "1"
+contains "A-R1 same job, another suite on the PR: check 10 fails" "$out" "[FAIL] 10."
+contains "A-R1 same job, another suite on the PR: names suite B and its job" "$out" "failed on suites not red on main run 222: $SB ($J4)"
+notcontains "A-R1 same job, another suite on the PR: no PRE-EXISTING pass" "$out" "PRE-EXISTING"
+
+jobs_json os-verify > "$RUNDIR/jobs-111.json"; jobs_json os-verify > "$RUNDIR/jobs-222.json"
+no_suite_log os-verify > "$RUNDIR/log-111.txt"; no_suite_log os-verify > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R3 a job red on both runs whose logs name no suite: exit 1" "$rc" "1"
+contains "A-R3 a job red on both runs whose logs name no suite: UNRESOLVED names it" "$out" "UNRESOLVED: run 111 job(s) the logs do not explain: os-verify (no failed suite)"
+
+jobs_json "$J4||$SUITE_STEP|List failed suites (breakage metric input)" > "$RUNDIR/jobs-111.json"; jobs_json "$J4" > "$RUNDIR/jobs-222.json"
+log_fail "$J4" "$SA" > "$RUNDIR/log-111.txt"; log_fail "$J4" "$SA" > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R4 a suite job with another failed step: exit 1" "$rc" "1"
+contains "A-R4 a suite job with another failed step: UNRESOLVED names the step" "$out" "$J4 (failed step List failed suites (breakage metric input))"
+
+jobs_json "$J2|cancelled" > "$RUNDIR/jobs-111.json"; jobs_json "$J2" > "$RUNDIR/jobs-222.json"
+log_fail "$J2" "$SA" > "$RUNDIR/log-111.txt"; log_fail "$J2" "$SA" > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R5 a shard cancelled at its job timeout (main run 45947899080 shard 2), its suite red on main: exit 1" "$rc" "1"
+contains "A-R5 a shard cancelled at its job timeout: UNRESOLVED names the conclusion" "$out" "$J2 (cancelled)"
+jobs_json "$J2|timed_out" > "$RUNDIR/jobs-111.json"
+wf_run "$MC"
+check "A-R5b a shard timed_out, its suite red on main: exit 1" "$rc" "1"
+contains "A-R5b a shard timed_out: UNRESOLVED names the conclusion" "$out" "$J2 (timed_out)"
+
+jobs_json "$JS||$JS_STEP" > "$RUNDIR/jobs-111.json"; jobs_json "$JS||$JS_STEP" > "$RUNDIR/jobs-222.json"
+no_suite_log "$JS" > "$RUNDIR/log-111.txt"; no_suite_log "$JS" > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R6 only the derived summary job red on both runs: exit 1" "$rc" "1"
+contains "A-R6 only the derived summary job red on both runs: UNRESOLVED" "$out" "UNRESOLVED: run 111 failed only derived job(s) ($JS), which name no suite"
+
+jobs_json "$J8" "$JS||Record breakages against the previous cadence run" > "$RUNDIR/jobs-111.json"; jobs_json "$J3" "$JS||$JS_STEP" > "$RUNDIR/jobs-222.json"
+{ log_fail "$J8" "$TT"; no_suite_log "$JS"; } > "$RUNDIR/log-111.txt"; { log_fail "$J3" "$TT"; no_suite_log "$JS"; } > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R7 the summary job red on another step: exit 1" "$rc" "1"
+contains "A-R7 the summary job red on another step: names the step" "$out" "$JS (derived: failed step Record breakages"
+jobs_json "$J8" "$JS||$JS_STEP" > "$RUNDIR/jobs-111.json"; jobs_json "$J3" > "$RUNDIR/jobs-222.json"
+wf_run "$MC"
+check "A-R8 the summary job red where main's summary is green: exit 1" "$rc" "1"
+contains "A-R8 the summary job red where main's summary is green: UNRESOLVED names it" "$out" "UNRESOLVED: run 111 job(s) the logs do not explain: $JS (derived: main's $JS not red)"
+
+jobs_json "$J4" os-verify > "$RUNDIR/jobs-111.json"; jobs_json "$J4" os-verify > "$RUNDIR/jobs-222.json"
+{ log_fail "$J4" "$SB"; no_suite_log os-verify; } > "$RUNDIR/log-111.txt"; { log_fail "$J4" "$SA"; no_suite_log os-verify; } > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R9 a new suite and a job no log explains: exit 1" "$rc" "1"
+contains "A-R9 a new suite and a job no log explains: both, the suite part first" "$out" "failed on suites not red on main run 222: $SB ($J4); UNRESOLVED: run 111 job(s) the logs do not explain: os-verify (no failed suite)"
+
+jobs_json "$J4" > "$RUNDIR/jobs-111.json"; jobs_json "$J4" > "$RUNDIR/jobs-222.json"
+log_fail "$J4" "$SA" | awk 'BEGIN { FS = OFS = "\t" } { $2 = "UNKNOWN STEP"; print }' > "$RUNDIR/log-111.txt"
+cp "$RUNDIR/log-111.txt" "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R10 every log line's step column is UNKNOWN STEP: exit 0" "$rc" "0"
+contains "A-R10 every log line's step column is UNKNOWN STEP: the note names the suite" "$out" "failed only on suites already red on main (schedule run 222): $SA"
+
+log_fail "$J4" "$SA" > "$RUNDIR/log-222.txt"
+log_fail "$J4" "marketplace/plugins/x/$SA" > "$RUNDIR/log-111.txt"
+wf_run "$MC"
+check "A-R11 the PR's suite only ends with main's suite: exit 1" "$rc" "1"
+contains "A-R11 the PR's suite only ends with main's suite: names the PR's suite" "$out" "failed on suites not red on main run 222: marketplace/plugins/x/$SA ($J4)"
+log_fail "$J4" scripts/lib/test-aXsh > "$RUNDIR/log-111.txt"
+wf_run "$MC"
+check "A-R13 the PR's suite matches main's suite only as a pattern: exit 1" "$rc" "1"
+contains "A-R13 the PR's suite matches main's suite only as a pattern: names the PR's suite" "$out" "failed on suites not red on main run 222: scripts/lib/test-aXsh ($J4)"
+
+log_fail "$J4" "$SA" > "$RUNDIR/log-111.txt"
+printf '{"jobs":[{"name":"%s","conclusion":"failure"}]}' "$J4" > "$RUNDIR/jobs-111.json"
+wf_run "$MC"
+check "A-R12 a failed job whose JSON has no steps: exit 1" "$rc" "1"
+contains "A-R12 a failed job whose JSON has no steps: UNRESOLVED" "$out" "$J4 (steps unreadable)"
+printf '{"jobs":[{"name":"%s","conclusion":"failure","steps":[]}]}' "$J4" > "$RUNDIR/jobs-111.json"
+wf_run "$MC"
+check "A-R14 a suite job with no failed step: exit 1" "$rc" "1"
+contains "A-R14 a suite job with no failed step: UNRESOLVED" "$out" "$J4 (no failed step)"
+jobs_json "$J4" "$JS||$JS_STEP" > "$RUNDIR/jobs-222.json"
+jq -n -c --arg a "$J4" --arg s "$SUITE_STEP" --arg b "$JS" '{jobs: [{name: $a, conclusion: "failure", steps: [{name: $s, conclusion: "failure"}]}, {name: $b, conclusion: "failure", steps: []}]}' > "$RUNDIR/jobs-111.json"
+{ log_fail "$J4" "$SA"; no_suite_log "$JS"; } > "$RUNDIR/log-111.txt"; { log_fail "$J4" "$SA"; no_suite_log "$JS"; } > "$RUNDIR/log-222.txt"
+wf_run "$MC"
+check "A-R14 a summary job with no failed step: exit 1" "$rc" "1"
+contains "A-R14 a summary job with no failed step: UNRESOLVED" "$out" "$JS (no failed step)"
+rm -f "$RUNDIR/macos-cadence.yml.main.json" "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/jobs-*.json "$RUNDIR"/log-111.txt "$RUNDIR"/log-222.txt
 
 # A merge-forward head carries no dispatch run of its own; its proof is a PRE-EXISTING-red dispatch
 # run at an ANCESTOR commit on the PR branch, accepted only when every file the PR changes is the
