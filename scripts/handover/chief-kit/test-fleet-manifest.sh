@@ -584,6 +584,17 @@ TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12c" --apply >"$d12c/o
 check '12. a fleet-control.json whose attempts is not an object refuses the retire (rc 1)' 1 "$rc"
 check '12. and names the unread anchor too' 1 "$(grep -c "^fleet-manifest: cannot read $d12c/fleet-control.json$" "$d12c/err")"
 check '12. and nothing is retired either' "$before_c" "$(cat "$m12c")"
+d12d="$tmp/m12d"; mkdir -p "$d12d"
+m12d="$d12d/chief.fleet.json"; late="$d12d/HIMMEL-12-N98-late.md"
+lock12d="$d12d/queue-lock"
+# shellcheck disable=SC2016
+printf '#!/bin/bash\nn=$(cat "%s/n" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n"\n[ "$n" -ge 1 ] || exit 0\nWORKER_SESSION_DOC="$2" python3 -c "import ctypes,time; ctypes.CDLL(None).prctl(15,b\\"claude\\",0,0,0); time.sleep(60)" & echo $! > "%s/pid"\ni=0; until [ "$(cat /proc/$!/comm 2>/dev/null)" = claude ] || [ "$i" -ge 100 ]; do i=$((i + 1)); sleep .05; done\nexit 0\n' "$d12d" "$d12d" "$d12d" > "$lock12d"
+chmod +x "$lock12d"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N98"}]}\n' "$late" > "$m12d"
+out="$(TICKET_STATUS_QUEUE_LOCK="$lock12d" bash "$SCRIPT" retire "$m12d" --apply 2>/dev/null)"
+kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
+check '12. a session that starts on a candidate during the locked re-check keeps its row' "keep	$m12d	N98	$late	live session" "$out"
+check '12. and the row stays in the manifest' "$late" "$(jq -r '.workers[].doc' "$m12d")"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"

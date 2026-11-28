@@ -460,7 +460,7 @@ fleet_retire() (
             echo "fleet-manifest: retire skips a manifest it cannot rewrite: $m" >&2; rc=1; continue
         fi
         jq -r "$JQ_W"'W[].doc' "$m" >> "$work/docs" || { echo "fleet-manifest: retire skips a manifest it cannot read: $m" >&2; rc=1; continue; }
-        printf '%s\n' "$m" >> "$work/manifests"
+        printf '%s\n' "$m" >> "$work/manifests" || exit 1
     done
     sort -u "$work/docs" | while IFS= read -r doc; do
         printf '%s\t%s\n' "$doc" "$(retire_verdict "$doc")"
@@ -469,8 +469,9 @@ fleet_retire() (
         n_m=$((n_m + 1))
         jq -r "$JQ_W"'W[] | [.doc, (.label // "-")] | @tsv' "$m" > "$work/rows" || { rc=1; continue; }
         : > "$work/cands"
-        awk -F'\t' -v OFS='\t' -v m="$m" -v apply="$apply" -v cands="$work/cands" '
-            NR == FNR { v[$1] = $2; why[$1] = $3; next }
+        RETIRE_M="$m" RETIRE_CANDS="$work/cands" awk -F'\t' -v OFS='\t' -v apply="$apply" '
+            BEGIN { m = ENVIRON["RETIRE_M"]; cands = ENVIRON["RETIRE_CANDS"] }
+            FILENAME == ARGV[1] { v[$1] = $2; why[$1] = $3; next }
             $1 == "" { next }
             v[$1] == "retire" && apply == "true" { print $1, $2 > cands; next }
             v[$1] == "retire" { print "would-retire", m, $2, $1, why[$1]; next }
@@ -484,16 +485,27 @@ fleet_retire() (
             retire_managed "$dir/fleet-control.json" 9>&- || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
             retire_sessions
             listed=$'\n'"$(jq -r "$JQ_W"'W[].doc' "$m" 9>&-)"$'\n' || exit 1
-            drop="" done_rows=""
+            : > "$work/checked"
             while IFS=$'\t' read -r doc label; do
                 [ -n "$doc" ] || continue
                 case "$listed" in *$'\n'"$doc"$'\n'*) ;; *) continue ;; esac
-                v=$(retire_verdict "$doc" 9>&-)
-                case "$v" in
-                    retire$'\t'*) drop="$drop$doc"$'\n'; done_rows="$done_rows$(printf 'retired\t%s\t%s\t%s\t%s' "$m" "$label" "$doc" "${v#retire$'\t'}")"$'\n' ;;
-                    *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}" ;;
-                esac
+                printf '%s\t%s\t%s\n' "$doc" "$label" "$(retire_verdict "$doc" 9>&-)" >> "$work/checked" || exit 1
             done < "$work/cands"
+            retire_sessions
+            drop="" done_rows=""
+            while IFS=$'\t' read -r doc label v why; do
+                [ -n "$doc" ] || continue
+                if [ "$v" = retire ]; then
+                    case "$RETIRE_SESSIONS" in
+                        unreadable) v=keep why='live session not ruled out' ;;
+                        *$'\n'"$doc"$'\n'*) v=keep why='live session' ;;
+                    esac
+                fi
+                case "$v" in
+                    retire) drop="$drop$doc"$'\n'; done_rows="$done_rows$(printf 'retired\t%s\t%s\t%s\t%s' "$m" "$label" "$doc" "$why")"$'\n' ;;
+                    *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "$why" ;;
+                esac
+            done < "$work/checked"
             [ -n "$drop" ] || exit 0
             jq --arg drop "$drop" 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end
                 | ($drop | split("\n")) as $D | .workers |= map(select(.doc as $d | any($D[]; . == $d) | not))' "$m" \
