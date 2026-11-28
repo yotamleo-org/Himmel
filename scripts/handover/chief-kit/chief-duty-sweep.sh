@@ -104,10 +104,14 @@ if [ -f "$doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$doc" 2>/dev/null | head -n 1)"  # swallow-ok: an unreadable doc names no project, so this checkout stands in
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
-proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
-slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -nE 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)(.*)$#\4#; T; s#\.git$##; p')  # swallow-ok: no origin means no slug, so the rerun is held
-pr_pin=""
-case "$slug" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) ;; */*) pr_pin="$slug" ;; esac
+origin_slug() {
+    local s
+    s=$(git -C "$1" remote get-url origin 2>/dev/null | sed -nE 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)(.*)$#\4#; T; s#\.git$##; p')  # swallow-ok: no origin means no slug, so the rerun is held
+    case "$s" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) return 0 ;; */*) printf '%s' "$s" ;; esac
+}
+pr_pin=$(origin_slug "$proj_repo")
+slug="$pr_pin"
+proj_key=$(printf '%s\n%s\n' "$proj_repo" "$pr_pin" | cksum | cut -d' ' -f1)
 
 prs_ok=0; prs_tsv=""
 read_prs() {
@@ -278,6 +282,7 @@ if [ -f "$runs_file" ] && jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; 
     runs_ok=1
     if [ -z "${CHIEF_DUTY_SWEEP_RUNS:-}" ] && [ $(( $(date +%s) - $(stat -c %Y "$runs_file" 2>/dev/null || echo 0) )) -gt 1800 ]; then runs_ok=0; fi  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, which is reported as unread
 fi
+if [ -z "${CHIEF_DUTY_SWEEP_RUNS:-}" ] && [ "$pr_pin" != "$(origin_slug "$REPO")" ]; then runs_ok=0; fi
 if [ "$runs_ok" = 0 ]; then unread "ciguard"; fi
 reruns="$state/chief-duty-sweep-reruns"
 if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
@@ -318,7 +323,7 @@ if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
             continue
         fi
         hold=""
-        pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
+        pace="${CANCEL_RUNS_PACE_STATE:-$(git -C "$proj_repo" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/cancel-runs-pace}"  # swallow-ok: no git dir means no pace file, so nothing is held back for a drain
         if [ -z "$hold" ] && [ -r "$pace" ]; then
             newest=$(awk '/^[0-9]+$/ && $1 > m { m = $1 } END { print m + 0 }' "$pace" 2>/dev/null)  # swallow-ok: an unreadable pace file holds nothing back
             if [ "${newest:-0}" -gt 0 ] && [ $(( now - newest )) -lt 3600 ]; then hold="drain $(( (now - newest) / 60 ))m ago"; fi
