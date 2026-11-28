@@ -31,7 +31,8 @@
 # refused (the himmel read fence and hook adapter deny those).
 # rc 0 ok; rc 1 --check not satisfied; rc 2 usage / missing jq / malformed registry or JSON input /
 # unknown fromProfile / pinned fetch or verify failure / backstop failure; rc 3 fence refusal
-# (nothing written).
+# (nothing written); rc 96 seam guard refusal, in every mode (a registered seam differs from the
+# session's launch environment on the anchor copy, or the guard lib is missing; nothing run).
 # Env seams (tests): T3_AP_REGISTRY (registry; default antigravity-profiles.json beside this
 # script), T3_AP_PLUGIN_PROFILES (default scripts/lanes/plugin-profiles.json), T3_AP_BACKSTOP
 # (backstop command; default scripts/antigravity/install-antigravity-backstop.sh),

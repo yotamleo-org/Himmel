@@ -62,7 +62,7 @@ the Claude entries go ahead.
 |---|---|---|
 | rc 0 and stdout `OK antigravity_<p>` | add the entry above | kept as is |
 | rc 1 and stdout `NOT OK antigravity_<p>...` | no entry; says `skipped, home not ready (run: bash scripts/t3/antigravity-profiles.sh --apply --profile <p>)` (only when `agy` is on PATH or `<X>/userdata/providers/antigravity` exists, else `not provisioned`) | kept as is; says `home is stale, run --apply` |
-| anything else (rc 2, 3, 126, 127, a signal, rc 1 without the `NOT OK` line, an `OK` line naming another id), or `--list` fails | nothing written, the check's output shown, rc 2 | same |
+| anything else (rc 2, 3, 96, 126, 127, a signal, rc 1 without the `NOT OK` line, an `OK` line naming another id), or `--list` fails | nothing written, the check's output shown, rc 2 | same |
 
 - **Blast radius, intended:** an Antigravity fault also holds back that run's `claudeAgent_*` sync (rc 2,
   nothing written), and `himmel-update` shows `failed`. A run makes one consistent write or none; a Claude

@@ -8,7 +8,9 @@
 #   --apply    back <path> up to <path>.bak.<UTC stamp>, then replace it atomically.
 # rc 0 ok; rc 2 usage / unreadable or malformed settings file / resolver failure;
 # rc 3 an instance environment entry names a himmel guard bypass flag, or an instance's
-# launchArgs carry a permission-bypass flag (nothing written).
+# launchArgs carry a permission-bypass flag (nothing written); rc 96 seam guard refusal (a registered
+# seam differs from the session's launch environment on the anchor copy, or the guard lib is missing;
+# nothing run).
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator"; each
 # gets an instance carrying only the resolver's default Artifact deny, as does the built-in
