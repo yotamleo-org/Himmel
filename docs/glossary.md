@@ -499,8 +499,8 @@ Facts only; nothing here is a proposed change.
 
 - `guard-agent-model` (settings) and `guard-subagent-model` (plugin) both read
   an `Agent` call's `model` field, but split the job. `guard-agent-model`
-  denies a blocked model (Fable) and a `judge` tier override, and
-  allows a missing model. `guard-subagent-model` denies a missing model for
+  denies a blocked model (Fable), a `judge` tier override and a critic or
+  closure check sent as a judge, and otherwise allows a missing model. `guard-subagent-model` denies a missing model for
   every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through)
   and never reads the model's value.
 - The green-CI check runs in `block-unresolved-cr-merge` (on `gh pr merge`) and
