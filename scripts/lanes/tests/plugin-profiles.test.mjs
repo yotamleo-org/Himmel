@@ -95,7 +95,7 @@ for (const tail of SUITE_TAILS) {
 }
 
 // The headed worker profiles opt in to himmel-bus and also allow its tools, both name forms.
-const BUS_PROFILES = ['worker-impl', 'worker-eval', 'worker-docs', 'worker-bus', 'worker-vm', 'worker-e2e'];
+const BUS_PROFILES = ['worker-impl', 'maintainer-hooks', 'worker-eval', 'worker-docs', 'worker-bus', 'worker-vm', 'worker-e2e'];
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
 const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
 const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
@@ -420,7 +420,7 @@ test('CLI arg parsing: unknown/dangling args die instead of being silently ignor
 
 // A profile's nativeDrop turns a plugin off on the native lane only; claudex keeps it.
 const LEAN = 'lean-skills@himmel';
-const NATIVE_DROP_PROFILES = ['worker-impl', 'worker-eval', 'worker-bus', 'worker-vm', 'worker-e2e', 'code', 'code-ui'];
+const NATIVE_DROP_PROFILES = ['worker-impl', 'maintainer-hooks', 'worker-eval','worker-bus', 'worker-vm', 'worker-e2e', 'code', 'code-ui'];
 
 test('a native worker drops lean-skills, a claudex worker keeps it', () => {
   for (const name of NATIVE_DROP_PROFILES) {
@@ -2532,4 +2532,51 @@ test('turning previewBrowser on for a shipped worker profile adds exactly the 14
   assert.deepEqual(validateRegistry(reg), []);
   assert.deepEqual(previewRules(reg, 'worker-e2e').sort(), PREVIEW_TOOLS.map((t) => `mcp__t3-code__${t}`).sort());
   assert.deepEqual(previewRules(reg, 'worker-impl'), []);
+});
+
+const MAINTAINER_ENV_WANT = { HIMMEL_MAINTAINER_ACTION: 'hook-edit', HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '1' };
+
+test('maintainer-hooks resolves to settings whose env holds exactly the marker and the hook bypass', () => {
+  assert.deepEqual(validateRegistry(REG), []);
+  assert.deepEqual(resolveProfile(REG, 'maintainer-hooks', { installed: [] }).env, MAINTAINER_ENV_WANT);
+});
+
+test('maintainer-hooks carries the grant on the native lane only', () => {
+  assert.deepEqual(resolveProfile(REG, 'maintainer-hooks', { installed: [], lane: 'native' }).env, MAINTAINER_ENV_WANT);
+  for (const lane of ['claudex', 'openrouter', 'deepseek']) {
+    assert.equal(Object.hasOwn(resolveProfile(REG, 'maintainer-hooks', { installed: [], lane }), 'env'), false, `${lane} must carry no env block`);
+  }
+});
+
+test('worker-impl and every other profile resolve with no env block', () => {
+  for (const name of Object.keys(REG.profiles)) {
+    if (name === 'operator' || name === 'maintainer-hooks') continue;
+    assert.equal(Object.hasOwn(resolveProfile(REG, name, { installed: [] }), 'env'), false, `${name} must carry no env block`);
+  }
+  assert.equal(Object.hasOwn(resolveProfile(REG, 'worker-impl,code', { installed: [] }), 'env'), false);
+});
+
+test('a hand-written env is refused on every profile entry, the maintainer one included', () => {
+  for (const name of ['worker-impl', 'user', 'maintainer-hooks']) {
+    const reg = structuredClone(REG);
+    reg.profiles[name] = { ...reg.profiles[name], env: { HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '1' } };
+    assert.ok(validateRegistry(reg).some((e) => e.includes(`profile "${name}" must not declare env`)), `${name}: hand-written env accepted`);
+  }
+});
+
+test('maintainer-hooks keeps the worker-impl fields: only env differs', () => {
+  const fields = (spec) => Object.fromEntries(Object.entries(spec).filter(([k]) => !k.startsWith('_comment')));
+  assert.ok(Object.hasOwn(REG.profiles, 'maintainer-hooks'), 'maintainer-hooks entry exists');
+  assert.deepEqual(fields(REG.profiles['maintainer-hooks']), fields(REG.profiles['worker-impl']));
+  for (const lane of ['native', 'claudex']) {
+    const { env: _env, ...got } = resolveProfile(REG, 'maintainer-hooks', { installed: [], lane });
+    assert.deepEqual(got, resolveProfile(REG, 'worker-impl', { installed: [], lane }), `${lane}: plugins, permissions and drops match`);
+  }
+  assert.deepEqual(mcpServersForProfile(REG, 'maintainer-hooks'), mcpServersForProfile(REG, 'worker-impl'));
+});
+
+test('maintainer-hooks refuses to compose in a profile list', () => {
+  for (const list of ['maintainer-hooks,code', 'worker-impl,maintainer-hooks']) {
+    assert.throws(() => resolveProfile(REG, list), /cannot be composed/, list);
+  }
 });

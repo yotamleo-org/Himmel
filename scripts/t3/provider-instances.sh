@@ -9,6 +9,7 @@
 # rc 0 ok; rc 2 usage / unreadable or malformed settings file / resolver failure;
 # rc 3 an instance environment entry names a himmel guard bypass flag, or an instance's
 # launchArgs carry a permission-bypass flag (nothing written).
+# A profile the resolver refuses with rc 4 (a maintainer grant) is skipped with one stderr line.
 # Env seams (tests): T3_PI_RESOLVER (resolver script), T3_PI_PROFILES (comma list),
 # T3_PI_EMPTY_OK (comma list of profiles that resolve to no settings; default "operator"; each
 # gets an instance carrying only the resolver's default Artifact deny, as does the built-in
@@ -119,7 +120,12 @@ SUM_READ="$(cksum < "$FILE")"
 GEN='{}'
 for p in $PROFILES; do
     case "$p" in ''|*[!A-Za-z0-9._-]*) die 2 "bad profile name '$p'" ;; esac
-    if ! sp="$("$RESOLVER" "$p" 2>/dev/null)" || [ -z "$sp" ]; then
+    sp="$("$RESOLVER" "$p" 2>/dev/null)"; sp_rc=$?
+    if [ "$sp_rc" = 4 ]; then
+        echo "provider-instances: skip '$p': it carries a maintainer grant, so it gets no T3 instance" >&2
+        continue
+    fi
+    if [ "$sp_rc" != 0 ] || [ -z "$sp" ]; then
         case "$EMPTY_OK" in
             *",$p,"*)
                 echo "provider-instances: '$p' resolves to no settings file; its instance carries the default Artifact deny only" >&2
