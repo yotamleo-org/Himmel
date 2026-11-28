@@ -201,13 +201,106 @@ done
 
 echo "== T3 tool parity: every tool gets the same verdict on every registry harness =="
 for tool in t3_thread_send t3_thread_launch t3_thread_transfer t3_thread_search t3_thread_list t3_thread_read \
-            t3_environment_read t3_project_list t3_project_read pull_request_read pull_request_create \
-            pull_request_merge ci_logs ci_rerun read_issue create_issue preview_open schedule_task \
+            t3_environment_read t3_project_list t3_project_read pull_request_read \
+            ci_logs ci_rerun read_issue create_issue preview_open schedule_task \
             send_to_user html_preview html_render; do
     for id in $HARNESS_IDS; do
         run_harness "$id" "$tool" "$ARGS_SEND" allow "$tool benign call allowed"
     done
 done
+
+echo "== T3 pull-request tools: create, review and merge are refused on every registry harness and name the gated route =="
+POLICY="$REPO/scripts/guardrails/mcp-policy.json"
+SHA40=0123456789abcdef0123456789abcdef01234567
+PRM1='{"number":7,"expectedHeadSha":"'$SHA40'"}'
+PRM2='{"number":7,"expectedHeadSha":"'$SHA40'","auto":true}'
+PRM3='{"number":7,"expectedHeadSha":"'$SHA40'","stack":true}'
+PRM4='{"expectedHeadSha":"'$SHA40'"}'
+PRC1='{"title":"t","body":"b"}'
+PRC2='{"title":"t","body":"b","private":true,"draft":true}'
+PRV1='{"number":7,"verdict":"approve","expectedHeadSha":"'$SHA40'"}'
+PR_URL='{"url":"https://github.com/o/r/pull/7"}'
+for id in $HARNESS_IDS; do
+    run_harness "$id" pull_request_merge "$PRM1" deny "PRM-1 pull_request_merge denied" t3-pr-route
+    run_harness "$id" pull_request_merge "$PRM1" deny "PRM-1 pull_request_merge names merge-on-green.sh" merge-on-green.sh
+    run_harness "$id" pull_request_merge "$PRM2" deny "PRM-2 pull_request_merge with auto denied" t3-pr-route
+    run_harness "$id" pull_request_merge "$PRM3" deny "PRM-3 pull_request_merge with stack denied" t3-pr-route
+    run_harness "$id" pull_request_merge "$PRM4" deny "PRM-4 pull_request_merge with no number denied" t3-pr-route
+    run_harness "$id" pull_request_read '{"number":7}' allow "PRM-T pull_request_read twin allowed"
+    run_harness "$id" pull_request_create "$PRC1" deny "PRC-1 pull_request_create denied" t3-pr-route
+    run_harness "$id" pull_request_create "$PRC1" deny "PRC-1 pull_request_create names worker-pr-open.sh" worker-pr-open.sh
+    run_harness "$id" pull_request_create "$PRC2" deny "PRC-2 pull_request_create private draft denied" t3-pr-route
+    run_harness "$id" watch_pull_request "$PR_URL" allow "PRC-T watch_pull_request twin allowed"
+    run_harness "$id" link_pull_request "$PR_URL" allow "PRC-T2 link_pull_request twin allowed"
+    run_harness "$id" pull_request_review "$PRV1" deny "PRV-1 pull_request_review denied" t3-pr-route
+    run_harness "$id" pull_request_review "$PRV1" deny "PRV-1 pull_request_review names gh pr review" "gh pr review"
+done
+for t in pull_request_merge pull_request_create pull_request_review; do echo "PRF ran: $t (refused rows)"; done
+run_codex pull_request_merge "$PRM1" deny "PRD-1 direct-server pull_request_merge denied" t3-pr-route mcp__t3_code_direct__
+run_codex pull_request_create "$PRC1" deny "PRD-2 direct-server pull_request_create denied" t3-pr-route mcp__t3_code_direct__
+
+for tool in $(jq -r '.servers["t3-code"].tools | keys[]' "$POLICY"); do
+    case "$tool" in pull_request_create | pull_request_review | pull_request_merge | unwatch_pull_request) continue ;; esac
+    for id in $HARNESS_IDS; do
+        run_harness "$id" "$tool" '{"number":7}' allow "PRF $tool allowed"
+    done
+    echo "PRF ran: $tool"
+done
+echo "PRF ran: unwatch_pull_request (its own rows)"
+for id in $HARNESS_IDS; do
+    run_harness "$id" pull_request_update '{"number":7,"title":"x"}' allow "PRW pull_request_update allowed"
+    run_harness "$id" pull_request_respond '{"number":7,"reviewThreadId":"t1","resolved":true}' allow "PRW pull_request_respond resolved allowed"
+    run_harness "$id" ci_rerun '{"number":7}' allow "PRW ci_rerun allowed"
+done
+
+pro2=$(for v in $HIMMEL_OVERRIDE_ENV_OK_VARS; do [ "$v" = T3_THREAD_TOOLS_OK ] || printf '%s=1 ' "$v"; done)
+case " $pro2" in
+    *" T3_THREAD_TOOLS_OK="*) bad "PRO-2 the override set holds T3_THREAD_TOOLS_OK" ;;
+    *" HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 "*) ok "PRO-2 the override set is every other override, HIMMEL_HOOK_INTEGRITY_BYPASS_OK included" ;;
+    *) bad "PRO-2 the override set is empty or lacks HIMMEL_HOOK_INTEGRITY_BYPASS_OK: $pro2" ;;
+esac
+for id in claude codex grok cursor; do
+    T3_THREAD_TOOLS_OK=1 run_harness "$id" pull_request_merge "$PRM1" allow "PRO-1 pull_request_merge allowed under T3_THREAD_TOOLS_OK=1"
+    T3_THREAD_TOOLS_OK=1 run_harness "$id" pull_request_create "$PRC1" allow "PRO-1 pull_request_create allowed under T3_THREAD_TOOLS_OK=1"
+    T3_THREAD_TOOLS_OK=1 run_harness "$id" pull_request_review "$PRV1" allow "PRO-1 pull_request_review allowed under T3_THREAD_TOOLS_OK=1"
+    eval "$pro2 run_harness \"\$id\" pull_request_merge \"\$PRM1\" deny \"PRO-2 pull_request_merge denied under every other override\" t3-pr-route"
+    eval "$pro2 run_harness \"\$id\" pull_request_create \"\$PRC1\" deny \"PRO-2 pull_request_create denied under every other override\" t3-pr-route"
+    eval "$pro2 run_harness \"\$id\" pull_request_review \"\$PRV1\" deny \"PRO-2 pull_request_review denied under every other override\" t3-pr-route"
+done
+T3_THREAD_TOOLS_OK=1 run_antigravity pull_request_merge "$PRM1" deny "PRO-A pull_request_merge denied, the adapter scrubs T3_THREAD_TOOLS_OK" t3-pr-route
+
+POL_LOG="$TMP/pol-audit.jsonl"
+destr=$(jq -r '.servers["t3-code"].tools | to_entries[] | select(.value == "destructive") | .key' "$POLICY")
+if grep -qx pull_request_merge <<<"$destr"; then ok "POL-1 the registry classes pull_request_merge destructive"
+else bad "POL-1 pull_request_merge is not destructive in the registry: $destr"; fi
+for key in t3-code t3_code t3_code_direct; do
+    for tool in $destr; do
+        : > "$POL_LOG"
+        pol_out=$(jq -cn --arg t "mcp__${key}__$tool" '{hook_event_name:"PreToolUse",session_id:"pol",tool_name:$t,tool_input:{}}' \
+            | MCP_POLICY_AUDIT_LOG="$POL_LOG" bash "$REPO/scripts/hooks/mcp-policy.sh" 2>&1); pol_rc=$?
+        if [ "$pol_rc" -eq 0 ] && jq -se 'length == 1 and .[0].class == "destructive" and .[0].mode == "enforce" and .[0].verdict == "allow"' "$POL_LOG" >/dev/null 2>&1; then
+            ok "POL-1 mcp__${key}__$tool: destructive, enforced, allowed"
+        else
+            bad "POL-1 mcp__${key}__$tool (rc=$pol_rc out=$pol_out audit=$(cat "$POL_LOG"))"
+        fi
+    done
+done
+if jq -e '.servers as $s | [$s["t3-code"], $s["t3_code"], $s["t3_code_direct"]] | map({tools, allow_destructive}) | (.[0] != null and .[0] == .[1] and .[1] == .[2])' "$POLICY" >/dev/null; then
+    ok "POL-2 the three T3 keys carry the same tools and allow_destructive"
+else
+    bad "POL-2 the three T3 keys differ"
+fi
+guard_prefixes=$(sed -n 's/^T3_TOOL_PREFIXES="\(.*\)"$/\1/p' "$REPO/scripts/hooks/guard-t3-thread-tools.sh" | tr ' ' '\n' | sort | tr '\n' ' ')
+policy_prefixes=$(jq -r '.servers | keys[] | select(startswith("t3"))' "$POLICY" | sed 's/^\(.*\)$/mcp__\1__/' | sort | tr '\n' ' ')
+if [ -n "$guard_prefixes" ] && [ "$guard_prefixes" = "$policy_prefixes" ]; then ok "POL-3 the policy's T3 keys equal the guard's T3_TOOL_PREFIXES"
+else bad "POL-3 policy keys ($policy_prefixes) differ from the guard's prefixes ($guard_prefixes)"; fi
+# shellcheck disable=SC2016 # the adapter's literal guard join, matched as text
+if grep -qF '[ "$srv" = "t3-code" ]' "$REPO/scripts/hooks/antigravity-hook-adapter.sh" \
+    && jq -e '.laneMcpServers | index("t3-code") != null' "$REPO/scripts/t3/antigravity-profiles.json" >/dev/null; then
+    ok "POL-3 the Antigravity adapter joins the guard on t3-code, and t3-code is a lane server"
+else
+    bad "POL-3 the Antigravity adapter's t3-code guard join or laneMcpServers entry is missing"
+fi
 
 echo "== T3 schedule_task: a bound interval without a fresh session is refused on every registry harness =="
 SCHED_BOUND='{"prompt":"coordinate","schedule":{"type":"interval","everyMs":1800000},"bindToCurrentThread":true,"freshSession":false}'
