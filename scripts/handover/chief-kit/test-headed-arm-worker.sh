@@ -3101,7 +3101,7 @@ l1_launch() {
   # shellcheck disable=SC2016
   printf '. %q\nif [ %q = every ] || [ ! -e %q ]; then echo x >> %q; rm -rf "$SLOTS/.admit"; fi\n' \
     "$(cd "$HERE/../../lib" && pwd)/fleet-reservation-key.sh" "$2" "$tree/fired" "$tree/fired" > "$tree/scripts/lib/fleet-reservation-key.sh"
-  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$tree/target.sh"
+  printf '%s\n' '#!/usr/bin/env bash' "touch '$tree/target-ran'" 'exit 0' > "$tree/target.sh"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$tree/ps"
   chmod 755 "$tree/target.sh" "$tree/ps"; mkdir -p "$tree/proc"
   mkdir -p "$tmp/l1-$1"; doc="$tmp/l1-$1/$name.md"; fx_brief "# $name" > "$doc"
@@ -3130,6 +3130,8 @@ l1_launch once once
 check "L1c the whole-lock loss trigger fired once" 1 "$(grep -c x "$l1_tree/fired" 2>/dev/null)"
 check "L1c a lock lost once: the launch passes the preflight" no "$(grep -q 'fleet admission refused' "$l1_log" && echo yes || echo no)"
 check "L1c ... after one re-admission" yes "$(grep -qF 'admission lock lost (pre-reserve) — re-running admission (1 of 2)' "$l1_log" && echo yes || echo no)"
+check "L1c ... and the launch reaches its target" yes "$([ -e "$l1_tree/target-ran" ] && echo yes || echo no)"
+check "L1 control: a launch refused on every pass never reaches its target" no "$([ -e "$tmp/tree-l1-every/target-ran" ] && echo yes || echo no)"
 fi
 
 echo "---"

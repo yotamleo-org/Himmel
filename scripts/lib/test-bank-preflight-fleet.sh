@@ -955,7 +955,7 @@ check "(R3t) an inherited clock inside the window, budget spent -> refused" SKIP
 err_has "(R3t) names the lost lock" 'was lost during admission (in-lock) and the re-admissions did not keep it'
 err_lacks "(R3t) does not re-run" 're-running admission'
 r3tc_epoch="$(date +%s)"
-r3_run r3tc "sleep 3; $R3_LOSS" "tr '\\0' '\\n' < /proc/\$PPID/environ > '$W/r3tc.env'; date +%s > '$W/r3tc.t3'; sleep 21" \
+r3_run r3tc "sleep 3; $R3_LOSS" "[ ! -r /proc/\$PPID/environ ] || tr '\\0' '\\n' < /proc/\$PPID/environ > '$W/r3tc.env'; date +%s > '$W/r3tc.t3'; sleep 21" \
   CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=20 _FLEET_ADMIT_T0="$(( r3tc_epoch - 100 ))"
 check "(R3tc) re-admitted, its claim try made with the budget spent -> admitted" PROCEED "$r3_out"
 err_has "(R3tc) re-runs once" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
