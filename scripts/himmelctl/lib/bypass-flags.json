@@ -553,6 +553,14 @@
       "remedy": "UNCHECKED_MKTEMP_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "UNEXPANDED_FILE_PATH_OK",
+      "hooks": [
+        "scripts/hooks/block-unexpanded-file-path.sh"
+      ],
+      "bypasses": "Skips the unexpanded file path guard (scripts/hooks/block-unexpanded-file-path.sh), which also reopens the raw-path gap of every file guard behind it.",
+      "remedy": "UNEXPANDED_FILE_PATH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "WORKER_SESSION_CONTEXT_HANDOFF_OK",
       "hooks": [
         "scripts/hooks/guard-worker-context-handoff.sh"

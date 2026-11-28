@@ -619,6 +619,7 @@ case "$RAW_TOOL" in
         esac
         PAYLOAD="$(build_claude_payload Read file)" || emit_deny "antigravity-hook-adapter: failed to translate read_file payload"
         run_chain_with_payload gate "$PAYLOAD" \
+            block-unexpanded-file-path.sh \
             block-antigravity-read-fence.sh \
             block-read-secrets.sh \
             read-clamp.sh \
@@ -630,6 +631,7 @@ case "$RAW_TOOL" in
         check_self_protect_path "$EDIT_PATH"
         PAYLOAD="$(build_claude_payload Edit file)" || emit_deny "antigravity-hook-adapter: failed to translate edit_file payload"
         run_chain_with_payload gate "$PAYLOAD" \
+            block-unexpanded-file-path.sh \
             block-edit-on-main.sh \
             block-edit-live-settings.sh \
             block-lesson-enforcement-writes.sh \
@@ -644,6 +646,7 @@ case "$RAW_TOOL" in
         check_self_protect_path "$WRITE_PATH"
         PAYLOAD="$(build_claude_payload Write file)" || emit_deny "antigravity-hook-adapter: failed to translate write_file payload"
         run_chain_with_payload gate "$PAYLOAD" \
+            block-unexpanded-file-path.sh \
             block-edit-on-main.sh \
             block-edit-live-settings.sh \
             block-lesson-enforcement-writes.sh \

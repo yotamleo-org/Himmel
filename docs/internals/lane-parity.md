@@ -370,6 +370,7 @@ carry it. The other rows are read by people.
 | `guard:block-tail-pipe-on-gates.sh` | has | gap-ticketed: .codex/hooks.json: add block-tail-pipe-on-gates.sh to the Bash chain | has |
 | `guard:block-terminal-write-fence.sh` | structural: the auto-mode classifier fences external writes on the Claude lane | has | has |
 | `guard:block-token-shaped-web-query.sh` | has | structural: no WebSearch or WebFetch tool call to match: Codex reads the web through hosted web_search only | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-token-shaped-web-query.sh to the search_web chain, which today runs only peer-taint-gate.sh, and to the read_url_content arm once it lands |
+| `guard:block-unexpanded-file-path.sh` | has | structural: Codex sends no file_path, its edits are apply_patch only | has |
 | `guard:block-unresolved-cr-merge.sh` | has | gap-ticketed: .codex/hooks.json: add block-unresolved-cr-merge.sh to the Bash chain | gap-ticketed: scripts/hooks/antigravity-hook-adapter.sh: add block-unresolved-cr-merge.sh to the run_command chain |
 | `guard:block-vault-sweep.sh` | has | structural: POC, off by default, measured on the Claude lane before another lane gets it | structural: POC, off by default, measured on the Claude lane before another lane gets it |
 | `guard:block-worker-askuserquestion.sh` | has | structural: AskUserQuestion is a Claude tool the other lanes do not have | structural: AskUserQuestion is a Claude tool; the adapter denies an unlisted tool |

@@ -29,6 +29,13 @@ class Refused(ValueError):
     pass
 
 
+class LockLost(Refused):
+    pass
+
+
+PREFLIGHT_TIMEOUT = 360
+
+
 def read(path):
     if path.is_symlink():
         raise Refused('symlink state')
@@ -1126,7 +1133,7 @@ def run(args):
             except FileNotFoundError:
                 holder = ''
             if holder != str(os.getppid()):
-                raise Refused('reservation admission lock is not held by preflight')
+                raise LockLost('reservation admission lock is not held by preflight')
             publish(slot / 'managed.json', {'attempt_id': args.attempt_id, 'owner': owner})
             record['reservation'] = {'path': str(slot), 'owner': owner}
             publish(anchor, control)
@@ -1225,7 +1232,7 @@ def main():
             env = dict(os.environ, FLEET_LAUNCH_DOC=args.doc, FLEET_LAUNCH_ATTEMPT=args.attempt_id,
                        FLEET_LAUNCH_MANIFEST=str(resolve(args.doc, args.manifest)), CADENCE_USAGE_LAUNCH='1',
                        CADENCE_USAGE_WORKER=args.name, CADENCE_USAGE_CALLER_PID=str(os.getpid()))
-            preflight = subprocess.run(['bash', str(LIB / 'usage-preflight.sh')], env=env, capture_output=True, text=True, timeout=60)
+            preflight = subprocess.run(['bash', str(LIB / 'usage-preflight.sh')], env=env, capture_output=True, text=True, timeout=PREFLIGHT_TIMEOUT)
             if preflight.returncode or preflight.stdout.strip() not in ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'):
                 args.op, args.phase = 'outcome', 'refused'
                 run(args)
@@ -1258,6 +1265,9 @@ def main():
             run(args)
             return rc
         print(json.dumps(run(args)))
+    except LockLost as error:
+        print('fleet-runtime: fleet-paused: ' + str(error), file=sys.stderr)
+        return 12
     except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print('fleet-runtime: fleet-paused: ' + str(error), file=sys.stderr)
         return 10

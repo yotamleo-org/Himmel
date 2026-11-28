@@ -446,6 +446,7 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   'block-subagent-release-operator.sh',
   'guard-judge-write-scope.sh',
   'block-agy-salus-egress.sh',
+  'block-unexpanded-file-path.sh',
   // The readiness tool allow-list: a crash, signal, overrun or exhausted entry
   // deadline denies instead of being carried or skipped.
   READINESS_GUARD,

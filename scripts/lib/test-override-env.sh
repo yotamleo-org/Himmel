@@ -217,7 +217,9 @@ fi
 echo "== Case 7: hook suites that read an override self-scrub (quiet-run / direct-bash paths) =="
 for s in scripts/hooks/test-orchestrator-inline-guard.sh \
          scripts/hooks/test-hook-rewrite-integrity.sh \
-         scripts/hooks/test-block-worker-askuserquestion.sh; do
+         scripts/hooks/test-block-worker-askuserquestion.sh \
+         scripts/hooks/test-block-unexpanded-file-path.sh \
+         scripts/hooks/test-guard-judge-write-scope.sh; do
   if grep -qE '^\. .*override-env\.sh' "$REPO/$s" && grep -qE '^scrub_override_env$' "$REPO/$s"; then
     pass "$s sources the lib and calls scrub_override_env"
   else

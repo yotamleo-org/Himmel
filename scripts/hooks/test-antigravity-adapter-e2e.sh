@@ -152,6 +152,19 @@ assert_deny "block-edit-on-main denies edit_file in primary main" "main" \
     "$(make_pre edit_file "$(jq -cn --arg p "$MAIN_REPO/work.txt" '{Path:$p,Target:"ok",Replacement:"x"}')" "$MAIN_REPO")"
 assert_deny "block-read-secrets denies read_file on .env" "secret" \
     "$(make_pre read_file '{"Path":"/tmp/project/.env"}')"
+for t in read_file edit_file write_file; do
+    assert_deny "block-unexpanded-file-path denies $t of a trailing-space Path" "block-unexpanded-file-path" \
+        "$(make_pre "$t" "$(jq -cn --arg p "$WT_REPO/work.txt " '{Path:$p,Target:"ok",Replacement:"x",Content:"x"}')")"
+    assert_deny "block-unexpanded-file-path denies $t of a ~/ Path" "block-unexpanded-file-path" \
+        "$(make_pre "$t" '{"Path":"~/x","Target":"ok","Replacement":"x","Content":"x"}')"
+done
+assert_deny "block-unexpanded-file-path runs first in read_file: a one-space .env is its deny, not the secrets guard's" \
+    "block-unexpanded-file-path" "$(make_pre read_file "$(jq -cn --arg p "$WT_REPO/.env " '{Path:$p}')")"
+for t in edit_file write_file; do
+    assert_deny "block-unexpanded-file-path runs first in $t: a padded main-checkout file is its deny, not the main guard's" \
+        "block-unexpanded-file-path" \
+        "$(make_pre "$t" "$(jq -cn --arg p "$MAIN_REPO/work.txt " '{Path:$p,Target:"ok",Replacement:"x",Content:"x"}')" "$MAIN_REPO")"
+done
 assert_deny "block-read-secrets denies run_command cat .env" "secret" \
     "$(make_pre run_command '{"CommandLine":"cat /tmp/project/.env"}')"
 assert_deny "block-destructive-commands denies rm -rf" "destructive" \

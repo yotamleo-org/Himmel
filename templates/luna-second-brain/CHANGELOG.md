@@ -8,10 +8,16 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.120] — 2026-11-28
+## [0.4.122] — 2026-11-28
 
 ### Changed
 - The salus egress hook and posture text stop calling Claude the only processor. A new floors addendum (`_CLAUDE.salus-floors.md`, appended once) says which egress floor loads for which harness: the vault hook for Claude sessions, himmel's `block-agy-salus-egress.sh` for Antigravity sessions through the user-scope backstop, none for any other harness. The hook's refusals, patterns and exit codes are unchanged.
+
+## [0.4.121] — 2026-11-28
+
+### Changed
+- `_CLAUDE.md` names only commands that a himmel plugin provides: `/obsidian-init`, `/obsidian-reconcile` and `/obsidian-challenge` are gone. It is under 200 lines; the graphify details, the note-template catalogue with the decision contract, and the pre-commit rollback recovery moved to `docs/retrieval-routing.md`, `docs/note-templates.md` and `docs/vault-troubleshooting.md`. It states that a branch is enough and a separate worktree is not required, and the `worktree-isolation` hook message says the same.
+- `AGENTS.md` agrees with `_CLAUDE.md` that no vault MCP is loaded, and gives the search wrapper as `$HIMMEL_DIR/scripts/lib/qmd-bounded.sh`.
 
 ## [0.4.119] — 2026-11-26
 

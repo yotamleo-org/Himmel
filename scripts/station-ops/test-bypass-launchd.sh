@@ -404,6 +404,7 @@ refusal() {
 }
 refusal "R2 an invented flag" r2 "flag NOT_A_HOOK_GUARD_OK is not in bypass-flags.json" flags=NOT_A_HOOK_GUARD_OK
 refusal "R4 a floor flag" r4 "flag ROGUE_SCHEDULE_OK is floor" flags=ROGUE_SCHEDULE_OK
+refusal "R4 the long-path switch is floor" r4b "flag UNEXPANDED_FILE_PATH_OK is floor" flags=UNEXPANDED_FILE_PATH_OK
 refusal "R5 a decision flag with no decision" r5 "SKIP_SECURITY_REVIEW needs decision=" flags=SKIP_SECURITY_REVIEW
 refusal "R6 a name that is not a switch" r6 "flag BWIMC_ENGINE is not a switch" flags=BWIMC_ENGINE
 refusal "R7 six flags" r7 "more than 5 flags" flags=DESTRUCTIVE_OK,GIT_STASH_OK,AGENTS_MD_OK,BRANCH_NAME_OK,CHIEF_FG_OK,DOC_GUARD_OK

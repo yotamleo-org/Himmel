@@ -67,6 +67,15 @@ literal_replace() {
   ' "$1" > "$2" 2>"$tmp/literal_replace.err"
 }
 
+place_ctx() {
+  local dest="$1" src="${2:-$DIR/pr-check-context.sh}"
+  if [ ! -f "$DIR/pr-check-step0-head.sh" ] || ! command cp "$src" "$dest/pr-check-context.sh" \
+     || ! command cp "$DIR/pr-check-step0-head.sh" "$dest/pr-check-step0-head.sh"; then
+    echo "FAIL: place_ctx could not place pr-check-context.sh and pr-check-step0-head.sh in $dest"
+    exit 1
+  fi
+}
+
 # --- T1-T7: fixture repo on branch t1, default branch main ------------------
 repo="$tmp/repo"
 mkdir -p "$repo"
@@ -266,7 +275,7 @@ fi
 # --- T8: fail-closed - point at a tree with no scripts/cr/critic-panel.sh --
 fakehimmel="$tmp/fake-himmel"
 mkdir -p "$fakehimmel/scripts/cr" "$fakehimmel/scripts/guardrails"
-cp "$DIR/pr-check-context.sh" "$fakehimmel/scripts/cr/pr-check-context.sh"
+place_ctx "$fakehimmel/scripts/cr"
 # no critic-panel.sh under $fakehimmel/scripts/cr - critic-panel.sh itself is
 # absent, so HIMMEL_ROOT resolution must fail closed before ever touching
 # guardrails/lib.sh or write-verdicts.sh.
@@ -364,7 +373,7 @@ build_fake_himmel() {
   local d="$1"
   mkdir -p "$d/scripts/cr" "$d/scripts/guardrails"
   : > "$d/scripts/cr/critic-panel.sh"
-  cp "$DIR/pr-check-context.sh" "$d/scripts/cr/pr-check-context.sh"
+  place_ctx "$d/scripts/cr"
   cp "$DIR/ledger-append.sh" "$d/scripts/cr/ledger-append.sh"
   cp "$DIR/write-verdicts.sh" "$d/scripts/cr/write-verdicts.sh"
 cp "$DIR/anchor-handoff.sh" "$d/scripts/cr/anchor-handoff.sh"
@@ -566,7 +575,7 @@ fi
 # "a" (append) hunk with 5 "> " lines and ZERO "< " lines - not a
 # replacement like the other mutants' sanity checks above.
 check "$(diff "$SCRIPT" "$mutant_legacy" | grep -c '^> ')" "5" "T17 sanity - the legacy-reinstated mutant differs from the real script by exactly 5 inserted lines (the round-4 legacy-accept body, re-added before the matched comment+;; pair)"
-cp "$mutant_legacy" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$mutant_legacy"
 rows_before17r="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt13" \
   --env HIMMEL_REPO="$anchor13" \
@@ -579,7 +588,7 @@ red_control_assert --label "T17" \
   --correct      "delegated=yes rows_added=1" \
   --note "with the legacy arm reinstated the bare anchor path verifies IMMEDIATELY again, proving T17's +1-row pin above only holds because codex-1 actually removed that arm" \
   || fail=1
-cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$SCRIPT"
 
 # --- T18: bootstrap defect. The ANCHOR's own
 # ledger-append.sh does not support the "delegation" kind yet (the real
@@ -851,7 +860,7 @@ check "$neutered_count" "1" "T23f sanity - the mutant differs from the real scri
 # himmel_dir to the anchor unconditionally and prove nothing about the
 # mutation. Nothing later in this suite still depends on anchor18's own
 # pr-check-context.sh being unmodified, so overwriting it in place is safe.
-cp "$mutant" "$anchor18/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor18/scripts/cr" "$mutant"
 out23f="$(cd "$wt18" && HIMMEL_REPO="$anchor18" bash "$anchor18/scripts/cr/pr-check-context.sh" 2>/dev/null)"
 mutant_himmel_dir="$(get_kv "$out23f" himmel_dir)"
 if [ "$mutant_himmel_dir" = "$wt18_toplevel" ]; then
@@ -1227,7 +1236,7 @@ check "$(get_kv "$out26" head)" "$headB26" "T26 head matches the worktree's actu
 # exactly the vulnerable combination T26 above proved never occurs on the
 # real script.
 write_cap "$cap_fix_t26cap" "fix/t26-cap" "$headA26" "$n1"
-cp "$mutant_nohead" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_nohead"
 rows_before26r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt26" \
   --env HIMMEL_REPO="$anchor26" \
@@ -1240,7 +1249,7 @@ red_control_assert --label "T26" \
   --correct      "himmel_dir=$wt26_toplevel delegated=yes rows_added=1" \
   --note "without head-binding the stale-head capability IS silently accepted - the vulnerable combination T26 above proves never occurs on the real script" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
 
 # T27. Stale BRANCH rejected: a capability claiming branch fix/t26-cap at
 # headA26 (nonce n2), written into wt26b's OWN branch-scoped slot
@@ -1273,7 +1282,7 @@ check "$hd27" "$wt26b_toplevel" "T27 himmel_dir is the branch (consistent with t
 
 # T27 RED: same capability, still unconsumed, against mutant_nobranch.
 write_cap "$cap_t26capb" "fix/t26-cap" "$headA26" "$n2"
-cp "$mutant_nobranch" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_nobranch"
 rows_before27r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt26b" \
   --env HIMMEL_REPO="$anchor26" \
@@ -1286,7 +1295,7 @@ red_control_assert --label "T27" \
   --correct      "himmel_dir=$wt26b_toplevel delegated=yes rows_added=1" \
   --note "without branch-binding the stale-branch capability IS silently accepted - proving the two neutered branch checks are what T27 above relies on" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
 
 # T28. Genuine capability accepted - full round trip on the real script:
 # fresh mint (branch/head/nonce all matching this run) verifies, and the
@@ -1337,7 +1346,7 @@ fi
 check "$(diff "$SCRIPT" "$mutant_truncate" | grep -c '^< ')" "1" "T28 sanity - the truncate mutant differs from the real script by exactly 1 changed line (unlink reverted to truncation)"
 n4b="cap-nonce-t28-truncate-red"
 write_cap "$cap_t28cap" "t28-cap" "$head28" "$n4b"
-cp "$mutant_truncate" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_truncate"
 red_control_run --cwd "$wt28" \
   --env HIMMEL_REPO="$anchor26" \
   --env PR_CHECK_ANCHOR_DELEGATED="$anchor26|t28-cap|$head28|$n4b" \
@@ -1356,7 +1365,7 @@ red_control_assert --label "T28" \
   --correct      "delegated=yes cap_exists=no cap_content=''" \
   --note "with truncation instead of unlink the capability file still EXISTS after consumption (empty, but present) - the NEW non-existence assertion catches the regression the old emptiness check could not, and the emptiness check still passes under it" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
 
 # T29. One-time: replaying the SAME (now-consumed) capability is rejected.
 # wt28's diff does not touch scripts/cr (cr_diff_state=no - see T28), so a
@@ -1376,7 +1385,7 @@ check "$rows_after29" "$rows_before29" "T29 no new ledger row on replay (cr_diff
 # T29 RED: mutant_noconsume must accept the SAME capability TWICE.
 n5="cap-nonce-t29-red"
 write_cap "$cap_t28cap" "t28-cap" "$head28" "$n5"
-cp "$mutant_noconsume" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_noconsume"
 red_control_run --cwd "$wt28" \
   --env HIMMEL_REPO="$anchor26" \
   --env PR_CHECK_ANCHOR_DELEGATED="$anchor26|t28-cap|$head28|$n5" \
@@ -1393,7 +1402,7 @@ red_control_assert --label "T29" \
   --correct      "delegated=no" \
   --note "without consumption the SAME capability verifies a SECOND time too - proving the truncation line T29 above relies on is load-bearing" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
 
 # T30. Concurrency: the capability file must be BRANCH-SCOPED, not one
 # shared file across the anchor's whole git-common-dir. himmel runs
@@ -1446,8 +1455,8 @@ nB30r="cap-nonce-t30-b-red"
 cap_unscoped="$git_dir26/cr-delegation-capability"
 write_cap "$cap_unscoped" "fix/t26-cap" "$headB26" "$nA30r"   # mint A (shared slot)
 write_cap "$cap_unscoped" "t28-cap" "$head28" "$nB30r"        # mint B OVERWRITES the SAME shared slot
-cp "$mutant_unscoped" "$anchor26/scripts/cr/pr-check-context.sh"
-cp "$mutant_unscoped" "$wt26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_unscoped"
+place_ctx "$wt26/scripts/cr" "$mutant_unscoped"
 rows_before30r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt26" \
   --env HIMMEL_REPO="$anchor26" \
@@ -1463,8 +1472,8 @@ red_control_assert --label "T30" \
   --correct      "delegated=yes rows_added=0" \
   --note "without branch-scoping mint B's overwrite invalidates delegate A's genuine capability (fail-safe - never wrongly accepted) but forces a spurious extra delegation-ledger row on the SAME (branch, head) T30 above logged only once for" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
-cp "$SCRIPT" "$wt26/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
+place_ctx "$wt26/scripts/cr" "$SCRIPT"
 
 # mutant_no_head_scope: revert JUST the
 # head component (branch-scoping alone) - used only by
@@ -1536,8 +1545,8 @@ nB33r="cap-nonce-t33-b-red"
 cap_branch_only_33="$git_dir26/cr-delegation/t33-red-branch"
 write_cap "$cap_branch_only_33" "t33-red-branch" "$head33r_real" "$nA33r"
 write_cap "$cap_branch_only_33" "t33-red-branch" "$fake_head33" "$nB33r"
-cp "$mutant_no_head_scope" "$anchor26/scripts/cr/pr-check-context.sh"
-cp "$mutant_no_head_scope" "$wt33r/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$mutant_no_head_scope"
+place_ctx "$wt33r/scripts/cr" "$mutant_no_head_scope"
 rows_before33r="$(grep -c '"kind":"delegation"' "$ledger26" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt33r" \
   --env HIMMEL_REPO="$anchor26" \
@@ -1553,8 +1562,8 @@ red_control_assert --label "T33" \
   --correct      "delegated=yes rows_added=0" \
   --note "without head-scoping mint B's overwrite invalidates delegate A's genuine capability (fail-safe) but forces a spurious extra delegation-ledger row on the SAME (branch, head) T33 above logged only once for" \
   || fail=1
-cp "$SCRIPT" "$anchor26/scripts/cr/pr-check-context.sh"
-cp "$SCRIPT" "$wt33r/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor26/scripts/cr" "$SCRIPT"
+place_ctx "$wt33r/scripts/cr" "$SCRIPT"
 
 # T32. Mint the capability file BEFORE
 # logging the ledger row. Fixture: a fresh anchor/worktree whose
@@ -1593,7 +1602,7 @@ grep -qi 'could not write the delegation capability file' "$tmp/t32.err" || { ec
 # write-gate bypassed, ledger-append + exec run unconditionally) - must
 # reproduce a FALSE delegation record: at least one new ledger row despite
 # the capability never having been written.
-cp "$mutant_ledger_first" "$anchor32/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor32/scripts/cr" "$mutant_ledger_first"
 rows_before32r="$(grep -c '"kind":"delegation"' "$ledger32" 2>/dev/null || echo 0)"
 # The chain ends in the one-hop guard's exit 2 with no context on stdout, so
 # the wrapper prints the chain's exit status as the observable (an empty
@@ -1620,7 +1629,7 @@ red_control_assert --label "T32" \
   --correct      "exit=0 rows_added=0" \
   --note "without the write-before-log ordering a FALSE delegation-ledger row is recorded even though the capability file was never written and the run itself declines - proving the reordering T32 above relies on is load-bearing" \
   || fail=1
-cp "$SCRIPT" "$anchor32/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor32/scripts/cr" "$SCRIPT"
 
 # T17/T20/T21 (far above) are re-affirmed here as still
 # green. T20's fixture (PR_CHECK_ANCHOR_DELEGATED=1) lands in the
@@ -1784,7 +1793,7 @@ if [ "$rc_m36" -ne 0 ]; then
   echo "FAIL: T36 could not build the committed-only mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"
   fail=1
 fi
-cp "$mutant36" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$mutant36"
 rows_before36r="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt36" \
   --env HIMMEL_REPO="$anchor13" \
@@ -1796,7 +1805,7 @@ red_control_assert --label "T36" \
   --correct      "delegated=yes rows_added=1" \
   --note "without the worktree-diff worker, an UNCOMMITTED scripts/cr/ edit is invisible to cr_diff_state, so no delegation row is ever written (the exact pre-fix gap)" \
   || fail=1
-cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$SCRIPT"
 
 # T37 (fixture b). The base branch (main) moving AHEAD with its own
 # scripts/cr/ change, after this branch already forked from it, must NOT be
@@ -1840,7 +1849,7 @@ if [ "$rc_m37" -ne 0 ]; then
   echo "FAIL: T37 could not build the no-merge-base mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"
   fail=1
 fi
-cp "$mutant37" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$mutant37"
 rows_before37r="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt37" \
   --env HIMMEL_REPO="$anchor13" \
@@ -1852,7 +1861,7 @@ red_control_assert --label "T37" \
   --correct      "delegated=no rows_added=0" \
   --note "diffing straight against the base branch's TIP instead of the merge-base wrongly counts a scripts/cr/ change main picked up AFTER this branch forked, minting a spurious delegation row" \
   || fail=1
-cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$SCRIPT"
 
 # T38 (fixture d). An inherited GIT_DIR/GIT_WORK_TREE pointed at an unrelated
 # repo must not redirect this script's own git calls (CodeRabbit security
@@ -1922,7 +1931,7 @@ if [ "$rc_m38" -ne 0 ]; then
   echo "FAIL: T38 could not build the git-env-inherited mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"
   fail=1
 fi
-cp "$mutant38" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$mutant38"
 red_control_run --cwd "$wt38" \
   --env HIMMEL_REPO="$anchor13" \
   --env GIT_DIR="$decoy38/.git" \
@@ -1934,7 +1943,7 @@ red_control_assert --label "T38" \
   --correct      "rc=0 branch=t38-gitdir anchor_lane=himmel delegated=yes" \
   --note "without clearing inherited GIT_DIR/GIT_WORK_TREE first, every later git call (branch, anchor_lane, the delegation decision) silently targets the decoy repo instead of the real cwd" \
   || fail=1
-cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$SCRIPT"
 
 # T39 (fixture e). An inherited
 # GIT_LITERAL_PATHSPECS=1 must not turn the `:(top)scripts/cr/` magic pathspec
@@ -1982,7 +1991,7 @@ if [ "$rc_m39" -ne 0 ]; then
   echo "FAIL: T39 could not build the pathspec-inherited mutant - $(cat "$tmp/literal_replace.err" 2>/dev/null)"
   fail=1
 fi
-cp "$mutant39" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$mutant39"
 rows_before39r="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 red_control_run --cwd "$wt39" \
   --env HIMMEL_REPO="$anchor13" \
@@ -1995,7 +2004,7 @@ red_control_assert --label "T39" \
   --correct      "delegated=yes rows_added=1" \
   --note "without unsetting GIT_LITERAL_PATHSPECS, an inherited GIT_LITERAL_PATHSPECS=1 turns ':(top)scripts/cr/' into a literal, non-existent path, silently emptying all three diff/ls-files calls and fail-opening cr_diff_state to no on a branch that genuinely edited scripts/cr/" \
   || fail=1
-cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
+place_ctx "$anchor13/scripts/cr" "$SCRIPT"
 
 # T40 (fixture f). A gitignored,
 # untracked file under scripts/cr/ - never `git add`ed, excluded from
@@ -2278,8 +2287,8 @@ fi
 # The mutant goes into BOTH trees: in the anchor alone its bytes would differ
 # from the branch's copy and the byte comparison would decide unknown for
 # that reason instead.
-cp "$mutant51" "$fx_anchor/scripts/cr/pr-check-context.sh"
-cp "$mutant51" "$fx_wt/scripts/cr/pr-check-context.sh"
+place_ctx "$fx_anchor/scripts/cr" "$mutant51"
+place_ctx "$fx_wt/scripts/cr" "$mutant51"
 red_control_run --cwd "$fx_wt" \
   --env PATH="$tmp/t51-bin:$PATH" \
   --env HIMMEL_REPO="$fx_anchor" \
@@ -2307,10 +2316,10 @@ if [ "$rc_m44" -ne 0 ]; then
   fail=1
 fi
 fx_new t44-red
-cp "$mutant44" "$fx_anchor/scripts/cr/pr-check-context.sh"
+place_ctx "$fx_anchor/scripts/cr" "$mutant44"
 (
   cd "$fx_wt" || exit 1
-  cp "$mutant44" scripts/cr/pr-check-context.sh
+  place_ctx scripts/cr "$mutant44"
   printf '# t44 edit\n' >> scripts/cr/critic-panel.sh
   git update-index --assume-unchanged scripts/cr/pr-check-context.sh scripts/cr/critic-panel.sh
 )
@@ -2856,5 +2865,57 @@ kept24 "T2.4b row 8"
 git -C "$anchor13" branch -q feat/x main
 pr24 feat/xy feat/xy
 check "$rc24x" "0" "T2.4b control: feat/xy is no collision with a local feat/x (exit 0)"
+
+c1_rec() { printf '%s/cr-step0-head/%s\n' "$(cd "$1" && cd -P -- "$(git rev-parse --git-common-dir)" && pwd -P)" "$(printf '%s' "$2" | git hash-object --stdin)"; }
+c1_bytes() { if [ -e "$1" ] || [ -L "$1" ]; then cksum < "$1"; else echo absent; fi; }  # read-sink-ok: called only with record paths under this suite's own mktemp fixtures
+c1_d="$(cd "$wt13" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh" 2>/dev/null)"
+check "$(get_kv "$c1_d" delegated)" "yes" "C1 control: the wt13 run delegates"
+check "$(cat "$(c1_rec "$wt13" t13-touch)" 2>/dev/null)" "$(printf 'branch=t13-touch\nhead=%s\ntoplevel=%s' "$(git -C "$wt13" rev-parse HEAD)" "$wt13_toplevel")" "C1 the delegated run's record names the worktree and its HEAD"
+c1_nolib="$tmp/c1-nolib"
+build_fake_himmel "$c1_nolib"
+rm -f "$c1_nolib/scripts/cr/pr-check-step0-head.sh"
+c1_r15="$(c1_rec "$repo15" t15-adopter)"
+mkdir -p "${c1_r15%/*}" && printf 'branch=t15-adopter\nhead=seeded\ntoplevel=seeded\n' > "$c1_r15"
+c1_before="$(c1_bytes "$c1_r15")"
+(cd "$repo15" && HIMMEL_REPO="$c1_nolib" bash "$c1_nolib/scripts/cr/pr-check-context.sh" >/dev/null 2>"$tmp/c1.err")
+check "$?" "0" "C1 a fixture without the library exits 0"
+has24 "$(cat "$tmp/c1.err")" "cannot load $c1_nolib/scripts/cr/pr-check-step0-head.sh" "C1 the missing library is named in a WARNING"
+check "$(c1_bytes "$c1_r15")" "$c1_before" "C1 without the library the seeded record keeps its bytes"
+rm -f "$c1_r15"
+mkdir -p "$c1_r15"
+(cd "$repo15" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh" >/dev/null 2>"$tmp/c1.err")
+check "$?" "0" "C1 a directory at the record path exits 0"
+has24 "$(cat "$tmp/c1.err")" "could not clear the step 0 head record: $c1_r15 is still there; remove it" "C1 the directory is named in the remove-it WARNING"
+rmdir "$c1_r15"
+c1_pr="$(c1_rec "$wt24" feat/outside-thing)"
+c1_live="$(c1_rec "$wt24" t24-pr)"
+mkdir -p "${c1_pr%/*}" && printf 'branch=feat/outside-thing\nhead=seeded\ntoplevel=seeded\n' > "$c1_pr"
+rm -f "$c1_live"
+c1_before="$(c1_bytes "$c1_pr")"
+pr24 feat/outside-thing feat/outside-thing
+check "$rc24x" "0" "C1 control: the --pr run exits 0"
+check "$(c1_bytes "$c1_pr")" "$c1_before" "C1 a --pr run leaves a seeded record's bytes unchanged"
+check "$(c1_bytes "$c1_live")" "absent" "C1 a --pr run writes no record for the checked-out branch"
+c1_anchor="$tmp/c1-anchor"; c1_branch="$tmp/c1-branch-copy"; c1_canary="$tmp/c1-canary"
+build_fake_himmel "$c1_anchor"
+build_fake_himmel "$c1_branch"
+printf ': > "%s"\n' "$c1_canary" >> "$c1_branch/scripts/cr/pr-check-step0-head.sh"
+c1_forged="$c1_anchor|t15-adopter|$(git -C "$repo15" rev-parse HEAD)|0123456789abcdef0123456789abcdef"
+c1_run() {
+  rm -f "$c1_canary"
+  c1_out="$(cd "$repo15" && HIMMEL_REPO="$c1_anchor" PR_CHECK_ANCHOR_DELEGATED="$c1_forged" bash "$c1_branch/scripts/cr/pr-check-context.sh" 2>"$tmp/c1.err")"
+  c1_rc=$?
+}
+c1_run
+check "$c1_rc" "0" "C1 canary: the forged-capability run exits 0"
+has24 "$(cat "$tmp/c1.err")" "handing off to the anchor's copy ($c1_anchor/scripts/cr/pr-check-context.sh)" "C1 canary: the branch copy hands off"
+check "$(get_kv "$c1_out" delegated)" "no" "C1 canary: the anchor's context says delegated=no"
+check "$(get_kv "$c1_out" himmel_dir)" "$c1_anchor" "C1 canary: the anchor's context names the anchor"
+check "$([ -e "$c1_canary" ] && echo present || echo absent)" "absent" "C1 canary: the branch copy's library never ran"
+printf ': > "%s"\n' "$c1_canary" >> "$c1_anchor/scripts/cr/pr-check-step0-head.sh"
+c1_run
+check "$([ -e "$c1_canary" ] && echo present || echo absent)" "present" "C1 canary positive control: the anchor's library runs on the same run"
+rm -f "$c1_canary"
+check "$(grep -c '^[[:space:]]*cp .*check-context' "$DIR/test-pr-check-context.sh")" "0" "C1 tripwire: every pr-check-context.sh copy goes through place_ctx"
 
 [ "$fail" -eq 0 ] && echo "PASS test-pr-check-context" || exit 1
