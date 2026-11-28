@@ -2867,7 +2867,7 @@ pr24 feat/xy feat/xy
 check "$rc24x" "0" "T2.4b control: feat/xy is no collision with a local feat/x (exit 0)"
 
 c1_rec() { printf '%s/cr-step0-head/%s\n' "$(cd "$1" && cd -P -- "$(git rev-parse --git-common-dir)" && pwd -P)" "$(printf '%s' "$2" | git hash-object --stdin)"; }
-c1_bytes() { if [ -e "$1" ] || [ -L "$1" ]; then cksum < "$1"; else echo absent; fi; }
+c1_bytes() { if [ -e "$1" ] || [ -L "$1" ]; then cksum < "$1"; else echo absent; fi; }  # read-sink-ok: called only with record paths under this suite's own mktemp fixtures
 c1_d="$(cd "$wt13" && HIMMEL_REPO="$anchor13" bash "$anchor13/scripts/cr/pr-check-context.sh" 2>/dev/null)"
 check "$(get_kv "$c1_d" delegated)" "yes" "C1 control: the wt13 run delegates"
 check "$(cat "$(c1_rec "$wt13" t13-touch)" 2>/dev/null)" "$(printf 'branch=t13-touch\nhead=%s\ntoplevel=%s' "$(git -C "$wt13" rev-parse HEAD)" "$wt13_toplevel")" "C1 the delegated run's record names the worktree and its HEAD"

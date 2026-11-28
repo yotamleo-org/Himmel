@@ -85,7 +85,7 @@ step0_head_read() {
             toplevel) nt=$((nt + 1)); t="$v" ;;
             *) bad=1; break ;;
         esac
-    done 2>/dev/null < "$p"
+    done 2>/dev/null < "$p"  # read-sink-ok: $p comes from step0_head_path, a hash-named file under the git common dir, never argv or env
     [ "$bad" -ne 0 ] || [ "$(git rev-parse --verify --quiet "$h^{commit}" 2>/dev/null)" = "$h" ] || bad=1  # swallow-ok: a head= that is not this repo's full id of a commit is malformed (rc 2)
     if [ "$bad" -ne 0 ] || [ "$nb" -ne 1 ] || [ "$nh" -ne 1 ] || [ "$nt" -ne 1 ]; then
         printf '%s\n' "$p"
