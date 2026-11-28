@@ -20,6 +20,14 @@
 #   fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
 #   fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
 #   fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
+#   fleet-manifest.sh retire <manifest> [--apply]
+#
+# `retire` sweeps every *.fleet.json in the manifest's directory (the rows the fleet's doctor C100 reads) and retires
+# each row whose worker is proven gone: its doc is not an attempt in the bucket's fleet-control.json, its queue lock is
+# free, no live claude session carries it as WORKER_SESSION_DOC, and the doc is gone or its newest marker is WRAPPED or
+# HALTED. Every other row is kept, with why. It prints one line per row, <verdict>\t<manifest>\t<label>\t<doc>\t<proof
+# or why>: a dry run by default (would-retire | keep, nothing written); --apply takes each manifest's lock, re-reads each
+# candidate's proof under it and rewrites (retired | keep). A summary goes to stderr; rc 1 when a manifest is skipped.
 #
 # `t3 set` and `t3 unbind` (scripts/t3/relay-bind.sh) carry a T3 thread's binding on its fleet row: the row's
 # t3_thread / t3_kind / t3_notice fields, and a top-level t3_tombstones array of {thread, reason, at}. `t3 set` edits a listed
@@ -159,6 +167,7 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pend
        fleet-manifest.sh attempt end <manifest> --attempt-id A --reason <word>
        fleet-manifest.sh t3 set    <manifest> <worker doc> [--thread <threadId|pending>] [--kind ask|task] [--notice pending:0..3|sent|failed]
        fleet-manifest.sh t3 unbind <manifest> <threadId> [--reason <word>]
+       fleet-manifest.sh retire <manifest> [--apply]
 --lane is any lowercase word: native, claudex, openrouter, deepseek, t3 (a thread bound by scripts/t3/relay-bind.sh), ...
 add writes a pending row for a doc no session ever ran on (no marker bullet, free lock, no claude on it), with or without --pending
 USAGE
@@ -375,8 +384,104 @@ fleet_t3() (
     printf '%s\n' "$result" | atomic_write "$manifest" || { echo "fleet-manifest: cannot write $manifest" >&2; exit 1; }
 )
 
+retire_verdict() {
+    local doc=$1 lrc marker mrc
+    case "$RETIRE_MANAGED" in *$'\n'"$doc"$'\n'*) printf 'keep\tmanaged attempt\n'; return 0 ;; esac
+    if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then
+        "$TICKET_STATUS_QUEUE_LOCK" status "$doc" >/dev/null 2>&1; lrc=$?
+    else
+        bash "$HERE/../queue-lock.sh" status "$doc" >/dev/null 2>&1; lrc=$?
+    fi
+    case "$lrc" in
+        0) ;;
+        11|12) printf 'keep\tlock held\n'; return 0 ;;
+        *) printf 'keep\tlock unreadable (rc %s)\n' "$lrc"; return 0 ;;
+    esac
+    _ts_no_live_session_on "$doc" || { printf 'keep\tlive session\n'; return 0; }
+    marker=$(ts_marker_newest "$doc"); mrc=$?
+    case "$mrc:$marker" in
+        2:*) printf 'retire\tlock free, no live session, doc gone\n' ;;
+        0:WRAPPED|0:HALTED) printf 'retire\tlock free, no live session, newest marker %s\n' "$marker" ;;
+        0:) printf 'keep\tno marker, not wrapped\n' ;;
+        0:*) printf 'keep\tnewest marker %s, not wrapped\n' "$marker" ;;
+        *) printf 'keep\tdoc unreadable\n' ;;
+    esac
+}
+
+retire_managed() {
+    RETIRE_MANAGED=$'\n'
+    [ -e "$1" ] || return 0
+    RETIRE_MANAGED=$'\n'"$(jq -r '(.attempts // {})[] | .doc // empty' "$1")"$'\n' || return 1
+}
+
+fleet_retire() (
+    local manifest="${2:-}" apply=false dir m rows doc label v cache=$'\n' rest cands lines n_ret=0 n_keep=0 n_m=0 rc=0
+    [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+    shift 2
+    while [ "$#" -gt 0 ]; do
+        case "$1" in --apply) apply=true; shift ;; *) usage >&2; exit 2 ;; esac
+    done
+    # shellcheck source=../../lib/ticket-status.sh
+    . "$HERE/../../lib/ticket-status.sh" || exit 1
+    dir=$(dirname -- "$manifest")
+    [ -d "$dir" ] || { echo "fleet-manifest: no directory for $manifest" >&2; exit 1; }
+    retire_managed "$dir/fleet-control.json" || { echo "fleet-manifest: cannot read $dir/fleet-control.json" >&2; exit 1; }
+    for m in "$dir"/*.fleet.json; do
+        [ -f "$m" ] || continue
+        if [ -L "$m" ] || [ -L "$m.lock" ] || ! jq -e -s "$VALID" "$m" >/dev/null 2>&1; then
+            echo "fleet-manifest: retire skips a manifest it cannot rewrite: $m" >&2; rc=1; continue
+        fi
+        n_m=$((n_m + 1))
+        rows=$(jq -r "$JQ_W"'W[] | [.doc, (.label // "-")] | @tsv' "$m") || { rc=1; continue; }
+        cands=""
+        while IFS=$'\t' read -r doc label; do
+            [ -n "$doc" ] || continue
+            case "$cache" in
+                *$'\n'"$doc"$'\t'*) rest=${cache#*$'\n'"$doc"$'\t'}; v=${rest%%$'\n'*} ;;
+                *) v=$(retire_verdict "$doc"); cache="$cache$doc"$'\t'"$v"$'\n' ;;
+            esac
+            case "$v" in
+                retire$'\t'*)
+                    if [ "$apply" = true ]; then cands="$cands$doc"$'\t'"$label"$'\n'
+                    else printf 'would-retire\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#retire$'\t'}"; n_ret=$((n_ret + 1)); fi ;;
+                *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}"; n_keep=$((n_keep + 1)) ;;
+            esac
+        done <<<"$rows"
+        [ -n "$cands" ] || continue
+        lines=$(
+            # prim-ok: a 30 s bounded flock on fd 9, as the other manifest writers.
+            { exec 9>>"$m.lock" && flock -x -w 30 9; } || { echo "fleet-manifest: cannot lock $m.lock" >&2; exit 1; }
+            jq -e -s "$VALID" "$m" >/dev/null 2>&1 || { echo "fleet-manifest: refusing to rewrite an invalid manifest: $m" >&2; exit 1; }
+            retire_managed "$dir/fleet-control.json" || exit 1
+            drop=""
+            while IFS=$'\t' read -r doc label; do
+                [ -n "$doc" ] || continue
+                v=$(retire_verdict "$doc")
+                case "$v" in
+                    retire$'\t'*) drop="$drop$doc"$'\n'; printf 'retired\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#retire$'\t'}" ;;
+                    *) printf 'keep\t%s\t%s\t%s\t%s\n' "$m" "$label" "$doc" "${v#keep$'\t'}" ;;
+                esac
+            done <<<"$cands"
+            [ -n "$drop" ] || exit 0
+            jq --arg drop "$drop" 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end
+                | ($drop | split("\n")) as $D | .workers |= map(select(.doc as $d | any($D[]; . == $d) | not))' "$m" \
+                | atomic_write "$m" || { echo "fleet-manifest: cannot write $m" >&2; exit 1; }
+        ) || rc=1
+        [ -z "$lines" ] || printf '%s\n' "$lines"
+        n_ret=$((n_ret + $(grep -c '^retired' <<<"$lines")))
+        n_keep=$((n_keep + $(grep -c '^keep' <<<"$lines")))
+    done
+    if [ "$apply" = true ]; then
+        echo "fleet-manifest: retire: $n_ret row(s) retired, $n_keep kept across $n_m manifest(s) in $dir" >&2
+    else
+        echo "fleet-manifest: retire: dry run, $n_ret row(s) would be retired, $n_keep kept across $n_m manifest(s) in $dir; --apply rewrites" >&2
+    fi
+    exit "$rc"
+)
+
 case "${1:-}" in control|attempt) fleet_metadata "$@"; exit $? ;; esac
 case "${1:-}" in t3) fleet_t3 "$@"; exit $? ;; esac
+case "${1:-}" in retire) fleet_retire "$@"; exit $? ;; esac
 
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2

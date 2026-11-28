@@ -12,6 +12,7 @@
 #      add refuses to clobber an invalid one
 #   6b. add refuses a doc with whitespace or a glob character (tick word-splits)
 #   7. concurrent adds (two dispatches at once) lose no entry
+#   12. retire removes only rows proven gone across the bucket's manifests, a dry run by default
 #
 # Hermetic: temp dir only. PLATFORM GUARD: the
 # chief kit is Linux-only (util-linux flock). bash 3.2-safe.
@@ -519,6 +520,48 @@ check '11. and the row keeps its value' pending "$(jq -r --arg d "$g1" '.workers
 usage_text="$(bash "$SCRIPT" 2>&1)"
 case "$usage_text" in *'lowercase word: native, claudex, openrouter, deepseek, t3'*) usage_names=yes ;; *) usage_names=no ;; esac
 check '11. the usage text names lane t3' yes "$usage_names"
+
+d12="$tmp/m12"; mkdir -p "$d12"
+m12="$d12/chief-a.fleet.json"; m12b="$d12/chief-b.fleet.json"
+gone="$d12/HIMMEL-12-N90-gone.md"
+wrapped="$d12/HIMMEL-12-N91-wrapped.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n- 11:00 WRAPPED — done\n' > "$wrapped"
+held="$d12/HIMMEL-12-N92-held.md"; printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$held"
+onproc="$d12/HIMMEL-12-N93-onproc.md"
+open="$d12/HIMMEL-12-N94-open.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n' > "$open"
+race="$d12/HIMMEL-12-N95-race.md"
+lock12="$d12/queue-lock"
+# shellcheck disable=SC2016  # $2 and $n belong to the stub and expand when it runs
+printf '#!/bin/bash\ncase "$2" in\n  */HIMMEL-12-N92-*) exit 11 ;;\n  */HIMMEL-12-N95-*) n=$(cat "%s/n95" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n95"; [ "$n" -lt 1 ] || exit 11 ;;\nesac\nexit 0\n' "$d12" "$d12" > "$lock12"
+chmod +x "$lock12"
+printf '{"schema":1,"keep_me":1,"workers":[{"doc":"%s","label":"N90"},{"doc":"%s","label":"N91"},{"doc":"%s","label":"N92"}]}\n' "$gone" "$wrapped" "$held" > "$m12"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N93"},{"doc":"%s","label":"N94"},{"doc":"%s","label":"N95"}]}\n' "$onproc" "$open" "$race" > "$m12b"
+before_a="$(cat "$m12")"; before_b="$(cat "$m12b")"
+WORKER_SESSION_DOC="$onproc" python3 -c 'import ctypes,time; ctypes.CDLL(None).prctl(15,b"claude",0,0,0); time.sleep(60)' & live12=$!
+sleep .2
+dry="$(TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" 2>/dev/null)"; rc=$?
+check '12. a dry run succeeds (rc 0)' 0 "$rc"
+check '12. the dry run rewrites no manifest' "$before_a|$before_b" "$(cat "$m12")|$(cat "$m12b")"
+check '12. the dry run lists a gone doc with its proof' 1 "$(grep -c "^would-retire	$m12	N90	$gone	lock free, no live session, doc gone$" <<<"$dry")"
+check '12. the dry run lists a wrapped doc with its proof' 1 "$(grep -c "^would-retire	$m12	N91	$wrapped	lock free, no live session, newest marker WRAPPED$" <<<"$dry")"
+check '12. a row whose lock is held is kept' 1 "$(grep -c "^keep	$m12	N92	$held	lock held$" <<<"$dry")"
+check '12. a row a live claude session is on is kept, though its doc is gone' 1 "$(grep -c "^keep	$m12b	N93	$onproc	live session$" <<<"$dry")"
+check '12. a row whose doc is not wrapped is kept' 1 "$(grep -c "^keep	$m12b	N94	$open	newest marker LIVE, not wrapped$" <<<"$dry")"
+check '12. the sibling manifest is swept too' 1 "$(grep -c "^would-retire	$m12b	N95	$race	" <<<"$dry")"
+check '12. the dry run names every row once' 6 "$(grep -c . <<<"$dry")"
+rm -f "$d12/n95"
+out="$(TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" --apply 2>/dev/null)"; rc=$?
+kill "$live12" 2>/dev/null; wait "$live12" 2>/dev/null
+check '12. the apply succeeds (rc 0)' 0 "$rc"
+check '12. the apply prints each row it retired' "retired	$m12	N90	$gone	lock free, no live session, doc gone
+retired	$m12	N91	$wrapped	lock free, no live session, newest marker WRAPPED" "$(grep '^retired' <<<"$out")"
+check '12. the proven-gone rows leave the manifest and the held row stays' "$held" "$(jq -r '.workers[].doc' "$m12")"
+check '12. a key the writer does not own survives the rewrite' 1 "$(jq -r '.keep_me' "$m12")"
+check '12. the live-session and not-wrapped rows stay' "$onproc
+$open
+$race" "$(jq -r '.workers[].doc' "$m12b")"
+check '12. a row whose lock is taken before the rewrite is kept by the re-check under the lock' 1 "$(grep -c "^keep	$m12b	N95	$race	lock held$" <<<"$out")"
+TICKET_STATUS_QUEUE_LOCK="$lock12" bash "$SCRIPT" retire "$m12" --force >/dev/null 2>&1; rc=$?
+check '12. an unknown retire flag is a usage error (rc 2)' 2 "$rc"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
