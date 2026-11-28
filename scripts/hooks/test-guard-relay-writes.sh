@@ -102,13 +102,15 @@ read_payload() {
 
 run_relay() {
     local name="$1" json="$2"
-    printf '%s' "$json" | env HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_RELAY=1 "$BASH_ABS" "$HOOK" >"$TMP/out-$name" 2>"$TMP/err-$name"
+    printf '%s' "$json" > "$TMP/in-$name" || { echo "setup: could not write the payload fixture" >&2; exit 1; }
+    env HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_RELAY=1 "$BASH_ABS" "$HOOK" <"$TMP/in-$name" >"$TMP/out-$name" 2>"$TMP/err-$name"
     echo "$?"
 }
 
 run_norelay() {
     local name="$1" json="$2"
-    printf '%s' "$json" | env -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$ROOT" "$BASH_ABS" "$HOOK" >"$TMP/out-$name" 2>"$TMP/err-$name"
+    printf '%s' "$json" > "$TMP/in-$name" || { echo "setup: could not write the payload fixture" >&2; exit 1; }
+    env -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$ROOT" "$BASH_ABS" "$HOOK" <"$TMP/in-$name" >"$TMP/out-$name" 2>"$TMP/err-$name"
     echo "$?"
 }
 

@@ -61,7 +61,7 @@ cleanup() {
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" "$XDG_RUNTIME_DIR" 2>/dev/null
     rmdir "$TMP/dir.jsonl" "$TMP/adopter" "$TMP/fake-anchor/scripts" "$TMP/fake-anchor" 2>/dev/null
     for f in "$TMP"/*.jsonl; do rm -f "$f" 2>/dev/null; done
-    rm -f "$PAYLOAD_FILE" "$TMP/block-out.json" 2>/dev/null
+    rm -f "${PAYLOAD_FILE:-}" "$TMP/block-out.json" 2>/dev/null
     rmdir "$TMP" 2>/dev/null
 }
 trap cleanup EXIT
