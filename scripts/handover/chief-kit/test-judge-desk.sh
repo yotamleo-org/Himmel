@@ -594,6 +594,15 @@ stopped "review: an apostrophe in a comment does not hide the call: STOP written
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash \\\\\\n/x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
 eq "review: a backslash-newline inside a call does not hide it (rc 3)" "$rc" 3
 stopped "review: a backslash-newline inside a call: STOP written"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"# note \\\\\\n bash /x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a comment that ends in a backslash does not swallow the next line's call (rc 3)" "$rc" 3
+stopped "review: a comment ending in a backslash: STOP written"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash 'x/write-\\\\\\nverdict.sh' dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a backslash-newline inside single quotes names another file and is no call" "$out" "RECORDED $RUN GO"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"echo a\\\\\\\\\\\\\\\\\\n bash /x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a newline after an escaped backslash still separates commands (rc 3)" "$rc" 3
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"echo a\\\\ #b; bash /x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a hash after an escaped space is part of the word, not a comment (rc 3)" "$rc" 3
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"echo hi # bash /x/write-verdict.sh x\"},\"hi\",0]"
 eq "review: a call named only inside a comment is no call" "$out" "RECORDED $RUN GO"
 
