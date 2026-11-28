@@ -765,6 +765,58 @@ bash_case "10332 Darwin: cp -r onto ~/.HIMMEL/ -> block" block "cp -r $T/payload
 bash_case "10332 Darwin control: cp -r into an unrelated directory -> allow" allow "cp -r $T/payload/. $T/backup/"
 unset HIMMEL_GUARD_FORCE_DARWIN
 
+echo "== a file path over the CLI's 4096 limit =="
+bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
+need_bytes() {
+    local n
+    n="$(bytes_of "$2")"
+    case "$n" in '' | *[!0-9]*) echo "FAIL: fixture $1 could not be measured" >&2; exit 1 ;; esac
+    if [ "$n" -lt "$3" ] || [ "$n" -gt "$4" ]; then echo "FAIL: fixture $1 is $n bytes, not $3 to $4" >&2; exit 1; fi
+}
+mkpath() {
+    local p="$1/" seg n
+    seg="$(printf 'a%.0s' $(seq 1 99))/"
+    n="$(bytes_of "$p")"
+    while [ $((n + 100)) -lt "$2" ]; do p="$p$seg"; n=$((n + 100)); done
+    while [ "$n" -lt "$2" ]; do p="${p}b"; n=$((n + 1)); done
+    printf '%s' "$p"
+}
+SP_PAD="$(printf ' %.0s' $(seq 1 4100))"
+NL_PAD="$(printf '\n%.0s' $(seq 1 4100); printf x)"; NL_PAD="${NL_PAD%x}"
+P4096="$(mkpath "$T/long" 4096)"
+P4097="${P4096}b"
+U4="$(printf '\360\237\230\200')"
+SEG4=""; for _i in $(seq 1 50); do SEG4="$SEG4$U4"; done
+PU="$T/wide"; for _i in $(seq 1 22); do PU="$PU/$SEG4"; done
+P_NL="$T/notes.txt$NL_PAD"
+need_bytes "the 4096-byte path" "$P4096" 4096 4096
+need_bytes "the 4097-byte path" "$P4097" 4097 4097
+need_bytes "the non-ASCII path" "$PU" 4097 1000000
+P_NL_BYTES=$(($(bytes_of "$T/notes.txt") + 4100))
+need_bytes "the newline-padded path" "$P_NL" "$P_NL_BYTES" "$P_NL_BYTES"
+P_SP_BYTES=$(($(bytes_of "$CFG") + 4100))
+need_bytes "the space-padded config path" "$CFG$SP_PAD" "$P_SP_BYTES" "$P_SP_BYTES"
+file_case "Write to the config, padded past the CLI's 4096 limit -> block" block Write "$CFG$SP_PAD"
+file_case "symlink resolving to the config, padded past the CLI's 4096 limit -> block" block Write "$T/alias.json$SP_PAD"
+file_case "control: a benign path of exactly 4096 bytes -> allow" allow Write "$P4096"
+file_case "a benign path of 4097 bytes -> block" block Write "$P4097"
+file_case "a benign non-ASCII path over 4096 bytes -> block" block Write "$PU"
+file_case "a benign short path followed by 4100 newlines -> block" block Write "$P_NL"
+mkshim() {
+    mkdir -p "$1" || return 1
+    printf '#!/bin/sh\ncase "$*" in *utf8bytelength*) cat >/dev/null; [ %s = junk ] && { echo x; exit 0; }; exit 1 ;; esac\nexec "%s" "$@"\n' "$2" "$(command -v jq)" > "$1/jq" && chmod +x "$1/jq"
+}
+{ mkshim "$T/shim-fail" fail && mkshim "$T/shim-junk" junk; } || { echo "FAIL: cannot build the jq shims" >&2; exit 1; }
+PATH="$T/shim-fail:$PATH" file_case "the path-length read fails -> block" block Write "$T/notes.txt"
+PATH="$T/shim-junk:$PATH" file_case "the path-length read prints no integer -> block" block Write "$T/notes.txt"
+run "NotebookEdit with a notebook_path of 4097 bytes -> block" block "$(jq -nc --arg p "$P4097" '{tool_name:"NotebookEdit",tool_input:{notebook_path:$p}}')"
+LONG_ERR="$(jq -nc --arg p "$P4097" '{tool_name:"Write",tool_input:{file_path:$p}}' | $TO bash "$HOOK" 2>&1 >/dev/null)"
+case "$LONG_ERR" in
+    *salus*) bad "the over-limit refusal asks for a shorter path, not the config remedy - got the config remedy" ;;
+    *"shorter path"*) ok "the over-limit refusal asks for a shorter path, not the config remedy" ;;
+    *) bad "the over-limit refusal asks for a shorter path, not the config remedy - got: $LONG_ERR" ;;
+esac
+
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
 run "malformed JSON naming nothing -> allow" allow "{not json"
