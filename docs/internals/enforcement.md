@@ -6687,6 +6687,16 @@ found by walking `anchor_ref`'s history — still denies. That is the intended
 degrade: only a change that genuinely reached the trusted branch re-pins;
 worktree drift or a not-yet-merged hook edit does not.
 
+**Re-running the recorder adds a pin only for a file that is on main.** The
+recovery path that re-runs `record-hook-integrity.sh` for a session that
+already has a v2 record keeps every existing pin as it is. A path that has no
+pin yet is added only when its HEAD blob is the blob at the record's anchor,
+`origin/<default branch>`. So a new file committed only on the branch, such as
+a new `scripts/harnesses/<id>.json` descriptor, gets no pin from a re-run, and
+the launcher's own check still refuses it. A new descriptor must land on main
+before a session trusts it. Suite: `scripts/hooks/test-record-hook-integrity.sh`
+rows H8 and H9.
+
 **New worker-lane fence — the anchor-tamper class in
 `block-worker-write-fence.sh`.** Re-pinning off `origin/<default>` makes
 `refs/remotes/origin/<default>` **security-relevant** for the first time: the

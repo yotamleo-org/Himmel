@@ -1176,6 +1176,59 @@ else
   bad "rowH7: deleted scripts/harnesses at record time gave '$hH7' pins=$(jq -c '.pins' "$OUTH/sess-h.json" 2>/dev/null)"
 fi
 
+PH="$(new_fixture rowH8 main)"
+mkdir -p "$PH/scripts/harnesses"
+printf '{"name":"claude"}\n' > "$PH/scripts/harnesses/claude.json"
+git -C "$PH" -c user.email=t@t -c user.name=t add -A
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -m registry
+git -C "$PH" push -q origin HEAD:refs/heads/main
+git -C "$PH" fetch -q origin
+OUTH="$T/rowH8/out"
+run_recorder "$PH" "$OUTH" "sess-h"
+RECH="$OUTH/sess-h.json"
+printf '{"name":"landed"}\n' > "$PH/scripts/harnesses/landed.json"
+git -C "$PH" -c user.email=t@t -c user.name=t add -A
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -m landed
+git -C "$PH" push -q origin HEAD:refs/heads/main
+git -C "$PH" fetch -q origin
+run_recorder "$PH" "$OUTH" "sess-h"
+hH9="$(h_verify)"
+if h_pinned_at_head scripts/harnesses/landed.json && [ "$hH9" = "ok" ]; then
+  ok "rowH9 control: a recorder re-run pins a new descriptor whose bytes are on origin/main"
+else
+  bad "rowH9 control: landed.json pin='$(h_pin scripts/harnesses/landed.json)' verify='$hH9' (want pinned at HEAD and ok)"
+fi
+
+printf '{"name":"planted"}\n' > "$PH/scripts/harnesses/planted.json"
+git -C "$PH" -c user.email=t@t -c user.name=t add -A
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -m planted
+run_recorder "$PH" "$OUTH" "sess-h"
+hH8="$(h_verify)"
+if [ -z "$(h_pin scripts/harnesses/planted.json)" ] && [ "$hH8" = "deny scripts/harnesses/planted.json" ]; then
+  ok "rowH8: a recorder re-run does not pin a new descriptor committed only on the branch, and the hook call is refused"
+else
+  bad "rowH8: re-run after committing scripts/harnesses/planted.json gave '$hH8' pin='$(h_pin scripts/harnesses/planted.json)' (want no pin and a deny naming it)"
+fi
+
+git -C "$PH" rm -q scripts/harnesses/planted.json
+printf '{"name":"drift"}\n' > "$PH/scripts/harnesses/drift.json"
+git -C "$PH" -c user.email=t@t -c user.name=t add -A
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -m drift
+git -C "$PH" push -q origin HEAD:refs/heads/main
+git -C "$PH" fetch -q origin
+printf '{"name":"drift","edited":true}\n' > "$PH/scripts/harnesses/drift.json"
+git -C "$PH" -c user.email=t@t -c user.name=t commit -q -am drift-edit
+run_recorder "$PH" "$OUTH" "sess-h"
+hH10="$(h_verify)"
+drift_main="$(git -C "$PH" rev-parse --verify --quiet origin/main:scripts/harnesses/drift.json)"
+if [ -n "$drift_main" ] && [ "$drift_main" != "$(git -C "$PH" rev-parse HEAD:scripts/harnesses/drift.json)" ] \
+  && [ "$(jq -r '.anchor' "$RECH")" = "$(git -C "$PH" rev-parse origin/main)" ] \
+  && [ -z "$(h_pin scripts/harnesses/drift.json)" ] && [ "$hH10" = "deny scripts/harnesses/drift.json" ]; then
+  ok "rowH10: a re-run does not pin a new descriptor whose path is on origin/main with other bytes"
+else
+  bad "rowH10: drift.json edited on the branch gave '$hH10' pin='$(h_pin scripts/harnesses/drift.json)' main-blob='$drift_main' record-anchor=$(jq -r '.anchor' "$RECH") (want no pin and a deny naming it)"
+fi
+
 # ---------------------------------------------------------------------------
 # Row 26: the recorder runs under bash 3.2. An apostrophe in a comment inside a
 # multi-line $( ) reads there as an open quote; `bash -n` can miss it when a
