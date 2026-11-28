@@ -1287,3 +1287,4 @@ scripts/measurements/test-gh-graphql-callers.sh	local	behaviour suite, new
 scripts/telegram/test-spec-page-gen.sh	pr	guard
 scripts/vm/test-vm-maintain.sh	local	behaviour suite, new
 scripts/remote-setup/test-remote-setup.sh	daily	timing suite, runs in the timing-daily job: main cap overrun 2026-11-25 (1 red); had no row
+scripts/handover/chief-kit/test-file-slices.sh	local	new, behaviour suite for the slice filer, stub Jira, no gate role

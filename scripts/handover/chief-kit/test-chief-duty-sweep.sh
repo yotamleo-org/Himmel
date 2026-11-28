@@ -254,7 +254,7 @@ has "judge-owed: a verdict at an older head, delta finding" "DUTY judge-owed 101
 SPEC="$WORK/w/state/chief-duty-judge/101-$H7_1.json"
 if [ -s "$SPEC" ]; then pass "judge-owed: spec written"; else fail "judge-owed: spec written ($SPEC)"; fi
 has "judge-owed: the next names gen-judge-brief" "gen-judge-brief.py" "$OUT"
-python3 -I "$JUDGE" "$SPEC" --chief test-chief --dispatch-json >"$WORK/w/spec.out" 2>"$WORK/w/spec.err"
+HANDOVER_DIR="$WORK/w/handovers" USER_SLUG=u python3 -I "$JUDGE" "$SPEC" --chief test-chief --dispatch-json >"$WORK/w/spec.out" 2>"$WORK/w/spec.err"
 check "judge-owed: gen-judge-brief accepts the spec" 0 "$?"
 touch -d '2 hours ago' "$SPEC"
 sum1=$(sha256sum "$SPEC" | cut -d' ' -f1)

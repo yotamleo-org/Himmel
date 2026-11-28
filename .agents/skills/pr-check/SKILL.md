@@ -391,10 +391,11 @@ load and export `CR_PROFILE` from the primary checkout's `.env` WITHOUT
 hand-computing a tier filter (`critic-panel.sh` resolves its own
 tiers from `CR_PROFILE` and treats it authoritative — hand-scoping the tier is
 what drifted a run to free-only and silently dropped the paid codex critic),
-diff the captured base SHA against `--head` (never live HEAD — step 4 stamps
-every ledger row with the captured `$head`, so a checkout that moved mid-run,
-including a same-SHA branch switch, must be a REFUSAL rather than a silent live
-review), and run the panel over it — retrying once through `rtk proxy git diff`
+diff the captured base SHA against the head step 0 saved for this branch (never
+live HEAD — step 4 stamps every ledger row with the captured `$head`, so a
+checkout that moved since step 0, including a same-SHA branch switch, must be a
+REFUSAL rather than a silent live review; a typed `--head` is accepted only when
+it resolves to that same commit), and run the panel over it — retrying once through `rtk proxy git diff`
 when the plain diff comes back as a stat summary instead of a unified diff (an
 rtk-proxied environment's `git diff`, which `critic-panel.sh` otherwise rejects
 as "no valid diff"). `CR_PROFILE` is authoritative — the panel derives its tiers
@@ -411,7 +412,7 @@ the bypass.
 
     panel_tmp=$(mktemp -t critic-panel-avail.XXXXXX)
     panel_rc=0
-    panel_out=$(bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --head <head> --branch '<branch>' 2>"$panel_tmp") || panel_rc=$?
+    panel_out=$(bash "<himmel_dir>/scripts/cr/panel-first-pass.sh" --branch '<branch>' 2>"$panel_tmp") || panel_rc=$?
     cat "$panel_tmp" >&2
     panel_avail_lines=$(grep '^panel-availability:' "$panel_tmp" || true)
     rm -f "$panel_tmp"

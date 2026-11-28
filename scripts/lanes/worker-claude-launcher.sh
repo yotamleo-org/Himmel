@@ -141,8 +141,8 @@ if [ "$_readiness" = 1 ]; then
     for _role_marker in "HIMMEL_CONSOLE_JUDGE=${HIMMEL_CONSOLE_JUDGE:-}" "HIMMEL_CONSOLE_RELAY=${HIMMEL_CONSOLE_RELAY:-}" \
         "HIMMEL_RELEASE_MANAGER=${HIMMEL_RELEASE_MANAGER:-}" "CHIEF_CONTEXT=${CHIEF_CONTEXT:-}" \
         "WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" \
-        "WORKER_SESSION_REMOTE_CONTROL=${WORKER_SESSION_REMOTE_CONTROL:-}"; do
-        [ -z "${_role_marker#*=}" ] || _ready_refuse "${_role_marker%%=*} is set: a judge, relay, release-manager, chief, consult or remote-control launch cannot also be the readiness role"
+        "WORKER_SESSION_REMOTE_CONTROL=${WORKER_SESSION_REMOTE_CONTROL:-}" "WORKER_SESSION_CODE_MODE=${WORKER_SESSION_CODE_MODE:-}"; do
+        [ -z "${_role_marker#*=}" ] || _ready_refuse "${_role_marker%%=*} is set: a judge, relay, release-manager, chief, consult, remote-control or code-mode launch cannot also be the readiness role"
     done
     # The restrictions must exist: the settings, the strict MCP config and a minted session id.
     [ -n "$WORKER_SESSION_PROFILE_SETTINGS" ] && [ -f "$WORKER_SESSION_PROFILE_SETTINGS" ] || _ready_refuse "WORKER_SESSION_PROFILE_SETTINGS is unset or missing"
@@ -298,6 +298,21 @@ if [ -n "$_remote_control" ]; then
             exit 2 ;;
     esac
     PRE+=(--remote-control "$_remote_control")
+fi
+if [ "${WORKER_SESSION_CODE_MODE:-}" = 1 ]; then
+    if [ -n "$_remote_control" ]; then
+        echo "worker-claude-launcher: refusing to launch: WORKER_SESSION_CODE_MODE=1 and WORKER_SESSION_REMOTE_CONTROL are both set; Code Mode cannot share a session with Remote Control" >&2
+        exit 2
+    fi
+    case "${CLAUDE_BIN##*/}" in
+        claude-*)
+            echo "worker-claude-launcher: refusing to launch: WORKER_SESSION_CODE_MODE=1 but the lane launcher ${CLAUDE_BIN##*/} is not the native claude (Code Mode runs on a first-party connection only)" >&2
+            exit 2 ;;
+    esac
+    export CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1
+    unset -v CLAUDE_CODE_ENTRYPOINT
+else
+    unset -v CLAUDE_CODE_EXPERIMENTAL_CODE_MODE
 fi
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")

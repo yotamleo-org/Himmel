@@ -91,11 +91,34 @@ check "$a_ok" "yes" "T4 fixture resolves to the adopter lane"
 case "$out4" in *"pr-check-context: no_marker_review=yes"*) nm=yes ;; *) nm=no ;; esac
 check "$nm" "yes" "T5 adopter lane with no marker prints no_marker_review=yes"
 
+adopter_common="$(cd "$adopter" && cd -P -- "$(git rev-parse --git-common-dir)" && pwd -P)" || setup_fail "common dir"
+rec_path() { printf '%s/cr-step0-head/%s\n' "$adopter_common" "$(printf '%s' "$1" | git hash-object --stdin)"; }
+featx_rec="$(rec_path feat/x)"
+want_rec="$(printf 'branch=feat/x\nhead=%s\ntoplevel=%s' "$(git -C "$adopter" rev-parse HEAD)" "$(cd "$adopter" && pwd -P)")"
+got_rec="$(cat "$featx_rec" 2>/dev/null)" || got_rec="<no file at $featx_rec>"
+check "$got_rec" "$want_rec" "S1 step 0 writes branch=, head= and toplevel= at the hashed record path"
+
+mkdir -p "${featx_rec%/*}" || setup_fail "record dir"
+printf 'branch=feat/x\nhead=%s\ntoplevel=%s\n' "$(git -C "$adopter" rev-parse HEAD)" "$(cd "$adopter" && pwd -P)" > "$featx_rec" || setup_fail "seed record"
+rm -rf "$adopter_common/cr-prior-blocking"
+ln -s "$tmp/nowhere" "$adopter_common/cr-prior-blocking"
+(cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" >/dev/null 2>&1)
+rc_s2=$?
+rm -f "$adopter_common/cr-prior-blocking"
+check_rc "$rc_s2" 2 "S2 a failed verdict-file truncation exits 2"
+if [ -e "$featx_rec" ] || [ -L "$featx_rec" ]; then s2_left=yes; else s2_left=no; fi
+check "$s2_left" "no" "S2 the truncation failure leaves no record"
+
 # T6: on the default branch step 0 still refuses (exit 4), no marker or not.
 git -C "$adopter" checkout -q main || setup_fail "main checkout"
+main_rec="$(rec_path main)"
+mkdir -p "${main_rec%/*}" || setup_fail "main record dir"
+printf 'branch=main\nhead=%s\ntoplevel=%s\n' "$(git -C "$adopter" rev-parse HEAD)" "$(cd "$adopter" && pwd -P)" > "$main_rec" || setup_fail "seed main record"
 (cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" >/dev/null 2>&1)
 rc6=$?
 check_rc "$rc6" 4 "T6 adopter default branch still refused with exit 4"
+if [ -e "$main_rec" ] || [ -L "$main_rec" ]; then s2_left=yes; else s2_left=no; fi
+check "$s2_left" "no" "S2 the default-branch refusal (exit 4) leaves no record for main"
 
 echo
 echo "pass=$pass fail=$fail"

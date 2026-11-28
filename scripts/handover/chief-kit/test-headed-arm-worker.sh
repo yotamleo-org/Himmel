@@ -3094,6 +3094,46 @@ contains "29g ... and closes it with LAUNCH-REFUSED" "$(cat "$tmp/c29g/log" 2>/d
 contains "29g ... and the chief inbox carries it" "$(cat "$lr_inbox")" "LAUNCH-REFUSED PROJ-29-N7-noguard cannot load"
 
 
+l1_launch() {
+  local tree="$tmp/tree-l1-$1" name="PROJ-9631-N1-l1$1" doc
+  mk_anchorless_tree "$tree"
+  rm "$tree/scripts/lib/fleet-reservation-key.sh"
+  # shellcheck disable=SC2016
+  printf '. %q\nif [ %q = every ] || [ ! -e %q ]; then echo x >> %q; rm -rf "$SLOTS/.admit"; fi\n' \
+    "$(cd "$HERE/../../lib" && pwd)/fleet-reservation-key.sh" "$2" "$tree/fired" "$tree/fired" > "$tree/scripts/lib/fleet-reservation-key.sh"
+  printf '%s\n' '#!/usr/bin/env bash' "touch '$tree/target-ran'" 'exit 0' > "$tree/target.sh"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$tree/ps"
+  chmod 755 "$tree/target.sh" "$tree/ps"; mkdir -p "$tree/proc"
+  mkdir -p "$tmp/l1-$1"; doc="$tmp/l1-$1/$name.md"; fx_brief "# $name" > "$doc"
+  l1_manifest="$tmp/l1-$1/fleet.json"
+  bash "$HERE/fleet-manifest.sh" control init "$l1_manifest" --target 4 >/dev/null || return 1
+  bash "$HERE/fleet-manifest.sh" control set "$l1_manifest" --mode active --expect-gen 1 >/dev/null || return 1
+  bash "$HERE/fleet-manifest.sh" add "$l1_manifest" "$doc" --lane native --pending >/dev/null || return 1
+  l1_tree="$tree" l1_log="$tmp/log-l1-$1" l1_rc=0
+  FLEET_ADMIT_LAUNCH_WAIT_SECS=10 FLEET_PS_CMD="$tree/ps" FLEET_PROC="$tree/proc" CADENCE_USAGE_SKIP_REFRESH=1 \
+    CADENCE_USAGE_CACHE="$tmp/no-native-cache" HEADED_ARM_WORKER_TARGET="$tree/target.sh" \
+    HEADED_ARM_WORKER_PREFLIGHT="$tree/scripts/lib/usage-preflight.sh" \
+    bash "$SCRIPT" --no-profile --fleet "$l1_manifest" "$name" "$doc" "$tmp/sig-l1-$1" "$PAST" "$l1_log" claude-sonnet-5-5 >/dev/null 2>&1 || l1_rc=$?
+  l1_cause="$(jq -rs --arg n "$name" '[.[] | select(.name == $n)] | last | .cause' "$HOME/.himmel/launch-refusals.jsonl" 2>/dev/null)"
+  [ -e "$tree/fired" ] || grep -E 'bank-preflight|fleet-runtime|refusing' "$l1_log" 2>/dev/null | tail -4
+}
+if ! command -v flock >/dev/null 2>&1; then
+  echo "SKIP - L1/L1c: fleet-manifest.sh needs util-linux flock, absent here"
+else
+l1_launch every every
+check "L1 the whole-lock loss trigger fired" yes "$([ -e "$l1_tree/fired" ] && echo yes || echo no)"
+check "L1 a lock lost on every pass: exit 10" 10 "$l1_rc"
+check "L1 ... recorded as an admission refusal, not a pause" fleet-admission "$l1_cause"
+check "L1 ... the log holds the preflight's lost-lock refusal" yes "$(grep -qF 'was lost during admission (pre-reserve) and the re-admissions did not keep it' "$l1_log" && echo yes || echo no)"
+check "L1 ... and never the fleet cap" no "$(grep -qE 'fleet-size cap reached|FLEET_CAP_OK' "$l1_log" && echo yes || echo no)"
+l1_launch once once
+check "L1c the whole-lock loss trigger fired once" 1 "$(grep -c x "$l1_tree/fired" 2>/dev/null)"
+check "L1c a lock lost once: the launch passes the preflight" no "$(grep -q 'fleet admission refused' "$l1_log" && echo yes || echo no)"
+check "L1c ... after one re-admission" yes "$(grep -qF 'admission lock lost (pre-reserve) — re-running admission (1 of 2)' "$l1_log" && echo yes || echo no)"
+check "L1c ... and the launch reaches its target" yes "$([ -e "$l1_tree/target-ran" ] && echo yes || echo no)"
+check "L1 control: a launch refused on every pass never reaches its target" no "$([ -e "$tmp/tree-l1-every/target-ran" ] && echo yes || echo no)"
+fi
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"

@@ -702,6 +702,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'block-rogue-claude-schedule.sh',
       'block-subagent-release-operator.sh',
       'block-tail-pipe-on-gates.sh',
+      'block-unexpanded-file-path.sh',
       'block-write-into-main-checkout.sh',
       'check-cr-marker-on-pr-create.sh',
       'guard-judge-write-scope.sh',
@@ -1244,6 +1245,44 @@ test('a starved block-bare-qmd-query.sh DENIES the chain instead of being skippe
     assert.match(result.stderr, /DENY block-bare-qmd-query\.sh \(budget=500ms/);
     assert.equal(ran(dir, 'allow.sh'), false, 'a starved bare-qmd-query guard must deny, not skip past it');
   });
+});
+
+const UNEXPANDED_GUARD = join(HERE, 'block-unexpanded-file-path.sh');
+function unexpandedHangingJqRun(extraEnv = {}) {
+  let out;
+  withChain((dir) => {
+    writeFileSync(join(dir, 'jq'), '#!/bin/sh\nexec sleep 3\n');
+    chmodSync(join(dir, 'jq'), 0o755);
+    const env = {
+      ...process.env,
+      PATH: `${dir}:${process.env.PATH}`,
+      RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500',
+      RUN_HOOK_CHAIN_SKIP_LOG: join(dir, 'skips.jsonl'),
+      ...extraEnv,
+    };
+    if (!('UNEXPANDED_FILE_PATH_OK' in extraEnv)) delete env.UNEXPANDED_FILE_PATH_OK;
+    const result = spawnSync(process.execPath, [LAUNCHER, '--chain', UNEXPANDED_GUARD, join(dir, 'allow.sh')], {
+      encoding: 'utf8',
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/tmp/x', content: 'x' } }),
+      env,
+    });
+    out = { result, laterRan: ran(dir, 'allow.sh') };
+  });
+  return out;
+}
+
+test('a block-unexpanded-file-path.sh whose jq hangs DENIES the chain instead of being skipped', () => {
+  const run = unexpandedHangingJqRun();
+  assert.equal(run.result.status, 2, run.result.stderr);
+  assert.match(run.result.stderr, /DENY block-unexpanded-file-path\.sh \(budget=500ms/);
+  assert.equal(run.laterRan, false, 'a hung long-path guard must deny, not skip past it');
+});
+
+test('UNEXPANDED_FILE_PATH_OK=1 in the launcher env reaches the long-path guard as a chain member', () => {
+  const run = unexpandedHangingJqRun({ UNEXPANDED_FILE_PATH_OK: '1' });
+  assert.equal(run.result.status, 0, run.result.stderr);
+  assert.doesNotMatch(run.result.stderr, /block-unexpanded-file-path/);
+  assert.equal(run.laterRan, true, 'the switched-off guard lets the chain reach the next member');
 });
 
 // A must-run member that crashes (exits with anything other

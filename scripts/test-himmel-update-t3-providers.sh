@@ -41,6 +41,8 @@ if ! { cp "$SCRIPT" "$CLONE/scripts/himmel-update.sh" \
     && cp "$src_scripts/lib/flags.tsv"            "$CLONE/scripts/lib/flags.tsv" \
     && cp "$src_scripts/lib/prim.sh"              "$CLONE/scripts/lib/prim.sh" \
     && cp "$src_scripts/lib/sha256-bin.sh"        "$CLONE/scripts/lib/sha256-bin.sh" \
+    && cp "$src_scripts/lib/chokepoint-seam-guard.sh" "$CLONE/scripts/lib/chokepoint-seam-guard.sh" \
+    && cp "$src_scripts/chokepoints.json"         "$CLONE/scripts/chokepoints.json" \
     && cp "$src_scripts/lanes/plugin-profiles.json" "$CLONE/scripts/lanes/plugin-profiles.json" \
     && cp "$src_scripts/lanes/plugin-profiles.mjs" "$CLONE/scripts/lanes/plugin-profiles.mjs" \
     && cp "$src_scripts/lib/env-alias.mjs"        "$CLONE/scripts/lib/env-alias.mjs" \
@@ -219,6 +221,15 @@ check_has "the profile instance is in T3's settings" "antigravity_design" "$(ids
 echo "full run order: agy_profiles runs before sync_t3_providers"
 awk '/^sync_agy_profiles \|\| true/{a=NR} /^sync_t3_providers \|\| true/{b=NR} END{exit !(a && b && a < b)}' "$SCRIPT"
 check_eq  "the step is called before sync_t3_providers" 0 "$?"
+
+echo "U2 full run order: the five plugin-changing calls come before sync_agy_profiles"
+u2_target="$SCRIPT"
+u2_agy="$(grep -n -E '^sync_agy_profiles( |$)' "$u2_target" | head -n 1 | cut -d: -f1)"
+for u2_name in sync_marketplaces install_missing_himmel_plugins update_installed_plugins refresh_drifted_plugin_caches reconcile_plugins; do
+    u2_line="$(grep -n -E "^$u2_name( |\$)" "$u2_target" | head -n 1 | cut -d: -f1)"
+    check_eq "U2 $u2_name is called before sync_agy_profiles" yes \
+        "$([ -n "$u2_line" ] && [ -n "$u2_agy" ] && [ "$u2_line" -lt "$u2_agy" ] && echo yes || echo no)"
+done
 
 echo "usage and unknown-item texts name t3_providers"
 run --help
