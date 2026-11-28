@@ -158,11 +158,10 @@ Decision 850: only `ciguard=OVER:concurrent-jobs` holds a dispatch (`monitors.md
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `since=$(date +%s)`, then `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl --fleet "<this file's stem>.fleet.json"
    <session-name> "<brief>" <signal-file> <deadline-epoch> <log> <model>
-   >>"<log>.launcher.out" 2>&1 &`. Then touch `<signal-file>` and run
-   `bash "{{KIT}}/launch-confirm.sh" --since "$since" <session-name> <log>` with a Bash tool timeout of at least
-   250000 ms (its window is 240 s; the tool's default 120 s ends it first). Never report the
-   worker as running until it prints `LAUNCH-CONFIRMED`. A refusal lands as a
-   `LAUNCH-REFUSED` line in `<log>` and in this inbox. `--no-profile` replaces `--profile` when the brief pastes the preface.
+   >>"<log>.launcher.out" 2>&1 &`. Touch `<signal-file>`, run
+   `bash "{{KIT}}/launch-confirm.sh" --since "$since" <session-name> <log>` (tool timeout 250000 ms).
+   Report it running only on `LAUNCH-CONFIRMED`. A refusal is a
+   `LAUNCH-REFUSED` line in `<log>` and this inbox. `--no-profile` replaces `--profile` when the brief pastes the preface.
 5. Record the launch log path.
 6. File every follow-up with `jira create --follow-up-of <KEY>`.
 
