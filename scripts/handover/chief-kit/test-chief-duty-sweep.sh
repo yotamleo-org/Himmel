@@ -627,13 +627,18 @@ check "project: a masked-CI rerun names the named repository" "run rerun 12 --fa
 
 pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin ssh://git@github.com/acme/repo-b.git
 psweep
-has "project: an origin that is no plain owner/repo still lists the READY worker" "DUTY go-owed 101@$H7_1 :: " "$OUT"
-check "project: and leaves the repository to the checkout rather than pin a malformed one" "" "$(cat "$STUB/pr-repos")"
+has "project: an ssh:// origin still lists the READY worker" "DUTY go-owed 101@$H7_1 :: " "$OUT"
+check "project: and pins its owner/repo" "acme/repo-b" "$(cat "$STUB/pr-repos")"
 
 pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin ssh://git@github.com/acme/repo-b.git; masked_runs success cancelled 1
 psweep
-has "project: a rerun is held when origin is no plain owner/repo" "held: no repo slug" "$OUT"
-check "project: and no rerun call is made" "" "$(cat "$STUB/gh-calls")"
+check "project: a masked-CI rerun for an ssh:// origin names its owner/repo" "run rerun 12 --failed -R acme/repo-b" "$(sed -n 1p "$STUB/gh-calls")"
+
+pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin file:///srv/git/repo-b.git
+psweep
+has "project: an origin that names no owner/repo leaves the PR list unread" "DUTY? prs unread" "$OUT"
+hasnt "project: and lists no READY worker" "go-owed" "$OUT"
+check "project: and makes no PR list call" "" "$(cat "$STUB/pr-cwds")"
 
 pworld; printf '# chief\n' > "$CHIEF"; masked_runs success cancelled 1; pr_json "$H1" > "$STUB/default-prs.json"
 psweep

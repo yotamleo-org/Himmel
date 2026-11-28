@@ -105,8 +105,9 @@ if [ -f "$doc" ]; then
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
 proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
-slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
-pr_pin=""; printf '%s\n' "$slug" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' && pr_pin="$slug"  # swallow-ok: a slug that is no plain owner/repo pins nothing, so the checkout names the repository
+slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/|ssh://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
+pr_pin=""
+case "$slug" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) ;; */*) pr_pin="$slug" ;; esac
 
 prs_ok=0; prs_tsv=""
 read_prs() {
@@ -114,6 +115,7 @@ read_prs() {
     if [ -n "${CHIEF_DUTY_SWEEP_PRS:-}" ]; then
         raw=$(cat "$CHIEF_DUTY_SWEEP_PRS" 2>/dev/null) || return 1  # read-sink-ok: a test seam set by the invoking process, a JSON fixture read once; swallow-ok: an unreadable seam file is an unread input
     else
+        [ -n "$pr_pin" ] || return 1
         if [ -s "$cache" ]; then
             age=$(( $(date +%s) - $(stat -c %Y "$cache" 2>/dev/null || echo 0) ))  # gnu-ok: Linux-only kit; swallow-ok: an unreadable cache reads as old, so the list is read live
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
