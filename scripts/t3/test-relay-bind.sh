@@ -752,6 +752,11 @@ printf '# DEMO-403 - no writes\n\n> **Launch gate:** passed\n\n## Results (newes
 fmx add "$M" --lane t3 --lockless "$wd"
 bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >"$T/out" 2>"$T/err"; rc=$?
 check '14. attach refuses a gated doc with no Writes line, so the pinned-guard check is never skipped' "3 yes" "$rc $(grep -q "no '> \*\*Writes:\*\*' line" "$T/err" && echo yes)"
+for blank in $'\t' $'\r' $' \t'; do
+    printf '# DEMO-403 - blank writes\n\n> **Writes:** %s\n\n> **Launch gate:** passed\n' "$blank" > "$wd"
+    bash "$BIND" attach --manifest "$M" --doc "$wd" --thread nowrites1 >/dev/null 2>&1; rc=$?
+    check "14. attach refuses a Writes line holding only whitespace ($(printf '%s' "$blank" | od -An -c | tr -s ' '))" 3 "$rc"
+done
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-relay-bind.sh"

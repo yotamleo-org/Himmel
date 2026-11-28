@@ -195,7 +195,8 @@ if [ "$verb" = attach ]; then
         || die 3 "$doc has no launch gate record (a '> **Launch gate:** passed' line that prepare writes once core-check, spec-check and the guard-lib rule pass): nothing attached; run relay-bind.sh prepare for the ticket"
     [[ ${doc##*/} =~ ^([A-Za-z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
     akey="${BASH_REMATCH[1]}"
-    wline="$(grep -m 1 '^> \*\*Writes:\*\* *[^ ]' "$doc")" || die 3 "$doc has no '> **Writes:**' line naming a path, so the pinned-guard check has nothing to read: nothing attached"
+    wline="$(grep -m 1 -E '^> \*\*Writes:\*\* [A-Za-z0-9._/@+-]+( [A-Za-z0-9._/@+-]+)*$' "$doc")" \
+        || die 3 "$doc has no '> **Writes:**' line in the shape prepare writes (one or more paths, single spaces), so the pinned-guard check has nothing to read: nothing attached"
     GATE_DIR="$(tmpdir)" || die 2 "mktemp failed"
     trap 'rm -rf "$GATE_DIR"' EXIT
     printf -- '---\nresume_cwd: %s\n---\n# %s - attach gate\n\n%s\n' "$PROJECT" "$akey" "$wline" > "$GATE_DIR/gate.md" || die 2 "cannot write the gate copy"
