@@ -105,7 +105,7 @@ if [ -f "$doc" ]; then
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
 proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
-slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/|ssh://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
+slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@github\.com:|https?://([^@/]+@)?github\.com/|ssh://([^@/]+@)?github\.com/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
 pr_pin=""
 case "$slug" in ''|*[!A-Za-z0-9_./-]*|/*|*/|*/*/*) ;; */*) pr_pin="$slug" ;; esac
 

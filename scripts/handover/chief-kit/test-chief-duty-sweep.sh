@@ -640,6 +640,13 @@ has "project: an origin that names no owner/repo leaves the PR list unread" "DUT
 hasnt "project: and lists no READY worker" "go-owed" "$OUT"
 check "project: and makes no PR list call" "" "$(cat "$STUB/pr-cwds")"
 
+for ghe in https://ghe.example.com/acme/repo-b.git ssh://git@ghe.example.com/acme/repo-b.git git@ghe.example.com:acme/repo-b.git; do
+    pworld; for_project "$WORK/w/repoB"; git -C "$WORK/w/repoB" remote set-url origin "$ghe"
+    psweep
+    has "project: a host other than github.com ($ghe) leaves the PR list unread" "DUTY? prs unread" "$OUT"
+    check "project: and makes no PR list call for $ghe" "" "$(cat "$STUB/pr-cwds")"
+done
+
 pworld; printf '# chief\n' > "$CHIEF"; masked_runs success cancelled 1; pr_json "$H1" > "$STUB/default-prs.json"
 psweep
 has "project: a chief document with no project line leaves this checkout in charge" "DUTY go-owed 101@$H7_1 :: " "$OUT"
