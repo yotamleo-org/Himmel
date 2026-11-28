@@ -38,7 +38,7 @@ HERE, DEFAULT_CLI = sys.argv[1], sys.argv[2]
 REPO = os.path.realpath(os.path.join(HERE, '..', '..', '..'))
 POLICY = os.path.join(REPO, 'marketplace', 'plugins', 'himmel-ops', 'scripts', 'ticket-policy-cli.mjs')
 sys.path.insert(0, HERE)
-import holds  # noqa: E402  the one parser of a write path (FILE_RE, files_in)
+import holds
 
 USAGE = 'usage: file-slices.sh <plan.md> --parent KEY [--skip ID,...] [--proposed-version V] [--apply] [--jira-cli PATH]'
 KEY_RE = r'[A-Z][A-Z0-9]*-\d+'
@@ -104,7 +104,6 @@ def refuse_run(msg):
     sys.exit(1)
 
 
-# ---- the plan: front matter, Goal, Spec and the sections (fenced blocks are body) -------------------------
 lines = text.split('\n')
 revision = None
 start = 0
@@ -255,7 +254,6 @@ def parse(sec):
 for s in sections:
     parse(s)
 
-# ---- Jira reads: the parent, the prior search, the signature ----------------------------------------------
 
 
 def jira(*a):
@@ -319,7 +317,6 @@ for b in bad:
 if bad:
     sys.exit(1)
 
-# ---- decide each section: SKIP, FILED, parse, policy, NEW else REFUSED -------------------------------------
 by_id = {s['id']: s for s in sections}
 for s in sections:
     s['state'] = 'SKIP' if s['id'] in skip else 'FILED' if s['id'] in filed else None
@@ -446,7 +443,6 @@ for s in sections:
     sys.stdout.write(body_of(s, keys))
     print('--- end %s ---' % sid)
 
-# filing order: a topological sort of the NEW slices, plan order among equals; FILED dependencies are fixed keys
 new = [s for s in sections if s['state'] == 'NEW']
 new_ids = {s['id'] for s in new}
 order, done_ids = [], set()
@@ -467,7 +463,6 @@ if count['REFUSED'] or cycle:
 if not apply:
     sys.exit(0)
 
-# ---- --apply: the signature, then one create per NEW slice and one link per further dependency -----------
 if not signed:
     refuse_run('signature: --apply needs "SPEC ok %s <spec>" with the plan\'s **Spec:** line naming that spec; got: %s' % (parent, sig_line))
 
