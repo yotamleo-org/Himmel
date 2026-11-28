@@ -19,7 +19,8 @@
 #           grant record). A refusal names the key and the missing record, removes the doc and exits 3; a pass writes a
 #           `> **Launch gate:** passed` line and a `> **Core gate:**` line for each bypass.
 # attach    path A, after the launch: sets the row's t3_thread to the threadId the launch tool returned; a listed doc with
-#           no `> **Launch gate:** passed` line is refused, rc 3.
+#           no `> **Launch gate:** passed` line is refused, rc 3, and the gate runs again on the ticket the doc name carries
+#           and its Writes line, so the records decide, never the line.
 # scan      path B: binds an idle (whitelisted status) unsettled thread on a `<id>_relay` instance whose base id is listed,
 #           sends the fixed notice, re-sends pending notices (at most 3 sends a row), unbinds a row whose thread left the
 #           list or settled for T3_RELAY_UNBIND_DAYS (default 3) with no READY/BLOCKED newest bullet, and keeps one owner
@@ -119,6 +120,20 @@ mdir="${manifest%/*}"
 [ -d "$mdir" ] || die 2 "manifest directory missing: $mdir"
 today="$(date -u +%Y-%m-%d)"
 
+gate_out=""
+launch_gate() {
+    local rc=0
+    gate_out="$(env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK JIRA_PROJECTS="$(printf '%s' "${2%%-*}" | tr '[:lower:]' '[:upper:]')" \
+        bash "$KIT/brief-lint.sh" --core-only --skip-bucket "$1" 2>&1)" || rc=$?
+    [ "$rc" -ne 0 ] || return 0
+    echo "relay-bind: launch gate refused $2; nothing was written or attached:" >&2
+    printf '%s\n' "$gate_out" >&2
+    case "$gate_out" in *HIMMEL_HOOK_INTEGRITY_BYPASS_OK*)
+        echo "relay-bind: a T3 thread has no T3 hook-bypass grant record: guard-t3-thread-tools.sh refuses a bypass instance to every agent and no per-grant T3 route exists, so launch a ticket that edits pinned guard files as a native bypass worker" >&2 ;;
+    esac
+    return 3
+}
+
 if [ "$verb" = prepare ]; then
     [[ $ticket =~ ^[A-Za-z]+-[0-9]+$ ]] || die 2 "--ticket must look like ABC-123"
     [[ $label =~ ^N[0-9]+[a-z]*$ ]] || die 2 "--label must look like N12 or N12b"
@@ -137,18 +152,7 @@ if [ "$verb" = prepare ]; then
     }
     { printf -- '---\nresume_cwd: %s\n---\n' "$PROJECT"; head_lines; } > "$tmp" || die 2 "cannot write the doc"
     ln "$tmp" "$doc" 2>/dev/null || die 2 "doc exists: $doc"
-    gate_rc=0
-    gate_out="$(env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK JIRA_PROJECTS="$(printf '%s' "${ticket%%-*}" | tr '[:lower:]' '[:upper:]')" \
-        bash "$KIT/brief-lint.sh" --core-only --skip-bucket "$doc" 2>&1)" || gate_rc=$?
-    if [ "$gate_rc" -ne 0 ]; then
-        rm -f "$doc"
-        echo "relay-bind: launch gate refused $ticket (nothing written):" >&2
-        printf '%s\n' "$gate_out" >&2
-        case "$gate_out" in *HIMMEL_HOOK_INTEGRITY_BYPASS_OK*)
-            echo "relay-bind: a T3 thread has no T3 hook-bypass grant record: guard-t3-thread-tools.sh refuses a bypass instance to every agent and no per-grant T3 route exists, so launch a ticket that edits pinned guard files as a native bypass worker" >&2 ;;
-        esac
-        exit 3
-    fi
+    launch_gate "$doc" "$ticket" || { rm -f "$doc"; exit 3; }
     {
         head_lines
         printf '> **Launch gate:** passed %s (brief-lint.sh --core-only: core-check, spec-check, guard-lib)\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -188,6 +192,12 @@ if [ "$verb" = attach ]; then
     jq -e --arg d "$doc" 'any((.workers // [])[]; .doc == $d)' "$manifest" >/dev/null 2>&1 || die 2 "the doc is not listed in $manifest: nothing attached"
     grep -Eq '^> \*\*Launch gate:\*\* passed( |$)' "$doc" 2>/dev/null \
         || die 3 "$doc has no launch gate record (a '> **Launch gate:** passed' line that prepare writes once core-check, spec-check and the guard-lib rule pass): nothing attached; run relay-bind.sh prepare for the ticket"
+    [[ ${doc##*/} =~ ^([A-Za-z]+-[0-9]+)-N[0-9]+[a-z]*-t3- ]] || die 3 "$doc is not named <KEY>-N<k>-t3-<slug>-<date>.md, so its ticket cannot be gated: nothing attached"
+    akey="${BASH_REMATCH[1]}"
+    GATE_DIR="$(tmpdir)" || die 2 "mktemp failed"
+    trap 'rm -rf "$GATE_DIR"' EXIT
+    { printf -- '---\nresume_cwd: %s\n---\n# %s - attach gate\n\n' "$PROJECT" "$akey"; grep -m 1 '^> \*\*Writes:\*\*' "$doc"; } > "$GATE_DIR/gate.md"
+    launch_gate "$GATE_DIR/gate.md" "$akey" || exit 3
     fm t3 set "$manifest" "$doc" --thread "$thread" || die 2 "fleet-manifest t3 set failed (is the doc listed?)"
     exit 0
 fi

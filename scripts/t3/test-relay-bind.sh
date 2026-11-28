@@ -738,6 +738,13 @@ bash "$BIND" attach --manifest "$M" --doc "$nd" --thread hand1 >"$T/out" 2>"$T/e
 check '14. attach refuses a listed row whose doc has no gate record, rc 3' 3 "$rc"
 check '14. the refusal names the missing launch gate record' yes "$(grep -q 'no launch gate record' "$T/err" && echo yes)"
 check '14. and binds nothing' pending "$(jq -r --arg d "$nd" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
+fd="$B/DEMO-400-N7-t3-forged-$today.md"
+printf '# DEMO-400 - forged\n\n> **Writes:** scripts/handover/chief-kit/go.sh\n\n> **Launch gate:** passed\n\n## Results (newest at the bottom)\n' > "$fd"
+fmx add "$M" --lane t3 --lockless "$fd"
+bash "$BIND" attach --manifest "$M" --doc "$fd" --thread forged1 >"$T/out" 2>"$T/err"; rc=$?
+check '14. attach re-runs the gate: a forged gate line on an unsigned core key is refused rc 3' 3 "$rc"
+check '14. the refusal names the key, never the forged line' yes "$(grep -q 'DEMO-400 is core .*no signed minerva spec' "$T/err" && echo yes)"
+check '14. and binds nothing' pending "$(jq -r --arg d "$fd" '.workers[] | select(.doc == $d) | .t3_thread // "pending"' "$M")"
 bash "$BIND" attach --manifest "$M" --doc "$sd" --thread signed1 >/dev/null 2>&1; rc=$?
 check '14. attach binds the gated signed row' "0 signed1" "$rc $(jq -r --arg d "$sd" '.workers[] | select(.doc == $d) | .t3_thread' "$M")"
 
