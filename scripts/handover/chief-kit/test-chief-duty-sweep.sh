@@ -577,6 +577,7 @@ cat > "$STUB/proj-gh" <<'EOF'
 #!/usr/bin/env bash
 if [ "$1 $2" = "pr list" ]; then
     printf '%s\n' "$PWD" >> "$STUB/pr-cwds"
+    printf '%s\n' "${GH_REPO:-}" >> "$STUB/pr-repos"
     cat "$PWD/prs.json" 2>/dev/null || cat "$STUB/default-prs.json" 2>/dev/null || echo '[]'
 else
     printf '%s\n' "$*" >> "$STUB/gh-calls"
@@ -586,7 +587,7 @@ chmod +x "$STUB/proj-gh"
 pr_json() { printf '[{"number":101,"headRefName":"feat/x","headRefOid":"%s","isDraft":false,"isCrossRepository":false,"baseRefName":"main"}]\n' "$1"; }
 pworld() {
     world
-    : > "$STUB/pr-cwds"; rm -f "$STUB/default-prs.json"
+    : > "$STUB/pr-cwds"; : > "$STUB/pr-repos"; rm -f "$STUB/default-prs.json"
     for r in repoA:repo-a repoB:repo-b; do
         mkdir -p "$WORK/w/${r%%:*}"; git -C "$WORK/w/${r%%:*}" init -q
         git -C "$WORK/w/${r%%:*}" remote add origin "https://github.com/acme/${r##*:}.git"
@@ -598,7 +599,7 @@ pworld() {
 # shellcheck disable=SC2016  # the backticks are the project line's literal text
 for_project() { printf '# chief\n\nThe project this console is FOR is **`%s`**.\n' "$1" > "$CHIEF"; }
 psweep() {
-    OUT=$(HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
+    OUT=$(GH_REPO=ambient/other HIMMEL_GUARD_REFUSALS_LOG="$WORK/w/refusals.jsonl" CHIEF_DUTY_SWEEP_NOW="$NOW" CHIEF_DUTY_SWEEP_RUNS="$WORK/w/runs.json" \
         CHIEF_DUTY_SWEEP_GO_ROOT="$WORK/w/go" CHIEF_DUTY_SWEEP_MIRROR="$WORK/w/mirror" \
         CHIEF_DUTY_SWEEP_DISPOSITIONS="$WORK/w/dispositions.txt" CHIEF_DUTY_SWEEP_GH="$STUB/proj-gh" \
         CHIEF_DUTY_SWEEP_DELTA="$STUB/delta" TICK_STATE_DIR="$WORK/w/state" CANCEL_RUNS_PACE_STATE="$WORK/w/pace" \
@@ -609,6 +610,7 @@ pworld; for_project "$WORK/w/repoB"
 psweep
 has "project: the named repository's READY worker is go-owed" "DUTY go-owed 101@$H7_1 :: " "$OUT"
 check "project: the PR list is read from the named repository" "$WORK/w/repoB" "$(cat "$STUB/pr-cwds")"
+check "project: and pinned to its origin whatever GH_REPO the session carries" "acme/repo-b" "$(cat "$STUB/pr-repos")"
 for_project "$WORK/w/repoA"
 psweep
 hasnt "project: another repository's cache is never read for this one" "go-owed" "$OUT"

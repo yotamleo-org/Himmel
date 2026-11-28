@@ -105,6 +105,7 @@ if [ -f "$doc" ]; then
     case "$doc_project" in /*) proj_repo="$doc_project" ;; esac
 fi
 proj_key=$(printf '%s\n' "$proj_repo" | cksum | cut -d' ' -f1)
+slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
 
 prs_ok=0; prs_tsv=""
 read_prs() {
@@ -117,7 +118,7 @@ read_prs() {
             [ "$age" -lt 300 ] && raw=$(cat "$cache" 2>/dev/null)  # swallow-ok: a failed cache read falls through to a live read
         fi
         if [ -z "$raw" ]; then
-            raw=$(cd "$proj_repo" && timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
+            raw=$(cd "$proj_repo" && GH_REPO="$slug" timeout -k 2 30 "$pr_read_bin" pr list --limit 200 --json number,headRefName,headRefOid,isDraft,isCrossRepository,baseRefName 2>/dev/null) || return 1  # swallow-ok: a failed read is an unread input
             ( . "$REPO/scripts/lib/prim.sh" && printf '%s\n' "$raw" | atomic_write "$cache" ) 2>/dev/null
         fi
     fi
@@ -276,7 +277,6 @@ if [ -f "$runs_file" ] && jq -e 'type == "array"' "$runs_file" >/dev/null 2>&1; 
 fi
 if [ "$runs_ok" = 0 ]; then unread "ciguard"; fi
 reruns="$state/chief-duty-sweep-reruns"
-slug=$(git -C "$proj_repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')  # swallow-ok: no origin means no slug, so the rerun is held
 if [ "$prs_ok" = 1 ] && [ "$runs_ok" = 1 ]; then
     rerun_count=0
     while IFS=$'\t' read -r pr branch head draft fork base; do
