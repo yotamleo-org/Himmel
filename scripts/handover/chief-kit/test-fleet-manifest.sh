@@ -528,6 +528,7 @@ held="$d12/HIMMEL-12-N92-held.md"; printf '# w\n\n## Results\n\n- 11:00 WRAPPED 
 onproc="$d12/HIMMEL-12-N93-onproc.md"
 open="$d12/HIMMEL-12-N94-open.md"; printf '# w\n\n## Results\n\n- 10:00 LIVE — x\n' > "$open"
 race="$d12/HIMMEL-12-N95-race.md"
+touch -d '2 hours ago' "$wrapped" "$held" "$open"
 lock12="$d12/queue-lock"
 # shellcheck disable=SC2016
 printf '#!/bin/bash\ncase "$2" in\n  */HIMMEL-12-N92-*) exit 11 ;;\n  */HIMMEL-12-N95-*) n=$(cat "%s/n95" 2>/dev/null || echo 0); echo $((n + 1)) > "%s/n95"; [ "$n" -lt 1 ] || exit 11 ;;\nesac\nexit 0\n' "$d12" "$d12" > "$lock12"
@@ -607,6 +608,27 @@ out="$(TICKET_STATUS_QUEUE_LOCK="$d12d/queue-lock-phys" bash "$SCRIPT" retire "$
 kill "$(cat "$d12d/pid" 2>/dev/null)" 2>/dev/null
 check '12. the apply with a late session on the physical path succeeds (rc 0)' 0 "$rc"
 check '12. a late session on the physical path of a candidate keeps its row' "keep	$m12e	N99	$viaLink	live session" "$out"
+d12f="$tmp/m12f"; mkdir -p "$d12f/bin"
+m12f="$d12f/chief.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N89"}]}\n' "$d12f/HIMMEL-12-N89-gone.md" > "$m12f"
+before_f="$(cat "$m12f")"
+printf '#!/bin/bash\ncase " $* " in *" --arg drop "*) "%s" "$@" | head -c 10; exit 1 ;; esac\nexec "%s" "$@"\n' "$(command -v jq)" "$(command -v jq)" > "$d12f/bin/jq"
+chmod +x "$d12f/bin/jq"
+PATH="$d12f/bin:$PATH" TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12f" --apply >"$d12f/out" 2>/dev/null; rc=$?
+check '12. a rewrite whose jq dies mid-output exits 1' 1 "$rc"
+check '12. and leaves the manifest whole' "$before_f" "$(cat "$m12f")"
+check '12. and reports no row as retired' 0 "$(grep -c '^retired' "$d12f/out")"
+d12g="$tmp/m12g"; mkdir -p "$d12g"
+m12g="$d12g/chief.fleet.json"; fresh12="$d12g/HIMMEL-12-N87-fresh.md"
+printf '# w\n\n## Results\n\n- 11:00 WRAPPED — done\n' > "$fresh12"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N87"}]}\n' "$fresh12" > "$m12g"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" --apply 2>/dev/null)"; rc=$?
+check '12. the apply over a doc that just wrapped succeeds (rc 0)' 0 "$rc"
+check '12. a doc that wrapped under 1 h ago keeps its row' "keep	$m12g	N87	$fresh12	doc changed under 1 h ago" "$out"
+check '12. and the row stays in the manifest' "$fresh12" "$(jq -r '.workers[].doc' "$m12g")"
+touch -d '2 hours ago' "$fresh12"
+out="$(TICKET_STATUS_QUEUE_LOCK="$free" bash "$SCRIPT" retire "$m12g" 2>/dev/null)"
+check '12. the same doc an hour older is retired' "would-retire	$m12g	N87	$fresh12	lock free, no live session, newest marker WRAPPED" "$out"
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-fleet-manifest.sh"
