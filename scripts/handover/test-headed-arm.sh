@@ -1845,7 +1845,7 @@ wait_record "$d36f" || true
 if cmp -s "$d36f/record.unset" "$d36f/record" && [ -s "$d36f/record" ]; then echo "ok - 36f LINES unset vs '': terminal argv byte-identical"
 else echo "FAIL - 36f LINES unset vs '': terminal argv differs"; fails=$((fails+1)); fi
 not_contains "36f LINES '': no empty argv element" "$(grep -Fx "''" "$d36f/record" 2>/dev/null || true)" "''"
-check "36f LINES '': argv element count includes launch-context scrub" "$(wc -l < "$d36f/record" | tr -d ' ')" "45"
+check "36f LINES '': argv element count includes launch-context scrub and the subagent caps" "$(wc -l < "$d36f/record" | tr -d ' ')" "47"
 
 # 36e: the spaced value reaches the terminal argv as ONE element.
 d36e="$tmp/c36e"; mk_lines_stub "$d36e" "HIMMEL-lines36e"

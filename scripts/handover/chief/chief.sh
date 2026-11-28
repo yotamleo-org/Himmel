@@ -86,7 +86,9 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 # headed-arm.sh scrubs these on the --arm path; the printed line
 # was missed, so an un-armed chief silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
-CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
+# shellcheck source=../../lib/subagent-caps.sh
+. "$HERE/../../lib/subagent-caps.sh"
+CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR -u NO_COLOR ${SUBAGENT_CAPS_ENV[*]} CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"

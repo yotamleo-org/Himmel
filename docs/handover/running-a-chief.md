@@ -591,6 +591,7 @@ helper kind.
 | Ticket audit (still open, fixed or partial) | `ticket-auditor` | `sonnet` | `medium` |
 | Per-page docs review | `page-reviewer` | `sonnet` | `medium` |
 | A specified edit list ending in a machine check | `edit-runner` | `haiku` | `medium` |
+| Other bulk or mechanical Haiku work (a Haiku child never spawns) | `haiku-worker` | `haiku` | `medium` |
 | A verdict-grade judge call (never a spec or plan critic round or a closure check) | `judge`, `judge-ro` | `opus` | `high` |
 | Comment cleanup (`/no-comments`) | `comment-sicko` | `sonnet` | `medium` |
 | The one hard call | `general-purpose` | `fable` | `high` |

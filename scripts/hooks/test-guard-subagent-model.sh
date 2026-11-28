@@ -196,6 +196,164 @@ assert_rc "fork with model field absent is allowed (rc=0)" 0 "$RC4C"
 RC4D=$(run_hook fork-with-model "$(payload fork opus)")
 assert_rc "fork with an explicit model is allowed (rc=0)" 0 "$RC4D"
 
+echo ""
+echo "=== haiku is a leaf (a Haiku child on a type that keeps the Agent tool) ==="
+
+RC20=$(run_hook gp-haiku "$(payload general-purpose haiku)")
+assert_rc "general-purpose + haiku is DENIED (rc=2)" 2 "$RC20"
+assert_contains "haiku deny points at haiku-worker" "haiku-worker" "$(cat "$TMP/err-gp-haiku")"
+assert_contains "haiku deny names the shape" "general-purpose/haiku" "$(cat "$TMP/err-gp-haiku")"
+assert_contains "haiku deny emits a structured deny decision" '"permissionDecision":"deny"' "$(cat "$TMP/out-gp-haiku")"
+
+RC21=$(run_hook gp-haiku-full-id "$(payload general-purpose claude-haiku-5-5)")
+assert_rc "general-purpose + claude-haiku-5-5 is DENIED (rc=2)" 2 "$RC21"
+
+RC22=$(run_hook claude-haiku "$(payload claude haiku)")
+assert_rc "claude + haiku is DENIED (rc=2)" 2 "$RC22"
+
+RC23=$(run_hook untyped-haiku "$(payload_no_subagent_field haiku)")
+assert_rc "no subagent_type + haiku is DENIED (rc=2)" 2 "$RC23"
+assert_contains "untyped haiku deny names the no-type shape" "<no-subagent_type>/haiku" "$(cat "$TMP/err-untyped-haiku")"
+
+RC24=$(run_hook empty-type-haiku "$(payload '' claude-haiku-5-5)")
+assert_rc "empty subagent_type + claude-haiku-5-5 is DENIED (rc=2)" 2 "$RC24"
+
+RC25=$(run_hook null-type-haiku "$(payload_subagent_null haiku)")
+assert_rc "subagent_type null + haiku is DENIED (rc=2)" 2 "$RC25"
+
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+mkdir -p "$TMP/empty-home"
+REPO_DEFS=(CLAUDE_PROJECT_DIR="$REPO_ROOT" HOME="$TMP/empty-home")
+for def in haiku-worker edit-runner; do
+    have=1; [ -f "$REPO_ROOT/.claude/agents/$def.md" ] && have=0
+    assert_rc "the repository defines $def" 0 "$have"
+done
+
+RC26=$(run_hook haiku-worker "$(payload haiku-worker haiku)" "${REPO_DEFS[@]}")
+assert_rc "haiku-worker + haiku is allowed (rc=0)" 0 "$RC26"
+assert_empty "haiku-worker + haiku: no output" "$(combined_output haiku-worker)"
+
+RC27=$(run_hook edit-runner-haiku "$(payload edit-runner haiku)" "${REPO_DEFS[@]}")
+assert_rc "edit-runner (no Agent tool) + haiku is allowed (rc=0)" 0 "$RC27"
+assert_empty "edit-runner + haiku: no output" "$(combined_output edit-runner-haiku)"
+
+RC28=$(run_hook fork-haiku "$(payload fork haiku)")
+assert_rc "fork + haiku is allowed (fork ignores model) (rc=0)" 0 "$RC28"
+
+RC29=$(run_hook gp-sonnet-leaf "$(payload general-purpose sonnet)")
+assert_rc "general-purpose + sonnet stays allowed (rc=0)" 0 "$RC29"
+
+RC30=$(run_hook gp-haiku-override "$(payload general-purpose haiku)" SUBAGENT_MODEL_OK=1)
+assert_rc "SUBAGENT_MODEL_OK=1 lets general-purpose + haiku through (rc=0)" 0 "$RC30"
+
+PROJ="$TMP/proj"; UHOME="$TMP/uhome"
+mkdir -p "$PROJ/.claude/agents" "$UHOME/.claude/agents"
+printf -- '---\nname: inherits-all\nmodel: haiku\n---\nbody\n' > "$PROJ/.claude/agents/inherits-all.md"
+printf -- '---\nname: lists-agent\ntools: Read, Agent\n---\nbody\n' > "$PROJ/.claude/agents/lists-agent.md"
+printf -- '---\nname: no-agent\ntools: Read, Bash\n---\nbody\n' > "$PROJ/.claude/agents/no-agent.md"
+printf -- '---\nname: drops-agent\ndisallowedTools: Agent\n---\nbody\n' > "$PROJ/.claude/agents/drops-agent.md"
+printf -- '---\nname: user-inherits\n---\nbody\n' > "$UHOME/.claude/agents/user-inherits.md"
+DEFS=(CLAUDE_PROJECT_DIR="$PROJ" HOME="$UHOME")
+
+RC31=$(run_hook def-inherits "$(payload inherits-all haiku)" "${DEFS[@]}")
+assert_rc "project agent with no tools line (inherits Agent) + haiku is DENIED (rc=2)" 2 "$RC31"
+assert_contains "inherited-Agent deny names the type" "inherits-all/haiku" "$(cat "$TMP/err-def-inherits")"
+RC32=$(run_hook def-lists "$(payload lists-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent whose tools list Agent + haiku is DENIED (rc=2)" 2 "$RC32"
+RC33=$(run_hook def-user "$(payload user-inherits claude-haiku-5-5)" "${DEFS[@]}")
+assert_rc "user-scope agent with no tools line + haiku is DENIED (rc=2)" 2 "$RC33"
+RC34=$(run_hook def-no-agent "$(payload no-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent whose tools omit Agent + haiku is allowed (rc=0)" 0 "$RC34"
+RC35=$(run_hook def-drops "$(payload drops-agent haiku)" "${DEFS[@]}")
+assert_rc "project agent with disallowedTools Agent + haiku is allowed (rc=0)" 0 "$RC35"
+RC36=$(run_hook def-unknown "$(payload some-plugin:agent haiku)" "${DEFS[@]}")
+assert_rc "a type with no readable definition + haiku is allowed (rc=0)" 0 "$RC36"
+RC37=$(run_hook def-inherits-sonnet "$(payload inherits-all sonnet)" "${DEFS[@]}")
+assert_rc "project agent that inherits Agent + sonnet stays allowed (rc=0)" 0 "$RC37"
+
+printf -- '---\nname: yaml-list\ntools:\n  - Read\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/yaml-list.md"
+printf -- '---\nname: quoted\ntools: "Read, Agent"\n---\nbody\n' > "$PROJ/.claude/agents/quoted.md"
+printf -- '---\nname: comment-drop\ndisallowedTools: Bash # Agent stays enabled\n---\nbody\n' > "$PROJ/.claude/agents/comment-drop.md"
+printf -- '---\nname: renamed\n---\nbody\n' > "$PROJ/.claude/agents/file-stem.md"
+printf -- '---\nname: yaml-drop\ndisallowedTools:\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/yaml-drop.md"
+RC38=$(run_hook def-yaml-list "$(payload yaml-list haiku)" "${DEFS[@]}")
+assert_rc "project agent listing Agent as a YAML list item + haiku is DENIED (rc=2)" 2 "$RC38"
+RC39=$(run_hook def-quoted "$(payload quoted haiku)" "${DEFS[@]}")
+assert_rc "project agent with a quoted tools value naming Agent + haiku is DENIED (rc=2)" 2 "$RC39"
+RC40=$(run_hook def-comment "$(payload comment-drop haiku)" "${DEFS[@]}")
+assert_rc "a comment naming Agent on disallowedTools does not drop it: + haiku is DENIED (rc=2)" 2 "$RC40"
+RC41=$(run_hook def-renamed "$(payload renamed haiku)" "${DEFS[@]}")
+assert_rc "an agent found by its name: field, not its file name, + haiku is DENIED (rc=2)" 2 "$RC41"
+RC42=$(run_hook def-yaml-drop "$(payload yaml-drop haiku)" "${DEFS[@]}")
+assert_rc "project agent dropping Agent as a YAML list item + haiku is allowed (rc=0)" 0 "$RC42"
+
+printf -- '---\nname: hyphen-drop\ndisallowedTools: mcp__example__run-Agent\n---\nbody\n' > "$PROJ/.claude/agents/hyphen-drop.md"
+printf -- '---\nname: col1-list\ntools:\n- Read\n- Agent\n---\nbody\n' > "$PROJ/.claude/agents/col1-list.md"
+printf -- '---\nname: tab-sep\ntools:\tRead,\tAgent\n---\nbody\n' > "$PROJ/.claude/agents/tab-sep.md"
+RC43=$(run_hook def-hyphen "$(payload hyphen-drop haiku)" "${DEFS[@]}")
+assert_rc "a disallowed tool whose name merely ends in -Agent does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC43"
+RC44=$(run_hook def-col1 "$(payload col1-list haiku)" "${DEFS[@]}")
+assert_rc "project agent listing Agent as an unindented YAML list item + haiku is DENIED (rc=2)" 2 "$RC44"
+RC45=$(run_hook def-tab "$(payload tab-sep haiku)" "${DEFS[@]}")
+assert_rc "project agent with tab-separated tools naming Agent + haiku is DENIED (rc=2)" 2 "$RC45"
+
+printf -- '---\nname: wrapped-flow\ntools: [Read,\n  Agent]\n---\nbody\n' > "$PROJ/.claude/agents/wrapped-flow.md"
+printf -- '---\nname: wrapped-plain\ntools: Read,\n  Agent\n---\nbody\n' > "$PROJ/.claude/agents/wrapped-plain.md"
+printf -- '---\nname: block-scalar\ntools: >-\n  Read, Agent\n---\nbody\n' > "$PROJ/.claude/agents/block-scalar.md"
+printf -- '---\nname: comment-between\ntools:\n  - Read\n# a note\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/comment-between.md"
+printf -- '---\nname: dash-key\ndisallowedTools: Bash\n-notes:\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/dash-key.md"
+RC46=$(run_hook def-wrapped-flow "$(payload wrapped-flow haiku)" "${DEFS[@]}")
+assert_rc "a flow sequence wrapped over two lines naming Agent + haiku is DENIED (rc=2)" 2 "$RC46"
+RC47=$(run_hook def-wrapped-plain "$(payload wrapped-plain haiku)" "${DEFS[@]}")
+assert_rc "a plain scalar wrapped over two lines naming Agent + haiku is DENIED (rc=2)" 2 "$RC47"
+RC48=$(run_hook def-block-scalar "$(payload block-scalar haiku)" "${DEFS[@]}")
+assert_rc "a folded block scalar naming Agent + haiku is DENIED (rc=2)" 2 "$RC48"
+RC49=$(run_hook def-comment-between "$(payload comment-between haiku)" "${DEFS[@]}")
+assert_rc "a column-1 comment between tools items does not end the list: + haiku is DENIED (rc=2)" 2 "$RC49"
+RC50=$(run_hook def-dash-key "$(payload dash-key haiku)" "${DEFS[@]}")
+assert_rc "an Agent item under a later -notes: key does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC50"
+
+mkdir -p "$PROJ/.claude/agents/review/deep"
+printf -- '---\nname: star-tools\ntools: "*"\n---\nbody\n' > "$PROJ/.claude/agents/star-tools.md"
+printf -- "---\nname: star-list\ntools: ['*']\n---\nbody\n" > "$PROJ/.claude/agents/star-list.md"
+printf -- '---\nname: nested-inherits\n---\nbody\n' > "$PROJ/.claude/agents/review/deep/nested.md"
+printf -- '---\nname: nested-safe\ntools: Read\n---\nbody\n' > "$PROJ/.claude/agents/review/safe.md"
+printf -- '---\nname: hash-quoted\ntools: "Read, Bash(echo #1), Agent"\n---\nbody\n' > "$PROJ/.claude/agents/hash-quoted.md"
+RC51=$(run_hook def-star "$(payload star-tools haiku)" "${DEFS[@]}")
+assert_rc "tools \"*\" grants every tool, Agent included: + haiku is DENIED (rc=2)" 2 "$RC51"
+RC52=$(run_hook def-star-list "$(payload star-list haiku)" "${DEFS[@]}")
+assert_rc "tools ['*'] grants every tool, Agent included: + haiku is DENIED (rc=2)" 2 "$RC52"
+RC53=$(run_hook def-nested "$(payload nested-inherits haiku)" "${DEFS[@]}")
+assert_rc "a definition in a subfolder of .claude/agents that keeps Agent + haiku is DENIED (rc=2)" 2 "$RC53"
+RC54=$(run_hook def-nested-safe "$(payload nested-safe haiku)" "${DEFS[@]}")
+assert_rc "a definition in a subfolder whose tools omit Agent + haiku is allowed (rc=0)" 0 "$RC54"
+RC55=$(run_hook def-hash-quoted "$(payload hash-quoted haiku)" "${DEFS[@]}")
+assert_rc "a # inside a quoted tools value is not a comment: + haiku is DENIED (rc=2)" 2 "$RC55"
+
+mkdir -p "$TMP/linked"
+printf -- '---\nname: linked-def\n---\nbody\n' > "$TMP/linked/real.md"
+ln -s "$TMP/linked/real.md" "$PROJ/.claude/agents/linked.md"
+printf -- "---\nname: apostrophe\ndisallowedTools: Bash(echo can't) # Agent stays enabled\n---\nbody\n" > "$PROJ/.claude/agents/apostrophe.md"
+printf -- '---\nname: star-spec\ndisallowedTools: Bash(git * --help)\n---\nbody\n' > "$PROJ/.claude/agents/star-spec.md"
+RC56=$(run_hook def-symlink "$(payload linked-def haiku)" "${DEFS[@]}")
+assert_rc "a symlinked definition that keeps Agent + haiku is DENIED (rc=2)" 2 "$RC56"
+RC57=$(run_hook def-apostrophe "$(payload apostrophe haiku)" "${DEFS[@]}")
+assert_rc "an apostrophe inside an unquoted value does not hide a comment: + haiku is DENIED (rc=2)" 2 "$RC57"
+RC58=$(run_hook def-star-spec "$(payload star-spec haiku)" "${DEFS[@]}")
+assert_rc "a * inside a Bash(...) specifier does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC58"
+printf -- '---\nname: star-wrapped\ndisallowedTools: >-\n  Bash(git\n  * --help)\n---\nbody\n' > "$PROJ/.claude/agents/star-wrapped.md"
+RC59=$(run_hook def-star-wrapped "$(payload star-wrapped haiku)" "${DEFS[@]}")
+assert_rc "a * from a specifier wrapped over lines does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC59"
+printf -- '---\nname: agent-wrapped\ndisallowedTools: >-\n  Bash(echo\n  Agent\n  )\n---\nbody\n' > "$PROJ/.claude/agents/agent-wrapped.md"
+RC60=$(run_hook def-agent-wrapped "$(payload agent-wrapped haiku)" "${DEFS[@]}")
+assert_rc "an Agent word inside a specifier wrapped over lines does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC60"
+printf -- '---\nname: drop-list\ndisallowedTools:\n  - Bash\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/drop-list.md"
+RC61=$(run_hook def-drop-list "$(payload drop-list haiku)" "${DEFS[@]}")
+assert_rc "a disallowedTools list naming Agent drops it: + haiku is allowed (rc=0)" 0 "$RC61"
+RC62=$(run_hook gp-haiku-dated "$(payload general-purpose claude-3-5-haiku-20241022)")
+assert_rc "general-purpose + a dated id claude-3-5-haiku-20241022 is DENIED (rc=2)" 2 "$RC62"
+
+echo ""
 echo "=== escape hatch ==="
 
 RC5=$(run_hook override "$(payload general-purpose '')" SUBAGENT_MODEL_OK=1)

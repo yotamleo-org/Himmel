@@ -455,7 +455,7 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
 | Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
-| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model, a `judge` tier override, a critic or closure check sent as a judge, and Opus on a general-purpose or untyped dispatch without a `TIER:` or `ESCALATION:` line; allows a missing model, except for a critic or closure check sent as a judge) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-chief-dispatch` | — | — | — | — |
+| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model, a `judge` tier override, a critic or closure check sent as a judge, and Opus on a general-purpose or untyped dispatch without a `TIER:` or `ESCALATION:` line; allows a missing model, except for a critic or closure check sent as a judge) | `guard-subagent-model` (denies a missing model unless a fork, and a Haiku model on a type that keeps the Agent tool; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-chief-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
 | Worker discipline | `block-worker-askuserquestion`, `guard-worker-wakeup`, `guard-worker-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-worker-context-handoff` | — | — | — |
 | Judge and relay writes confined | `guard-relay-writes` | `guard-judge-writes` | — | — | — | `go.sh` refuses under `HIMMEL_CONSOLE_LEG` / `HIMMEL_CONSOLE_RELAY` |
@@ -501,8 +501,10 @@ Facts only; nothing here is a proposed change.
   an `Agent` call's `model` field, but split the job. `guard-agent-model`
   denies a blocked model (Fable), a `judge` tier override and a critic or
   closure check sent as a judge, and otherwise allows a missing model. `guard-subagent-model` denies a missing model for
-  every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through)
-  and never reads the model's value.
+  every subagent type except a fork (`SUBAGENT_MODEL_OK=1` lets one through),
+  and a Haiku model on a type that keeps the Agent tool (general-purpose,
+  claude, untyped, or an agent definition that leaves Agent available),
+  pointing at `haiku-worker`.
 - The green-CI check runs in `block-unresolved-cr-merge` (on `gh pr merge`) and
   in `merge-on-green.sh` (on its own merge); they guard two entry points to one
   action.

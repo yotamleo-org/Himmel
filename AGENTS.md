@@ -132,8 +132,9 @@ Escalate, not top-down: a mid-tier parent spawns a top-model child for the one h
 call; work above your tier is returned.
 
 Invariants: spawn depth and concurrency are capped by
-your harness's spawn-depth and concurrency caps;
-the smallest model tier does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl
+your harness's spawn-depth and concurrency caps, which
+every himmel launcher sets (`scripts/lib/subagent-caps.sh`); the smallest model tier is a leaf and never
+spawns [enforced: guard-subagent-model]; single-writer (many readers, ONE writer); salus dev/impl
 work may route to the six harnesses decision 1375 approved: Gemini, Cursor, xAI/Grok,
 Copilot, Anthropic, OpenAI; Cursor, Grok and Copilot launches stay refused until their
 lane descriptors are complete; never GLM. Salus PHI egress is governed by

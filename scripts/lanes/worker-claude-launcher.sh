@@ -26,7 +26,10 @@
 #     that silently runs full-fat is undetectable from the outside and
 #     corrupts the very measurement this ticket exists to make.
 #  3. NO PROFILE, NO CHANGE. With neither variable set this is a transparent
-#     `exec claude "$@"` - byte-identical argv to today.
+#     `exec claude "$@"` - byte-identical argv to today, except that a Haiku
+#     `--model` gets `--disallowedTools Agent` in front (a Haiku session is
+#     a leaf). Every launch also exports the subagent caps
+#     (scripts/lib/subagent-caps.sh); env only, no argv change.
 #  4. It never widens anything. `--settings` here can only DISABLE plugins
 #     (the resolver emits a complete enabledPlugins map, deny-by-default), and
 #     `--mcp-config`/`--strict-mcp-config` can only NARROW the
@@ -242,7 +245,18 @@ if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ] && [ -z "${WORKER_SE
     unset -v _pin_path
 fi
 
+_caps_lib="${BASH_SOURCE[0]%/*}/../lib/subagent-caps.sh"
+# shellcheck source=../lib/subagent-caps.sh
+if ! { [ -r "$_caps_lib" ] && . "$_caps_lib"; }; then
+    echo "worker-claude-launcher: refusing to launch: $_caps_lib did not load, so the session would start without the subagent caps" >&2
+    exit 2
+fi
+subagent_caps_export
 PRE=()
+if [ "$_readiness" = 0 ]; then
+    subagent_caps_haiku_args "$@"
+    PRE+=(${SUBAGENT_CAPS_HAIKU_ARGS[@]+"${SUBAGENT_CAPS_HAIKU_ARGS[@]}"})
+fi
 
 if [ -n "${WORKER_SESSION_PROFILE_SETTINGS:-}" ]; then
     if [ ! -f "$WORKER_SESSION_PROFILE_SETTINGS" ]; then

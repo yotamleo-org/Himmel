@@ -1120,6 +1120,15 @@ _scheduler_remove_door() {
 # shellcheck source=../lib/prim.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/prim.sh" || { echo "arm-resume: cannot load scripts/lib/prim.sh" >&2; exit 2; }
+SUBAGENT_CAPS_ENV=()
+q_subagent_caps=""
+# shellcheck source=../lib/subagent-caps.sh
+# shellcheck disable=SC1091
+if { [ -r "$SCRIPT_DIR/../lib/subagent-caps.sh" ] && . "$SCRIPT_DIR/../lib/subagent-caps.sh"; }; then
+    q_subagent_caps="export ${SUBAGENT_CAPS_ENV[*]}"
+else
+    echo "WARN arm-resume: $SCRIPT_DIR/../lib/subagent-caps.sh did not load; this relaunch carries no subagent caps" >&2
+fi
 
 # shared with konsole-macos.sh's own ARM_TERMINAL_APP /
 # ARM_APP_DIRS resolution -- one copy of the decision instead of two.
@@ -4549,6 +4558,7 @@ _crontab_schedule() {
     # Optional --model passthrough, same %q-quote shape as
     # --channels above.
     [ -n "$MODEL" ] && q_model="--model $(printf '%q' "$MODEL") "
+    [ -n "$q_subagent_caps" ] && subagent_caps_is_haiku "$MODEL" && q_model="${q_model}--disallowedTools Agent "
     # --autocompact passthrough: always non-empty by the time
     # this runs (resolved unconditionally alongside CONTEXT_MODE above) --
     # same %q-quote shape as q_model, since this is the actual cost-driving
@@ -4672,13 +4682,13 @@ fi"
     # SIGTERM once its work is done and a successor (if any) is armed -- see
     # docs/handover/afk-mode.md's Launch preamble.
     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
+    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED && ${q_subagent_caps:+$q_subagent_caps && }export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
     if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
         local q_hb q_log q_curl
         q_hb=$(printf '%q' "$HEADROOM_BIN")
         q_log=$(printf '%q' "$HOME/.headroom-proxy.log")
         q_curl=$(printf '%q' "$HEADROOM_CURL")
-        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
+        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; ${q_subagent_caps:+$q_subagent_caps; }export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
     _arm_require_worker_autocompact_argv "$tail"
     # Scheduled bodies re-enter persisted admission when fired, including after restart.
@@ -5026,6 +5036,7 @@ schedule_arm() {
                 # Optional --model passthrough, same %q-quote
                 # shape as --channels above.
                 [ -n "$MODEL" ] && q_model="--model $(printf '%q' "$MODEL") "
+                [ -n "$q_subagent_caps" ] && subagent_caps_is_haiku "$MODEL" && q_model="${q_model}--disallowedTools Agent "
                 # --autocompact passthrough, same %q-quote shape
                 # as q_model above; always non-empty by the time this runs.
                 q_autocompact="--autocompact $(printf '%q' "$AUTOCOMPACT") "
@@ -5091,6 +5102,7 @@ schedule_arm() {
                 # successor is armed (see afk-mode.md).
                 # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
                 local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
+${q_subagent_caps}
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                 if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
@@ -5100,6 +5112,7 @@ ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                     q_curl=$(printf '%q' "$HEADROOM_CURL")
                     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
                     launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN NO_COLOR UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
+${q_subagent_caps}
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }
 if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then

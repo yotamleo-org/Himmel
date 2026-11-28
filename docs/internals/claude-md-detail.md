@@ -85,9 +85,25 @@ delegates every implementation chunk downward. Work above your tier? Return it. 
 top-tier parent is the anti-pattern** — exception and budget in the hook header. [enforced: orchestrator-inline-guard]
 
 Invariants (not model-tuned): spawn depth and concurrency are capped by
-`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
-— read the env; unset means the harness default applies, so treat it as a cap
-you did not choose. **Haiku does NOT spawn.** **Single-writer** — many readers,
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`.
+Every himmel launcher (worker-claude-launcher.sh, headed-arm.sh, arm-resume.sh,
+chief.sh's printed chief line) sets them from `scripts/lib/subagent-caps.sh`:
+spawn depth **2** (main → child → grandchild; the measured nested-vs-flat
+overhead is 1.63-1.84×, against a harness default of 3) and concurrency **20**
+(the harness default, written out; no measurement supports a lower one). A
+session started any other way runs at the harness defaults unless its own
+environment sets the two variables. A `claude --cloud` session reads only its
+cloud environment's variables, so its caps are set there.
+**Haiku is a leaf and never spawns.** Haiku 5.5 is Anthropic's subagent tier
+under an Opus/Sonnet lead, not an orchestrator; orchestration is
+DEFER in the Haiku 5.5 eval; and the built-in Explore a child would call runs on
+the main conversation's model, so a Haiku spawn escalates cost upward. Fan out
+flat from the parent instead. `guard-subagent-model.sh` denies an Agent dispatch
+on model haiku whose type keeps the Agent tool (general-purpose, claude, untyped,
+or a project or user agent definition that leaves Agent available)
+and names `haiku-worker` (`.claude/agents/haiku-worker.md`, Agent disallowed); a
+launcher whose session model is Haiku passes `--disallowedTools Agent`.
+[enforced: guard-subagent-model] **Single-writer** — many readers,
 ONE writer, never fan parallel writes at one shared artifact. **salus dev/impl
 work may route to the six harnesses operator decision 1375 (R2) approved —
 Gemini (antigravity-t3), Cursor, xAI/Grok, Copilot, Anthropic (Claude tiers) and
