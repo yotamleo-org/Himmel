@@ -471,6 +471,7 @@ dverdict dq104 NO-GO 104 "$DEVD/ev-nogo.md"
 dverdict dq105 GO 105 "$DEVD/ev-go.md"
 dverdict dq106 GO 106 "$DEVD/ev-go.md"
 dverdict dq107 GO 107 "$DEVD/ev-go.md"
+dverdict dq109 GO 109 "$DEVD/ev-go.md"
 dspec() {
     python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["pr"]=int(sys.argv[3]); d["head"]=sys.argv[4]; d["qid"]="jd"+sys.argv[3]
 if sys.argv[5] != "-": d["delta_class"]=sys.argv[5]
@@ -511,6 +512,14 @@ dspec e3 203 "$NHOOK" - 1;     drun e3
 [ "$dj_rc" = 0 ] && [ "$(jf effort)" = "null" ] && has "effort: a first judge of a PR adding a hooks/ file keeps high" "$(jf prompt)" "--effort high" || fail "effort hooks rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
 dspec e5 205 "$HEAD40" - 1;    drun e5
 [ "$dj_rc" = 0 ] && [ "$(jf effort)" = "null" ] && has "effort: a head that is not a commit fails closed to high" "$(jf prompt)" "--effort high" || fail "effort unreadable head rc=$dj_rc effort=$(jf effort): $(cat "$WORK/dj.err")"
+NB="$(printf 'b\n' | dcommit docs/c.md)"
+NC="$(printf 'b\nc\n' > "$DREPO/docs/c.md" && git -C "$DREPO" add -A && git -C "$DREPO" commit -qm c && git -C "$DREPO" rev-parse HEAD)"
+denv bash "$HERE/write-verdict.sh" dq109b NO-GO "$NB" --pr 109 --judge chief --model test-model --effort high --evidence-file "$DEVD/ev-nogo.md" >/dev/null 2>"$WORK/dv.err" \
+    || fail "cannot write the chief-named NO-GO: $(cat "$WORK/dv.err")"
+dspec c1 109 "$NC" - 1;        drun c1
+[ "$dj_rc" = 0 ] && [ "$(jf model)" = "sonnet" ] && has "delta: a hand-named chief.md NO-GO is the last judged head, so the delta is a finding" "$(jf prompt)" "
+DELTA-JUDGE: $NC
+" || fail "chief-named NO-GO rc=$dj_rc model=$(jf model): $(cat "$WORK/dj.err")"
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"

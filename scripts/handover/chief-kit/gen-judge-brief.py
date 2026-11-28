@@ -226,7 +226,7 @@ def last_judged(vdir, pr, head):
         if not os.path.isdir(d) or os.path.islink(d):
             continue
         for name in os.listdir(d):
-            if not name.endswith('.md') or name.startswith(('chief', 'delta-noop')):
+            if not name.endswith('.md') or name.startswith(('chief-go', 'delta-noop')):
                 continue
             with open(os.path.join(d, name), encoding='utf-8', errors='replace') as f:
                 lines = f.read(8192).replace('\r', '').split('\n')
