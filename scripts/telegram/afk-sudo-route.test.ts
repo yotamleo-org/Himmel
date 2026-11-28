@@ -653,7 +653,6 @@ test("button: a six-digit reply to a code prompt the map does not know is consum
   expect(b.calls).toEqual([]);
   expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired or is not known, nothing ran. If the request is still pending, tap Approve on it again or send: approve <request id> <nonce> <code>; if it already ran or ended, nothing more is needed."]);
   expect(b.logs.join("\n")).not.toContain("123456");
-  // a reply to another bot message, or from another sender, stays ordinary text
   for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { ...TO_PROMPT, from: 999, chat_id: 999 })]) {
     expect(buttons().gate(msg)).toBe(false);
   }
@@ -1076,8 +1075,6 @@ test("a valid reply to the prompt still runs the helper exactly once", async () 
   expect(b.calls).toEqual([{ args: ["approve", "abcdefgh", "--from", String(OP), "--chat", String(OP)], stdin: "K7QF 123456\n" }]);
   expect(b.replies.filter((r) => r.includes("approved"))).toHaveLength(1);
 });
-
-// --- A reply is held by what it replies to ---
 
 const CHIEF = "HIMMEL-nextleg-2026-11-28ET-recovery-chief";
 const CHIEF_LINE = `Message for chief ${CHIEF}:`;
