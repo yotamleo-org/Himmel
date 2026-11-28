@@ -877,8 +877,10 @@ rec12t() {  # <verdicts-dir> <qid> <name> <verdict line> <pr> <written-at> [<ext
     printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n%s\n\npr: %s\n%s\n## Evidence checked\n\ne\n' "$2" "$6" "$4" "$5" "${7:-}" > "$1/$2/$3.md"
 }
 T1=2026-11-01T00:00:00Z T2=2026-11-02T00:00:00Z T3=2026-11-03T00:00:00Z
-sign12() {  # <verdicts-dir> <qid> <name> [<scope>] - append write-verdict.sh's mac line, scope s by default
-    printf 'mac: %s\n' "$(HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac "$5" "$2" "$3" < "$4"' _ "$GO_GATE_SRC" "$2" "$3" "$1/$2/$3.md" "${4:-s}")" >> "$1/$2/$3.md"
+sign12() {
+    local verdicts_dir="$1" qid="$2" name="$3" scope="${4:-s}"
+    local record="$verdicts_dir/$qid/$name.md"
+    printf 'mac: %s\n' "$(HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac "$5" "$2" "$3" < "$4"' _ "$GO_GATE_SRC" "$qid" "$name" "$record" "$scope")" >> "$record"
 }
 gt12() {  # <qid-dir> <head> - go_real_go_time under scope s with the pinned key
     HOME="$PINHOME" gg12 go_real_go_time "$1" "$2" s

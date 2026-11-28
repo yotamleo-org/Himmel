@@ -1192,14 +1192,15 @@ rc=0; out=$(wvm q32b GO "$SHA_A" --no-such-flag 2>&1) || rc=$?
 check "32 row 2: an unknown flag under the marker is rc 3, not 2" "$rc" 3
 contains "32 row 2: ...with the marker's text" "$out" "$mk32"
 check "32 row 2: ...and no verdicts/q32b/ exists" "$(gone32 q32b)" none
-for v32 in "NO-GO --evidence-file $ev --pr 501" "GO --evidence-file $ev --pr 501 --delta-noop $SHA_B" \
-        "NO-GO --evidence-file $ev --pr 501 --bind-reviewed $SHA_B" "GO --bind --pr 501"; do
-    rc=0
-    # shellcheck disable=SC2086  # v32 is a deliberate argument list
-    out=$(wvm q32c ${v32%% *} "$SHA_A" ${v32#* } 2>&1) || rc=$?
-    check "32 row 3: refused rc 3 ($v32)" "$rc" 3
-    contains "32 row 3: ...with the marker's text ($v32)" "$out" "$mk32"
-done
+refused32() {
+    rc=0; out=$(wvm q32c "$@" 2>&1) || rc=$?
+    check "32 row 3: refused rc 3 ($*)" "$rc" 3
+    contains "32 row 3: ...with the marker's text ($*)" "$out" "$mk32"
+}
+refused32 NO-GO "$SHA_A" --evidence-file "$ev" --pr 501
+refused32 GO "$SHA_A" --evidence-file "$ev" --pr 501 --delta-noop "$SHA_B"
+refused32 NO-GO "$SHA_A" --evidence-file "$ev" --pr 501 --bind-reviewed "$SHA_B"
+refused32 GO "$SHA_A" --bind --pr 501
 check "32 row 3: ...and no verdicts/q32c/ exists" "$(gone32 q32c)" none
 printf '#!/usr/bin/env bash\nbash %q q32d GO %s --evidence-file %q --pr 501\n' "$SCRIPT" "$SHA_A" "$ev" > "$tmp/gen32.sh"
 rc=0; out=$(env -u HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=jq1 \
