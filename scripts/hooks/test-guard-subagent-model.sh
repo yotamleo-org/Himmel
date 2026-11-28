@@ -333,6 +333,9 @@ RC57=$(run_hook def-apostrophe "$(payload apostrophe haiku)" "${DEFS[@]}")
 assert_rc "an apostrophe inside an unquoted value does not hide a comment: + haiku is DENIED (rc=2)" 2 "$RC57"
 RC58=$(run_hook def-star-spec "$(payload star-spec haiku)" "${DEFS[@]}")
 assert_rc "a * inside a Bash(...) specifier does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC58"
+printf -- '---\nname: star-wrapped\ndisallowedTools: >-\n  Bash(git\n  * --help)\n---\nbody\n' > "$PROJ/.claude/agents/star-wrapped.md"
+RC59=$(run_hook def-star-wrapped "$(payload star-wrapped haiku)" "${DEFS[@]}")
+assert_rc "a * from a specifier wrapped over lines does not drop Agent: + haiku is DENIED (rc=2)" 2 "$RC59"
 
 echo ""
 echo "=== escape hatch ==="

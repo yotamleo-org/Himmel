@@ -90,7 +90,7 @@ agent_def_keeps_agent() {
                     gsub(/\([^)]*\)/, "", v)
                     gsub(/["'\''\[\]{}>|]/, " ", v)
                     n = split(v, a, /[[:space:],]+/)
-                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || t == "*") return 1 }
+                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task" || (t == "*" && key == "tools")) return 1 }
                     return 0
                 }
                 function take(v) {
