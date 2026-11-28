@@ -62,8 +62,11 @@ pending); never re-run a written verdict.>
 
 ## Rulings and judgement notes — the only part the chief writes
 
-<Numbered, one line each: binding rulings, each worker's model, brief and
-debt, the queue's tiers and owned files. One Edit replaces this block.>
+<Standing rulings and notes as "- " bullets, one line each: binding rulings,
+each worker's model, brief and debt, the queue's tiers and owned files. Owed
+work as numbered items, each naming its owed.jsonl row (the o<N> that owe.sh
+add prints) or ending (closed): chief.sh wrap refuses any other numbered item.
+One Edit replaces this block.>
 
 ## Wrapped this shift
 
