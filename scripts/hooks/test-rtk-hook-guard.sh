@@ -639,7 +639,7 @@ if real_rtk=$(command -v rtk 2>/dev/null); then
     cap=5
     repo14=$(mktemp -d "${TMPDIR:-/tmp}/rtk-guard-commit.XXXXXX") || { echo "FAIL: cannot make a scratch repo" >&2; exit 1; }
     commit_n=0
-    msg14="$repo14.msg"
+    msg14="$repo14/msg"
     printf 'test commit\n' > "$msg14"
     git -C "$repo14" init -q
     git -C "$repo14" config user.name t
@@ -659,7 +659,7 @@ echo "FAILING-LINE-14"
 exit 1
 HOOK
     chmod +x "$repo14/.git/hooks/pre-commit"
-    off_cmd="git commit -F '$msg14'"
+    off_cmd="git commit -F msg"
     commit_payload=$(jq -nc --arg cwd "$wt_cwd" --arg c "$off_cmd" '{session_id: "s", cwd: $cwd, tool_name: "Bash", tool_input: {command: $c}}')
     on_out=$(printf '%s' "$commit_payload" | HIMMEL_CONSOLE_LEG=1 PATH="$real_dir:$PATH" bash "$hook")
     on_cmd=$(printf '%s' "$on_out" | jq -r '.hookSpecificOutput.updatedInput.command // empty')
@@ -709,7 +709,7 @@ HOOK
             assert_fail "rtk $mode: expected the failing line once after the Failed line and rc=1, got: $res"
         fi
     done
-    rm -rf "$repo14" "$msg14"
+    rm -rf "$repo14"
 else
     echo "  SKIP: no rtk installed on PATH -- stub rows in 3h stand"
 fi
