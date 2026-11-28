@@ -2900,6 +2900,14 @@ out="$(c106_run)"
 if grepq "$out" 'OK   C106-untracked-agent-files' && ! grepq "$out" 'WARN C106'; then pass "C106 planted files removed -> OK"; else fail "C106 after removal -> $out"; fi
 out="$(c106_run "$t/plain")"
 if grepq "$out" 'INFO C106-untracked-agent-files: check not run' && ! grepq "$out" 'OK   C106'; then pass "C106 a root that is no git checkout -> INFO, not OK"; else fail "C106 no checkout -> $out"; fi
+mkdir -p "$t/repo/sub"
+ln -s "$REPO_ROOT/scripts" "$t/repo/sub/scripts"
+out="$(c106_run "$t/repo/sub")"
+if grepq "$out" 'INFO C106-untracked-agent-files: check not run' && ! grepq "$out" 'OK   C106'; then pass "C106 a root inside a checkout, not at its top -> INFO, not OK"; else fail "C106 nested root -> $out"; fi
+printf 'x\n' > "$t/repo/.agents/skills/kept/stray.md"
+printf 'not an index' > "$t/repo/.git/index"
+out="$(c106_run)"
+if grepq "$out" 'INFO C106-untracked-agent-files: check not run' && ! grepq "$out" 'OK   C106'; then pass "C106 a git that cannot list files -> INFO, not OK"; else fail "C106 corrupt index -> $out"; fi
 rm -rf "$t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

@@ -6489,12 +6489,15 @@ check_c105_memory_truth() {
 }
 
 check_c106_untracked_agent_files() {
-    local files n list
-    if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        emit INFO C106-untracked-agent-files "check not run: $REPO_ROOT is not a git checkout"
+    local files n list prefix root_q
+    if ! prefix="$(git -C "$REPO_ROOT" rev-parse --show-prefix 2>/dev/null)" || [ -n "$prefix" ]; then
+        emit INFO C106-untracked-agent-files "check not run: $REPO_ROOT is not the top of a git checkout"
         return 0
     fi
-    files="$(git -C "$REPO_ROOT" ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills 2>/dev/null)"
+    if ! files="$(git -C "$REPO_ROOT" ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills 2>/dev/null)"; then
+        emit INFO C106-untracked-agent-files "check not run: git could not list the untracked files under $REPO_ROOT"
+        return 0
+    fi
     if [ -z "$files" ]; then
         emit OK C106-untracked-agent-files "no untracked file under .agents/skills, .agents/rules, .agents/workflows, .codex/agents or .codex/skills"
         return 0
@@ -6502,8 +6505,9 @@ check_c106_untracked_agent_files() {
     n="$(printf '%s\n' "$files" | grep -c .)"
     list="$(printf '%s\n' "$files" | head -8 | paste -sd ' ' -)"
     [ "$n" -le 8 ] || list="$list ... (+$((n - 8)) more)"
+    root_q=$(printf '%q' "$REPO_ROOT")
     emit WARN C106-untracked-agent-files "$n untracked file(s) in a folder Codex or Antigravity loads from, so no review has seen them: $list" \
-        "git -C $REPO_ROOT ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills lists them all; check each against the tracked skill it copies, then delete it by hand (the doctor never edits them)"
+        "git -C $root_q ls-files --others -- .agents/skills .agents/rules .agents/workflows .codex/agents .codex/skills lists them all; read each, delete only the ones that are stale copies or point at a missing script, and keep one you wrote on purpose by tracking it in a PR (the doctor never edits them)"
 }
 
 # --- check dispatch: --only selector + bounded parallel heavy checks ---
