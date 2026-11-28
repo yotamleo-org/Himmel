@@ -588,6 +588,14 @@ stopped "review: a script name with an escape writes STOP"
 judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash \\\"/x/\\\"write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
 eq "review: a script path that starts with a quoted fragment is still a call (rc 3)" "$rc" 3
 stopped "review: a script path that starts with a quoted fragment writes STOP"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"# it's a comment\\nbash /x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: an apostrophe in a comment does not hide the next line's call (rc 3)" "$rc" 3
+stopped "review: an apostrophe in a comment does not hide the call: STOP written"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"bash \\\\\\n/x/write-verdict.sh dsk6139a GO $H --pr 6139\"},\"done\",0]"
+eq "review: a backslash-newline inside a call does not hide it (rc 3)" "$rc" 3
+stopped "review: a backslash-newline inside a call: STOP written"
+judge_case ",[\"tool\",\"Bash\",{\"command\":\"echo hi # bash /x/write-verdict.sh x\"},\"hi\",0]"
+eq "review: a call named only inside a comment is no call" "$out" "RECORDED $RUN GO"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

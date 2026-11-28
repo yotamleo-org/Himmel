@@ -296,9 +296,13 @@ SKIPPED = {'env', 'bash', 'sh', 'timeout', 'time', 'nice', 'exec', 'command', 's
 
 
 def command_segments(cmd):
-    text, texts, cur, quote, i = cmd or '', [], [], None, 0
+    text, texts, cur, quote, i = (cmd or '').replace('\\\n', ''), [], [], None, 0
     while i < len(text):
         ch = text[i]
+        if ch == '#' and not quote and (not cur or cur[-1].isspace()):
+            while i < len(text) and text[i] != '\n':
+                i += 1
+            continue
         if quote:
             cur.append(ch)
             if ch == '\\' and quote == '"' and i + 1 < len(text):
