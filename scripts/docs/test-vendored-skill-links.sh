@@ -60,20 +60,18 @@ fi
 scanned=0
 for r in $ROOTS; do
     [ -d "$ROOT/$r" ] || { bad "scan root missing: $r"; continue; }
+    find "$ROOT/$r" -type f -name '*.md' | sort >"$tmp/files" || { bad "could not list $r"; continue; }
     while IFS= read -r f; do
         scanned=$((scanned + 1))
         dir=$(dirname "$f")
+        links_of "$f" >"$tmp/links" || { bad "could not read ${f#"$ROOT"/}"; continue; }
         while IFS="$(printf '\t')" read -r line target; do
             [ -n "$target" ] || continue
             if [ ! -e "$dir/$target" ]; then
                 bad "${f#"$ROOT"/}:$line links '$target' which does not exist"
             fi
-        done <<EOF
-$(links_of "$f")
-EOF
-    done <<EOF
-$(find "$ROOT/$r" -type f -name '*.md' | sort)
-EOF
+        done <"$tmp/links"
+    done <"$tmp/files"
 done
 
 if [ "$scanned" -gt 0 ]; then
@@ -92,7 +90,7 @@ else
         *) ok "qmd allowed-tools has no commas" ;;
     esac
     case " $allowed " in
-        *' Bash(qmd:*)'*|*' Bash(qmd *)'*|*' Bash(qmd)'*) bad "qmd allowed-tools pre-approves a bare qmd call: $allowed" ;;
+        *' Bash(qmd:*)'*|*' Bash(qmd *)'*|*' Bash(qmd)'*|*' Bash(qmd query'*|*' Bash(qmd search'*|*' Bash(qmd vsearch'*) bad "qmd allowed-tools pre-approves a bare qmd call: $allowed" ;;
         *) ok "qmd allowed-tools names no bare qmd call" ;;
     esac
 fi

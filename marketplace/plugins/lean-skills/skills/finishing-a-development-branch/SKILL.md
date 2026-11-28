@@ -133,9 +133,9 @@ git branch -D <feature-branch>
 ## Step 6: Cleanup Workspace
 
 **Runs for confirmed discards only.** Options 1 and 2 always preserve the
-worktree; after the PR merges, the repo's own worktree cleanup removes it. Both callers have already changed directory to the
+worktree; after the PR merges, the repo's own worktree cleanup removes it. The discard path has already changed directory to the
 main repo root — worktree removal must run from outside the worktree —
-and use the `GIT_DIR`/`GIT_COMMON`/`WORKTREE_PATH` values captured in
+and uses the `GIT_DIR`/`GIT_COMMON`/`WORKTREE_PATH` values captured in
 Step 2, from before that directory change.
 
 **If `GIT_DIR == GIT_COMMON`:** Normal repo, no worktree to clean up. Done.
@@ -193,6 +193,5 @@ place. If your platform provides a workspace-exit tool, use it.
 | "The PR is up, so the worktree is clutter now" | PR feedback gets fixed in that worktree. It stays until the work lands. |
 | "This other worktree looks stale — I'll clean it too" | Clean up only worktrees under `.claude/worktrees/`. Everything else belongs to the host. |
 | "Removal refused — `--force` is just finishing the cleanup" | The refusal means files exist only in that worktree. `--force` destroys them permanently. Show your human partner and ask. |
-| "The merged-result failure is probably flaky" | A failing merged result stops everything. Branch and worktree stay put while you investigate. |
 | "The base branch is obviously main" | Confirm the fork point or ask. Merging into the wrong base is expensive to undo. |
 | "The push was rejected — force-push will fix it" | A rejected push means the remote moved. Investigate; force-push only on your human partner's explicit request. |

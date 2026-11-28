@@ -23,7 +23,7 @@ Everything below is copied VERBATIM except the `deviation=` rows at the end of
 this file, each a small recorded local patch. Do not edit vendored prose
 without a row there: a local edit makes the next re-vendor a merge instead of
 a copy. himmel's own framing lives in its CLAUDE.md and hooks, never inside a
-vendored SKILL.md.
+vendored SKILL.md, except as a recorded `deviation=` row.
 
 vendored_from=obra/superpowers@7.0.2 path=skills/<name>
 
@@ -85,8 +85,9 @@ HIMMEL-11569: upstream offers "Merge back to <base-branch> locally" (option 1,
 its Step 5 merge block, the Step 6 and quick-reference rows) and cleans up
 worktrees under `.worktrees/`/`worktrees/`. Our rules land work by pull request
 only and keep worktrees in `.claude/worktrees/`. The local-merge option and its
-block are removed, the menu is two options (PR, keep), and the cleanup path is
-`.claude/worktrees/`. A re-vendor copies upstream over it: redo all three.
+block and its "merged-result failure" rationalization row are removed, the menu
+is two options (PR, keep), and the cleanup path is `.claude/worktrees/`. A
+re-vendor copies upstream over it: redo all of it.
 
 deviation=skills/using-git-worktrees/SKILL.md marker=.claude/worktrees/
 

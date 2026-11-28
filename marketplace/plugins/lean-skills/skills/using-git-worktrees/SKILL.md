@@ -70,16 +70,17 @@ Follow this priority order. Explicit user preference always beats observed files
 
 #### Safety Verification
 
-`.claude/worktrees/` is already ignored by this repo's `.gitignore`. Check it, and if it is NOT ignored, stop and report it. Never edit `.gitignore` or commit to fix it.
+`.claude/worktrees/` is already ignored by this repo's `.gitignore`. Check the folder you chose (`.claude/worktrees` by default), and if it is NOT ignored, stop and report it. Never edit `.gitignore` or commit to fix it.
 
 ```bash
-git check-ignore -q .claude/worktrees
+dir=".claude/worktrees"   # or the folder your instructions declared
+git check-ignore -q "$dir"
 ```
 
 #### Create the Worktree
 
 ```bash
-path=".claude/worktrees/<type>+<slug>"
+path="$dir/<type>+<slug>"
 
 git worktree add "$path" -b "<type>/<slug>"
 cd "$path"
