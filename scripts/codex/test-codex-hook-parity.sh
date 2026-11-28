@@ -451,6 +451,9 @@ mcp_chain_deny() {
 mcp_chain_deny "Codex MCP chain denies a bypass T3 instance (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}' "carries a himmel bypass flag"
 mcp_chain_deny "Codex MCP chain denies -chief T3 thread title (guard-t3-thread-tools)" "mcp__t3-code__t3_thread_update" '{"action":"rename","title":"ops-chief"}'
 mcp_chain_deny "Codex MCP chain denies unwatch on OPEN PR (block-t3code-unwatch-open-pr)" "mcp__t3-code__unwatch_pull_request" '{"url":"https://github.com/o/r/pull/123"}'
+mcp_chain_deny "Codex MCP chain denies a Codex-spelled bypass launch (guard-t3-thread-tools)" "mcp__t3_code__t3_thread_launch" '{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}' "carries a himmel bypass flag"
+mcp_chain_deny "Codex MCP chain denies a Codex-spelled -chief title (guard-t3-thread-tools)" "mcp__t3_code__t3_thread_update" '{"action":"rename","title":"ops-chief"}' "chief-shaped"
+mcp_chain_deny "Codex MCP chain denies a direct-server bypass delegate_task (guard-t3-thread-tools)" "mcp__t3_code_direct__delegate_task" '{"task":"x","target":{"providerInstanceId":"claudeBypass"}}' "carries a himmel bypass flag"
 
 if [ "$fails" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $fails case(s) failed"; exit 1

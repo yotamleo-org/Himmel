@@ -139,6 +139,31 @@ case "$out" in
   *permissionDecision*) bad "wired MCP chain allows benign T3 read (rc=$rc out=$out)";;
   *) if [ "$rc" -eq 0 ]; then ok "wired MCP chain allows benign T3 read"; else bad "wired MCP chain allows benign T3 read (rc=$rc)"; fi;;
 esac
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code__t3_thread_launch","tool_input":{"title":"Work","modelSelection":{"instanceId":"claudeBypass","model":"claude-opus-5-5"}}}')"; rc=$?
+case "$out" in
+  *'"permissionDecision":"deny"'*'carries a himmel bypass flag'*) ok "R8: wired MCP chain denies a Codex-spelled bypass launch";;
+  *) bad "R8: wired MCP chain denies a Codex-spelled bypass launch (rc=$rc out=$out)";;
+esac
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code_direct__delegate_task","tool_input":{"task":"x","target":{"providerInstanceId":"claudeBypass"}}}')"; rc=$?
+case "$out" in
+  *'"permissionDecision":"deny"'*'carries a himmel bypass flag'*) ok "R8: wired MCP chain denies a direct-server bypass delegate_task";;
+  *) bad "R8: wired MCP chain denies a direct-server bypass delegate_task (rc=$rc out=$out)";;
+esac
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code__t3_thread_update","tool_input":{"action":"rename","title":"ops-chief"}}')"; rc=$?
+case "$out" in
+  *'"permissionDecision":"deny"'*'chief-shaped'*) ok "R8: wired MCP chain denies a Codex-spelled -chief title";;
+  *) bad "R8: wired MCP chain denies a Codex-spelled -chief title (rc=$rc out=$out)";;
+esac
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code_direct__t3_thread_wait","tool_input":{"threadId":"t"}}')"; rc=$?
+case "$out" in
+  *permissionDecision*) bad "R8 control: wired MCP chain allows a direct-server t3_thread_wait (rc=$rc out=$out)";;
+  *) if [ "$rc" -eq 0 ]; then ok "R8 control: wired MCP chain allows a direct-server t3_thread_wait"; else bad "R8 control: wired MCP chain allows a direct-server t3_thread_wait (rc=$rc)"; fi;;
+esac
+out="$(HOME="$TMP/home" run "$MCP_CHAIN" '{"hook_event_name":"PreToolUse","tool_name":"mcp__t3_code__t3_environment_read","tool_input":{"toolSummary":"Read env"}}')"; rc=$?
+case "$out" in
+  *permissionDecision*) bad "R8 control: wired MCP chain allows a Codex-spelled benign T3 read (rc=$rc out=$out)";;
+  *) if [ "$rc" -eq 0 ]; then ok "R8 control: wired MCP chain allows a Codex-spelled benign T3 read"; else bad "R8 control: wired MCP chain allows a Codex-spelled benign T3 read (rc=$rc)"; fi;;
+esac
 
 echo "== (g) lane grants through the adapter (HIMMEL-11204) =="
 FIX="$(cd "$TMP" && pwd -P)/fix"; FIXWT="$FIX-wt"
