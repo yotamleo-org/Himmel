@@ -32,8 +32,8 @@ follow the default unless rule (1) or (2) overrides it.
 
 Your harness loads at most the rule files on the path from the repo root to the
 folder your session started in (Antigravity loads the root file only). Before you edit anything under a folder below,
-open its rule file, even when you started at the root. Each folder also holds an
-`AGENTS.md` that points at the same file.
+open its rule file, even when you started at the root. Each folder except the
+vendored HUD one also holds an `AGENTS.md` that points at the same file.
 
 | Before editing | Read first |
 |---|---|

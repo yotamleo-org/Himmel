@@ -302,6 +302,9 @@ BODY12="$TMP/AGENTS-body12.md"
 AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$BODY12" \
   AGENTS_MD_PREAMBLE="$TMP/empty-preamble.md" AGENTS_MD_DEBRAND="$DEBRAND" \
   node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
+gen12=$?
+if [ "$gen12" -eq 0 ] && grep -q 'Subagent policy' "$BODY12"; then ok "term check reads a generated body (non-vacuous)"
+else bad "term check reads a generated body (rc=$gen12): $(cat "$TMP/err")"; fi
 # Each term is a Claude-only tool, command, env name or model name an agent on
 # another harness cannot act on. Facts ABOUT Claude (e.g. `claude -p` billing)
 # are not instructions and stay.
@@ -314,22 +317,24 @@ done
 AGENTS12="$TMP/AGENTS-real12.md"
 AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$AGENTS12" \
   AGENTS_MD_PREAMBLE="$PREAMBLE" AGENTS_MD_DEBRAND="$DEBRAND" \
-  node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
+  node "$GEN" --write >"$TMP/out" 2>"$TMP/err" || bad "real preamble over real CLAUDE.md generates: $(cat "$TMP/err")"
 # The folder table must name every nested rule file git tracks.
+rulefiles12="$(git -C "$SCRIPT_DIR/../.." ls-files | grep -E '(^|/)_?CLAUDE\.md$' | grep -v '^CLAUDE\.md$')" || rulefiles12=""
+table12="$(grep '^|' "$AGENTS12")"
 missing12=""
 while IFS= read -r rf; do
   [ -n "$rf" ] || continue
-  grep -qF -- "$rf" "$AGENTS12" || missing12="$missing12 $rf"
+  grep -qF -- "$rf" <<< "$table12" || missing12="$missing12 $rf"
 done <<EOF
-$(git -C "$SCRIPT_DIR/../.." ls-files | grep -E '(^|/)_?CLAUDE\.md$' | grep -v '^CLAUDE\.md$')
+$rulefiles12
 EOF
-if [ -z "$missing12" ]; then ok "folder table names every nested rule file"
-else bad "folder table names every nested rule file; missing:$missing12"; fi
+if [ -n "$rulefiles12" ] && [ -z "$missing12" ]; then ok "folder table names every nested rule file"
+else bad "folder table names every nested rule file (tracked list: ${rulefiles12:-EMPTY}); missing:$missing12"; fi
 
 # The title names only harnesses that load AGENTS.md on a fresh clone: Gemini CLI
 # reads GEMINI.md, so a bare Gemini is a false claim; Antigravity is the Gemini surface.
 title12="$(grep -m1 '^# AGENTS.md' "$AGENTS12")"
-case "$title12" in *Antigravity*) ok "title names Antigravity";; *) bad "title names Antigravity: $title12";; esac
+case "$title12" in *"Antigravity (Gemini)"*) ok "title names Antigravity (Gemini)";; *) bad "title names Antigravity (Gemini): $title12";; esac
 if grep -qE '(^|[^(])Gemini' <<< "$title12"; then bad "title names a bare Gemini: $title12"
 else ok "title never names Gemini CLI as a reader"; fi
 
