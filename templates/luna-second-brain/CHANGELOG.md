@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.121] — 2026-11-28
+
+### Changed
+- `_CLAUDE.md` names only commands that a himmel plugin provides: `/obsidian-init`, `/obsidian-reconcile` and `/obsidian-challenge` are gone. It is under 200 lines; the graphify details, the note-template catalogue with the decision contract, and the pre-commit rollback recovery moved to `docs/retrieval-routing.md`, `docs/note-templates.md` and `docs/vault-troubleshooting.md`. It states that a branch is enough and a separate worktree is not required, and the `worktree-isolation` hook message says the same.
+- `AGENTS.md` agrees with `_CLAUDE.md` that no vault MCP is loaded, and gives the search wrapper as `$HIMMEL_DIR/scripts/lib/qmd-bounded.sh`.
+
 ## [0.4.119] — 2026-11-26
 
 ### Changed
