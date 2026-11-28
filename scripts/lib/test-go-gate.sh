@@ -877,8 +877,8 @@ rec12t() {  # <verdicts-dir> <qid> <name> <verdict line> <pr> <written-at> [<ext
     printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: %s\n\n## Verdict\n\n%s\n\npr: %s\n%s\n## Evidence checked\n\ne\n' "$2" "$6" "$4" "$5" "${7:-}" > "$1/$2/$3.md"
 }
 T1=2026-11-01T00:00:00Z T2=2026-11-02T00:00:00Z T3=2026-11-03T00:00:00Z
-sign12() {  # <verdicts-dir> <qid> <name> - append write-verdict.sh's mac line, scope s
-    printf 'mac: %s\n' "$(HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac s "$2" "$3" < "$4"' _ "$GO_GATE_SRC" "$2" "$3" "$1/$2/$3.md")" >> "$1/$2/$3.md"
+sign12() {  # <verdicts-dir> <qid> <name> [<scope>] - append write-verdict.sh's mac line, scope s by default
+    printf 'mac: %s\n' "$(HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac "$5" "$2" "$3" < "$4"' _ "$GO_GATE_SRC" "$2" "$3" "$1/$2/$3.md" "${4:-s}")" >> "$1/$2/$3.md"
 }
 gt12() {  # <qid-dir> <head> - go_real_go_time under scope s with the pinned key
     HOME="$PINHOME" gg12 go_real_go_time "$1" "$2" s
@@ -958,6 +958,37 @@ GK3H="$ROOT/gk3"; mkdir -p "$GK3H/.config/himmel"; : > "$GK3H/.config/himmel/go-
 rc=0; err=$(gk "$GK3H" 2>&1 >/dev/null) || rc=$?
 [ "$rc" -eq 1 ] && [ "$(printf '%s\n' "$err" | wc -l | tr -d ' ')" = 1 ] && [ ! -s "$GK3H/.config/himmel/go-hmac.key" ] \
     || fail "GK3: want rc 1, one stderr line and the key untouched (rc=$rc: $err)"
+
+# shellcheck disable=SC2016  # $1 expands in the inner bash
+cw13() { env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_JUDGE_NOVERDICT "$@" bash -c '. "$1"; chief_worker' _ "$GO_GATE_SRC"; }
+rc=0; cw13 HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 || rc=$?
+[ "$rc" -eq 0 ] || fail "13 row 9: chief_worker with HIMMEL_CONSOLE_LEG unset and the marker set wants rc 0, got $rc"
+rc=0; cw13 HIMMEL_CONSOLE_JUDGE=1 || rc=$?
+[ "$rc" -eq 0 ] || fail "13 row 9: chief_worker with HIMMEL_CONSOLE_LEG and the marker unset and HIMMEL_CONSOLE_JUDGE=1 wants rc 0, got $rc"
+rc=0; cw13 || rc=$?
+[ "$rc" -eq 1 ] || fail "13 row 9: chief_worker with all three unset wants rc 1, got $rc"
+rc=0; cw13 HIMMEL_CONSOLE_JUDGE=0 HIMMEL_CONSOLE_JUDGE_NOVERDICT=0 || rc=$?
+[ "$rc" -eq 1 ] || fail "13 row 9: chief_worker with HIMMEL_CONSOLE_JUDGE=0 and the marker 0 wants rc 1, got $rc"
+DQ13="$ROOT/dq13/verdicts"
+rec12 "$DQ13" dsk6139a judge "**GO** for head \`$A12\`." 93; sign12 "$DQ13" dsk6139a judge
+got=$(gg12 go_pr_qids "$DQ13" 93 "$A12")
+[ "$got" = "0|" ] || fail "13 row 11: go_pr_qids lists no dsk qid at the head: $got"
+rec12 "$DQ13" J judge "**GO** for head \`$A12\`." 93; sign12 "$DQ13" J judge
+got=$(gg12 go_pr_qids "$DQ13" 93 "$A12")
+[ "$got" = "0|J" ] || fail "13 row 11: a chief qid beside dsk6139a lists only the chief qid: $got"
+TV13="$ROOT/tv13"; SC13=$(sc_scope "$SCP" "$SCC")
+[ "$SC13" = "envuser/scoperepo" ] || fail "13 row 12 setup: the scope fixture resolves '$SC13'"
+for q13 in dsk6139a J; do
+    rec12 "$TV13/$SC13/verdicts" "$q13" judge "**GO** for head \`$A12\`." 93; sign12 "$TV13/$SC13/verdicts" "$q13" judge "$SC13"
+done
+# shellcheck disable=SC2016  # $1.. expand in the inner bash
+tv13() { ( cd "$SCC" && env -i HOME="$PINHOME" PATH="$PATH" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    bash -c '. "$1"; go_trust_verdict "$2" "$3" "$4" "$5" 93' _ "$GO_GATE_SRC" "$TV13" "$1" "$A12" "$SCP" ); }
+rc=0; out=$(tv13 J) || rc=$?
+[ "$rc" -eq 0 ] || fail "13 row 12 control: the signed chief qid's record is accepted (rc $rc: $out)"
+rc=0; out=$(tv13 dsk6139a) || rc=$?
+[ "$rc" -eq 2 ] || fail "13 row 12: go_trust_verdict refuses a signed dsk6139a GO, want rc 2, got $rc"
+case "$out" in *"a dsk qid is the judge desk's and never merge trust"*) ;; *) fail "13 row 12: the refusal names the dsk reason: $out" ;; esac
 
 if [ "$FAIL" -eq 0 ]; then
     echo "PASS: test-go-gate.sh"

@@ -196,6 +196,29 @@ contains "relay: names the relay" "$out" "chief relay"
 check    "relay: no GO file written" "$(find "$ROOT6" -type f | wc -l | tr -d ' ')" "0"
 rm -rf "$ROOT6"
 
+FXA10="$tmp/fxa10"; FXW10="$tmp/fxw10"; ROOT10="$tmp/root10"; mkdir -p "$ROOT10"
+for fx10 in "$FXA10" "$FXW10"; do
+  mkdir -p "$fx10/scripts/handover/chief-kit" "$fx10/scripts/cr"
+  git init -q "$fx10"
+  cp -R "$HERE/../../lib" "$fx10/scripts/lib"
+  cp "$HERE/../../cr/anchor-handoff.sh" "$fx10/scripts/cr/"
+  cp "$SCRIPT" "$fx10/scripts/handover/chief-kit/go.sh"
+done
+rc=0
+# shellcheck disable=SC2016  # $1/$2 expand in the inner bash
+out10="$(HIMMEL_REPO="$FXA10" HANDOVER_DIR="$ROOT10" HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 \
+    _as_claude bash -c 'cd "$1/scripts/handover/chief-kit" && env -u HIMMEL_CONSOLE_LEG bash ./go.sh 77 "$2"' _ "$FXW10" "$SHA" 2>&1)" || rc=$?
+check    "desk: LEG stripped, marker kept: exit 3" "$rc" "3"
+contains "desk: LEG stripped, marker kept: refuses as a chief worker" "$out10" "chief-spawned worker"
+check    "desk: LEG stripped, marker kept: nothing written" "$(find "$ROOT10" -type f | wc -l | tr -d ' ')" "0"
+rc=0
+# shellcheck disable=SC2016  # $1/$2 expand in the inner bash
+out10="$(HIMMEL_REPO="$FXA10" HANDOVER_DIR="$ROOT10" HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 \
+    _as_claude bash -c 'cd "$1/scripts/handover/chief-kit" && v=HIMMEL_CONSOLE_JUD; env -u HIMMEL_CONSOLE_LEG -u ${v}GE_NOVERDICT bash ./go.sh 77 "$2"' _ "$FXW10" "$SHA" 2>&1)" || rc=$?
+check    "desk: LEG and marker stripped, JUDGE kept: exit 3" "$rc" "3"
+contains "desk: LEG and marker stripped, JUDGE kept: refuses as a chief worker" "$out10" "chief-spawned worker"
+check    "desk: LEG and marker stripped, JUDGE kept: nothing written" "$(find "$ROOT10" -type f | wc -l | tr -d ' ')" "0"
+
 # --- 7. "the judge is a worker" - go.sh's own gate is the worker
 # marker (HIMMEL_CONSOLE_JUDGE, only feeds guard-judge-writes.sh),
 # so nothing anywhere in go.sh's output should still claim

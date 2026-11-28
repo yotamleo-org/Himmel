@@ -171,6 +171,12 @@ GR_ARGS=(501 "$SHA_A" qgood)
 rc=0; out=$(run HIMMEL_CONSOLE_LEG=1 2>&1) || rc=$?
 check "worker caller refuses" "$rc" 3
 contains "worker refusal says why" "$out" "worker"
+rc=0; out=$(run HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 2>&1) || rc=$?
+check "desk caller (LEG unset, marker set) refuses" "$rc" 3
+contains "desk caller refusal says worker" "$out" "worker"
+rc=0; out=$(run HIMMEL_CONSOLE_JUDGE=1 2>&1) || rc=$?
+check "judge caller (LEG and marker unset, JUDGE=1) refuses" "$rc" 3
+contains "judge caller refusal says worker" "$out" "worker"
 rc=0; out=$(run HIMMEL_CONSOLE_RELAY=1 2>&1) || rc=$?
 check "relay caller refuses" "$rc" 3
 check "worker/relay change nothing" "$(snap_state)" "$before"

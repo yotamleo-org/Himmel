@@ -91,6 +91,10 @@
 #   - a chief worker (HIMMEL_CONSOLE_LEG) that is not a judge session
 #     (HIMMEL_CONSOLE_JUDGE=1): a worker must not certify its own trust-path PR;
 #     and a chief relay (HIMMEL_CONSOLE_RELAY), as go.sh refuses one;
+#   - a judge desk (exit 3): HIMMEL_CONSOLE_JUDGE_NOVERDICT set and not 0, or
+#     HIMMEL_CONSOLE_JUDGE=1 with no HIMMEL_CONSOLE_JUDGE_QID, checked before anything
+#     else; a CLAUDE_CODE_SESSION_ID listed in the harness bucket's judge-desk/sessions,
+#     whatever --repo names; and any dsk[0-9]* qid, whatever the environment;
 #   - any directory from <root>/<user> down to the target file that is a
 #     symlink, so the write cannot leave verdicts/<qid>/;
 #   - a GO when verdicts/<qid>/ already holds a NO-GO for the same head, or a
@@ -145,7 +149,7 @@
 # Exit codes:
 #   0  written (the path on stdout)
 #   2  usage / validation
-#   3  refused: a chief worker or relay, or the root / <user>/<bucket> scope is unresolved
+#   3  refused: a chief worker or relay, a judge desk or a dsk qid, or the root / <user>/<bucket> scope is unresolved
 #   4  refused: symlink, conflicting or unparsed verdict
 #   5  write failed
 #   6  refused (--bind only): the PR's head is not the verdict's head
@@ -153,6 +157,14 @@
 #
 # Platform guard: POSIX bash 3.2+.
 set -u
+if [ -n "${HIMMEL_CONSOLE_JUDGE_NOVERDICT+x}" ] && [ "$HIMMEL_CONSOLE_JUDGE_NOVERDICT" != 0 ]; then
+    echo "write-verdict: refusing - HIMMEL_CONSOLE_JUDGE_NOVERDICT is set (a judge desk writes no verdict); nothing written" >&2
+    exit 3
+fi
+if [ "${HIMMEL_CONSOLE_JUDGE:-}" = 1 ] && [ -z "${HIMMEL_CONSOLE_JUDGE_QID:-}" ]; then
+    echo "write-verdict: refusing - a judge session with no qid binding writes no verdict; nothing written" >&2
+    exit 3
+fi
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
@@ -168,6 +180,9 @@ seg_ok() {
 
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
+case "$QID" in
+    dsk[0-9]*) echo "write-verdict: refusing - dsk qids are the judge desk's and are never written" >&2; exit 3 ;;
+esac
 shift 3
 EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0 THREADS_OK="" THREADS_OK_SET=0 THREADS_NOTE="" PRBIND=0 BIND_FROM="" BIND_SHA="" BIND_PRHEAD="" bindbody=""
 while [ "$#" -gt 0 ]; do
@@ -453,6 +468,18 @@ fi
 . "$HERE/../../lib/handover-path.sh" || { echo "write-verdict: cannot load scripts/lib/handover-path.sh" >&2; exit 3; }
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the handover root go.sh reads" >&2; exit 3; }
+DESK_SCOPE=$(go_verdict_scope "$ANCHOR" "") || { echo "write-verdict: cannot resolve the harness bucket to read judge-desk/sessions; nothing written" >&2; exit 3; }
+DESK_REG="$ROOT/$DESK_SCOPE/judge-desk/sessions"
+if [ -e "$DESK_REG" ] || [ -L "$DESK_REG" ]; then
+    if [ ! -f "$DESK_REG" ] || [ ! -r "$DESK_REG" ]; then
+        echo "write-verdict: refusing - $DESK_REG cannot be read, so this session may be a judge desk's; nothing written" >&2
+        exit 3
+    fi
+    if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && grep -qxF -- "$CLAUDE_CODE_SESSION_ID" "$DESK_REG"; then
+        echo "write-verdict: refusing - this is a judge desk session; nothing written" >&2
+        exit 3
+    fi
+fi
 # The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
 # never the caller's cwd. Without --repo the reads of the repo under review (the
 # --bind-reviewed and --delta-noop delta checks, the ceiling lookup, the PR and thread

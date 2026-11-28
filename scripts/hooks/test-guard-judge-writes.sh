@@ -111,6 +111,14 @@ row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_messa
 row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
 # --- marker override ---
 row "marker named in command" 2 "$(bash_payload 'env -u HIMMEL_CONSOLE_JUDGE bash x.sh')"
+for pin_cmd in 'env -u HIMMEL_CONSOLE_JUDGE_NOVERDICT bash x.sh' 'unset HIMMEL_CONSOLE_JUDGE_NOVERDICT; bash x.sh'; do
+    pin_out=$(bash_payload "$pin_cmd" | env HOME="$FAKE_HOME" HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_DOC="$OWN_DOC" HIMMEL_CONSOLE_JUDGE_QID="$OWN_QID" "$BASH_ABS" "$HOOK" 2>/dev/null)
+    pin_rc=$?
+    case "$pin_rc:$pin_out" in
+        2:*'"permissionDecision":"deny"'*'marker-override'*) echo "ok   judge: desk marker dropped is denied as marker-override ($pin_cmd)"; pass=$((pass + 1)) ;;
+        *) echo "FAIL judge: desk marker dropped ($pin_cmd) — want rc 2 and a marker-override deny, got rc=$pin_rc: $pin_out"; fail=$((fail + 1)) ;;
+    esac
+done
 row "bun x oxlint" 2 "$(bash_payload 'bun x oxlint .')"
 row "bunx" 2 "$(bash_payload 'bunx oxlint@1.88.0 .')"
 row "npx" 2 "$(bash_payload 'npx prettier --check .')"

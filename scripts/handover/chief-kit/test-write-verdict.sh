@@ -268,8 +268,8 @@ check "7: the real NO-GO is what the parser reads" "$rc" 2
 # --- 8. a chief worker is refused -----------------------------------------
 rc=0; env HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q8 GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
 check "8: a chief worker is refused rc 3" "$rc" 3
-rc=0; env -u HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q8 GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
-check "8: a judge session (worker + judge marker) may write" "$rc" 0
+rc=0; env -u HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=q8 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q8 GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
+check "8: a judge session (worker + judge marker, bound to its qid) may write" "$rc" 0
 rc=0; env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q11 NO-GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
 check "8: a chief relay is refused rc 3" "$rc" 3
 check "8: nothing written for the relay" "$([ -e "$scope_dir/q11" ] && echo yes || echo no)" no
@@ -1172,6 +1172,81 @@ rc=0; wv q31 GO "$J26" --evidence-file "$evd/j26.md" >/dev/null 2>&1 || rc=$?
 check "31: setup, the judged GO is written" "$rc" 0
 rc=0; out=$(cd "$nowhere31" && HIMMEL_REPO="$fx" wv q31 GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
 check "31: --delta-noop from a non-repo cwd classifies in HIMMEL_REPO rc 0" "$rc" 0
+
+mk32="refusing - HIMMEL_CONSOLE_JUDGE_NOVERDICT is set (a judge desk writes no verdict); nothing written"
+wvm() {
+    env -u HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=jq1 \
+        HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 HANDOVER_DIR="$root" USER_SLUG=tuser CLAUDE_CODE_SESSION_ID=sess-4689 \
+        bash "$SCRIPT" "$@"
+}
+gone32() { [ -e "$scope_dir/$1" ] && echo written || echo none; }
+rc=0; out=$(wvm q32a GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 1: a GO under the marker is refused rc 3" "$rc" 3
+contains "32 row 1: ...with the marker's text" "$out" "$mk32"
+check "32 row 1: ...and no verdicts/q32a/ exists" "$(gone32 q32a)" none
+printf '## Verdict\n\nnot a verdict\n' > "$evd/bad32.md"
+rc=0; out=$(wvm q32b GO "$SHA_A" --evidence-file "$evd/bad32.md" --pr 501 2>&1) || rc=$?
+check "32 row 2: a malformed evidence file under the marker is rc 3, not 2" "$rc" 3
+contains "32 row 2: ...with the marker's text" "$out" "$mk32"
+rc=0; out=$(wvm q32b GO "$SHA_A" --no-such-flag 2>&1) || rc=$?
+check "32 row 2: an unknown flag under the marker is rc 3, not 2" "$rc" 3
+contains "32 row 2: ...with the marker's text" "$out" "$mk32"
+check "32 row 2: ...and no verdicts/q32b/ exists" "$(gone32 q32b)" none
+for v32 in "NO-GO --evidence-file $ev --pr 501" "GO --evidence-file $ev --pr 501 --delta-noop $SHA_B" \
+        "NO-GO --evidence-file $ev --pr 501 --bind-reviewed $SHA_B" "GO --bind --pr 501"; do
+    rc=0
+    # shellcheck disable=SC2086  # v32 is a deliberate argument list
+    out=$(wvm q32c ${v32%% *} "$SHA_A" ${v32#* } 2>&1) || rc=$?
+    check "32 row 3: refused rc 3 ($v32)" "$rc" 3
+    contains "32 row 3: ...with the marker's text ($v32)" "$out" "$mk32"
+done
+check "32 row 3: ...and no verdicts/q32c/ exists" "$(gone32 q32c)" none
+printf '#!/usr/bin/env bash\nbash %q q32d GO %s --evidence-file %q --pr 501\n' "$SCRIPT" "$SHA_A" "$ev" > "$tmp/gen32.sh"
+rc=0; out=$(env -u HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=jq1 \
+    HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$tmp/gen32.sh" 2>&1) || rc=$?
+check "32 row 4: the writer run from a generated script under the marker is refused rc 3" "$rc" 3
+contains "32 row 4: ...with the marker's text" "$out" "$mk32"
+check "32 row 4: ...and no verdicts/q32d/ exists" "$(gone32 q32d)" none
+kit32="$tmp/kit32"
+mkdir -p "$kit32/scripts/handover/chief-kit" "$kit32/scripts/cr" || { echo "FAIL: 32 setup" >&2; exit 1; }
+cp "$HERE/write-verdict.sh" "$kit32/scripts/handover/chief-kit/"
+printf 'echo reached > %q\nexit 2\n' "$tmp/ah32.reached" > "$kit32/scripts/cr/anchor-handoff.sh"
+rc=0; out=$(env -u HIMMEL_CONSOLE_RELAY HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=jq1 \
+    HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 bash "$kit32/scripts/handover/chief-kit/write-verdict.sh" q32e GO "$SHA_A" 2>&1) || rc=$?
+check "32 row 5: a handoff stub that would exit 2 is never reached under the marker (rc 3)" "$rc" 3
+check "32 row 5: ...the stub did not run" "$([ -e "$tmp/ah32.reached" ] && echo ran || echo not-run)" not-run
+rc=0; out=$(env -i PATH="$PATH" HOME="$HOME" HANDOVER_DIR="$root" USER_SLUG=tuser HIMMEL_VERDICT_MODEL=m HIMMEL_VERDICT_EFFORT=high \
+    HIMMEL_CEILINGS_LEDGER="$HIMMEL_CEILINGS_LEDGER" bash "$SCRIPT" dsk6139a GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 7: a dsk qid with no judge variables is refused rc 3" "$rc" 3
+contains "32 row 7: ...with the dsk text" "$out" "refusing - dsk qids are the judge desk's and are never written"
+check "32 row 7: ...and no verdicts/dsk6139a/ exists" "$(gone32 dsk6139a)" none
+mkdir -p "$root/$scope/judge-desk" || { echo "FAIL: 32 registry setup" >&2; exit 1; }
+printf 'sess-desk-32\n' > "$root/$scope/judge-desk/sessions"
+wvs() {
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_JUDGE_QID -u HIMMEL_CONSOLE_RELAY \
+        HANDOVER_DIR="$root" USER_SLUG=tuser "$@"
+}
+rc=0; out=$(wvs CLAUDE_CODE_SESSION_ID=sess-desk-32 bash "$SCRIPT" q32h GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 8: a listed desk session is refused rc 3" "$rc" 3
+contains "32 row 8: ...with the desk-session text" "$out" "refusing - this is a judge desk session; nothing written"
+check "32 row 8: ...and no verdicts/q32h/ exists" "$(gone32 q32h)" none
+rc=0; out=$(wvs CLAUDE_CODE_SESSION_ID=sess-desk-32 bash "$SCRIPT" q32r GO "$SHA_A" --evidence-file "$ev" --pr 501 --repo other/repo 2>&1) || rc=$?
+check "32 row 8: a listed desk session with --repo other/repo is still refused rc 3" "$rc" 3
+contains "32 row 8: ...with the desk-session text (--repo)" "$out" "refusing - this is a judge desk session; nothing written"
+check "32 row 8: ...nothing in the harness bucket" "$(gone32 q32r)" none
+check "32 row 8: ...nothing in the adopted bucket" "$([ -e "$root/tuser/other--repo/verdicts/q32r" ] && echo written || echo none)" none
+rc=0; out=$(wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 CLAUDE_CODE_SESSION_ID=sess-4689 bash "$SCRIPT" q32n GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 8: a judge session with no qid binding is refused rc 3" "$rc" 3
+contains "32 row 8: ...with the no-qid text" "$out" "refusing - a judge session with no qid binding writes no verdict; nothing written"
+check "32 row 8: ...and no verdicts/q32n/ exists" "$(gone32 q32n)" none
+rc=0; out=$(wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=q32p CLAUDE_CODE_SESSION_ID=sess-4689 bash "$SCRIPT" q32p GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 8: an unlisted session with a qid passes to the existing gates (rc 0)" "$rc" 0
+rc=0; out=$(wvs HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_JUDGE_QID=q32k CLAUDE_CODE_SESSION_ID=sess-4689 bash "$SCRIPT" q32k GO "$SHA_A" --evidence-file "$ev" --pr 501 2>&1) || rc=$?
+check "32 row 14: a console judge with no marker writes its verdict rc 0" "$rc" 0
+check "32 row 14: ...the record exists" "$([ -f "$scope_dir/q32k/judge.md" ] && echo yes || echo no)" yes
+rc=0; verdict_rc q32k "$SHA_A" || rc=$?
+check "32 row 14: ...and go_trust_verdict accepts it" "$rc" 0
+rm -rf "$root/$scope/judge-desk"
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"

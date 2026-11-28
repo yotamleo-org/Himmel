@@ -17,11 +17,21 @@
 # Both functions: sourceable from hooks and scripts, `return`-only (never
 # `exit`), no `set -e` toggling. bash 3.2-safe.
 
-# chief_worker — rc 0 iff HIMMEL_CONSOLE_LEG is truthy (this process IS a
+# chief_worker — rc 0 when HIMMEL_CONSOLE_LEG is truthy (this process IS a
 # chief-spawned worker, exported by headed-arm-worker.sh). Same five falsy
 # spellings every call site used before this helper, case-insensitive,
 # whitespace-stripped: empty, 0, false, off, no — anything else is truthy.
+# A judge desk or judge session is a chief worker too, so a GO script refuses one
+# that strips HIMMEL_CONSOLE_LEG: rc 0 while HIMMEL_CONSOLE_JUDGE_NOVERDICT is set
+# and not 0, or while HIMMEL_CONSOLE_JUDGE is truthy by the same spellings.
 chief_worker() {
+    if [ -n "${HIMMEL_CONSOLE_JUDGE_NOVERDICT+x}" ] && [ "$HIMMEL_CONSOLE_JUDGE_NOVERDICT" != 0 ]; then
+        return 0
+    fi
+    case "$(printf '%s' "${HIMMEL_CONSOLE_JUDGE:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+        ''|0|false|off|no) ;;
+        *) return 0 ;;
+    esac
     case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
         *) return 0 ;;
@@ -260,6 +270,11 @@ go_trust_verdict() {
         printf 'the trust id '"'"'%s'"'"' is not a judge qid ([A-Za-z0-9][A-Za-z0-9._-]*), so it names no verdicts/<qid>/ directory — pass the qid of the judge that ruled GO on this head.\n' "$2"
         return 2
     fi
+    case "$qid" in
+        dsk[0-9]*)
+            printf 'the trust id '"'"'%s'"'"' is refused: a dsk qid is the judge desk'"'"'s and never merge trust.\n' "$qid"
+            return 2 ;;
+    esac
     if [ -z "$anchor" ] || ! scope=$(go_verdict_scope "$anchor" "$nwo"); then
         printf 'cannot resolve this repo'"'"'s <user>/<bucket> verdict scope (USER_SLUG, or the primary checkout of '"'"'%s'"'"') — refusing rather than read every bucket'"'"'s verdicts/%s/.\n' "$anchor" "$qid"
         return 2
@@ -344,8 +359,8 @@ go_verdict_line() {
     printf '%s\n' "$l"
 }
 
-# go_pr_qids <verdicts-dir> <pr> <head> — each qid (a directory name, go-pr-*
-# excluded: a persisted chief GO, never a judge) holding a .md with the exact
+# go_pr_qids <verdicts-dir> <pr> <head> — each qid (a directory name; no go-pr-* chief GO
+# and no dsk* judge desk qid, neither a ruling) holding a .md with the exact
 # line `pr: <pr>` or naming `for head `<head>``, sorted, one per line. A missing
 # directory prints nothing; rc 2 when it cannot be read.
 go_pr_qids() {
@@ -361,7 +376,7 @@ go_pr_qids() {
         rel=${vpath#"$1"/}
         case "$rel" in */*/*) continue ;; esac
         q=${rel%%/*}
-        case "$q" in go-pr-*) continue ;; esac
+        case "$q" in go-pr-*|dsk[0-9]*) continue ;; esac
         out="$out$q"$'\n'
     done <<< "$cand"
     [ -z "$out" ] || printf '%s' "$out" | LC_ALL=C sort -u

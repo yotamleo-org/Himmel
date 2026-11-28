@@ -328,6 +328,16 @@ OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSU
 check "chief-spawned worker: exit 3" "$RC" "3"
 check "exit 3 writes no audit row" "$(audit_rows)" "0"
 nogo  "exit 3"
+OUT=$(env -u HIMMEL_CONSOLE_LEG -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "desk (LEG unset, marker set): exit 3" "$RC" "3"
+contains "desk (LEG unset, marker set): the chief-worker refusal" "$OUT" "chief-spawned worker"
+check    "desk (LEG unset, marker set): no audit row" "$(audit_rows)" "0"
+nogo     "desk (LEG unset, marker set)"
+OUT=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE_NOVERDICT -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES HIMMEL_CONSOLE_JUDGE=1 bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "judge (LEG and marker unset, JUDGE=1): exit 3" "$RC" "3"
+contains "judge (LEG and marker unset, JUDGE=1): the chief-worker refusal" "$OUT" "chief-spawned worker"
+check    "judge (LEG and marker unset, JUDGE=1): no audit row" "$(audit_rows)" "0"
+nogo     "judge (LEG and marker unset, JUDGE=1)"
 
 # --- 2b. a shared library that cannot be loaded is exit 1, never a run without it ---------
 # a copy of auto-go.sh beside go-gate.sh and handover-path.sh but no git-clean.sh: the env

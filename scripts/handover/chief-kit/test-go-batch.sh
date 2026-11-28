@@ -253,6 +253,21 @@ check "8 a chief-spawned worker is refused" "$RC" "3"
 check "8 and nothing ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
 
 reset
+OUT=$(env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_JUDGE_NOVERDICT=1 bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+check "8 desk (LEG unset, marker set) is refused" "$RC" "3"
+contains "8 desk refusal is the chief-worker one" "$OUT" "chief-spawned worker"
+check "8 desk: no go.sh ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
+check "8 desk: no GO written" "$(find "$HANDOVER_DIR/.locks/go" -type f | wc -l | tr -d ' ')" "0"
+check "8 desk: nothing sent" "$(find "$FIX/bus" -type f | wc -l | tr -d ' ')" "0"
+reset
+OUT=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE_NOVERDICT HIMMEL_CONSOLE_JUDGE=1 bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
+check "8 judge (LEG and marker unset, JUDGE=1) is refused" "$RC" "3"
+contains "8 judge refusal is the chief-worker one" "$OUT" "chief-spawned worker"
+check "8 judge: no go.sh ran" "$(wc -l < "$FIX/go.log" | tr -d ' ')" "0"
+check "8 judge: no GO written" "$(find "$HANDOVER_DIR/.locks/go" -type f | wc -l | tr -d ' ')" "0"
+check "8 judge: nothing sent" "$(find "$FIX/bus" -type f | wc -l | tr -d ' ')" "0"
+
+reset
 jq -n '[range(0;200) | {number:(1000+.), headRefOid:"1111111111111111111111111111111111111111", baseRefName:"main", isDraft:true, body:"", files:[]}]' > "$FIX/prs.json"
 OUT=$(bash "$SCRIPT" --doc "$tmp/chief.md" --fleet "$tmp/fleet.json" 2>&1); RC=$?
 check "9 a PR list that reached the 200 limit exits 1" "$RC" "1"

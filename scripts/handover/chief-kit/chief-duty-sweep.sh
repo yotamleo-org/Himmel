@@ -136,7 +136,7 @@ verdict_heads() {
     [ -d "$bucket/verdicts" ] || return 0
     grep -rlE --include='*.md' "^pr: $1\$" "$bucket/verdicts" 2>/dev/null | while IFS= read -r f; do
         q="${f#"$bucket"/verdicts/}"; q="${q%%/*}"
-        case "$q" in go-pr-*) continue ;; esac
+        case "$q" in go-pr-*|dsk[0-9]*) continue ;; esac
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
         h=$(sed -nE 's/.*for head `([0-9a-f]{40})`.*/\1/p' "$f" 2>/dev/null | head -n 1)  # swallow-ok: a record that names no head is skipped
         [ -n "$h" ] && printf '%s %s %s\n' "$q" "$h" "$f"
