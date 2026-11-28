@@ -263,6 +263,22 @@ assert_rc "a type with no readable definition + haiku is allowed (rc=0)" 0 "$RC3
 RC37=$(run_hook def-inherits-sonnet "$(payload inherits-all sonnet)" "${DEFS[@]}")
 assert_rc "project agent that inherits Agent + sonnet stays allowed (rc=0)" 0 "$RC37"
 
+printf -- '---\nname: yaml-list\ntools:\n  - Read\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/yaml-list.md"
+printf -- '---\nname: quoted\ntools: "Read, Agent"\n---\nbody\n' > "$PROJ/.claude/agents/quoted.md"
+printf -- '---\nname: comment-drop\ndisallowedTools: Bash # Agent stays enabled\n---\nbody\n' > "$PROJ/.claude/agents/comment-drop.md"
+printf -- '---\nname: renamed\n---\nbody\n' > "$PROJ/.claude/agents/file-stem.md"
+printf -- '---\nname: yaml-drop\ndisallowedTools:\n  - Agent\n---\nbody\n' > "$PROJ/.claude/agents/yaml-drop.md"
+RC38=$(run_hook def-yaml-list "$(payload yaml-list haiku)" "${DEFS[@]}")
+assert_rc "project agent listing Agent as a YAML list item + haiku is DENIED (rc=2)" 2 "$RC38"
+RC39=$(run_hook def-quoted "$(payload quoted haiku)" "${DEFS[@]}")
+assert_rc "project agent with a quoted tools value naming Agent + haiku is DENIED (rc=2)" 2 "$RC39"
+RC40=$(run_hook def-comment "$(payload comment-drop haiku)" "${DEFS[@]}")
+assert_rc "a comment naming Agent on disallowedTools does not drop it: + haiku is DENIED (rc=2)" 2 "$RC40"
+RC41=$(run_hook def-renamed "$(payload renamed haiku)" "${DEFS[@]}")
+assert_rc "an agent found by its name: field, not its file name, + haiku is DENIED (rc=2)" 2 "$RC41"
+RC42=$(run_hook def-yaml-drop "$(payload yaml-drop haiku)" "${DEFS[@]}")
+assert_rc "project agent dropping Agent as a YAML list item + haiku is allowed (rc=0)" 0 "$RC42"
+
 echo ""
 echo "=== escape hatch ==="
 

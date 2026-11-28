@@ -29,10 +29,12 @@
 #   2. tool_input.subagent_type keeps the Agent tool, so the Haiku child could
 #      spawn (and a built-in Explore it calls runs on the MAIN session's model,
 #      a tier up): it is absent, null, empty, "general-purpose" or "claude", or
-#      it names an agent definition file, $CLAUDE_PROJECT_DIR/.claude/agents/
-#      <type>.md first, then $HOME/.claude/agents/<type>.md, whose frontmatter
-#      leaves Agent available (no `tools:` line, or one listing Agent or the old
-#      name Task, and no `disallowedTools:` naming it). The deny names
+#      it names an agent definition, a *.md under $CLAUDE_PROJECT_DIR/.claude/
+#      agents/ first, then $HOME/.claude/agents/, whose frontmatter `name:`
+#      (the file name when it has none) is the type and leaves Agent available:
+#      no `tools:` key, or one listing Agent or the old name Task (inline,
+#      quoted or as YAML list items), and no `disallowedTools:` naming it (a
+#      trailing # comment is not read). The deny names
 #      haiku-worker (.claude/agents/haiku-worker.md, Agent disallowed). A type
 #      whose definition omits Agent (edit-runner, haiku-worker), and a type with
 #      no readable definition file (built-ins such as Explore, plugin agents,
@@ -61,22 +63,40 @@ set -uo pipefail
 warn() { echo "guard-subagent-model: $*" >&2; }
 
 agent_def_keeps_agent() {
-    local def="" root
+    local root f rc
     case "$1" in *[!A-Za-z0-9_-]*) return 1 ;; esac
     for root in "${CLAUDE_PROJECT_DIR:-}" "${HOME:-}"; do
-        if [ -n "$root" ] && [ -f "$root/.claude/agents/$1.md" ]; then
-            def="$root/.claude/agents/$1.md"
-            break
-        fi
+        [ -n "$root" ] && [ -d "$root/.claude/agents" ] || continue
+        for f in "$root/.claude/agents"/*.md; do
+            [ -f "$f" ] || continue  # fail-open-ok: a workflow nudge (header FAIL-OPEN); an unreadable definition is skipped like a missing one
+            rc=0
+            awk -v want="$1" -v stem="$(basename "$f" .md)" '
+                function has_agent(v,   n, a, i, t) {
+                    sub(/[[:space:]]+#.*$/, "", v)
+                    gsub(/["'\''\[\]-]/, " ", v)
+                    n = split(v, a, /[ ,]+/)
+                    for (i = 1; i <= n; i++) { t = a[i]; sub(/\(.*$/, "", t); if (t == "Agent" || t == "Task") return 1 }
+                    return 0
+                }
+                NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+                /^---[[:space:]]*$/ { done = 1; exit }
+                /^[^[:space:]]/ { key = "" }
+                /^name:/ { v = $0; sub(/^name:/, "", v); sub(/[[:space:]]+#.*$/, "", v); gsub(/["'\''[:space:]]/, "", v); name = v }
+                /^tools:/ { tools = 1; key = "tools"; v = $0; sub(/^tools:/, "", v); if (has_agent(v)) listed = 1; next }
+                /^disallowedTools:/ { key = "drop"; v = $0; sub(/^disallowedTools:/, "", v); if (has_agent(v)) dropped = 1; next }
+                /^[[:space:]]+-/ { if (key == "tools" && has_agent($0)) listed = 1; if (key == "drop" && has_agent($0)) dropped = 1 }
+                END {
+                    if (!done || (name == "" ? stem : name) != want) exit 2
+                    exit (dropped || (tools && !listed)) ? 1 : 0
+                }
+            ' "$f" || rc=$?
+            case "$rc" in
+                0) return 0 ;;
+                1) return 1 ;;
+            esac
+        done
     done
-    [ -n "$def" ] || return 1
-    awk '
-        NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
-        /^---[[:space:]]*$/ { done = 1; exit }
-        /^tools:/ { tools = 1; if ($0 ~ /(^tools:|[ ,])(Agent|Task)([ ,(]|$)/) listed = 1 }
-        /^disallowedTools:/ { if ($0 ~ /(^disallowedTools:|[ ,])(Agent|Task)([ ,(]|$)/) dropped = 1 }
-        END { exit !(done && !dropped && (!tools || listed)) }
-    ' "$def"
+    return 1
 }
 
 input=$(cat 2>/dev/null || true)

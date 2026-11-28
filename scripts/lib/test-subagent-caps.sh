@@ -139,6 +139,8 @@ env | grep '^CLAUDE_CODE_MAX_' > "$(dirname "$0")/session.env"
 EOF
 chmod 755 "$HA_STUBS/launcher"
 REPO_FX="$TMP/repo"; mkdir -p "$REPO_FX" "$TMP/home"
+HA_LAUNCHER_ENV=""
+HA_MODEL=""
 PAST=$(( $(date +%s) - 100 ))
 run_headed_arm() {
     env -u CHIEF_CONTEXT -u CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH -u CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS \

@@ -695,9 +695,9 @@ if [ "$HEADLESS" = "1" ]; then
         LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
     fi
 fi
-if [ "${#SUBAGENT_CAPS_ENV[@]}" -gt 0 ] && subagent_caps_is_haiku "$MODEL"; then
+if [ -n "${SUBAGENT_CAPS_ENV[0]:-}" ] && subagent_caps_is_haiku "$MODEL"; then
     case "${LAUNCHER##*/}" in
-        worker-claude-launcher*) ;;
+        worker-claude-launcher.sh|worker-claude-launcher-consult.sh) ;;
         *) LAUNCH_ARGV=("$LAUNCHER" --disallowedTools Agent "${LAUNCH_ARGV[@]:1}") ;;
     esac
 fi
