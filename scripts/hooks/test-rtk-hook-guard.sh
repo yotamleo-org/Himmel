@@ -52,6 +52,7 @@ set -euo pipefail
 
 # The native controls must not inherit the lane running this suite.
 unset CLAUDE_CONFIG_DIR
+unset HIMMEL_CONSOLE_LEG
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -332,6 +333,64 @@ else
     assert_fail "expected empty output for mixed-separator worktree cwd, got: $out"
 fi
 
+run_hook_leg() {
+    printf '{"session_id":"s","cwd":"%s","tool_name":"Bash","tool_input":{"command":"%s"}}' "$1" "$2" \
+        | HIMMEL_CONSOLE_LEG=1 PATH="$stub_dir:$PATH" bash "$hook"
+}
+echo "Test 3h: a worker's simple git commit in a worktree keeps the rtk rewrite"
+for cmd in 'git commit -F /tmp/msg' 'git commit -q -m \"fix(x): y\"' 'git commit'; do
+    out=$(run_hook_leg "$wt_cwd" "$cmd")
+    if grepq "$out" '"rtk git commit'; then
+        assert_pass "worker worktree commit rewritten: $cmd"
+    else
+        assert_fail "expected rtk git commit rewrite for '$cmd', got: $out"
+    fi
+done
+# shellcheck disable=SC2016
+for cmd in 'git commit -F /tmp/msg && git push' 'git commit -F /tmp/msg; git log -1' \
+    'git push -u origin fix/x' 'git diff origin/main' 'git show HEAD' 'git commit -m \"git push\"' \
+    'cd /tmp && git commit -F /tmp/msg' 'git commit -m \"$(id)\"' 'git commit -m `id`' \
+    'git commit -F /tmp/msg > /tmp/out' 'git commit -F <(id)'; do
+    out=$(run_hook_leg "$wt_cwd" "$cmd")
+    if [ -z "$out" ]; then
+        assert_pass "worker worktree rewrite still suppressed: $cmd"
+    else
+        assert_fail "expected empty output for '$cmd' in a worker worktree, got: $out"
+    fi
+done
+out=$(run_hook_cwd "$wt_cwd" 'git commit -F /tmp/msg')
+if [ -z "$out" ]; then
+    assert_pass "non-worker worktree commit still suppressed"
+else
+    assert_fail "expected empty output for a non-worker worktree commit, got: $out"
+fi
+silent_dir=$(mktemp -d "${TMPDIR:-/tmp}/rtk-guard-silent.XXXXXX") || { echo "FAIL: cannot make a stub dir" >&2; exit 1; }
+printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$silent_dir/rtk"
+chmod +x "$silent_dir/rtk"
+run_silent() {
+    printf '{"session_id":"s","cwd":"%s","tool_name":"Bash","tool_input":{"command":"%s","description":"d"}}' "$wt_cwd" "$2" \
+        | HIMMEL_CONSOLE_LEG="$1" CLAUDE_CONFIG_DIR="$3" PATH="$silent_dir:$PATH" bash "$hook"
+}
+out=$(run_silent 1 'git commit -F /tmp/msg' '')
+if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.updatedInput.command + "|" + .hookSpecificOutput.updatedInput.description')" = 'rtk git commit -F /tmp/msg|d' ]; then
+    assert_pass "silent rtk: the guard writes a worker's commit rewrite, other input fields kept"
+else
+    assert_fail "silent rtk: expected the guard's rtk git commit rewrite, got: $out"
+fi
+# shellcheck disable=SC2016
+for row in '|git commit -F /tmp/msg|' '1|git commit -F /tmp/msg && git push|' '1|git push|' \
+    '1|git commit -m \"$(id)\"|' '1|git commit -m `id`|' '1|python3 x.py|' '1|rm -f x|' \
+    '1|git commit -F /tmp/msg|/home/u/.claude-codex'; do
+    leg=${row%%|*}; rest=${row#*|}; cmd=${rest%%|*}; cfg=${rest#*|}
+    out=$(run_silent "$leg" "$cmd" "$cfg")
+    if [ -z "$out" ]; then
+        assert_pass "silent rtk: no rewrite for leg='$leg' cfg='$cfg': $cmd"
+    else
+        assert_fail "silent rtk: expected no rewrite for leg='$leg' cfg='$cfg' '$cmd', got: $out"
+    fi
+done
+rm -rf "$silent_dir"
+
 # ---------- 4. rtk silent (compound shell command) ----------
 echo "Test 4: rtk emits nothing → guard emits nothing"
 set +e
@@ -567,6 +626,92 @@ if real_rtk=$(command -v rtk 2>/dev/null); then
     fi
 else
     echo "  SKIP: no rtk installed on PATH -- stub-only coverage stands"
+fi
+
+echo "Test 14: worker commit through the guard: capped when it passes, failing line kept with rtk on and off"
+if real_rtk=$(command -v rtk 2>/dev/null); then
+    real_dir=$(dirname "$real_rtk")
+    if ! { [ -r "$repo_root/scripts/lib/git-clean.sh" ] && . "$repo_root/scripts/lib/git-clean.sh"; }; then
+        echo "FAIL: cannot load scripts/lib/git-clean.sh" >&2
+        exit 1
+    fi
+    git_env_scrub
+    cap=5
+    repo14=$(mktemp -d "${TMPDIR:-/tmp}/rtk-guard-commit.XXXXXX") || { echo "FAIL: cannot make a scratch repo" >&2; exit 1; }
+    commit_n=0
+    msg14="$repo14/msg"
+    printf 'test commit\n' > "$msg14"
+    git -C "$repo14" init -q
+    git -C "$repo14" config user.name t
+    git -C "$repo14" config user.email t@example.invalid
+    cat > "$repo14/.git/hooks/pre-commit" <<'HOOK'
+#!/bin/sh
+i=1
+while [ "$i" -le 60 ]; do
+    echo "hook number $i....................................................Passed"
+    i=$((i + 1))
+done
+[ "${PROBE_RC:-0}" = "0" ] && exit 0
+echo "Detect hardcoded secrets.............................................Failed"
+echo "- hook id: gitleaks"
+echo "- exit code: 1"
+echo "FAILING-LINE-14"
+exit 1
+HOOK
+    chmod +x "$repo14/.git/hooks/pre-commit"
+    off_cmd="git commit -F msg"
+    commit_payload=$(jq -nc --arg cwd "$wt_cwd" --arg c "$off_cmd" '{session_id: "s", cwd: $cwd, tool_name: "Bash", tool_input: {command: $c}}')
+    on_out=$(printf '%s' "$commit_payload" | HIMMEL_CONSOLE_LEG=1 PATH="$real_dir:$PATH" bash "$hook")
+    on_cmd=$(printf '%s' "$on_out" | jq -r '.hookSpecificOutput.updatedInput.command // empty')
+    off_out=$(printf '%s' "$commit_payload" | PATH="$real_dir:$PATH" bash "$hook")
+    if [ -z "$off_out" ]; then
+        assert_pass "rtk off: a non-worker worktree commit runs unwrapped"
+    else
+        assert_fail "rtk off: expected no rewrite for a non-worker worktree commit, got: $off_out"
+    fi
+    if [ "${on_cmd#rtk git commit }" != "$on_cmd" ]; then
+        assert_pass "rtk on: the guard forwards a worker's commit as rtk git commit"
+    else
+        assert_fail "rtk on: expected an rtk git commit rewrite, got: $on_out"
+        on_cmd="$off_cmd"
+    fi
+    run_commit() {
+        local rc=0 o
+        commit_n=$((commit_n + 1))
+        echo "$commit_n" >> "$repo14/f"
+        git -C "$repo14" add f
+        o=$(cd "$repo14" && PROBE_RC="$2" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 PATH="$real_dir:$PATH" bash -c "$1" 2>&1) || rc=$?
+        printf '%s\nrc=%s\n' "$o" "$rc"
+    }
+    res=$(run_commit "$off_cmd" 0)
+    n=$(grep -c '' <<< "$res")
+    if [ "$n" -gt "$cap" ] && grepq "$res" -x 'rc=0'; then
+        assert_pass "RED: a passing unwrapped commit prints $n lines, over the cap of $cap"
+    else
+        assert_fail "RED: expected over $cap lines and rc=0 from the unwrapped commit, got $n: $res"
+    fi
+    res=$(run_commit "$on_cmd" 0)
+    n=$(grep -c '' <<< "$res")
+    if [ "$n" -le "$cap" ] && grepq "$res" -x 'rc=0'; then
+        assert_pass "GREEN: a passing rtk commit prints $n lines, within the cap"
+    else
+        assert_fail "GREEN: expected at most $cap lines and rc=0 from the rtk commit, got $n: $res"
+    fi
+    for mode in on off; do
+        if [ "$mode" = on ]; then c="$on_cmd"; else c="$off_cmd"; fi
+        res=$(run_commit "$c" 1)
+        failed_at=$(awk '/Failed$/ { print NR; exit }' <<< "$res")
+        line_at=$(awk '/^FAILING-LINE-14$/ { print NR; exit }' <<< "$res")
+        if [ "$(awk '/^FAILING-LINE-14$/ { n++ } END { print n + 0 }' <<< "$res")" -eq 1 ] && [ -n "$failed_at" ] \
+            && [ "$failed_at" -lt "$line_at" ] && grepq "$res" -x 'rc=1'; then
+            assert_pass "rtk $mode: a failing commit prints its failing line once, after the Failed line, rc=1"
+        else
+            assert_fail "rtk $mode: expected the failing line once after the Failed line and rc=1, got: $res"
+        fi
+    done
+    rm -rf "$repo14"
+else
+    echo "  SKIP: no rtk installed on PATH -- stub rows in 3h stand"
 fi
 
 # ---------- summary ----------
