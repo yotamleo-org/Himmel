@@ -266,8 +266,8 @@ it refuses in the same writer round. The seal runs the same trace lint: a seal i
 refuses writes no row, so fix the bytes and run the critic again for the same
 round.
 
-Dispatch a fresh subagent (Agent tool, `model: opus` at high effort) against
-the written spec file; never let it inherit the parent's tier (CLAUDE.md
+Dispatch a fresh subagent (Agent tool, `subagent_type: general-purpose`, `model: sonnet` at high effort, with a prompt line `EFFORT: high, a critic round reads the whole artifact`) against
+the written spec file; never as `judge` or `judge-ro` (a critic is not a judge: `guard-agent-model.sh` denies one, on any model, under operator decision 1606), and never let it inherit the parent's tier (CLAUDE.md
 subagent policy). Loop
 fix → re-critic until it returns clean, **cap 5 rounds per spec**, then at most
 one closure check. Rounds 1 to 5 read the whole file.
@@ -290,7 +290,7 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   `bun <himmel>/scripts/telegram/chief-route.ts closure-pack <KEY> <spec|plan> --specs <bucket>/specs`:
   a `CLOSURE-CHECK` marker line, the open blocking findings, the sha of each file
   round 5 sealed and the diff of each since. The critic gets the pack and the
-  charter's Closure mode, never the whole file. The seal refuses a round-6 return
+  charter's Closure mode, never the whole file. Dispatch it like a writer round: `general-purpose` on `sonnet`, never a judge agent. The seal refuses a round-6 return
   without the marker line, or one that reads a file round 5 did not seal.
 - **Minors and mediums never buy a round.** The ledger keeps every finding, and
   the build brief gets the ones no later round answered, through `fold-list`, as
@@ -558,7 +558,7 @@ Terminal section.
 
 Optional readiness check: the marked paragraph before Stage 2 applies here with kind `plan`.
 
-Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
+Dispatch a fresh subagent (Agent tool, `subagent_type: general-purpose`, `model: sonnet` at high effort, the same `EFFORT:` line; never `judge` or `judge-ro`) against
 the written plan file. Loop
 fix → re-critic until clean, **cap 5 rounds**, counted per ticket in the same
 round ledger and capped by the same table as Stage 2. A plan round 6 is a closure

@@ -435,7 +435,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 | `block-t3code-unwatch-open-pr` | `mcp__t3-code__unwatch_pull_request` while the PR is open | auth-gated (fail-open) | `T3CODE_UNWATCH_OK=1` |
 | `redirect-webfetch-walled-hosts` (project and *(plugin)*) | a WebFetch of a login-walled host (`x.com`, `instagram.com`, …); the deny names the fetch route | auth-gated | `HIMMEL_WEBFETCH_WALLED_OK=1` |
 | `block-worker-askuserquestion` / `guard-worker-wakeup` | AskUserQuestion / ScheduleWakeup in a chief-spawned worker (`HIMMEL_CONSOLE_LEG=1`) | auth-gated | unset `HIMMEL_CONSOLE_LEG` in the launching shell |
-| `guard-agent-model` | an `Agent` dispatch with a blocked model (Fable), or a judge dispatch that overrides its frontmatter model | auth-gated | an `ESCALATION: <reason>` line in the dispatch prompt |
+| `guard-agent-model` | an `Agent` dispatch with a blocked model (Fable), a judge dispatch that overrides its frontmatter model, or a spec or plan critic or closure check sent as a judge on any model | auth-gated | an `ESCALATION: <reason>` line in the dispatch prompt |
 | `guard-identical-denied-retry` | a third byte-identical Bash command after two refusals of it in the session | workflow guard (fail-open) | none: change the command (`himmel-ops:stuck-playbook`) |
 | `guard-merge-compound` | `merge-on-green.sh` run in any shape but one bare command | workflow guard (fail-open) | none: run the bare line it prints |
 | `guard-pr-check-literal` | a command that names a gate-allowed `scripts/cr` or `scripts/handover` writer and could change what it runs (a write redirect, here-string, `tee`, a shadowed reader) | HARD | none: run the script as its own literal command |

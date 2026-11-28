@@ -592,7 +592,7 @@ helper kind.
 | Per-page docs review | `page-reviewer` | `sonnet` | `medium` |
 | A specified edit list ending in a machine check | `edit-runner` | `haiku` | `medium` |
 | Other bulk or mechanical Haiku work (a Haiku child never spawns) | `haiku-worker` | `haiku` | `medium` |
-| A verdict-grade judge call | `judge`, `judge-ro` | `opus` | `high` |
+| A verdict-grade judge call (never a spec or plan critic round or a closure check) | `judge`, `judge-ro` | `opus` | `high` |
 | Comment cleanup (`/no-comments`) | `comment-sicko` | `sonnet` | `medium` |
 | The one hard call | `general-purpose` | `fable` | `high` |
 
@@ -601,7 +601,7 @@ Dispatch a helper by its agent name (`subagent_type`) and still pass its
 `edit-runner` without `model: haiku` loses the Haiku exemption in
 `guard-implementor-dispatch.sh`. A named agent's row matches the `model:` and `effort:` lines in its
 `.claude/agents/<name>.md` frontmatter (`test-guard-agent-model.sh` checks it).
-Only the hard-call row stays on `general-purpose`. The Fable deny in
+Only the hard-call row of this table stays on `general-purpose`. A spec or plan critic round or a closure check is not a judge call: dispatch it as `general-purpose` on `sonnet` at high (minerva Stage 2 and Stage 4); `guard-agent-model.sh` denies one sent as `judge` or `judge-ro` on any model. The Fable deny in
 `guard-agent-model.sh` reads the dispatch's `model`, so a `model: fable` agent
 definition would skip the `ESCALATION:` check. Pass `model: fable` and the
 `ESCALATION:` line on each such dispatch.
@@ -1710,6 +1710,28 @@ own inbound activity and sends you the missing event ids (the sweep is in
 with no fresh schedule (event-only) has no automatic recovery during a quiet period: an inbound event whose
 wake ends before its checkpoint stays unconsumed until the next relay or your explicit recovery request runs
 the replay comparison above.
+
+#### A finished top-level T3 thread does not wake its launcher
+
+A worker that a chief or coordinator opens with a top-level T3 launch can end its turn without waking the
+launcher. T3's completion wake goes to the parent of a real `delegate_task` child. A top-level launch is not a
+child, so its turn end wakes no one, and the result waits until someone looks. Baseline on T3 server 0.1.13, 2026-11-28, in a
+disposable project with no schedule or peers:
+
+| Row | Setup | Seen | Result |
+|---|---|---|---|
+| `test-launch-turn-end-wake` | An idle launcher opens a top-level worker that answers one marker line and ends without sending | 0 launcher runs in the 120 s after the worker's turn end | RED |
+| `test-delegate-completion-control` | A chief-role parent runs `delegate_task` with a child that answers one marker line | 1 parent run, quoting the child's line, within 120 s | pass |
+
+- **Until T3 ships the wake, keep the fallback.** Every brief and relay to a top-level worker ends with "report
+  to the launching thread with `t3_thread_send`, never end silently". The coordinator checks each live worker
+  thread on every wake, and its capped `freshSession: true` sweep stays on. A threadless tracking row, such as
+  a pending adoption row, counts for neither the empty-work test nor the thread checks.
+- **T3 owns the fix.** The requirement goes to T3 in
+  [discussion #15148](https://github.com/pingdotgg/t3code/discussions/15148): an enrolled launcher gets a
+  queued, fresh wake carrying the run's final line on every turn boundary, with replay and a blocker when it is
+  not acknowledged. Adopting it on a supported pin, and retiring the fallback for proven routes, waits on that
+  pin and its live proof; recording this baseline removes no fallback.
 
 ## See also
 
