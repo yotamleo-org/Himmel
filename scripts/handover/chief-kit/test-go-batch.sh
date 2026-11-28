@@ -451,8 +451,12 @@ contains "11407 GB1c no record row: the brief token as today" "$(msg_of 42)" 'Yo
 contains "11407 GB2 an unreadable record: NO-TOKEN naming the record" "$OUT" "NO-TOKEN 243 N43 (token record unreadable)"
 check "11407 GB2 no GO file for the unreadable record's PR" "$(find "$HANDOVER_DIR/.locks/go" -name '243.*' | wc -l | tr -d ' ')" "0"
 contains "11407 GB2c keymismatch: the brief token" "$OUT" 'Your token `CJ-N44-b0`.'
-GB3=$( HIMMEL_CONSOLE_LEG=1; export HIMMEL_CONSOLE_LEG; . "$HERE/go-deliver.sh" || exit 9; gd_worker_token "$tmp/chief-rec.md" N41 "$D41"; echo "rc=$?" )
-check "11407 GB3 HIMMEL_CONSOLE_LEG=1: the record is refused and the brief token is used as today" "$GB3" "CJ-N41-stale
+REF3="$tmp/m3/scripts/handover/chief-kit"
+mkdir -p "$REF3"; ln -s "$HERE/../../lib" "$tmp/m3/scripts/lib"
+for f in "$HERE"/*.sh; do ln -s "$f" "$REF3/$(basename "$f")"; done
+rm -f "$REF3/worker-token.sh"; printf '#!/usr/bin/env bash\nexit 3\n' > "$REF3/worker-token.sh"
+GB3=$( . "$REF3/go-deliver.sh" || exit 9; gd_worker_token "$tmp/chief-rec.md" N41 "$D41"; echo "rc=$?" )
+check "11407 GB3 a record read refused in a worker or relay (exit 3): the brief token as today" "$GB3" "CJ-N41-stale
 rc=0"
 
 echo "passed=$PASS failed=$FAIL"
