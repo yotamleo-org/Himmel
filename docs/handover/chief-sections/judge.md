@@ -84,6 +84,7 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   stays on the 5-minute cache TTL (prediction table:
   `docs/internals/prompt-cache.md`). After each judge, append its ledger row:
   `bash scripts/eval/judge-cache-row.sh --ledger <ledger> <agent-*.jsonl>`.
+  A spec or plan critic round or a closure check is not a judge: dispatch it as `general-purpose` on `sonnet` at high (`guard-agent-model.sh` denies it on a judge agent).
 - **A judge reads the PR at its head sha, never FETCH_HEAD**: parallel
   judges share one checkout and each `git fetch` overwrites `FETCH_HEAD`. Tell the
   judge to check `gh pr view <N> --json headRefOid` equals the dispatched head,

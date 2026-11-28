@@ -587,7 +587,7 @@ helper kind.
 | Ticket audit (still open, fixed or partial) | `ticket-auditor` | `sonnet` | `medium` |
 | Per-page docs review | `page-reviewer` | `sonnet` | `medium` |
 | A specified edit list ending in a machine check | `edit-runner` | `haiku` | `medium` |
-| A verdict-grade judge call | `judge`, `judge-ro` | `opus` | `high` |
+| A verdict-grade judge call (never a spec or plan critic round or a closure check) | `judge`, `judge-ro` | `opus` | `high` |
 | Comment cleanup (`/no-comments`) | `comment-sicko` | `sonnet` | `medium` |
 | The one hard call | `general-purpose` | `fable` | `high` |
 
@@ -596,7 +596,7 @@ Dispatch a helper by its agent name (`subagent_type`) and still pass its
 `edit-runner` without `model: haiku` loses the Haiku exemption in
 `guard-implementor-dispatch.sh`. A named agent's row matches the `model:` and `effort:` lines in its
 `.claude/agents/<name>.md` frontmatter (`test-guard-agent-model.sh` checks it).
-Only the hard-call row stays on `general-purpose`. The Fable deny in
+Only the hard-call row stays on `general-purpose`. A spec or plan critic round or a closure check is not a judge call: dispatch it as `general-purpose` on `sonnet` at high (minerva Stage 2 and Stage 4); `guard-agent-model.sh` denies one sent as `judge` or `judge-ro` on any model. The Fable deny in
 `guard-agent-model.sh` reads the dispatch's `model`, so a `model: fable` agent
 definition would skip the `ESCALATION:` check. Pass `model: fable` and the
 `ESCALATION:` line on each such dispatch.

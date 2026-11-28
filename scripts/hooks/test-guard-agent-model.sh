@@ -6,6 +6,7 @@
 # Covers: fable / claude-fable-5-1 -> deny; same WITH marker -> allow; empty marker
 # -> deny; opus/sonnet/haiku and no model -> allow; judge sonnet -> deny,
 # opus -> allow, no model -> allow, marked sonnet -> allow; other tool -> allow;
+# a spec/plan critic or closure check on a judge agent -> deny on any model;
 # malformed/empty stdin -> allow (fail-open); allow path prints nothing. A
 # placeholder / too-short ESCALATION reason -> deny; a marked override echoes its
 # reason on stderr; the blocked-model list is data in
@@ -374,6 +375,47 @@ case "$ftxt" in
     *"general-purpose"*) bad "a full judge refusal must not steer to a critic dispatch - got: $ftxt" ;;
     *) ok "full judge refusal does not mention a critic dispatch" ;;
 esac
+
+echo "== a critic round or closure check never runs on a judge agent, on any model =="
+check "spec critic on judge + opus -> deny" block "$(described 'Spec critic round 2 PROJ-1' "$(agent judge opus "x"$'\n'"$JBL")")"
+check "plan critic on judge-ro + opus -> deny" block "$(described 'Plan critic r1 PROJ-1' "$(agent judge-ro opus "x"$'\n'"$JBL")")"
+check "spec closure check on judge + opus -> deny" block "$(described 'Spec closure check round 6' "$(agent judge opus 'x')")"
+check "final spec closure r6 on judge-ro + opus -> deny" block "$(described 'Final spec closure r6 PROJ-1' "$(agent judge-ro opus 'x')")"
+check "round-2 spec critic on judge + claude-opus-5-5 -> deny" block "$(described 'Round-2 spec critic PROJ-1' "$(agent judge claude-opus-5-5 'x')")"
+check "critic: 3 plan r2 on judge + opus -> deny" block "$(described 'Critic: 3 plan r2' "$(agent judge opus 'x')")"
+check "critic round 1 on the spec, judge + opus -> deny" block "$(described 'Critic round 1 on the spec' "$(agent judge opus 'x')")"
+check "spec critic on judge + haiku -> deny" block "$(described 'Spec critic r1' "$(agent judge haiku 'x')")"
+check "spec critic on judge with no model -> deny" block "$(described 'Spec critic r1' "$(agent judge '' 'x')")"
+check "spec critic on judge + sonnet + DELTA-JUDGE -> deny (a critic is no delta judge)" block \
+    "$(described 'Spec critic r1' "$(agent judge sonnet "$DM")")"
+check "spec critic on general-purpose + sonnet -> allow" allow "$(described 'Spec critic round 2 PROJ-1' "$(agent general-purpose sonnet 'x')")"
+check "spec closure check on general-purpose + haiku -> allow" allow "$(described 'Spec closure check round 6' "$(agent general-purpose haiku 'x')")"
+ctxt="$(deny_text "$(described 'Spec critic round 2 PROJ-1' "$(agent judge opus 'x')")")"
+needs "a critic on judge + opus -> text names general-purpose, sonnet, high effort and the bypass" "$ctxt" \
+    "subagent_type: general-purpose" "model: sonnet" "high effort" "EFFORT: <reason>" "ESCALATION: <reason>" "minerva"
+case "$ctxt" in
+    *"Fable is retired"*) bad "a critic refusal must not carry the Fable judge preamble - got: $ctxt" ;;
+    *) ok "a critic refusal carries no Fable judge preamble" ;;
+esac
+check "spec critic on judge + opus + ESCALATION reason -> allow (the bypass)" allow \
+    "$(described 'Spec critic r1' "$(agent judge opus "$MARK")")"
+caud="$(described 'Spec critic r1' "$(agent judge opus "$MARK")" | bash "$HOOK" 2>&1 >/dev/null)"
+case "$caud" in
+    "agent-model-escalation: "*critic*"one hard call"*) ok "a bypassed critic echoes its ESCALATION reason on stderr" ;;
+    *) bad "no audit line for a bypassed critic - got: $caud" ;;
+esac
+check "spec critic on judge + opus + placeholder ESCALATION -> deny" block \
+    "$(described 'Spec critic r1' "$(agent judge opus $'x\nESCALATION: n/a')")"
+silent "generator judge 'Judge <qid> on <KEY>' on opus -> unchanged, no output" \
+    "$(described 'Judge abj1a on PROJ-1' "$(agent judge opus "x"$'\n'"$JBL")")"
+silent "a judge whose description merely names plan-critic changes -> unchanged, no output" \
+    "$(described 'Judge plan-critic changes' "$(agent judge opus "x"$'\n'"$JBL")")"
+silent "trust judge PR 6100 on judge-ro + opus -> unchanged, no output" \
+    "$(described 'Trust judge PR 6100' "$(agent judge-ro opus "x"$'\n'"$JBL")")"
+silent "judge KEY closure spiral (a judge, not a closure check) -> unchanged, no output" \
+    "$(described 'Judge PROJ-1 closure spiral' "$(agent judge opus "x"$'\n'"$JBL")")"
+check "a judge whose prompt only says closure check -> unchanged allow" allow \
+    "$(agent judge opus $'judge the PR that changes the closure check\nand report findings')"
 btxt="$(deny_text "$(agent general-purpose fable 'do the review')")"
 needs "fable with no ESCALATION line -> text names the line and the dispatch that keeps fable" "$btxt" \
     "keep model: fable" "ESCALATION: <reason>" "line of its own"

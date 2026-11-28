@@ -4801,6 +4801,7 @@ there fails it. Not covered: a `Workflow` script's `agent()` dispatches — no
 per-dispatch hook seam is known (they run inside the one `Workflow` tool call).
 Claude lane only — `.codex/hooks.json` has no PreToolUse `Agent`
 matcher, so there is no twin.
+A `judge` or `judge-ro` dispatch whose description reads as a spec or plan critic round or a closure check (it says `critic`, `closure check`, `closure round`, `closure critic`, `closure r<n>`, `spec closure` or `plan closure`, and does not say `judge`) is denied on any model, a missing one included, and steered to `general-purpose` on `sonnet` at high effort with an `EFFORT:` line (operator decision 1606; in the 7 days to 2026-11-28, 680 such runs on Opus cost 1,013 USD, 52 % of judge-agent spend). A description that says `judge`, such as the generator's `Judge <qid> on <KEY>`, is a judge and unchanged. The bypass is a usable `ESCALATION: <reason>` line, echoed on stderr.
 Suite: `scripts/hooks/test-guard-agent-model.sh`.
 
 ### `guard-subagent-model.sh` — an Agent dispatch must name a model
