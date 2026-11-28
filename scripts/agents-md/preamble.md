@@ -1,4 +1,4 @@
-# AGENTS.md — himmel rules for any coding agent (Codex / GPT / Gemini / Cursor / Copilot / …)
+# AGENTS.md — himmel rules for Codex, Antigravity (Gemini), Cursor and Copilot CLI
 
 <!-- GENERATED FILE — DO NOT EDIT BY HAND. -->
 <!-- Source of truth: CLAUDE.md. Regenerate: node scripts/agents-md/generate.mjs --write -->
@@ -8,6 +8,10 @@
 > `CLAUDE.md`, himmel's source-of-truth rule file. Edit `CLAUDE.md`, then
 > regenerate with `node scripts/agents-md/generate.mjs --write`. A pre-commit
 > drift guard blocks any commit where this file is stale.
+
+Gemini CLI reads `GEMINI.md` unless its own settings name another file, so it
+does not load this file by default; Antigravity does. A tracked root `GEMINI.md`
+is refused so Antigravity never loads the rules twice.
 
 ## Precedence — read this first
 
@@ -23,6 +27,23 @@ Phrases in the rules below such as "use judgement", "deviate only for a concrete
 reason", or "treat as defaults" are **defaults, not contradictions** — the ladder
 above resolves every apparent conflict. Do not spend reasoning reconciling them:
 follow the default unless rule (1) or (2) overrides it.
+
+## Folder rules — read before editing a folder
+
+Your harness loads at most the rule files on the path from the repo root to the
+folder your session started in (Antigravity loads the root file only). Before you edit anything under a folder below,
+open its rule file, even when you started at the root. Each folder also holds an
+`AGENTS.md` that points at the same file.
+
+| Before editing | Read first |
+|---|---|
+| `marketplace/plugins/` | `marketplace/plugins/CLAUDE.md` |
+| `marketplace/plugins/claude-hud/` (vendored; it holds no `AGENTS.md` of its own) | `marketplace/plugins/claude-hud/CLAUDE.md` |
+| `scripts/bitbucket/` | `scripts/bitbucket/CLAUDE.md` |
+| `scripts/handover/` | `scripts/handover/CLAUDE.md` |
+| `scripts/hooks/` | `scripts/hooks/CLAUDE.md` |
+| `scripts/jira/` | `scripts/jira/CLAUDE.md` |
+| `templates/luna-second-brain/` | `templates/luna-second-brain/_CLAUDE.md` |
 
 ## Reading note for non-Claude harnesses
 

@@ -11,7 +11,9 @@
 # Env:    POINTERS_ROOT  repo to scan (default: this repo's root)
 #
 # Excluded: vendored upstream trees, where an added file would be himmel delta
-# on every re-vendor (marketplace/plugins/claude-hud).
+# on every re-vendor (marketplace/plugins/claude-hud). The HUD folder is reached
+# through the folder table in scripts/agents-md/preamble.md, which names its
+# CLAUDE.md directly; test-generate.sh fails if that row goes missing.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${POINTERS_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"

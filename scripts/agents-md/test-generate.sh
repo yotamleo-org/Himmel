@@ -38,7 +38,7 @@ SRC="$TMP/CLAUDE.md"; TGT="$TMP/AGENTS.md"
 cat > "$SRC" <<'EOF'
 # Fixture Rules
 
-Always prefer the Skill tool when you can. Use judgement on trivial tasks.
+A live URL → `WebFetch` directly. Use judgement on trivial tasks.
 EOF
 
 # ---- 1. write: ladder before body, LF-only, debrand applied --------------
@@ -54,7 +54,7 @@ if [ -n "$prec_pos" ] && [ -n "$body_pos" ] && [ "$prec_pos" -lt "$body_pos" ]; 
   ok "precedence ladder appears before CLAUDE.md body"
 else bad "precedence ladder appears before CLAUDE.md body (prec=$prec_pos body=$body_pos)"; fi
 if has_cr "$TGT"; then bad "output is LF-only (found CR)"; else ok "output is LF-only"; fi
-if grep -q "your skill-invocation mechanism" "$TGT" && ! grep -q "the Skill tool" "$TGT"; then
+if grep -q "your web-fetch tool" "$TGT" && ! grep -q "WebFetch" "$TGT"; then
   ok "debrand substitution applied"
 else bad "debrand substitution applied"; fi
 
@@ -92,7 +92,7 @@ SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 
 # ---- 7. 24-32 KiB warn band (exit 0 + stderr warning) --------------------
 WARN="$TMP/warn.md"; TGTWARN="$TMP/AGENTS-warn.md"
-{ printf '# Warn Rules\n'; head -c 28000 /dev/zero | tr '\0' 'y'; printf '\n'; } > "$WARN"
+{ printf '# Warn Rules\n'; head -c 25000 /dev/zero | tr '\0' 'y'; printf '\n'; } > "$WARN"
 SAVED_SRC="$SRC"; SAVED_TGT="$TGT"; SRC="$WARN"; TGT="$TGTWARN"
 AGENTS_MD_SOURCE="$SRC" AGENTS_MD_TARGET="$TGT" AGENTS_MD_PREAMBLE="$PREAMBLE" \
   AGENTS_MD_DEBRAND="$DEBRAND" node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
@@ -108,48 +108,18 @@ run 0 "idempotency write #2" -- --write
 if cmp -s "$TMP/first" "$TGT"; then ok "two writes are byte-identical"; else bad "two writes are byte-identical"; fi
 
 # ---- 9. Fable debrand ----------------------------------------
-# a) fixture: identity / quota / effort-calibration claims are neutralized.
-# The fixture reproduces the two wrap points that matter — the embedded
-# newlines in the 'Fable main loop' and 'Fable-5' entries are part of the
-# contract (the rest of the fixture is condensed, not a verbatim copy).
 FAB="$TMP/fable.md"; TGTFAB="$TMP/AGENTS-fable.md"
 cat > "$FAB" <<'EOF'
 # Fixture Rules
 
-analysis); the **Fable main thread** orchestrates and owns final
-judgment + synthesis. **Every dispatch names an explicit model** — an
-unnamed dispatch inherits the Fable
-main loop and burns the time-limited Fable quota on work a cheaper
-tier handles.
-Raise *effort* before raising model tier — Fable-5 `low` ≈ prior-gen
-`xhigh`, and the same shift applies down-tier.
-| Fable 5 | judgment, taste — hardest calls; escalation target |
-compare per task vs Fable-low
-Fable stays CONSERVED (limited release)
+Escalate, not top-down: an Opus parent spawns a Fable child for the one hard
+call; work above your tier is returned.
 EOF
 SAVED_SRC="$SRC"; SAVED_TGT="$TGT"; SRC="$FAB"; TGT="$TGTFAB"
 run 0 "fable fixture write succeeds" -- --write
-if grep -q 'the \*\*main thread\*\* orchestrates' "$TGT" && ! grep -q 'Fable main thread' "$TGT"; then
-  ok "identity claim neutralized (main thread)"
-else bad "identity claim neutralized (main thread)"; fi
-if grep -q 'time-limited top-tier quota' "$TGT" && ! grep -q 'Fable quota' "$TGT"; then
-  ok "quota claim neutralized"
-else bad "quota claim neutralized"; fi
-if grep -q 'inherits the main$' "$TGT"; then
-  ok "wrap-spanning 'Fable main loop' entry matched across the newline"
-else bad "wrap-spanning 'Fable main loop' entry matched across the newline"; fi
-if grep -q 'on Claude, Fable-5' "$TGT"; then
-  ok "effort calibration attributed to Claude"
-else bad "effort calibration attributed to Claude"; fi
-if grep -qF '| top model | judgment, taste — hardest calls; escalation target |' "$TGT"; then
-  ok "top-model lane row neutralized"
-else bad "top-model lane row neutralized"; fi
-if grep -qF 'compare per task vs top-model-low' "$TGT"; then
-  ok "top-model-low comparison neutralized"
-else bad "top-model-low comparison neutralized"; fi
-if grep -qF 'The top model stays CONSERVED (limited release)' "$TGT"; then
-  ok "top-model conservation sentence neutralized"
-else bad "top-model conservation sentence neutralized"; fi
+if grep -qF 'a mid-tier parent spawns a top-model child' "$TGT" && ! grep -qE 'Fable|Opus' "$TGT"; then
+  ok "escalation dispatch neutralized"
+else bad "escalation dispatch neutralized"; fi
 SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 
 # b) real-CLAUDE.md leak check: after generation, no identity-claiming Fable
@@ -177,35 +147,28 @@ if [ -f "$REAL_SRC" ]; then
   if grep -q 'Subagent policy' "$stripped"; then
     ok "comment-strip preserves the body (leak check is non-vacuous)"
   else bad "comment-strip preserves the body (leak check is non-vacuous)"; fi
-  # A leak = ANY 'Fable' text outside comments except the explicitly attributed
-  # calibration phrase. Strip the allowed phrase FIRST, then any residual
-  # 'Fable' is a leak — line-position-independent, so it catches wrap-split
-  # fragments (e.g. '**Fable' / 'main thread**' after a rewrap breaks an
-  # entry) and future unattributed Fable-5 mentions alike.
-  leaks="$(sed 's/on Claude, Fable-5//g' "$stripped" | grep -n 'Fable' || true)"
+  # A leak = ANY 'Fable' text outside comments, wrap-split fragments included.
+  leaks="$(grep -n 'Fable' "$stripped" || true)"
   if [ -z "$leaks" ]; then
-    ok "no Fable text outside comments except attributed calibration (real CLAUDE.md)"
-  else bad "no Fable text outside comments except attributed calibration (real CLAUDE.md): $leaks"; fi
+    ok "no Fable text outside comments (real CLAUDE.md)"
+  else bad "no Fable text outside comments (real CLAUDE.md): $leaks"; fi
   SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
 fi
 
 # c) RED PATH: prove the leak check actually fires when a rewrap breaks an
-# entry. Re-wrap 'the **Fable main thread**' across a line boundary — entry 4
-# (no embedded newline) stops matching and the leaked fragments span two lines,
-# which the old line-based patterns ('the Fable|Fable main|Fable quota') could
-# NOT see. The strip-then-residual check must still flag it.
+# entry: re-wrapping 'an Opus parent spawns a Fable child' stops the rule matching.
 BROKEN="$TMP/fable-rewrap.md"; TGTBROKEN="$TMP/AGENTS-broken.md"
 cat > "$BROKEN" <<'EOF'
 # Fixture Rules
 
-analysis); the **Fable
-main thread** orchestrates and owns final judgment.
+Escalate, not top-down: an Opus parent spawns a
+Fable child for the one hard call.
 EOF
 SAVED_SRC="$SRC"; SAVED_TGT="$TGT"; SRC="$BROKEN"; TGT="$TGTBROKEN"
 run 0 "rewrap red-path fixture write succeeds" -- --write
 broken_stripped="$TMP/broken-stripped.md"
 strip_html_comments "$TGTBROKEN" "$broken_stripped"
-if sed 's/on Claude, Fable-5//g' "$broken_stripped" | grep -q 'Fable'; then
+if grep -q 'Fable' "$broken_stripped"; then
   ok "leak check fires on a rewrap-broken entry (red path)"
 else bad "leak check fires on a rewrap-broken entry (red path)"; fi
 SRC="$SAVED_SRC"; TGT="$SAVED_TGT"
@@ -330,6 +293,45 @@ AGENTS_MD_SOURCE="$TMP/decimal-budget.md" AGENTS_MD_TARGET="$TMP/decimal-agents.
   node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
 if grep -q '24000 budget' "$TMP/err"; then ok "24002-byte output warns at the 24000-byte budget"
 else bad "24002-byte output warns at the 24000-byte budget"; fi
+
+# ---- 12. harness-neutral body, folder table, truthful header ----
+# The REAL CLAUDE.md over an EMPTY preamble, so the preamble's own reading note
+# (which names Claude Code on purpose) cannot trip the term check.
+REAL_CLAUDE="$SCRIPT_DIR/../../CLAUDE.md"
+BODY12="$TMP/AGENTS-body12.md"
+AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$BODY12" \
+  AGENTS_MD_PREAMBLE="$TMP/empty-preamble.md" AGENTS_MD_DEBRAND="$DEBRAND" \
+  node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
+# Each term is a Claude-only tool, command, env name or model name an agent on
+# another harness cannot act on. Facts ABOUT Claude (e.g. `claude -p` billing)
+# are not instructions and stay.
+for term in 'WebFetch' 'EDIT_ON_MAIN_OK=1 claude' 'CLAUDE_CODE_MAX_' 'haiku' 'Opus' \
+            'himmel-ops:' "\`/lanes\`" "\`/handover\`"; do
+  if grep -qF -- "$term" "$BODY12"; then bad "generated body holds the Claude-only term: $term"
+  else ok "generated body is free of the Claude-only term: $term"; fi
+done
+
+AGENTS12="$TMP/AGENTS-real12.md"
+AGENTS_MD_SOURCE="$REAL_CLAUDE" AGENTS_MD_TARGET="$AGENTS12" \
+  AGENTS_MD_PREAMBLE="$PREAMBLE" AGENTS_MD_DEBRAND="$DEBRAND" \
+  node "$GEN" --write >"$TMP/out" 2>"$TMP/err"
+# The folder table must name every nested rule file git tracks.
+missing12=""
+while IFS= read -r rf; do
+  [ -n "$rf" ] || continue
+  grep -qF -- "$rf" "$AGENTS12" || missing12="$missing12 $rf"
+done <<EOF
+$(git -C "$SCRIPT_DIR/../.." ls-files | grep -E '(^|/)_?CLAUDE\.md$' | grep -v '^CLAUDE\.md$')
+EOF
+if [ -z "$missing12" ]; then ok "folder table names every nested rule file"
+else bad "folder table names every nested rule file; missing:$missing12"; fi
+
+# The title names only harnesses that load AGENTS.md on a fresh clone: Gemini CLI
+# reads GEMINI.md, so a bare Gemini is a false claim; Antigravity is the Gemini surface.
+title12="$(grep -m1 '^# AGENTS.md' "$AGENTS12")"
+case "$title12" in *Antigravity*) ok "title names Antigravity";; *) bad "title names Antigravity: $title12";; esac
+if printf '%s\n' "$title12" | grep -qE '(^|[^(])Gemini'; then bad "title names a bare Gemini: $title12"
+else ok "title never names Gemini CLI as a reader"; fi
 
 # ---- summary --------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
