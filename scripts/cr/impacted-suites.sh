@@ -70,7 +70,23 @@
 #       `impacted` row (counts, SKIP count, that exit code) to the git-common
 #       CR ledger; the exit code is unchanged, and a failed append exits 4.
 #       The range must end at --head and start from its merge-base with the
-#       remote default branch, else exit 2 and no row.
+#       remote default branch, else exit 2 and no row. Without --shell the
+#       record also keeps the sorted list as
+#       <git-common-dir>/impacted-lists/<blob id>.txt (git hash-object
+#       --no-filters; directory mode 700, never written through a symlink or a
+#       non-directory), after pruning there only depth-1 regular files named
+#       <40 or 64 hex>.txt older than 14 whole days or .tmp-* older than 1, and
+#       the row gains suites_blob, mb and lister (--lister-id, read before the
+#       listing and again at the append). A list file it cannot write, or a
+#       lister id that fails or changes between the two reads, leaves the row
+#       without those fields and prints one stderr line; the exit is unchanged.
+#   impacted-suites.sh --lister-id
+#       Print one blob id over the blob ids of this script,
+#       ../lib/review-default-base.sh (hashed as a guard file: the record path
+#       sources it) and ../ci/tree-invariant-suites.txt, all beside this script,
+#       plus the LC_CTYPE and LC_COLLATE values `locale` prints. Ready-check item
+#       19 compares it with a row's lister: a drifted copy moves the id only
+#       when a hashed file differs. Read-only; it takes no range and no other flag.
 #       The plain listing, --check and --plan leave out a suite whose only match
 #       is on a whole-line comment (first non-blank `#` in a shell suite, `//` in
 #       a JS/TS one; never a line inside a string, a here-document or a template
@@ -128,9 +144,11 @@
 # --runner-check found an unmapped/drifted/ambiguous invocation — these are
 # two distinct checks that never run in the same invocation, so the meaning
 # of exit 1 is fixed by which flag was passed; 2 usage, an unresolvable
-# range, a failed search, --runner found no mapping, or --run's dep install
-# failed; 3 --check found a BLOCKED suite; 4 --record could not append its
-# row. A range that cannot be resolved
+# range, a failed search, --runner found no mapping, --run's dep install
+# failed, or --lister-id found a lister input missing or no locale value;
+# 3 --check found a BLOCKED suite; 4 --record could not append its row (a list
+# file it could not write is not exit 4: the row is appended without it).
+# A range that cannot be resolved
 # (or searched) is an ERROR, never an empty list: an empty impacted set reads
 # as "nothing to run". --run otherwise exits with the suite's own exit code.
 #
@@ -151,6 +169,29 @@ io_fail() {
 
 usage() {
     sed -n '2,/^set -uo/p' "$0" | sed -n 's/^# \{0,1\}//p' >&2
+}
+
+lister_files() {
+    printf '%s\n' impacted-suites.sh ../lib/review-default-base.sh ../ci/tree-invariant-suites.txt
+}
+lister_id() {
+    local rel f id ids="" loc ctype collate
+    for rel in $(lister_files); do
+        f="$is_dir/$rel"
+        if [ ! -f "$f" ] || [ ! -r "$f" ] || ! id=$(git hash-object --no-filters -- "$f") || [ -z "$id" ]; then
+            echo "impacted-suites.sh: lister input missing or unreadable: $f" >&2; return 2
+        fi
+        ids="$ids$id"$'\n'
+    done
+    if ! loc=$(locale 2>/dev/null); then  # swallow-ok: rc checked, a failed locale returns 2
+        echo "impacted-suites.sh: locale failed, so no lister id" >&2; return 2
+    fi
+    ctype=$(printf '%s\n' "$loc" | sed -n 's/^LC_CTYPE=//p' | tr -d '"')
+    collate=$(printf '%s\n' "$loc" | sed -n 's/^LC_COLLATE=//p' | tr -d '"')
+    if [ -z "$ctype" ] || [ -z "$collate" ]; then
+        echo "impacted-suites.sh: locale printed no LC_CTYPE or LC_COLLATE value, so no lister id" >&2; return 2
+    fi
+    printf '%sctype=%s\ncollate=%s\n' "$ids" "$ctype" "$collate" | git hash-object --no-filters --stdin || return 2
 }
 
 # runner_for <path> — print the ONE command CI uses to run a JS/TS suite path,
@@ -390,8 +431,10 @@ paths_file=""
 record=0
 rec_branch=""
 rec_head=""
+lister_mode=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --lister-id) lister_mode=1; shift ;;
         --check) check=1; shift ;;
         --plan) plan=1; shift ;;
         --record) record=1; shift ;;
@@ -428,6 +471,15 @@ while [ "$#" -gt 0 ]; do
             range="$1"; shift ;;
     esac
 done
+
+if [ "$lister_mode" -eq 1 ]; then
+    if [ "$check" -eq 1 ] || [ "$plan" -eq 1 ] || [ "$shell_only" -eq 1 ] || [ "$record" -eq 1 ] || [ -n "$range$runner_path$run_path$from_file$paths_file$red_file$rec_branch$rec_head" ] \
+        || [ "$runner_check_mode" -eq 1 ] || [ "$selector_miss" -eq 1 ]; then
+        echo "impacted-suites.sh: --lister-id is its own mode: it takes no range and no other flag" >&2; exit 2
+    fi
+    lister_id
+    exit $?
+fi
 
 if [ -n "$paths_file" ]; then
     if [ "$check" -eq 1 ] || [ "$selector_miss" -eq 1 ] || [ -n "$runner_path" ] || [ "$runner_check_mode" -eq 1 ] || [ -n "$run_path" ]; then
@@ -483,6 +535,10 @@ if [ -n "$from_file" ]; then
         echo "impacted-suites.sh: --from-file path is not readable: $from_file" >&2; exit 2
     fi
     exec < "$from_file"
+fi
+rec_l1="" rec_l1_rc=0
+if [ "$record" -eq 1 ] && [ "$shell_only" -eq 0 ]; then
+    rec_l1=$(lister_id 2>&1) || rec_l1_rc=$?
 fi
 
 if [ -n "$runner_path" ]; then
@@ -1777,23 +1833,85 @@ missing="$work/missing"
 comm -23 "$impacted" "$have" > "$missing" || io_fail "comparing verdicts to the impacted list"
 n_impacted=$(wc -l < "$impacted" | tr -d ' ')
 n_missing=$(wc -l < "$missing" | tr -d ' ')
+is_hex_id() { LC_ALL=C expr "$1" : '[0-9a-f]\{40\}$' >/dev/null || LC_ALL=C expr "$1" : '[0-9a-f]\{64\}$' >/dev/null; }
+rec_list() {
+    local dir="$1" p n id f tmpf
+    rec_blob=""; rec_why=""
+    if [ ! -e "$dir" ] && [ ! -L "$dir" ]; then
+        mkdir -m 700 "$dir" 2>/dev/null || [ -d "$dir" ] || { rec_why="cannot create $dir"; return 1; }
+    fi
+    if [ -L "$dir" ] || [ ! -d "$dir" ]; then
+        rec_why="$dir is a symlink or not a directory"; return 1
+    fi
+    find "$dir" -mindepth 1 -maxdepth 1 -type f \( \( -name '*.txt' -mtime +14 \) -o \( -name '.tmp-*' -mtime +1 \) \) -print0 > "$work/prune" 2>/dev/null || : > "$work/prune"  # swallow-ok: a failed prune leaves old files, never a wrong list
+    while IFS= read -r -d '' p; do
+        n="${p##*/}"
+        case "$n" in
+            .tmp-*) ;;
+            *) is_hex_id "${n%.txt}" || continue ;;
+        esac
+        [ -L "$p" ] || [ ! -f "$p" ] || rm -f -- "$p" 2>/dev/null || true  # swallow-ok: a file another prune removed first is already gone
+    done < "$work/prune"
+    if ! id=$(git hash-object --no-filters -- "$impacted") || ! is_hex_id "$id"; then
+        rec_why="cannot hash the list"; return 1
+    fi
+    f="$dir/$id.txt"
+    if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(git hash-object --no-filters -- "$f" 2>/dev/null)" = "$id" ]; then  # swallow-ok: an unreadable file is not reused, it is written again
+        touch -c -- "$f" 2>/dev/null || true  # swallow-ok: the hash below decides whether the file is reused
+        if [ -f "$f" ] && [ ! -L "$f" ] && [ "$(git hash-object --no-filters -- "$f" 2>/dev/null)" = "$id" ]; then  # swallow-ok: a file a prune removed is written again
+            rec_blob="$id"; return 0
+        fi
+    fi
+    if [ -L "$f" ] || [ -d "$f" ]; then
+        rec_why="$f is a symlink or a directory"; return 1
+    fi
+    if ! tmpf=$(umask 077 && mktemp "$dir/.tmp-$id.XXXXXX" 2>/dev/null); then  # swallow-ok: rc checked, no temp file means the row has no list
+        rec_why="cannot create a temp file in $dir"; return 1
+    fi
+    if ! cat "$impacted" > "$tmpf" || ! mv -f -- "$tmpf" "$f"; then
+        rm -f -- "$tmpf" 2>/dev/null || true  # swallow-ok: the temp file is pruned after 2 days if this rm fails
+        rec_why="cannot write $f"; return 1
+    fi
+    rec_blob="$id"
+}
 # check_exit <rc>: with --record, one impacted row on the git-common ledger
 # first (ready-check item 16 reads it); a failed append exits 4.
 check_exit() {
+    local rc="$1" rec_common rec_l2 rec_l2_rc=0 why=""
     if [ "$record" -eq 1 ]; then
         n_skip=$(sort -u "$skip_raw" | comm -12 "$impacted" - | wc -l | tr -d ' ') || io_fail "counting SKIP verdicts"
-        rec_ledger="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl" || exit 4
+        rec_common="$(git rev-parse --path-format=absolute --git-common-dir)" || exit 4
+        rec_ledger="$rec_common/cr-critic-scores.jsonl"
         sort -u "$impacted" "$work/dropped" > "$work/row_scope" || io_fail "listing the suites the row may hold"
         sort -u "$pass_raw" | comm -12 "$work/row_scope" - > "$work/local_pass" || io_fail "listing the PASS verdicts"
         sort -u "$ruled_raw" | comm -12 "$work/row_scope" - > "$work/ruled_skip" || io_fail "listing the ruled SKIP verdicts"
+        set --
+        if [ "$shell_only" -eq 0 ]; then
+            if ! rec_list "$rec_common/impacted-lists"; then
+                why="$rec_why"
+            fi
+            rec_l2=$(lister_id 2>&1) || rec_l2_rc=$?
+            if [ "$rec_l1_rc" -ne 0 ]; then
+                why="the lister id could not be read before the listing: $rec_l1"
+            elif [ "$rec_l2_rc" -ne 0 ]; then
+                why="the lister id could not be read at the append: $rec_l2"
+            elif [ "$rec_l1" != "$rec_l2" ]; then
+                why="the lister id changed during the record ($rec_l1 to $rec_l2)"
+            fi
+            if [ -n "$why" ]; then
+                echo "impacted-suites.sh: the impacted row carries no list: $why" >&2
+            else
+                set -- --suites-blob "$rec_blob" --mb "$mb" --lister "$rec_l1"
+            fi
+        fi
         if ! CR_LEDGER="$rec_ledger" bash "$is_dir/ledger-append.sh" impacted --branch "$rec_branch" --head "$rec_head" \
-            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$1" \
-            --local-pass-file "$work/local_pass" --ruled-skip-file "$work/ruled_skip" >/dev/null; then
+            --impacted "$n_impacted" --unverdicted "$n_missing" --skip "$n_skip" --rc "$rc" \
+            --local-pass-file "$work/local_pass" --ruled-skip-file "$work/ruled_skip" "$@" >/dev/null; then
             echo "impacted-suites.sh: could not record the impacted row (ledger-append.sh, reason above)" >&2
             exit 4
         fi
     fi
-    exit "$1"
+    exit "$rc"
 }
 n_ci=$(wc -l < "$ci_ok" | tr -d ' ')
 printf 'impacted-suites: %s impacted, %s without a verdict, %s to CI\n' "$n_impacted" "$n_missing" "$n_ci"

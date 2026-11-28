@@ -335,8 +335,14 @@ cp "$HERE/../../eval/lib/eval_runs.py" "$HERE/../../eval/lib/wilson.py" "$TP_ANC
 mkdir -p "$TP_ANCHOR/scripts/cr"
 # shellcheck disable=SC2016  # the stub's own $vars stay literal
 printf '%s\n' '#!/usr/bin/env bash' \
-    '[ -z "${STUB_IMPACTED_REAL:-}" ] || exec bash "$STUB_IMPACTED_REAL" "$@"' \
+    'if [ "${1:-}" = --lister-id ]; then' \
+    '    [ -z "${STUB_LISTER_LOG:-}" ] || printf "%s\n" "$0" >> "$STUB_LISTER_LOG"' \
+    '    sleep "${STUB_LISTER_SLEEP:-0}"' \
+    '    if [ -n "${STUB_LISTER_ID:-}${STUB_LISTER_RC:-}" ]; then printf "%s\n" "${STUB_LISTER_ID:-}"; exit "${STUB_LISTER_RC:-0}"; fi' \
+    '    exec bash "$STUB_IMPACTED_REAL" "$@"' \
+    'fi' \
     '[ -z "${STUB_IMPACTED_SLEEP:-}" ] || sleep "$STUB_IMPACTED_SLEEP"' \
+    '[ -z "${STUB_IMPACTED_REAL:-}" ] || exec bash "$STUB_IMPACTED_REAL" "$@"' \
     'printf "%b" "${STUB_IMPACTED:-}"' \
     'exit "${STUB_IMPACTED_RC:-0}"' > "$TP_ANCHOR/scripts/cr/impacted-suites.sh"
 git -C "$TP_ANCHOR" add -A
@@ -409,6 +415,8 @@ run() {
         STUB_JS_MANIFEST_DIR="${STUB_JS_MANIFEST_DIR:-}" STUB_JS_DL_FAIL="${STUB_JS_DL_FAIL:-}" STUB_JOBS="${STUB_JOBS:-}" STUB_JOBS_FAIL="${STUB_JOBS_FAIL:-}" \
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" STUB_RUN_CONC="${STUB_RUN_CONC:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
+        STUB_IMPACTED_SLEEP="${STUB_IMPACTED_SLEEP:-}" STUB_LISTER_ID="${STUB_LISTER_ID:-}" STUB_LISTER_RC="${STUB_LISTER_RC:-}" \
+        STUB_LISTER_LOG="${STUB_LISTER_LOG:-}" STUB_LISTER_SLEEP="${STUB_LISTER_SLEEP:-}" \
         READY_CHECK_FAIL_LEDGER="${READY_CHECK_FAIL_LEDGER:-$tmp/ci-failures.jsonl}" \
         READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR-$TP_ANCHOR}" \
         STUB_FORK_JSON="${STUB_FORK_JSON:-${STUB_FORK:-false}}" STUB_AUTHOR_ID="${STUB_AUTHOR_ID:-}" STUB_AUTHOR_TYPE="${STUB_AUTHOR_TYPE:-}" \
