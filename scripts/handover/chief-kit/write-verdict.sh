@@ -149,7 +149,10 @@
 # Exit codes:
 #   0  written (the path on stdout)
 #   2  usage / validation
-#   3  refused: a chief worker or relay, a judge desk or a dsk qid, or the root / <user>/<bucket> scope is unresolved
+#   3  refused: a chief worker or relay; a judge desk (the marker, a judge session with no
+#      qid binding, a session listed in judge-desk/sessions, or that registry unreadable);
+#      a dsk qid; a GO with no readable GO key; a helper library that cannot load; or the
+#      root / <user>/<bucket> scope is unresolved
 #   4  refused: symlink, conflicting or unparsed verdict
 #   5  write failed
 #   6  refused (--bind only): the PR's head is not the verdict's head
