@@ -1064,7 +1064,7 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--remainder',
-      "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row): it is labelled remainder, not residual, and follows the parent's version; an INTAKE says the parent cannot close without it",
+      "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row): it is labelled remainder, not residual, and with no version of its own follows the parent's version; an INTAKE says the parent cannot close without it",
     )
     .option('--new-reason <why>', 'Why a new ticket is needed although an open one repeats it (same --follow-up-of / --residual-of parent, a close title, or the same topic worded differently in the title and What section): without it the filing is refused and names the open ticket to extend with jira comment')
     .option('--fu-class <class>', 'Residual class: escape or hardening (needs --fu-override); a residual of a declared project is placed by the door from its priority, and --gate means the current version; the class routes it only for a project no declared release names (docs/release/follow-up-triage.md). polish is refused: it is noted with no ticket. Applies only with --residual-of')

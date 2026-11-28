@@ -346,7 +346,9 @@ async function checkEditContract(key: string, o: EditOptions): Promise<string[]>
   const was = contractDiagnostics(before, { format: 'adf', body: before.description }, sectors);
   const will = contractDiagnostics(after, o.description !== undefined ? { format: 'markdown', body: o.description } : { format: 'adf', body: before.description }, sectors);
   if (!bothKindsOfLabel(before.labels) && bothKindsOfLabel(after.labels)) {
-    throw new Error(`${key} is a remainder of its parent, not a review residual; nothing changed`);
+    throw new Error(before.labels.includes('remainder')
+      ? `${key} is a remainder of its parent, not a review residual; nothing changed`
+      : `${key}: the labels would hold remainder and a review residual label, which never share a ticket; nothing changed`);
   }
   const broken = newViolations(was, will);
   if (broken.length > 0) {

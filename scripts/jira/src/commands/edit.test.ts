@@ -769,13 +769,13 @@ describe('edit: a remainder and a residual never share a ticket', () => {
 
   it('--add-labels remainder on a residual ticket is refused with no PUT', async () => {
     state['HIMMEL-901'] = ['residual', 'standalone'];
-    await expect(run('HIMMEL-901', '--add-labels', 'remainder')).rejects.toThrow(/HIMMEL-901 is a remainder of its parent, not a review residual; nothing changed/);
+    await expect(run('HIMMEL-901', '--add-labels', 'remainder')).rejects.toThrow(/HIMMEL-901: the labels would hold remainder and a review residual label, which never share a ticket; nothing changed/);
     expect(puts()).toHaveLength(0);
   });
 
   it('--labels remainder,residual is refused with no PUT', async () => {
     state['HIMMEL-901'] = ['standalone'];
-    await expect(run('HIMMEL-901', '--labels', 'remainder,residual,standalone')).rejects.toThrow(/is a remainder of its parent, not a review residual/);
+    await expect(run('HIMMEL-901', '--labels', 'remainder,residual,standalone')).rejects.toThrow(/the labels would hold remainder and a review residual label/);
     expect(puts()).toHaveLength(0);
   });
 

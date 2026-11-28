@@ -83,7 +83,7 @@ helpers.
   ticket can be repaired one piece at a time; the gaps it keeps print as warnings. An
   unreadable ticket is refused. `--remove-labels` with `--add-labels` is one atomic
   `update.labels` (removes first): the relabel `--remove-labels residual --add-labels remainder`.
-- No ticket holds both `remainder` (`create --follow-up-of K --remainder`, the parent's own
+- No filing or edit gives a ticket both `remainder` (`create --follow-up-of K --remainder`, the parent's own
   unfinished ask) and a `(^|-)residual(-|$)` label (a review extra: `--follow-up-of` without
   `--remainder`, or `--residual-of`): `create` refuses it before any Jira call, `edit` before the PUT.
 - `move` takes the destination's home and placement flags (`--parent`, `--labels`,
