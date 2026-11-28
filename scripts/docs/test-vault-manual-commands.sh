@@ -11,9 +11,10 @@
 # followed by "/" or ".", so paths (docs/luna, ~/.local, /usr/bin/env) never match.
 #
 # Cases: 1. the manual names no unprovided command; 2. control: /contra is named
-# and provided; 3. a fixture proves the check flags a dead command and only it.
+# and provided; 3. a fixture proves the check flags a dead command and only it,
+# also beside a live one on the same line; 4. a missing manual file is reported.
 #
-# Platform guard (posix-bash): pure POSIX bash 3.2+ plus grep/sed/mktemp.
+# Platform guard (posix-bash): pure POSIX bash 3.2+ plus awk/grep/sed/mktemp.
 #
 # Usage: bash scripts/docs/test-vault-manual-commands.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -28,8 +29,14 @@ ok() { echo "ok: $*"; pass=$((pass + 1)); }
 bad() { echo "FAIL: $*" >&2; fail=$((fail + 1)); }
 
 named_commands() {
-    grep -n -o -E '(^|[[:space:]`(])/[a-z][a-z0-9-]*[a-z0-9]([^a-zA-Z0-9/._-]|$)' "$1" \
-        | sed -E 's#^([0-9]+):[^/]*/([a-z0-9-]+).*#\1:/\2#'
+    awk '{
+        s = " " $0
+        while (match(s, /[ \t`(]\/[a-z]([a-z0-9-]*[a-z0-9])?/)) {
+            name = substr(s, RSTART + 1, RLENGTH - 1)
+            s = substr(s, RSTART + RLENGTH)
+            if (s !~ /^[a-zA-Z0-9\/._-]/) print NR ":" name
+        }
+    }' "$1"
 }
 
 provided() {
@@ -46,6 +53,7 @@ provided() {
 dead_commands() {
     local f hit
     for f in "$@"; do
+        [ -r "$f" ] || { echo "${f#"$ROOT"/}: missing or unreadable"; continue; }
         while IFS= read -r hit; do
             [ -n "$hit" ] || continue
             provided "${hit#*:/}" || echo "${f#"$ROOT"/}:${hit%%:*}: ${hit#*:}"
@@ -55,11 +63,8 @@ EOF
     done
 }
 
-MANUAL="$TPL/_CLAUDE.md $TPL/AGENTS.md"
-for f in "$TPL"/docs/*.md; do MANUAL="$MANUAL $f"; done
-
-# shellcheck disable=SC2086
-dead="$(dead_commands $MANUAL)"
+shopt -s nullglob
+dead="$(dead_commands "$TPL/_CLAUDE.md" "$TPL/AGENTS.md" "$TPL"/docs/*.md "$TPL"/docs/*/*.md)"
 if [ -z "$dead" ]; then
     ok "the vault manual names only commands a plugin provides"
 else
@@ -67,7 +72,7 @@ else
     printf '%s\n' "$dead" | sed 's/^/  /' >&2
 fi
 
-if grep -q -E '(^|[[:space:]`(])/contra([^a-zA-Z0-9/._-]|$)' "$TPL/_CLAUDE.md" && provided contra; then
+if named_commands "$TPL/_CLAUDE.md" | grep -q ':/contra$' && provided contra; then
     ok "control: /contra is named in _CLAUDE.md and provided"
 else
     bad "control: /contra is not named in _CLAUDE.md or no plugin provides it"
@@ -77,14 +82,20 @@ fx="$(mktemp "${TMPDIR:-/tmp}/vault-manual-cmds.XXXXXX")" || exit 1
 trap 'rm -f "$fx"' EXIT
 cat > "$fx" <<'EOF'
 Run `/contra` daily.
-Index with `/obsidian-init`.
+Then /contra /not-a-real-command on one line.
 See docs/luna and ~/.local/share and /usr/bin/env.
 EOF
 got="$(dead_commands "$fx")"
-if [ "$got" = "$fx:2: /obsidian-init" ]; then
-    ok "fixture: only /obsidian-init is flagged"
+if [ "$got" = "$fx:2: /not-a-real-command" ]; then
+    ok "fixture: only /not-a-real-command is flagged"
 else
-    bad "fixture: expected only /obsidian-init flagged, got: $got"
+    bad "fixture: expected only /not-a-real-command flagged, got: $got"
+fi
+missing="$(dead_commands "$fx.absent")"
+if [ "$missing" = "$fx.absent: missing or unreadable" ]; then
+    ok "fixture: a missing manual file is reported"
+else
+    bad "fixture: a missing manual file was not reported, got: $missing"
 fi
 
 echo "vault-manual-commands: $pass passed, $fail failed"

@@ -16,7 +16,9 @@ registers the `HIMMEL-GraphMap-Luna` and `HIMMEL-GraphMapAst-Luna` rows) and
 
 The graph lives **outside the vault**, at
 `~/.local/share/himmel/graphify/luna/graphify-out/` (`GRAPHIFY_LUNA_OUT_ROOT`
-overrides the root), because Obsidian hung on its churn inside the vault.
+overrides the root), because Obsidian hung on its churn inside the vault. The
+commands on this page use the default root; with `GRAPHIFY_LUNA_OUT_ROOT` set,
+put its value in place of `~/.local/share/himmel/graphify/luna` in each one.
 
 ## Querying it
 

@@ -187,8 +187,8 @@ A `type: decision` note also carries quoted `claim:` and `assumption:` fields an
 <!-- mem:49268e70dd6e -->
 <!-- mem:99f1b1f48ac5 -->
 - **Never `pre-commit install` for the pre-commit stage in this vault**
-  (`scripts/setup.sh` installs only `--hook-type pre-push`). That hook
-  stashes unstaged changes and, with Obsidian rewriting `.obsidian/plugins/*`
+  (`scripts/setup.sh` installs only `--hook-type pre-push`). The
+  pre-commit-stage hook stashes unstaged changes and, with Obsidian rewriting `.obsidian/plugins/*`
   mid-hook, rolls back OTHER sessions' unstaged work. Run
   `bash scripts/hooks/install-nostash-hooks.sh` once per clone instead.
 - Recovery from a rollback, and other vault traps (commit STALLs,
