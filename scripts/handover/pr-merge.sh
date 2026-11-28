@@ -84,15 +84,14 @@ _pm_alert() {
 }
 
 _pm_require_gate() {
-    local lib="$SCRIPT_DIR/../lib/$1"
     # shellcheck disable=SC1090
-    if ! ( [ -r "$lib" ] && . "$lib" && declare -F "$2" >/dev/null ) >/dev/null 2>&1; then
+    if ! ( [ -r "$SCRIPT_DIR/../lib/$1" ] && . "$SCRIPT_DIR/../lib/$1" && declare -F "$2" >/dev/null ) >/dev/null 2>&1; then
         echo "ERR pr-merge: the $3 gate library $1 cannot load — refusing to merge without the $3 check." >&2
         _pm_alert "$3 gate library $1 cannot load"
         exit 8
     fi
     # shellcheck disable=SC1090
-    . "$lib"
+    . "$SCRIPT_DIR/../lib/$1"
 }
 
 _PM_GATE_VERDICT="" _PM_GATE_REASON=""
