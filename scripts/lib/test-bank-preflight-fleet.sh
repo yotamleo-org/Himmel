@@ -15,6 +15,7 @@
 #
 # Platform: the atomic mkdir admission/reservation mechanism it exercises
 # is a POSIX tmpfs (${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-<uid>) construct.
+# shellcheck disable=SC2016
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="${FLEET_SUT:-$REPO/scripts/lib/usage-preflight.sh}"
@@ -280,7 +281,7 @@ printf '%s\n' "$((NOW - 61))" > "$slots_h/.admit/acquired"
 printf '%s\n' "$$" > "$slots_h/.admit/pid"
 admit_before="$(cat "$slots_h/.admit/acquired") $(cat "$slots_h/.admit/pid")"
 : > "$W/err.log"
-h_out="$(run_pf "$slots_h" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9007-livepid HIMMEL_FLEET_CAP=4 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+h_out="$(run_pf "$slots_h" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9007-livepid HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(h) stale .admit (61s old) held by a LIVE pid -> not reclaimed, SKIPPED-FLEET after retries" SKIPPED-FLEET "$h_out"
 admit_after="$(cat "$slots_h/.admit/acquired" 2>/dev/null) $(cat "$slots_h/.admit/pid" 2>/dev/null)"
 check "(h) .admit acquired/pid files untouched (no steal attempted against a live holder)" "$admit_before" "$admit_after"
@@ -731,7 +732,7 @@ mkdir -p "$slots_s/.admit"
 printf '%s\n' "$((NOW - 150))" > "$slots_s/.admit/acquired"
 printf '%s\n' "$s_holder" > "$slots_s/.admit/pid"
 : > "$W/err.log"
-s_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+s_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9020-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_MAX_HOLD_SECS=600 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(s) live holder 150s old, ceiling 600s -> not reclaimed, SKIPPED-FLEET" SKIPPED-FLEET "$s_out"
 if grep -q "holder pid $s_holder .*age 1[0-9][0-9]s, command: sleep" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (t) the refusal names the live holder (pid, age, command name)"
@@ -739,7 +740,7 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (t) refusal does not name the live holder"; tail -3 "$W/err.log"
 fi
 : > "$W/err.log"
-u_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+u_out="$(run_pf "$slots_s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9021-past HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(u) live holder 150s old, ceiling 100s -> reclaimed, PROCEED" PROCEED "$u_out"
 if grep -q "reclaiming .*holder pid $s_holder .*age 1[0-9][0-9]s" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (u) the reclaim logs the holder pid and age"
@@ -755,7 +756,7 @@ slots_v="$(mktemp -d "$W/slots-v.XXXXXX")" || { echo "FAIL - could not create sl
 p_steal="$W/ps-steal"; mk_ps_stub "$p_steal"
 printf '%s\n' '#!/usr/bin/env bash' "[ -f '$slots_v/.admit/pid' ] && printf '%s\n' 1 > '$slots_v/.admit/pid'" "cat '$p_steal/ps.data'" > "$p_steal/ps"
 : > "$W/err.log"
-v_out="$(run_pf "$slots_v" "$p_steal" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9022-stolen HIMMEL_FLEET_CAP=4)"
+v_out="$(run_pf "$slots_v" "$p_steal" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9022-stolen HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0)"
 check "(v) lock reclaimed mid-section -> resumed holder refuses, SKIPPED-FLEET" SKIPPED-FLEET "$v_out"
 if grep -q "was reclaimed while this preflight held it" "$W/err.log"; then
   PASS=$((PASS+1)); echo "ok - (v) the refusal says the lock was reclaimed"
@@ -770,10 +771,10 @@ slots_w="$(mktemp -d "$W/slots-w.XXXXXX")" || { echo "FAIL - could not create sl
 mkdir -p "$slots_w/.admit"
 printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
 printf '%s\n' "$(( $(date +%s) - 97 ))" > "$slots_w/.admit/acquired"
-w_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9023-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+w_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9023-below HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(w) age just under the ceiling -> not reclaimed" SKIPPED-FLEET "$w_below"
 printf '%s\n' "$(( $(date +%s) - 100 ))" > "$slots_w/.admit/acquired"
-w_at="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9024-at HIMMEL_FLEET_CAP=4 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+w_at="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9024-at HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_MAX_HOLD_SECS=100 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(w) age at the ceiling -> reclaimed" PROCEED "$w_at"
 
 # --- (x) the default ceiling is 10 x FLEET_ADMIT_STALE_SECS, read base 10
@@ -781,10 +782,10 @@ check "(w) age at the ceiling -> reclaimed" PROCEED "$w_at"
 rm -rf "$slots_w/.admit"; mkdir -p "$slots_w/.admit"
 printf '%s\n' "$w_holder" > "$slots_w/.admit/pid"
 printf '%s\n' "$(( $(date +%s) - 70 ))" > "$slots_w/.admit/acquired"
-x_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9025-xlow HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+x_below="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9025-xlow HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(x) default ceiling 10 x 08s: 70s old -> not reclaimed" SKIPPED-FLEET "$x_below"
 printf '%s\n' "$(( $(date +%s) - 90 ))" > "$slots_w/.admit/acquired"
-x_past="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9026-xhigh HIMMEL_FLEET_CAP=4 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+x_past="$(run_pf "$slots_w" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9026-xhigh HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_STALE_SECS=08 FLEET_ADMIT_RETRY_ITERS=3 FLEET_ADMIT_RETRY_SLEEP=0.01)"
 check "(x) default ceiling 10 x 08s: 90s old -> reclaimed" PROCEED "$x_past"
 kill "$w_holder" 2>/dev/null; wait "$w_holder" 2>/dev/null
 
@@ -806,6 +807,314 @@ else
   FAIL=$((FAIL+1)); echo "FAIL - (y) no gate-take failure logged"; tail -3 "$W/err.log"
 fi
 check "(y) the verdict is still emitted" PROCEED "$y_out"
+
+SUT_LIB="$(cd "$(dirname "$SUT")" && pwd)"
+SUT_ROOT="$(cd "$SUT_LIB/../.." && pwd)"
+is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
+err_has() {
+  if grep -qF -- "$2" "$W/err.log"; then PASS=$((PASS+1)); echo "ok - $1"
+  else FAIL=$((FAIL+1)); echo "FAIL - $1: no '$2' in stderr"; grep 'bank-preflight' "$W/err.log" | tail -5; fi
+}
+err_lacks() {
+  if grep -qF -- "$2" "$W/err.log"; then FAIL=$((FAIL+1)); echo "FAIL - $1: '$2' in stderr"; grep -F -- "$2" "$W/err.log" | head -3
+  else PASS=$((PASS+1)); echo "ok - $1"; fi
+}
+mk_loss_tree() {
+  local tree="$1" where="$2" mode="$3" extra="${4:-:}" e
+  mkdir -p "$tree/scripts/lib" "$tree/marks"
+  for e in "$SUT_ROOT"/* "$SUT_ROOT"/.[!.]*; do
+    [ -e "$e" ] || [ -L "$e" ] || continue
+    [ "${e##*/}" = scripts ] || ln -s "$e" "$tree/${e##*/}"
+  done
+  for e in "$SUT_ROOT"/scripts/*; do
+    [ "${e##*/}" = lib ] || ln -s "$e" "$tree/scripts/${e##*/}"
+  done
+  for e in "$SUT_LIB"/*; do
+    case "${e##*/}" in
+      chokepoint-seam-guard.sh|usage-preflight.sh|fleet_runtime.py) cp -p "$e" "$tree/scripts/lib/" ;;
+      fleet-reservation-key.sh) ;;
+      *) ln -s "$e" "$tree/scripts/lib/${e##*/}" ;;
+    esac
+  done
+  {
+    printf '. %q\n' "$SUT_LIB/fleet-reservation-key.sh"
+    printf '_lt_marks=%q\n_lt_mode=%q\n' "$tree/marks" "$mode"
+    cat <<'TRIGGER'
+_lt_fire() {
+  [ "$_lt_mode" = every ] || [ ! -e "$_lt_marks/fired" ] || return 0
+  echo x >> "$_lt_marks/fired"
+  rm -rf "$SLOTS/.admit"
+  _lt_extra >/dev/null
+}
+TRIGGER
+    printf '_lt_extra() {\n%s\n}\n' "$extra"
+    case "$where" in
+      top) printf '_lt_fire\n' ;;
+      func) printf '%s\n' 'eval "_lt_real_$(declare -f fleet_reservation_key)"' \
+              'fleet_reservation_key() { _lt_fire; _lt_real_fleet_reservation_key "$@"; }' ;;
+    esac
+  } > "$tree/scripts/lib/fleet-reservation-key.sh"
+}
+mk_ps_calls() {
+  mkdir -p "$1/proc"; printf '0\n' > "$1/n"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'n=$(( $(cat %q) + 1 )); printf "%%s\\n" "$n" > %q\n' "$1/n" "$1/n"
+    printf 'if [ "$n" -eq 2 ]; then %s; fi\n' "$2"
+    printf 'if [ "$n" -eq 3 ]; then %s; fi\n' "${3:-:}"
+    printf 'exit 0\n'
+  } > "$1/ps"
+  chmod +x "$1/ps"
+}
+
+lt_r2="$W/lt-r2"; mk_loss_tree "$lt_r2" func once
+slots_r2="$(mktemp -d "$W/slots-r2.XXXXXX")" || exit 1
+: > "$W/err.log"
+r2_out="$(SUT="$lt_r2/scripts/lib/usage-preflight.sh" run_pf "$slots_r2" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9800-r2 HIMMEL_FLEET_CAP=4)"
+check "(R2) the loss trigger fired" 1 "$([ -e "$lt_r2/marks/fired" ] && echo 1 || echo 0)"
+check "(R2) a lock lost after the last pid check, once -> admitted" PROCEED "$r2_out"
+err_has "(R2) the post-reservation re-read re-runs the admission" 'admission lock lost (post-reserve) — re-running admission (1 of 2)'
+check "(R2) one slot" 1 "$(count_resv "$slots_r2")"
+
+sleep 120 & r2k_filler=$!
+slots_r2k="$(mktemp -d "$W/slots-r2k.XXXXXX")" || exit 1
+lt_r2k="$W/lt-r2k"
+mk_loss_tree "$lt_r2k" func once "$(printf 'mkdir %q; printf "%%s\\n" %q > %q; printf "%%s\\n" %q > %q; printf "native\\n" > %q' \
+  "$slots_r2k/HIMMEL-t9801-filler" "$((NOW + 900))" "$slots_r2k/HIMMEL-t9801-filler/expires" \
+  "$r2k_filler" "$slots_r2k/HIMMEL-t9801-filler/pid" "$slots_r2k/HIMMEL-t9801-filler/lane")"
+: > "$W/err.log"
+r2k_out="$(SUT="$lt_r2k/scripts/lib/usage-preflight.sh" run_pf "$slots_r2k" "$p3" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9801-r2k HIMMEL_FLEET_CAP=4)"
+check "(R2k) the last slot taken during the loss -> refused" SKIPPED-FLEET "$r2k_out"
+err_has "(R2k) re-runs after the post-reservation loss" 'admission lock lost (post-reserve) — re-running admission (1 of 2)'
+err_has "(R2k) the re-run decides on the fresh census" 'fleet at/over cap (4/4)'
+check "(R2k) no slot for the worker" 0 "$([ -e "$slots_r2k/HIMMEL-t9801-r2k" ] && echo 1 || echo 0)"
+kill "$r2k_filler" 2>/dev/null; wait "$r2k_filler" 2>/dev/null
+
+sleep 120 & r2s_holder=$!
+slots_r2s="$(mktemp -d "$W/slots-r2s.XXXXXX")" || exit 1
+r2s_hook() {
+  printf '%s\n' '#!/usr/bin/env bash' '[ "$1" = post-reserve ] || exit 0' \
+    "[ -e '$2' ] && exit 0" "printf '%s %s\n' \"\$1\" \"\$2\" > '$2'" \
+    "rm -rf '$3/.admit'" "printf '%s\n' $r2s_holder > \"\$2/pid\"" > "$1"
+  chmod +x "$1"
+}
+r2s_hook "$W/hook-r2s" "$W/r2s.rec" "$slots_r2s"
+: > "$W/err.log"
+run_pf "$slots_r2s" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9802-r2s HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-r2s" >/dev/null
+check "(R2s) the hook fired at post-reserve with the slot's path" "post-reserve $slots_r2s/HIMMEL-t9802-r2s" "$(cat "$W/r2s.rec" 2>/dev/null)"
+check "(R2s) the slot now held by another pid is left in place" "$r2s_holder" "$(cat "$slots_r2s/HIMMEL-t9802-r2s/pid" 2>/dev/null)"
+err_has "(R2s) re-runs after the post-reservation loss" 'admission lock lost (post-reserve) — re-running admission (1 of 2)'
+lt_r2sc="$W/lt-r2sc"; mk_loss_tree "$lt_r2sc" none once
+ln -sf "$SUT_LIB/fleet-reservation-key.sh" "$lt_r2sc/scripts/lib/fleet-reservation-key.sh"
+r2sc_line="$(grep -nF 'if [ "$(cat "$SLOTS/$_fleet_resv_key/pid"' "$lt_r2sc/scripts/lib/usage-preflight.sh" | cut -d: -f1)"
+if [ -n "$r2sc_line" ] && [ "$(printf '%s\n' "$r2sc_line" | wc -l | tr -d ' ')" = 1 ]; then
+  awk -v n="$r2sc_line" 'NR == n { $0 = "        if true; then" } 1' "$SUT_LIB/usage-preflight.sh" > "$lt_r2sc/scripts/lib/usage-preflight.sh"
+  slots_r2sc="$(mktemp -d "$W/slots-r2sc.XXXXXX")" || exit 1
+  r2s_hook "$W/hook-r2sc" "$W/r2sc.rec" "$slots_r2sc"
+  SUT="$lt_r2sc/scripts/lib/usage-preflight.sh" run_pf "$slots_r2sc" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9802-r2s HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-r2sc" >/dev/null
+  check "(R2s) control: the hook fired in the copy" 1 "$([ -e "$W/r2sc.rec" ] && echo 1 || echo 0)"
+  check "(R2s) control: without the pid check the other launch's slot is removed" 0 "$([ "$(cat "$slots_r2sc/HIMMEL-t9802-r2s/pid" 2>/dev/null)" = "$r2s_holder" ] && echo 1 || echo 0)"
+else
+  FAIL=$((FAIL+1)); echo "FAIL - (R2s) control: the slot's pid check is not one line in the preflight"
+fi
+kill "$r2s_holder" 2>/dev/null; wait "$r2s_holder" 2>/dev/null
+
+lt_r2p="$W/lt-r2p"; mk_loss_tree "$lt_r2p" top once
+slots_r2p="$(mktemp -d "$W/slots-r2p.XXXXXX")" || exit 1
+: > "$W/err.log"
+r2p_out="$(SUT="$lt_r2p/scripts/lib/usage-preflight.sh" run_pf "$slots_r2p" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9803-r2p HIMMEL_FLEET_CAP=4)"
+check "(R2p) the loss trigger fired" 1 "$([ -e "$lt_r2p/marks/fired" ] && echo 1 || echo 0)"
+check "(R2p) a lock lost before the reservation, once -> admitted" PROCEED "$r2p_out"
+err_has "(R2p) the pre-reservation check re-runs the admission" 'admission lock lost (pre-reserve) — re-running admission (1 of 2)'
+check "(R2p) one slot" 1 "$(count_resv "$slots_r2p")"
+
+r3_run() {
+  local label="$1" c2="$2" c3="${3:-:}" ps slots
+  shift 3
+  ps="$W/ps-$label"; slots="$(mktemp -d "$W/slots-$label.XXXXXX")" || exit 1
+  mk_ps_calls "$ps" "${c2//@SLOTS@/$slots}" "$c3"
+  : > "$W/err.log"
+  r3_slots="$slots"
+  r3_out="$(run_pf "$slots" "$ps" CADENCE_USAGE_WORKER="HIMMEL-t9804-$label" HIMMEL_FLEET_CAP=4 "$@")"
+}
+R3_LOSS='rm -rf "@SLOTS@/.admit"'
+r3_run r3 "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1
+check "(R3) a lock lost during the in-lock census -> admitted" PROCEED "$r3_out"
+err_has "(R3) the in-lock check re-runs the admission" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
+check "(R3) one slot" 1 "$(count_resv "$r3_slots")"
+r3_run r3b0 "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=0
+check "(R3b) budget 0 -> refused" SKIPPED-FLEET "$r3_out"
+err_has "(R3b) budget 0 names the lost lock" 'was lost during admission (in-lock) and the re-admissions did not keep it'
+err_lacks "(R3b) budget 0 does not re-run" 're-running admission'
+r3_run r3bx "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 _FLEET_READMIT_N=x
+check "(R3b) a counter that is not 0 or 1 -> refused" SKIPPED-FLEET "$r3_out"
+err_has "(R3b) counter x names the lost lock" 'was lost during admission (in-lock) and the re-admissions did not keep it'
+err_lacks "(R3b) counter x does not re-run" 're-running admission'
+r3_run r3t "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=10 _FLEET_ADMIT_T0="$(( $(date +%s) - 12 ))"
+check "(R3t) an inherited clock inside the window, budget spent -> refused" SKIPPED-FLEET "$r3_out"
+err_has "(R3t) names the lost lock" 'was lost during admission (in-lock) and the re-admissions did not keep it'
+err_lacks "(R3t) does not re-run" 're-running admission'
+r3tc_epoch="$(date +%s)"
+r3_run r3tc "sleep 3; $R3_LOSS" "[ ! -r /proc/\$PPID/environ ] || tr '\\0' '\\n' < /proc/\$PPID/environ > '$W/r3tc.env'; date +%s > '$W/r3tc.t3'; sleep 21" \
+  CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=20 _FLEET_ADMIT_T0="$(( r3tc_epoch - 100 ))"
+check "(R3tc) re-admitted, its claim try made with the budget spent -> admitted" PROCEED "$r3_out"
+err_has "(R3tc) re-runs once" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
+if [ -r /proc/self/environ ]; then
+r3tc_t0="$(sed -n 's/^_FLEET_ADMIT_T0=//p' "$W/r3tc.env" 2>/dev/null)"
+r3tc_t3="$(cat "$W/r3tc.t3" 2>/dev/null)"
+check "(R3tc) pass 2 carries pass 1's clock, set at the noted epoch" 1 \
+  "$(is_int "$r3tc_t0" && [ $((r3tc_t0 - r3tc_epoch)) -ge 0 ] && [ $((r3tc_t0 - r3tc_epoch)) -le 1 ] && echo 1 || echo 0)"
+check "(R3tc) pass 2's clock is at least 3 s before its pre-lock census" 1 \
+  "$(is_int "$r3tc_t0" && is_int "$r3tc_t3" && [ $((r3tc_t3 - r3tc_t0)) -ge 3 ] && echo 1 || echo 0)"
+else
+  echo "ok - (R3tc) SKIP the clock dump: /proc/self/environ is unreadable on this host"
+fi
+r3_run r3r "$R3_LOSS" :
+check "(R3r) a plain read that loses the lock reports, never refuses" PROCEED "$r3_out"
+err_lacks "(R3r) a plain read does not re-run" 're-running admission'
+r3_run r3z "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 _FLEET_READMIT_N=1 _FLEET_ADMIT_T0="$(( $(date +%s) - 100 ))"
+check "(R3z) a re-admitted pass with an out-of-window clock -> refused" SKIPPED-FLEET "$r3_out"
+err_lacks "(R3z) its clock counts as spent, not as now" 're-running admission'
+r3_run r3zc "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 _FLEET_READMIT_N=1 _FLEET_ADMIT_T0="$(date +%s)"
+check "(R3z) control: a re-admitted pass inside its budget -> admitted" PROCEED "$r3_out"
+err_has "(R3z) control: its second re-run" 'admission lock lost (in-lock) — re-running admission (2 of 2)'
+r3_run r3x "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=150 _FLEET_ADMIT_T0="$(( $(date +%s) - 93 ))"
+err_lacks "(R3x) a 150 s budget is read as 90" 're-running admission'
+r3_run r3xc "$R3_LOSS" : CADENCE_USAGE_LAUNCH=1 FLEET_ADMIT_LAUNCH_WAIT_SECS=120 _FLEET_ADMIT_T0="$(( $(date +%s) - 93 ))"
+err_has "(R3x) control: a 120 s budget is kept" 'admission lock lost (in-lock) — re-running admission (1 of 2)'
+
+D1_BOUNDS=(FLEET_ADMIT_LAUNCH_WAIT_SECS=2 FLEET_ADMIT_RETRY_ITERS=3)
+d1_pidns="$(readlink /proc/self/ns/pid 2>/dev/null)"
+d1_dead=""
+for _d1_try in 1 2 3 4 5; do
+  sleep 0 & _d1_p=$!; wait "$_d1_p" 2>/dev/null
+  if ( . "$SUT_ROOT/scripts/lib/proc-tree.sh" && proc_tree_process_alive "$_d1_p" ); [ $? -eq 1 ]; then d1_dead="$_d1_p"; break; fi
+done
+d1_lock() {
+  rm -rf "$1/.admit"; mkdir -p "$1/.admit"
+  printf '%s\n' "$(( $(date +%s) - 5 ))" > "$1/.admit/acquired"
+  printf '%s\n' "$2" > "$1/.admit/pid"
+  if [ "${3:-}" != - ]; then printf '%s\n' "${3:-$d1_pidns}" > "$1/.admit/pidns"; fi
+}
+d1_state() { echo "$(cat "$1/.admit/acquired" 2>/dev/null) $(cat "$1/.admit/pid" 2>/dev/null) $(cat "$1/.admit/pidns" 2>/dev/null)"; }
+if [ -z "$d1_dead" ] || [ -z "$d1_pidns" ]; then
+  echo "ok - (D1) SKIP: no confirmed-dead pid drawn in 5 tries, or no /proc/self/ns/pid"
+else
+  slots_d1="$(mktemp -d "$W/slots-d1.XXXXXX")" || exit 1
+  d1_lock "$slots_d1" "$d1_dead"
+  : > "$W/err.log"
+  d1_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9806-d1 HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
+  check "(D1) a 5 s old lock with a dead holder in this pid namespace -> admitted" PROCEED "$d1_out"
+  err_has "(D1) ... reclaimed from the dead holder at once" "from a dead holder pid $d1_dead (age "
+  sleep 120 & d1_live=$!
+  d1_lock "$slots_d1" "$d1_live"
+  : > "$W/err.log"
+  d1c_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9807-d1c HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
+  check "(D1c) control: a live holder -> refused" SKIPPED-FLEET "$d1c_out"
+  err_has "(D1c) ... naming the live holder" "holder pid $d1_live "
+  for d1n in "other:pid:[1]" "nofile:-" "emptypid:"; do
+    case "$d1n" in
+      other:*) d1_lock "$slots_d1" "$d1_dead" "pid:[1]" ;;
+      nofile:*) d1_lock "$slots_d1" "$d1_dead" - ;;
+      emptypid:*) d1_lock "$slots_d1" "" ;;
+    esac
+    d1n_before="$(d1_state "$slots_d1")"
+    : > "$W/err.log"
+    d1n_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9808-d1n HIMMEL_FLEET_CAP=4 "${D1_BOUNDS[@]}")"
+    check "(D1n ${d1n%%:*}) not confirmed dead in this namespace -> refused" SKIPPED-FLEET "$d1n_out"
+    check "(D1n ${d1n%%:*}) ... the lock untouched" "$d1n_before" "$(d1_state "$slots_d1")"
+  done
+  d1s_hook() {
+    printf '%s\n' '#!/usr/bin/env bash' '[ "$1" = gate-made ] || exit 0' "[ -e '$2' ] && exit 0" \
+      "printf '%s\n' \"\$1\" > '$2'" "printf '%s\n' $d1_live > '$3/.admit/pid'" > "$1"
+    chmod +x "$1"
+  }
+  d1_lock "$slots_d1" "$d1_dead"
+  d1s_hook "$W/hook-d1s" "$W/d1s.rec" "$slots_d1"
+  : > "$W/err.log"
+  d1s_out="$(run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9809-d1s HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1s" "${D1_BOUNDS[@]}")"
+  check "(D1s) the gate-made hook fired" gate-made "$(cat "$W/d1s.rec" 2>/dev/null)"
+  check "(D1s) a same-second live claim made under the gate wait -> refused" SKIPPED-FLEET "$d1s_out"
+  check "(D1s) ... the swapped lock untouched" "$d1_live" "$(cat "$slots_d1/.admit/pid" 2>/dev/null)"
+  lt_d1s="$W/lt-d1s"; mk_loss_tree "$lt_d1s" none once
+  ln -sf "$SUT_LIB/fleet-reservation-key.sh" "$lt_d1s/scripts/lib/fleet-reservation-key.sh"
+  d1s_line="$(grep -nF '_fleet_pid_confirmed_dead "$admit" "$4" || return 1' "$SUT_LIB/usage-preflight.sh" | cut -d: -f1)"
+  if [ -n "$d1s_line" ] && [ "$(printf '%s\n' "$d1s_line" | wc -l | tr -d ' ')" = 1 ]; then
+    awk -v n="$d1s_line" 'NR == n { $0 = "    :" } 1' "$SUT_LIB/usage-preflight.sh" > "$lt_d1s/scripts/lib/usage-preflight.sh"
+    d1_lock "$slots_d1" "$d1_dead"
+    d1s_hook "$W/hook-d1sc" "$W/d1sc.rec" "$slots_d1"
+    d1sc_out="$(SUT="$lt_d1s/scripts/lib/usage-preflight.sh" run_pf "$slots_d1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9810-d1sc HIMMEL_FLEET_CAP=4 FLEET_ADMIT_TEST_HOOK="$W/hook-d1sc" "${D1_BOUNDS[@]}")"
+    check "(D1s) control: without the pid re-check the swapped live claim is stolen" PROCEED "$d1sc_out"
+  else
+    FAIL=$((FAIL+1)); echo "FAIL - (D1s) control: the gated pid re-check is not one line in the preflight"
+  fi
+  kill "$d1_live" 2>/dev/null; wait "$d1_live" 2>/dev/null
+fi
+
+sleep 60 & b1_holder=$!
+slots_b1="$(mktemp -d "$W/slots-b1.XXXXXX")" || exit 1
+mkdir -p "$slots_b1/.admit"; date +%s > "$slots_b1/.admit/acquired"; printf '%s\n' "$b1_holder" > "$slots_b1/.admit/pid"
+( sleep 8; rm -rf "$slots_b1/.admit" ) & b1_release=$!
+: > "$W/err.log"
+b1_start="$(date +%s)"
+b1_out="$(run_pf "$slots_b1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9805-b1 HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=15)"
+b1_secs=$(( $(date +%s) - b1_start ))
+wait "$b1_release" 2>/dev/null
+check "(B1) a live holder that releases after 8 s, budget 15 s -> admitted" PROCEED "$b1_out"
+check "(B1) ... after the release, not before" 1 "$([ "$b1_secs" -ge 7 ] && echo 1 || echo 0)"
+check "(B1) the release prints the hold line" 1 "$(grep -cE '^bank-preflight: admission lock held [0-9]+s$' "$W/err.log")"
+mkdir -p "$slots_b1/.admit"; date +%s > "$slots_b1/.admit/acquired"; printf '%s\n' "$b1_holder" > "$slots_b1/.admit/pid"
+: > "$W/err.log"
+b1c_start="$(date +%s)"
+b1c_out="$(run_pf "$slots_b1" "$p0" HIMMEL_FLEET_CAP=4)"
+b1c_secs=$(( $(date +%s) - b1c_start ))
+check "(B1c) a plain read behind a live holder reports" PROCEED "$b1c_out"
+check "(B1c) ... within its own few seconds, not a launch budget" 1 "$([ "$b1c_secs" -le 12 ] && echo 1 || echo 0)"
+err_has "(B1c) ... naming the busy lock" 'could not acquire the fleet admission lock'
+err_lacks "(B1c) a plain read does not re-run" 're-running admission'
+mkdir -p "$slots_b1/.admit"; date +%s > "$slots_b1/.admit/acquired"; printf '%s\n' "$b1_holder" > "$slots_b1/.admit/pid"
+: > "$W/err.log"
+b1z_out="$(run_pf "$slots_b1" "$p0" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=HIMMEL-t9811-b1z HIMMEL_FLEET_CAP=4 FLEET_ADMIT_LAUNCH_WAIT_SECS=0 FLEET_ADMIT_RETRY_ITERS=08 FLEET_ADMIT_RETRY_SLEEP=0.01)"
+check "(B1z) a zero-padded try count behind a live holder -> refused as busy" SKIPPED-FLEET "$b1z_out"
+err_has "(B1z) ... after its 8 tries, read as decimal" 'after 8 retries'
+kill "$b1_holder" 2>/dev/null; wait "$b1_holder" 2>/dev/null
+
+wave() {
+  local label="$1" cap="$2" i ps
+  local -a pids=() callers=()
+  ps="$W/ps-$label"
+  printf '{"policy":{"HIMMEL_FLEET_CAP":%s}}\n' "$cap" > "$HOME/.himmel/config.json"
+  mkdir -p "$ps/proc"
+  printf '%s\n' '#!/usr/bin/env bash' 'sleep 1' 'exit 0' > "$ps/ps"; chmod +x "$ps/ps"
+  wave_slots="$(mktemp -d "$W/slots-$label.XXXXXX")" || exit 1
+  : > "$W/err.log"; rm -f "$W/go-$label"
+  for i in 1 2 3 4 5 6 7 8 9 10 11; do
+    sleep 300 & callers+=("$!")
+    ( while [ ! -e "$W/go-$label" ]; do sleep 0.01; done
+      run_pf "$wave_slots" "$ps" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER="HIMMEL-t98$i-$label" CADENCE_USAGE_CALLER_PID="$!" > "$W/out-$label-$i"
+    ) & pids+=("$!")
+  done
+  ( sleep 300; for i in "${pids[@]}"; do kill "$i" 2>/dev/null; done ) & local watchdog=$!
+  touch "$W/go-$label"
+  wait "${pids[@]}" 2>/dev/null
+  kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null
+  kill "${callers[@]}" 2>/dev/null
+  wait "${callers[@]}" 2>/dev/null
+  wave_ok=$(cat "$W"/out-"$label"-* 2>/dev/null | grep -c '^PROCEED$')
+  wave_cap_refused=$(grep -c 'fleet at/over cap' "$W/err.log")
+  printf '{"policy":{"HIMMEL_FLEET_CAP":4}}\n' > "$HOME/.himmel/config.json"
+}
+wave w1 20
+check "(W1) 11 back-to-back declared launches, cap 20 -> all 11 admitted" 11 "$wave_ok"
+check "(W1) ... 11 slots" 11 "$(count_resv "$wave_slots")"
+check "(W1) ... 11 hold lines" 11 "$(grep -cE '^bank-preflight: admission lock held [0-9]+s$' "$W/err.log")"
+check "(W1) ... none refused as busy" 0 "$(grep -c 'could not acquire the fleet admission lock' "$W/err.log")"
+w1_max="$(sed -n 's/^bank-preflight: admission lock held \([0-9]*\)s$/\1/p' "$W/err.log" | sort -n | tail -1)"
+echo "# (W1) the largest hold: ${w1_max:-?}s"
+wave w1c 8
+check "(W1c) control: at cap 8 exactly 8 admitted" 8 "$wave_ok"
+check "(W1c) ... 3 refused at the cap" 3 "$wave_cap_refused"
+check "(W1c) ... 8 slots" 8 "$(count_resv "$wave_slots")"
 
 echo "--- $PASS passed, $FAIL failed ---"
 [ "$FAIL" -eq 0 ]

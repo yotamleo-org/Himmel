@@ -976,6 +976,74 @@ IFS=$rs_oifs
 rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash 'cd empty && cat .en*')" | PATH="$rs_nosh" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 assert_rc "6014 no shfmt denies"                        2 "${rs_err##*rc=}"
 case "$rs_err" in *"shfmt not on PATH"*) echo "PASS 6014 no shfmt names shfmt" ;; *) echo "FAIL 6014 no shfmt names shfmt — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
+mkdir -p "$SHIFTDIR/verdicts/q1" "$SHIFTDIR/verdicts/q2" "$SHIFTDIR/sv/q1" "$SHIFTDIR/sv/q2" \
+    "$SHIFTDIR/vx/q1" "$SHIFTDIR/cross/a/b" "$SHIFTDIR/cross/b" "$SHIFTDIR/only"
+: >"$SHIFTDIR/verdicts/q1/judge.md"; : >"$SHIFTDIR/verdicts/q2/judge.md"
+: >"$SHIFTDIR/sv/q1/judge.md"; : >"$SHIFTDIR/sv/q2/.env"
+: >"$SHIFTDIR/vx/.env"; : >"$SHIFTDIR/vx/q1/judge.md"; : >"$SHIFTDIR/cross/a/b/.env"; : >"$SHIFTDIR/only/.env"
+rs_q16='q1 q2 q3 q4 q5 q6 q7 q8 q9 q10 q11 q12 q13 q14 q15 q16'
+rs_a64=''; for rs_i in $(seq 1 64); do rs_a64="$rs_a64 a$rs_i"; done
+# shellcheck disable=SC2016
+{
+assert_rc "11536 cd verdicts && loop ls/grep over q1 q2"   "$rs_proved" "$(run_in_shiftdir 'cd verdicts && for q in q1 q2; do ls $q; grep -hiE '\''GO|NO-GO'\'' $q/*; done')"
+assert_rc "11536 the same loop after an absolute cd"        "$rs_proved" "$(run_in_shiftdir "cd $SHIFTDIR/verdicts && for q in q1 q2; do ls \$q; grep -hiE 'GO|NO-GO' \$q/*; done")"
+assert_rc "11536 control: cd into a .env dir && cat *"      2 "$(run_in_shiftdir 'cd only && cat *')"
+assert_rc "11536 control: cd && cat id_* in a token dir"    2 "$(run_in_shiftdir 'cd sub && cat id_*')"
+assert_rc "11536 control: the loop with q2 holding .env"    2 "$(run_in_shiftdir 'cd sv && for q in q1 q2; do ls $q; grep -hiE '\''GO|NO-GO'\'' $q/*; done')"
+assert_rc "11536 control: an unbound variable after cd"     2 "$(run_in_shiftdir 'cd verdicts && cat $f/*')"
+assert_rc "11536 control: a loop over a glob"               2 "$(run_in_shiftdir 'cd verdicts && for q in *; do cat $q/*; done')"
+assert_rc "11536 control: the loop rebinds q to .env"       2 "$(run_in_shiftdir 'cd verdicts && for q in q1 q2; do q=.env; ls $q; grep -hiE '\''GO|NO-GO'\'' $q/*; done')"
+assert_rc "11536 control: bash -c child after a cd"         2 "$(run_in_shiftdir "cd empty && bash -c 'cat .en*'")"
+assert_rc "11536 control: env -S child after a cd"          2 "$(run_in_shiftdir "cd empty && env -S 'cat .en*'")"
+assert_rc "11536 bash --rcfile then -c after a cd"          2 "$(run_in_shiftdir "cd sub && bash --rcfile x -c 'cat .en*'")"
+assert_rc "11536 bash --init-file then -c after a cd"       2 "$(run_in_shiftdir "cd sub && bash --init-file x -c 'cat .en*'")"
+assert_rc "11536 yash -c after a cd"                        2 "$(run_in_shiftdir "cd sub && yash -c 'cat .en*'")"
+assert_rc "11536 posh -c after a cd"                        2 "$(run_in_shiftdir "cd sub && posh -c 'cat .en*'")"
+rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash "cd sub && fakeroot bash -c 'cat .en*'")" | bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+assert_rc "11536 an unlisted wrapper before bash -c after a cd" 2 "${rs_err##*rc=}"
+if command -v shfmt >/dev/null 2>&1; then
+    case "$rs_err" in *"the word bash in a command that changes the cwd"*) echo "PASS 11536 the wrapper deny names the shell word" ;; *) echo "FAIL 11536 the wrapper deny names the shell word — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
+fi
+assert_rc "11536 control: sudo child after a cd"            2 "$(run_in_shiftdir 'cd empty && sudo cat .en*')"
+assert_rc "11536 control: xargs child after a cd"           2 "$(run_in_shiftdir 'cd empty && echo x | xargs cat .en*')"
+assert_rc "11536 control: a non-glob item read beside a glob" 2 "$(run_in_shiftdir 'cd vx && for q in .env; do cat $q q1/*; done')"
+assert_rc "11536 control: printf -vq rebinds q"             2 "$(run_in_shiftdir 'cd verdicts && for q in q1; do printf -vq %s ../sub; cat $q/*; done')"
+assert_rc "11536 control: unset q before the read"          2 "$(run_in_shiftdir 'cd verdicts && for q in q1; do unset q; cat $q/*; done')"
+assert_rc "11536 control: IFS set before the loop"          2 "$(run_in_shiftdir 'cd sub && IFS=1; for q in x1.en; do cat $q* q1/*; done')"
+assert_rc "11536 control: CDPATH as the loop name"          2 "$(run_in_shiftdir 'cd verdicts && for CDPATH in /tmp; do cd q1 && cat .e*; done')"
+assert_rc "11536 control: zsh cdpath as the loop name"      2 "$(run_in_shiftdir 'cd verdicts && for cdpath in /tmp; do cd q1 && cat .e*; done')"
+assert_rc "11536 control: break in the body"                2 "$(run_in_shiftdir 'cd verdicts && for q in q1 q2; do break; cat $q/*; done')"
+assert_rc "11536 control: the cwd carries across items"     2 "$(run_in_shiftdir 'cd cross && for q in a b; do cd $q && cat .e*; done')"
+assert_rc "11536 control: q used after done"                2 "$(run_in_shiftdir 'cd verdicts && for q in q1; do ls $q; done; cat $q/*')"
+assert_rc "11536 control: a double-quoted bash -c body"     2 "$(run_in_shiftdir 'cd sv && for q in q2; do bash -c "cat $q/.e*"; done')"
+assert_rc "11536 control: an item with a leading -"         2 "$(run_in_shiftdir 'cd verdicts && for q in -x; do cat $q/*; done')"
+assert_rc "11536 control: a brace word around q"            2 "$(run_in_shiftdir 'cd verdicts && for q in q1; do cat {$q,x}/*; done')"
+assert_rc "11536 control: a tilde word before q"            2 "$(run_in_shiftdir 'cd verdicts && for q in q1; do cat ~$q/*; done')"
+assert_rc "11536 16 items are proved"                       "$rs_proved" "$(run_in_shiftdir "cd verdicts && for q in $rs_q16; do cat \$q/*; done")"
+assert_rc "11536 17 items are not proved"                   2 "$(run_in_shiftdir "cd verdicts && for q in $rs_q16 q17; do cat \$q/*; done")"
+assert_rc "11536 control: a plain loop with no cd"          0 "$(run_in_shiftdir 'for f in a b; do echo $f; done')"
+if command -v shfmt >/dev/null 2>&1; then
+    assert_rc "11536 a loop item naming .env is read as cat .env" 2 "$(run_in_shiftdir 'for q in .env; do cat $q; done')"
+    assert_rc "11536 a loop item spelling id_rsa is read so"   2 "$(run_in_shiftdir 'for q in id; do cat ${q}_rsa; done')"
+    assert_rc "11536 a loop item as the program is read so"    2 "$(run_in_shiftdir 'cd vx && for q in cat; do command $q .env q1/*; done')"
+    assert_rc "11536 control: 64 literal items run"            0 "$(run_in_shiftdir "for q in$rs_a64; do echo \$q; done")"
+    assert_rc "11536 65 literal items are refused"             2 "$(run_in_shiftdir "for q in$rs_a64 a65; do echo \$q; done")"
+    assert_rc "11536 control: outside the prove shape the recheck reads the text" 2 "$(run_in_shiftdir 'for q in q1; do printf x; ${V:-}cat .env; done')"
+    rs_fj="$SHIFTDIR/no-from-json-bin"; mkdir -p "$rs_fj"
+    printf '#!/bin/sh\nfor a; do [ "$a" = --from-json ] && exit 1; done\nexec %s "$@"\n' "$(command -v shfmt)" >"$rs_fj/shfmt"; chmod +x "$rs_fj/shfmt"
+    rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash 'cd verdicts && for q in q1 q2; do cat $q/*; done')" | PATH="$rs_fj:$PATH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+    assert_rc "11536 a shfmt with no --from-json denies"   2 "${rs_err##*rc=}"
+    case "$rs_err" in *"--from-json"*) echo "PASS 11536 no --from-json names it" ;; *) echo "FAIL 11536 no --from-json names it — got: $rs_err"; FAILED=$((FAILED + 1)) ;; esac
+else
+    echo "NOTE: shfmt not on PATH — the 11536 written-out loop rows are skipped"
+fi
+rs_err=$(cd "$SHIFTDIR" && printf '%s' "$(j_bash 'ls')" | RS_AST_TOP_CMD='ls' bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+assert_rc "11536 an inherited RS_AST_TOP_CMD is refused"    2 "${rs_err##*rc=}"
+# shellcheck disable=SC2329
+rs_nodotcompgen() { compgen() { builtin compgen "$@" | grep -v '^\.'; return 0; }; export -f compgen; run_in_shiftdir "$1"; }
+assert_rc "11536 a compgen that lists no dotfile keeps the deny" 2 "$(rs_nodotcompgen 'cd only && cat *')"
+assert_rc "11536 control: the same compgen still proves a clean dir" "$rs_proved" "$(rs_nodotcompgen 'cd verdicts/q1 && cat *')"
+}
 rm -rf "$SHIFTDIR"
 nolib=$(mktemp -d "${TMPDIR:-/tmp}/guard-nolib.XXXXXX") || exit 1
 cp "$HOOK" "$nolib/block-read-secrets.sh"
