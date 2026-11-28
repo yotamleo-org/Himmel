@@ -149,7 +149,10 @@ bash scripts/t3/antigravity-profiles.sh --list               # the registry's pr
 ```
 
 Copywriting: start a T3 thread on `antigravity_design` with model `gemini-4-neon`. The profile pins
-no model; the thread's `modelSelection` names it, as every T3 thread does.
+no model; the thread's `modelSelection` names it, as every T3 thread does. `/lanes` lists it as the
+designer lane, row `antigravity-t3-design` in `scripts/lanes/lanes.json`; models, tiers and quota stay on
+the `antigravity-t3` row. Not in the patient-data vault: no Gemini thread, bare or profile, runs the
+Higgsfield egress fence yet, and the `higgsfield` CLI is on PATH for both.
 
 - `--dry-run` prints the instance id, home, whether the backstop key is present, any pinned
   fetch it would do, and the `skills.json` it would write. It creates and fetches nothing.
@@ -169,12 +172,41 @@ no model; the thread's `modelSelection` names it, as every T3 thread does.
 
 rc: 0 ok (`--list` too); 1 `--check` not satisfied; 2 usage, missing `jq`, malformed registry or JSON input,
 unknown `fromProfiles` name, a reserved `--list` profile name, pinned fetch or verify failure, backstop failure,
-a symlinked profile `antigravity-acp` or a token path that is not a file or link; 3 fence refusal.
+a symlinked profile `antigravity-acp` or a token path that is not a file or link; 3 fence refusal; 96, in
+every mode, the seam guard's refusal (see "The seams are fenced").
 `--smoke`: 0 every line PASS, 1 any FAIL, 2 malformed registry data (a bad profile field or registry file). `--flag-on`: 0 flag on, 1 off, 2 bad value or unreadable reader.
 
 Env seams (tests): `T3_AP_REGISTRY`, `T3_AP_PLUGIN_PROFILES`, `T3_AP_BACKSTOP`, `T3_AP_ADAPTER`,
 `HIMMEL_AGY_SKILL_CACHE`; `HOME` and `T3CODE_HOME` as usual. Modes also include `--smoke` and `--flag-on`
 (below).
+
+### The seams are fenced
+
+The five seams above are registered in scripts/chokepoints.json, and so is the backstop installer's
+`HIMMEL_PRIMARY_ROOT` (it picks the adapter written into every `hooks.json`, and `himmel-update.sh` runs
+the installer on its own). Both scripts, and `provider-instances.sh`, source
+`scripts/lib/chokepoint-seam-guard.sh` before any seam read: on the anchor checkout, in a session with a
+Claude ancestor or a Claude Code marker, a seam that differs from the session's launch environment exits
+96, however it is spelled, and a copy without the lib exits 96 too. The hook layer
+(`block-chokepoint-env-prefix.sh`) also denies the typed `T3_AP_BACKSTOP=x bash scripts/t3/…` form.
+
+Threat model: the fence stops a test seam set in a Claude session from reaching a live run of the anchor
+copy. It does not stop an agent running its own worktree copy (the guard's posture for every chokepoint:
+a copy is branch bytes it can run anyway), nor a Codex or Gemini session with no Claude ancestor that
+exports a seam (there only the typed form is caught). Both are an accepted ceiling.
+
+Not registered, and why: `T3CODE_HOME` (`provider-instances.sh` sets it per call for this script, so the
+guard would refuse every real run); the operator opt-in `T3_PI_BUILTIN_RELAY` (adds a driver-only copy
+that carries no bypass); `HOME`, `HIMMEL_REPO`, `CLAUDE_CONFIG_DIR`, `HIMMEL_FLAGS_TSV` and
+`HIMMEL_CONFIG_DIR` (real configuration, which a headless or cadence launch may legitimately carry with
+another value).
+
+The suites pin each key's list against the code (rows S-LIST and S-GATE): every `${NAME` read in the
+shell files and every `process.env.NAME` read in `scripts/lanes/plugin-profiles.mjs` that matches a seam
+prefix must be in the key. The scan does not see three read forms: JavaScript destructuring of
+`process.env`, `printenv`, and the bare `$NAME` form. None of the five files uses one today (nor any
+indirect read such as `${!v}` or `process.env[...]`); a new read in those forms is caught only once its
+name is added to the list.
 
 ## himmel-update
 
@@ -191,6 +223,28 @@ off; a follow-up ticket removes it at publish, and it expires 2026-12-10). Turn 
   or `~/.himmel/config.json`; skipped without T3's settings file or `jq`. A failed apply is a `failed` row.
 - The flag is read through `antigravity-profiles.sh --flag-on`, because a gate script reaches
   `himmel-update.sh` by path and a flag never wraps a gate (`scripts/ci/check-flags.sh`).
+- Re-apply on a plugin update: a plugin update moves its install path to a new version directory, so
+  `skills.json` goes stale and `--check` prints `skills.json differs from what apply would write`. A full
+  update runs every plugin-changing step (`sync_marketplaces`, `install_missing_himmel_plugins`,
+  `update_installed_plugins`, `refresh_drifted_plugin_caches`, `reconcile_plugins`) before this step, so
+  the home is current again when it ends (row U2 of `scripts/test-himmel-update-t3-providers.sh` pins the
+  order). A `claude plugin update`, an `--only` plugin step, or a run with the flag off re-applies
+  nothing; the doctor row below reports the stale home.
+
+## Doctor
+
+`himmel-doctor` row `C104-agy-profiles` runs `antigravity-profiles.sh --list`, then `--check --profile <p>`
+for each name, and reads `--check`'s own first reason. It never runs `--apply` or `--smoke` and writes
+nothing; it says nothing about T3 registration (that is `--smoke`'s `instance` line).
+
+| `--check` result | Row |
+|---|---|
+| rc 0 | OK: `antigravity_<p>: profile home current` |
+| rc 1, first reason `home missing` | INFO: not set up on this station; fix: `/himmel-update` with the flag on, if you use Gemini design threads |
+| rc 1, any other first reason | WARN with the line; fix: `--apply --profile <p>` (operator) or `/himmel-update` |
+| any other rc, or `--list` fails | WARN naming the rc and the first stderr line |
+
+Row C1 of the suite pins the `home missing` wording the INFO case reads.
 
 ## Smoke
 
@@ -222,4 +276,14 @@ command it runs may write its own hook log.
 
 `bash scripts/quiet-run.sh suite -- bash scripts/t3/test-antigravity-profiles.sh` (a mktemp
 sandbox for `HOME` and `T3CODE_HOME`, a local git repo as the pinned source, a stub backstop; no
-network, nothing under the real `~/.t3`, `~/.gemini`, `~/.himmel` or `~/.claude`).
+network, nothing under the real `~/.t3`, `~/.gemini`, `~/.himmel` or `~/.claude`). Run it from a
+worktree: on the primary checkout a suite that sets a registered seam exits 96 by design.
+
+## Live check notes
+
+The live check of a design thread grades the thread's transcript,
+`<home>/antigravity-acp/brain/<conversation>/.system_generated/logs/transcript.jsonl`. A `run_command`
+result there has `Command exited with code <n>.` before `Command output:`, and transcripts also hold
+`SYSTEM_MESSAGE` steps. The pinned frontend skill's path lies under `~/.himmel/cache/agy-skills` and
+matches none of the three patterns the check's void rule looks for (`higgsfield`, `plugins/cache`,
+`.agents`), so reading it never voids an attempt that read the Higgsfield skill first.

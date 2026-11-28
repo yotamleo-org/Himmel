@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Pre-commit hook: refuse commits on `main` from the primary worktree.
+# Pre-commit hook: refuse commits on the `main` branch. A branch is enough; a
+# separate worktree is not required.
 # Predicate sourced from scripts/guardrails/lib.sh.
 set -uo pipefail
 
@@ -33,7 +34,7 @@ rc=$?
 case "$rc" in
     0)
         echo "ERROR: Committing directly on 'main' is not allowed."
-        echo "       Create a worktree branch: 'git worktree add' or 'git switch -c <type>/<slug>'."
+        echo "       Switch to a branch first: 'git switch -c <type>/<slug>' (a separate worktree is not required)."
         exit 1
         ;;
     1)

@@ -403,8 +403,9 @@ HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
 export HEADED_ARM_UNAME
 
 usage() {
-    echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--chief <name>] [--rewrite-chief] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--code-mode] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--chief <name>] [--rewrite-chief] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
     echo "  --rewrite-chief: a brief that names another chief than --chief / HIMMEL_CONSOLE_NAME is refused; with this flag an unrun brief's chief name and RETASK nonce are rewritten in place to the launching chief instead" >&2
+    echo "  --code-mode: opt this one worker into Claude Code's experimental Code Mode (CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1 for its claude only); a plain native --profile worker only, and it runs without Remote Control, which Code Mode cannot share a session with" >&2
     echo "  --context-guard: the worker context guard (default none = off, except a Sonnet launch on a profile that sets one: worker-impl hands off, worker-eval compacts); see docs/internals/worker-context-guard.md" >&2
 }
 
@@ -563,6 +564,7 @@ READONLY_ROLE=0   # judge, consult or release manager: no implementation permiss
 NO_PROFILE=0
 IGNORE_DENIALS=0
 NO_PRIOR_ART_CHECK=0
+CODE_MODE=0
 # shellcheck source=scripts/lib/env-alias.sh
 # shellcheck disable=SC1091
 . "$_csg_dir/../../lib/env-alias.sh"
@@ -588,6 +590,7 @@ while :; do
         --no-profile) NO_PROFILE=1; shift ;;
         --no-prior-art-check) NO_PRIOR_ART_CHECK=1; shift ;;
         --headless) HEADLESS=1; shift ;;
+        --code-mode) CODE_MODE=1; shift ;;
         --fleet)
             if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
             FLEET_MANIFEST="$2"; shift 2 ;;
@@ -995,6 +998,16 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ]; then
     usage
     echo "headed-arm-worker: refusing an unprofiled launch: pass --profile <name> (or set WORKER_SESSION_PROFILE; names: \`node scripts/lanes/plugin-profiles.mjs --list\`) so the worker gets docs/handover/worker-preface.md and the lean plugin set. Pass --no-profile only when the brief itself carries the preface pasted in." >&2
     exit 2
+fi
+
+if [ "$CODE_MODE" -eq 1 ]; then
+    case ",$PROFILE," in *,readiness,*) _cm_readiness=1 ;; *) _cm_readiness=0 ;; esac
+    if [ "$LANE" != "native" ] || [ -z "$PROFILE" ] || [ "$NO_PROFILE" -ne 0 ] || [ "$CONSULT" -ne 0 ] || [ "$JUDGE" -ne 0 ] \
+        || [ "$RELAY" -ne 0 ] || [ "$RM" -ne 0 ] || [ "$HEADLESS" -ne 0 ] || [ "$_cm_readiness" -ne 0 ]; then
+        echo "headed-arm-worker: refusing --code-mode: it is for a plain, headed, native --profile worker only (not --lane $LANE, --no-profile, --consult, --judge, --relay, a release manager, --headless or the readiness role)" >&2
+        exit 2
+    fi
+    unset -v _cm_readiness
 fi
 
 # The readiness role: the profile named exactly `readiness`, a native, headed, non-consult launch of
@@ -1743,7 +1756,7 @@ unset -v _worker_env_scrub
 # HIMMEL_READINESS too: it is the readiness guard's role marker (scripts/hooks/guard-readiness-tools.sh), so an ambient or
 # inherited claim must never reach a worker; only the readiness block below sets it, to exactly 1.
 for _worker_env_scrub in \
-    WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_REMOTE_CONTROL \
+    WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_REMOTE_CONTROL WORKER_SESSION_CODE_MODE \
     WORKER_SESSION_PROFILE_READINESS WORKER_SESSION_RENDER_ARGV HIMMEL_READINESS; do
     unset -v "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
@@ -1801,6 +1814,7 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
         WORKER_SESSION_API_LANE|WORKER_SESSION_API_ACCOUNT) [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
+        HIMMEL_HOOK_INTEGRITY_BYPASS_OK) [ -z "${HIMMEL_MAINTAINER_ACTION:-}" ] && continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
         HEADED_ARM_LAUNCHER_ENV) continue ;;
         # cleared at start-up and rewritten from the HANDOVER_DIR propagation on, so scrubbing it here would drop HANDOVER_DIR's line.
@@ -2918,7 +2932,11 @@ EOF_CS_FILES
     # value.
     if [ "$LANE" = "native" ] && [ "$CONSULT" -eq 0 ] && [ "$HEADLESS" -eq 0 ] \
         && [ "$JUDGE" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$RM" -eq 0 ] && [ "$READINESS" -eq 0 ]; then
-        worker_propagate_env WORKER_SESSION_REMOTE_CONTROL "$NAME"
+        if [ "$CODE_MODE" -eq 1 ]; then
+            worker_propagate_env WORKER_SESSION_CODE_MODE 1
+        else
+            worker_propagate_env WORKER_SESSION_REMOTE_CONTROL "$NAME"
+        fi
     fi
     # A consult's launcher is the entry beside the canonical shim:
     # an absolute `#!/bin/bash -p` that strips the bash startup variables and
@@ -3134,10 +3152,11 @@ EOF_WORKER_DRY_LINES
     if [ -n "$PROFILE" ]; then
         # ` remote-control=<name>` ends this line (not a new line, so the
         # report keeps its line count) only when the shim will pass --remote-control.
-        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s prompt=%s%s\n' \
+        printf 'headed-arm-worker: profile=%s settings=%s preface=%s contract=%s lean=%s mcp=%s mcp-config=%s autocompact=%s prompt=%s%s%s\n' \
             "$PROFILE" "$PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_PREFACE" "$PROFILE_CONTRACT" "$HIMMEL_LEAN_WORKER_SESSION" \
             "$MCP_NAMES_JSON" "${WORKER_SESSION_PROFILE_MCP_CONFIG:-<none>}" "$RESOLVED_AUTOCOMPACT" "$WORKER_LAUNCH_IDENTITY" \
-            "${WORKER_SESSION_REMOTE_CONTROL:+ remote-control=$WORKER_SESSION_REMOTE_CONTROL}"
+            "${WORKER_SESSION_REMOTE_CONTROL:+ remote-control=$WORKER_SESSION_REMOTE_CONTROL}" \
+            "${WORKER_SESSION_CODE_MODE:+ code-mode=$WORKER_SESSION_CODE_MODE}"
     fi
     # Printed ONLY for an Opus/Fable model that cleared the tier gate above;
     # absent for Sonnet/Haiku, matching the argv-report guarantee pattern above.
@@ -3323,10 +3342,11 @@ if [ -f "$BANK_PREFLIGHT" ]; then
     # then appended to the log as before.
     _pf_err="$(mktemp "${TMPDIR:-/tmp}/headed-arm-worker-pf.XXXXXX" 2>/dev/null)" || _pf_err=""  # swallow-ok: without it the stderr goes to the log and a duplicate reads as the cap, as before
     preflight_token="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE="$LANE_BANK_GATE" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" FLEET_RESERVE_TTL="$_arm_fleet_ttl" bash "$BANK_PREFLIGHT" 2>>"${_pf_err:-$LOG}")"
-    _pf_dup=0 _pf_why=""
+    _pf_dup=0 _pf_why="" _pf_paused=0
     if [ -n "$_pf_err" ]; then
         cat "$_pf_err" >> "$LOG" 2>/dev/null  # swallow-ok: a log that cannot be appended to is not a reason to stop the launch
         grep -q 'refusing as a duplicate declared launch' "$_pf_err" 2>/dev/null && _pf_dup=1
+        grep -Eq '^fleet-runtime: fleet-paused: fleet-paused( |$)' "$_pf_err" 2>/dev/null && _pf_paused=1
         if ! grep -Eq 'at/over (its own )?cap .*— skipping worker=' "$_pf_err" 2>/dev/null; then
             _pf_why="$(grep -E '^fleet-runtime: fleet-paused:|^bank-preflight: .*(refusing|fleet-paused|could not acquire)' "$_pf_err" | awk '{ printf "%s%s", sep, $0; sep = "; " }')"
         fi
@@ -3346,10 +3366,11 @@ if [ -f "$BANK_PREFLIGHT" ]; then
             # older refused one that left it); the preflight line above says who holds it and when it lapses.
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - a fleet reservation for this worker already exists (the fleet has room; the preflight line above names the holder and when it lapses)" >> "$LOG"
         elif [ -n "$_pf_why" ]; then
-            case "${_pf_why//fleet-runtime: fleet-paused: /}" in
-                *fleet-paused*) _launch_refusal_note fleet-paused "$_pf_why" ;;
-                *) _launch_refusal_note fleet-admission "$_pf_why" ;;
-            esac
+            if [ "$_pf_paused" -eq 1 ]; then
+                _launch_refusal_note fleet-paused "$_pf_why"
+            else
+                _launch_refusal_note fleet-admission "$_pf_why"
+            fi
             echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - fleet admission refused, not the fleet cap: $_pf_why" >> "$LOG"
         else
             _launch_refusal_note fleet-cap

@@ -107,6 +107,10 @@ case "$(cat "$WORK/launch.log" 2>/dev/null)" in
     *) check "1c. launcher argv" ok "$(cat "$WORK/launch.log" 2>/dev/null)" ;;
 esac
 check "1d. the launch was confirmed" "1" "$(count "$WORK/confirm.log")"
+case " $(cat "$WORK/confirm.log" 2>/dev/null) " in
+    *" --secs 60 "*) check "1d2 (K1s). the waiter's confirm keeps a 60 s window" ok ok ;;
+    *) check "1d2 (K1s). the waiter's confirm keeps a 60 s window" ok "$(cat "$WORK/confirm.log" 2>/dev/null)" ;;
+esac
 if tail -n1 "$CHIEF_DOC" | grep -q 'SILENT-ACT N1 nudge=no-window relaunched DEMO-1-N1-w-2026-11-25-RESUME silent=161m'; then
     check "1e. the chief doc logs the action and the worker" ok ok
 else

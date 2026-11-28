@@ -397,6 +397,7 @@ plugin is installed. Scripts live under `scripts/hooks/`, or under
 |---|---|---|---|
 | `block-edit-on-main` | Edit/Write on a repo that is on `main`, or in the primary checkout | auth-gated | `EDIT_ON_MAIN_OK=1`; per-repo: a gitignored `.single-writer` file at the repo root |
 | `block-read-secrets` | Read/Grep/Bash touching `.env`, keys, credentials | auth-gated | `READ_SECRETS_OK=1` |
+| `block-unexpanded-file-path` | a file-tool path the tools would change (over 4096 bytes, or not in form) | auth-gated (fail-closed) | `UNEXPANDED_FILE_PATH_OK=1` (floor, operator only) |
 | `block-destructive-commands` | recursive `rm`, `kill -9`, forced git rewrites, `curl\|sh`, … | auth-gated | `DESTRUCTIVE_OK=1` |
 | `block-rogue-claude-schedule` | one command that both registers a scheduler job and launches `claude` | auth-gated | `ROGUE_SCHEDULE_OK=1`; or use the sanctioned `arm-resume.sh` / `pipeline-cadence.sh` |
 | `block-rogue-codex-exec` *(plugin)* | raw native `codex exec` outside the sanctioned dispatch script (no preflight, no pins, no registry, no watchdog) | auth-gated | `CODEX_EXEC_RAW_OK=1` |

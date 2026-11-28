@@ -224,6 +224,14 @@ cp "$A" "$T/artifact.after1"
 env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$A" >/dev/null 2>&1
 expect_ok "default instance: second apply is a no-op" cmp -s "$A" "$T/artifact.after1"
 
+MH="$T/maintainer.json"; printf '{"providerInstances":{}}' > "$MH"
+out="$(env T3_PI_RESOLVER= T3_PI_PROFILES="user,maintainer-hooks" bash "$GEN" --apply --settings-file "$MH" 2>&1)"; rc=$?
+expect_eq "maintainer profile in the list: apply still exits 0" "$rc" 0
+expect_eq "maintainer profile gets no T3 instance" "$(jq -r '.providerInstances|has("claudeAgent_maintainer-hooks")' "$MH")" false
+expect_eq "maintainer profile: the other profile's instance is written" "$(jq -r '.providerInstances|has("claudeAgent_user")' "$MH")" true
+expect_ok "maintainer profile: one stderr line names the skip" grep -q "^provider-instances: skip 'maintainer-hooks'" <<<"$out"
+expect_fail "maintainer profile is not printed as an allowlist id" grep -q '^claudeAgent_maintainer-hooks$' <<<"$out"
+
 U="$T/userargs.json"
 printf '{"providerInstances":{"claudeAgent":{"driver":"claudeAgent","enabled":true,"config":{"launchArgs":"--model my-own"}}}}' > "$U"
 out="$(env T3_PI_RESOLVER= T3_PI_PROFILES="user" bash "$GEN" --apply --settings-file "$U" 2>&1)"; rc=$?
@@ -409,6 +417,35 @@ expect_eq "R8 the real --apply on the settings file's home: rc 0" "$rc" 0
 real_env env T3_PI_PROFILES=alpha T3_PI_RESOLVER="$T/resolver2.sh" bash "$GEN" --apply --settings-file "$AS" >/dev/null 2>&1; rc=$?
 expect_eq "R8 after the home is applied: rc 0" "$rc" 0
 expect_eq "R8 after the home is applied: the key is present" "$(jq -r '.providerInstances|has("antigravity_design")' "$AS")" true
+
+CHOKEPOINTS="$HERE/../chokepoints.json"
+CSG_LIB="$HERE/../lib/chokepoint-seam-guard.sh"
+# shellcheck source=scripts/lib/chokepoint-seam-guard.sh
+. "$CSG_LIB" || { bad "cannot load $CSG_LIB"; exit 1; }
+SEAM_EXCLUDE="T3_PI_BUILTIN_RELAY T3CODE_HOME"
+PI_KEY="scripts/t3/provider-instances.sh"
+PI_SEAMS="HIMMEL_PROFILE_REPO HIMMEL_PROFILE_SETTINGS_DIR PLUGIN_PROFILES_ADAPTERS PLUGIN_PROFILES_REGISTRY T3_PI_AGY_PROFILES T3_PI_EMPTY_OK T3_PI_PROFILES T3_PI_RESOLVER"
+PI_SCAN_SH=("$GEN" "$HERE/../lanes/profile-settings.sh")
+PI_SCAN_MJS="$HERE/../lanes/plugin-profiles.mjs"
+got="$(jq -r --arg k "$PI_KEY" '.[$k].seam_env_vars | sort | join(" ")' "$CHOKEPOINTS" 2>/dev/null)"
+expect_eq "S-LIST pi: $PI_KEY equals the fixed list" "$got" "$PI_SEAMS"
+missing=""
+scan_sh="$(grep -ohE '\$\{(T3_AP_|T3_PI_|HIMMEL_AGY_SKILL_CACHE|HIMMEL_PRIMARY_ROOT|HIMMEL_PROFILE_|PLUGIN_PROFILES_)[A-Z_]*' "${PI_SCAN_SH[@]}")"; rc_sh=$?
+scan_mjs="$(grep -oE 'process\.env\.PLUGIN_PROFILES_[A-Z_]*' "$PI_SCAN_MJS")"; rc_mjs=$?
+expect_eq "S-LIST pi: both scans read their sources and matched" "$rc_sh|$rc_mjs" "0|0"
+while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    case " $SEAM_EXCLUDE $got " in *" $n "*) ;; *) missing="$missing $n" ;; esac
+done <<< "$( { printf '%s\n' "$scan_sh" | sed 's/^.*\${//'; printf '%s\n' "$scan_mjs" | sed 's/^process\.env\.//'; } | sort -u)"
+expect_eq "S-LIST pi: every seam it and its unregistered children read is in $PI_KEY" "$missing" ""
+got="$(_csg_registry_seams "$CHOKEPOINTS" "$PI_KEY" | tr ' ' '\n' | sort | tr '\n' ' ')"
+expect_eq "S-GATE pi: _csg_registry_seams $PI_KEY equals the fixed list" "${got% }" "$PI_SEAMS"
+for n in $PI_SEAMS; do
+    out="$(unset "$n"; env -0 > "$T/csg-base"; export "$n=x"; _csg_verdict "$T/csg-base" "$T" "$T" "$PI_SEAMS")"; rc=$?
+    expect_eq "S-GATE pi: $n set after launch is refused by name" "$rc|$out" "1|$n"
+    out="$(export "$n=x"; env -0 > "$T/csg-base"; _csg_verdict "$T/csg-base" "$T" "$T" "$PI_SEAMS")"; rc=$?
+    expect_eq "S-GATE pi: $n equal to the launch value is allowed" "$rc|$out" "0|"
+done
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" = 0 ]

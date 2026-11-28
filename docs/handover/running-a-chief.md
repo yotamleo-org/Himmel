@@ -302,6 +302,9 @@ setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile work
 bash scripts/handover/chief-kit/launch-confirm.sh --since "$since" <session-name> <log>
 ```
 
+Run the `launch-confirm.sh` call with a Bash tool timeout of at least 250000 ms: its window is 240 s, and the tool's
+default 120 s would end it first.
+
 The launcher writes the signal file itself once the launch passes its checks; a launch that cannot write it is refused with a `LAUNCH-REFUSED` line.
 
 `--fleet` names the chief's own manifest. Without it, a managed worker is
@@ -320,7 +323,8 @@ the real launch passes them too. The launcher opens each attempt with a `LAUNCH-
 and closes an exit-0 attempt with `LAUNCH-OK`. `launch-confirm.sh` reads only
 the attempt that started at or after `--since`, the epoch taken just before
 the launch, so an earlier attempt or session never decides it. It waits up to
-60 s for that attempt to end `LAUNCH-OK` with a claude session named
+240 s by default (`--secs` sets it; the waiter's relaunch of a silent worker passes 60), since a managed launch
+runs two fleet admissions and each can wait its turn for the admission lock, for that attempt to end `LAUNCH-OK` with a claude session named
 `<session-name>` running. It prints `LAUNCH-CONFIRMED <session> pid=<pid>`, or exits 1
 with a `LAUNCH-UNCONFIRMED` line on stderr, in the log and in your inbox. Never
 report a worker as running until it confirms.
@@ -974,7 +978,11 @@ the paginated files API.
 
 `check-write-hold.sh` denies a worker's write onto a file another live worker or an
 open PR holds. A write onto a free file outside the worker's `Writes` passes: it is
-claimed, recorded, and named on the PR's `outside-writes:` line for review. The
+claimed, recorded, and named on the PR's `outside-writes:` line for review. In a
+repo that carries `scripts/ci/ci-trust-paths.txt`, a free trust path is the
+exception: its first write is denied until a grant. The deny prints your grant
+command for a trust path, and says only the operator grants a settings file or CI
+workflow. The
 register is `holds.py`, under `~/.himmel/state/holds`.
 
 **`HOLD-ASK <path> <key>`** is a worker telling you the deny stopped it: `<key>` wants
@@ -1701,6 +1709,28 @@ own inbound activity and sends you the missing event ids (the sweep is in
 with no fresh schedule (event-only) has no automatic recovery during a quiet period: an inbound event whose
 wake ends before its checkpoint stays unconsumed until the next relay or your explicit recovery request runs
 the replay comparison above.
+
+#### A finished top-level T3 thread does not wake its launcher
+
+A worker that a chief or coordinator opens with a top-level T3 launch can end its turn without waking the
+launcher. T3's completion wake goes to the parent of a real `delegate_task` child. A top-level launch is not a
+child, so its turn end wakes no one, and the result waits until someone looks. Baseline on T3 server 0.1.13, 2026-11-28, in a
+disposable project with no schedule or peers:
+
+| Row | Setup | Seen | Result |
+|---|---|---|---|
+| `test-launch-turn-end-wake` | An idle launcher opens a top-level worker that answers one marker line and ends without sending | 0 launcher runs in the 120 s after the worker's turn end | RED |
+| `test-delegate-completion-control` | A chief-role parent runs `delegate_task` with a child that answers one marker line | 1 parent run, quoting the child's line, within 120 s | pass |
+
+- **Until T3 ships the wake, keep the fallback.** Every brief and relay to a top-level worker ends with "report
+  to the launching thread with `t3_thread_send`, never end silently". The coordinator checks each live worker
+  thread on every wake, and its capped `freshSession: true` sweep stays on. A threadless tracking row, such as
+  a pending adoption row, counts for neither the empty-work test nor the thread checks.
+- **T3 owns the fix.** The requirement goes to T3 in
+  [discussion #15148](https://github.com/pingdotgg/t3code/discussions/15148): an enrolled launcher gets a
+  queued, fresh wake carrying the run's final line on every turn boundary, with replay and a blocker when it is
+  not acknowledged. Adopting it on a supported pin, and retiring the fallback for proven routes, waits on that
+  pin and its live proof; recording this baseline removes no fallback.
 
 ## See also
 

@@ -15,7 +15,7 @@
 # fence into a real script removes the parse surface entirely.
 #
 # Usage:
-#   bash scripts/cr/panel-first-pass.sh --head <sha> --branch <name> [--context-file <f>]
+#   bash scripts/cr/panel-first-pass.sh --branch <name> [--head <rev>] [--context-file <f>] [--full]
 #   bash scripts/cr/panel-first-pass.sh --pr <n> --head <40-hex sha> --branch <headRefName> [--context-file <f>]
 #
 # --pr: an outside PR reviewed from its fetched ref refs/himmel/outside/<n>, its branch never
@@ -38,10 +38,15 @@
 # critic-pre-existing-tag.py tags an Important finding on code older than the PR
 # [pre-existing] and sets the ledger field review-round.sh defer reads.
 #
-# --head/--branch are REQUIRED and must be step 1's CAPTURED values, never
-# re-derived here: review the SHA the ledger will certify, not
-# live HEAD, and pin the branch too - a SHA pin alone would pass a switch to a
-# different branch sitting at the same commit.
+# --branch is REQUIRED and must be step 0's CAPTURED branch. The head is step 0's too, never
+# re-derived here: review the SHA the ledger will certify, not live HEAD, and pin the branch too -
+# a SHA pin alone would pass a switch to a different branch sitting at the same commit. Checked out,
+# the head comes from the step 0 head record (pr-check-step0-head.sh), which must name this branch,
+# this worktree and the live HEAD; a typed --head is accepted only when it resolves to the record's
+# head, and the record's full sha is what every later call receives. With no record, a typed --head
+# runs as given (the resolve check below and the panel's pin); with neither, exit 2. A record this
+# copy cannot read takes a typed --head of the live HEAD (with a WARNING), else exit 7. --pr never
+# reads a record: there --head is required and must equal the fetched ref.
 #
 # Env:
 #   CR_PROFILE - loaded from the primary checkout's .env (a live env var
@@ -61,7 +66,9 @@
 # Exit codes:
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
-#   2 - usage error: missing --head or --branch, or (--pr) a PR number or --head that is
+#   2 - usage error: missing --branch, no --head and no step 0 head record (checked out),
+#       scripts/cr/pr-check-step0-head.sh cannot be loaded (checked out), or (--pr) a missing
+#       --head, a PR number or --head that is
 #       not a plain number / full 40-hex sha, --branch is outside the safe alphabet,
 #       outside-contributors.sh cannot be loaded, or (--pr) this copy is not the one in the
 #       anchor's primary checkout that HIMMEL_REPO names (a branch copy, a linked worktree, or
@@ -79,7 +86,11 @@
 #       maintainer-takeover line). Nothing was reviewed.
 #   7 - input-pin failure. Causes, all ABORT: (a) the
 #       --head this script was given names no commit in this repo, detected
-#       here before any git command consumes it; (b)
+#       here before any git command consumes it, or (checked out) the step 0 head record names
+#       another branch, another worktree or a head that is not the live HEAD, a typed --head
+#       resolves to another commit than the record's, or the record (or cr-step0-head) is not a
+#       plain well-formed record and no typed --head of the live HEAD was given, each before a
+#       preflight or a round; (b)
 #       pin MISMATCH reported by critic-panel.sh, on the FIRST attempt or
 #       independently on the rtk retry; (c) the diff base cannot be fetched or
 #       resolved; (d) (--pr only) critic-panel.sh does not refuse a --pin-ref ref name git cannot hold
@@ -160,7 +171,7 @@ if [ -n "$CONTEXT_FILE" ] && { [ ! -f "$CONTEXT_FILE" ] || [ ! -r "$CONTEXT_FILE
     echo "panel-first-pass: --context-file '$CONTEXT_FILE' is not a readable file" >&2
     exit 2
 fi
-[ -n "$HEAD_SHA" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA)" >&2; exit 2; }
+[ -n "$HEAD_SHA" ] || [ -z "$PR" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA)" >&2; exit 2; }
 [ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch)" >&2; exit 2; }
 # the round counter and ledger are per-branch shared state; only
 # the branch checked out in cwd may be written (review-round.sh refuses too).
@@ -204,6 +215,59 @@ else
         echo "panel-first-pass: --branch '$BRANCH' is not the branch checked out in this directory ('${current_branch:-detached HEAD}') - run it from that branch's worktree" >&2
         exit 2
     fi
+    # shellcheck source=scripts/cr/pr-check-step0-head.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/pr-check-step0-head.sh" 2>/dev/null || { echo "panel-first-pass: cannot load scripts/cr/pr-check-step0-head.sh - nothing was reviewed" >&2; exit 2; }
+    review_root="$(step0_toplevel)" || review_root=""
+    live_head="$(git rev-parse --verify --quiet HEAD 2>/dev/null)" || live_head=""   # swallow-ok: an empty live HEAD matches no record head, so the record compare below exits 7
+    rec_path="$(step0_head_path "$BRANCH")" || rec_path=""
+    typed_head="$HEAD_SHA"
+    typed_full=""
+    [ -z "$typed_head" ] || typed_full="$(git rev-parse --verify --quiet "$typed_head^{commit}" 2>/dev/null)" || typed_full=""   # swallow-ok: an unresolvable --head stays empty and is refused below (exit 7)
+    nothing_done="Nothing was reviewed and nothing was recorded."
+    rec_rc=0
+    rec="$(step0_head_read "$BRANCH")" || rec_rc=$?
+    case "$rec_rc" in
+        0)
+            rec_branch="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
+            rec_head="${rec%%$'\t'*}"; rec_top="${rec#*$'\t'}"
+            if [ "$rec_branch" != "$BRANCH" ]; then
+                echo "panel-first-pass ABORT - the step 0 head record $rec_path names branch $rec_branch, not $BRANCH; re-run step 0 in this worktree. $nothing_done" >&2
+                exit 7
+            fi
+            if [ "$rec_top" != "$review_root" ]; then
+                echo "panel-first-pass ABORT - the step 0 head record was written in $rec_top, not this worktree ($review_root); re-run step 0 in this worktree. $nothing_done" >&2
+                exit 7
+            fi
+            if [ "$rec_head" != "$live_head" ]; then
+                echo "panel-first-pass ABORT - the checkout moved since step 0: step 0 recorded $rec_head, HEAD is now ${live_head:-unreadable} (both for diagnosis only; do not pass it as --head; re-run step 0). $nothing_done" >&2
+                exit 7
+            fi
+            if [ -n "$typed_head" ] && [ "$typed_full" != "$rec_head" ]; then
+                echo "panel-first-pass ABORT - --head $typed_head is not the step 0 head. Step 0 recorded $rec_head; re-run with no --head, or with --head $rec_head. $nothing_done" >&2
+                exit 7
+            fi
+            HEAD_SHA="$rec_head"
+            ;;
+        2)
+            if [ -n "$typed_full" ] && [ "$typed_full" = "$live_head" ]; then
+                echo "panel-first-pass: WARNING - the step 0 head record $rec is unreadable by this copy of panel-first-pass.sh; using the typed --head" >&2
+                HEAD_SHA="$typed_full"
+            elif [ "$rec" != "$rec_path" ]; then
+                echo "panel-first-pass ABORT - the step 0 head record directory $rec is a symlink or not a directory; pass --head ${live_head:-<the head= line step 0 printed>}, or remove $rec and re-run step 0. $nothing_done" >&2
+                exit 7
+            else
+                echo "panel-first-pass ABORT - the step 0 head record $rec is malformed, not a plain file, or in a format this copy does not read; pass --head ${live_head:-<the head= line step 0 printed>}, or remove $rec and re-run step 0. $nothing_done" >&2
+                exit 7
+            fi
+            ;;
+        *)
+            if [ -z "$typed_head" ]; then
+                echo "panel-first-pass: no step 0 head record for '$BRANCH' ($rec_path) - run step 0 first (bash \"\$HIMMEL_REPO/scripts/cr/pr-check-step0.sh\"), or pass --head <the head= line it printed>" >&2
+                exit 2
+            fi
+            ;;
+    esac
 fi
 
 # validate the INPUT PIN before any git command consumes it.
@@ -218,7 +282,7 @@ fi
 # so it never competes with the rc=128 fail-open, which keeps its own job
 # (a diff that fails for some reason OTHER than an unresolvable pin).
 if ! git rev-parse --verify --quiet "$HEAD_SHA^{commit}" >/dev/null 2>&1; then
-    echo "panel-first-pass ABORT - --head $HEAD_SHA does not resolve to a commit in this repo. This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Re-check the SHA step 1 printed (never expand a short hash by hand) and re-run /pr-check from step 1." >&2
+    echo "panel-first-pass ABORT - --head $HEAD_SHA does not resolve to a commit in this repo. This is an input-pin failure, NOT a critic outage: nothing was reviewed and nothing was recorded. Run step 0 (bash \"\$HIMMEL_REPO/scripts/cr/pr-check-step0.sh\") and call panel-first-pass.sh with no --head." >&2
     exit 7
 fi
 
@@ -263,7 +327,6 @@ db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch ||
 # shared origin-first resolver. A repository with no origin falls
 # back to its local branch; a repository that HAS origin must not silently
 # certify a stale cached ref when the refresh itself failed.
-review_root="$(git rev-parse --show-toplevel 2>/dev/null)" || review_root=""
 if [ -z "$review_root" ] || ! cr_fetch_base "$review_root" "$db"; then
     echo "panel-first-pass ABORT - could not fetch origin/$db, so the current diff base cannot be pinned safely. Nothing was reviewed and nothing was recorded. Re-run /pr-check from step 1." >&2
     exit 7

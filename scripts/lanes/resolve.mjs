@@ -402,7 +402,8 @@ function renderText(lanes, suppressed, bankStatuses = new Map()) {
     const quota = formatQuotaAnnotation(l.quota, status);
     const bank = l.quota?.bank ? ` ${formatBankAnnotation(status)}` : '';
     const dormant = l.dormant ? ` [DORMANT: ${l.dormant.reason} — opt in: ${l.dormant.optInEnv}=1]` : '';
-    return `- ${l.label} — ${l.bestFor} (${l.effort})` + (context ? ` ${context}` : '') + (quota ? ` ${quota}` : '') + bank + dormant;
+    const t3Instance = l.t3Instance ? ` [t3 instance: ${l.t3Instance}]` : '';
+    return `- ${l.label} — ${l.bestFor} (${l.effort})` + (context ? ` ${context}` : '') + (quota ? ` ${quota}` : '') + bank + dormant + t3Instance;
   });
   let out = `Available delegation lanes on this machine (${lanes.length}):\n` + rows.join('\n');
   if (suppressed.length > 0) {
