@@ -602,8 +602,9 @@ check_handoff_items_owed() {
             return 0
         }
         function flush() { if (num != "" && !covered(item)) printf "  item %s: %s\n", num, substr(first, 1, 160); num = "" }
-        /^[ \t]*(\*\*)?[0-9]+[.):](\*\*)?[ \t]/ { flush(); first = $0; sub(/^[ \t]*(\*\*)?/, "", first); num = first; sub(/[^0-9].*/, "", num); sub(/^[0-9]+[.):](\*\*)?[ \t]+/, "", first); item = first; next }
-        /^[ \t]*$/ || /^#/ || /^[-*+][ \t]/ { flush(); next }
+        /^[ \t]*(\*\*)?[0-9]+[.):](\*\*)?[ \t]/ { flush(); match($0, /^[ \t]*/); ind = RLENGTH; first = $0; sub(/^[ \t]*(\*\*)?/, "", first); num = first; sub(/[^0-9].*/, "", num); sub(/^[0-9]+[.):](\*\*)?[ \t]+/, "", first); item = first; next }
+        /^[ \t]*$/ || /^#/ { flush(); next }
+        /^[ \t]*[-*+][ \t]/ { match($0, /^[ \t]*/); if (RLENGTH <= ind) { flush(); next } }
         num != "" { item = item " " $0 }
         END { flush() }' "$1")" || { err "refusing to hand over: cannot read $1"; return 1; }
     [ -n "$unowed" ] || return 0
