@@ -590,5 +590,19 @@ mk11592 "$R_NEW" "- 04:05 LIVE — resumed" "$(q "$SUCC" "$PRED")"
 out="$(run)"
 has "control: the RESUME doc acknowledging makes the label quoted-back" "$out" "N92 quoted-back"
 
+G_OLD="$WORK/11592-N93-old.md"; G_GONE="$WORK/11592-N93-gone.md"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N93:Y-N93-aa:lock-N93:13`\n' > "$CDOC"
+mk11592 "$G_OLD" "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")" "- 04:00 WRAPPED — relaunched as N93b"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N93","lane":"native"},{"doc":"%s","label":"N93","lane":"native"}]}\n' "$G_OLD" "$G_GONE" > "$MAN"
+out="$(run)"
+has "a relaunch row whose doc is gone and holds no lock is no live session: the old acknowledgement stands" "$out" "N93 quoted-back"
+printf '# held\n' > "$WORK/11592-N93-lock.md"
+hold "$WORK/11592-N93-lock.md" "lock-N93"
+out="$(run)"; rc=$?
+has "a relaunch row whose doc is gone but whose lock token is held is live and unacknowledged: missing" "$out" "N93 missing"
+eq "and the set is INCOMPLETE (rc 1)" "$rc" 1
+[ -z "$HELD_TOKEN" ] || bash "$QL" release "$WORK/11592-N93-lock.md" "$HELD_TOKEN" >/dev/null 2>&1
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

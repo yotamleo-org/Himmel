@@ -220,12 +220,16 @@ chain_tail() {
 }
 
 resolve_live() {
-    local rdocs rdoc tail seen="" nl='
+    local rdocs rdoc tail gone="" seen="" nl='
 '
     live_n=0; live_doc=""
     rdocs="$(jq -r --arg l "$1" "$JQ_W"'[W[] | select(.label == $l)][] | .doc // empty' "$manifest" 2>/dev/null)" || return 1  # swallow-ok: a failed listing returns 1, the caller reads the worker as missing
     while IFS= read -r rdoc; do
-        [ -n "$rdoc" ] && [ -f "$rdoc" ] || continue
+        [ -n "$rdoc" ] || continue
+        if [ ! -f "$rdoc" ]; then
+            if [ -z "$gone" ] && lock_token_held "$2"; then live_n=$((live_n + 1)); live_doc="$rdoc"; gone=1; fi
+            continue
+        fi
         tail="$(chain_tail "$rdoc")"
         case "$nl$seen" in *"$nl$tail$nl"*) continue ;; esac
         seen="$seen$tail$nl"
@@ -244,7 +248,7 @@ while IFS= read -r label; do
         # only a lookup that succeeded can prove a worker has no doc: its lock token is passed on then
         if ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"; then  # swallow-ok: a failed lookup passes no token, so the worker is never proven closed by it
             token="$(entry_token "$label")"
-            resolve_live "$label" || row_fail=1
+            resolve_live "$label" "$token" || row_fail=1
         fi
     fi
     if [ "$row_fail" -eq 1 ]; then state=missing
