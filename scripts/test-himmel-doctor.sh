@@ -2862,6 +2862,10 @@ printf -- '---\nname: dead\n---\n\nRun scripts/no-such-dir-c104/gone.sh now.\nWo
 printf -- '---\nkey: "HIMMEL-9"\nstatusCategory: "Done"\n---\n' > "$t/mirror/HIMMEL/HIMMEL-9.md"
 out="$(c104_run)"
 if grepq "$out" -F 'WARN C104-memory-truth: 2 memory note finding(s)' && grepq "$out" -F 'check-memory-truth.sh lists them'; then pass "C104 a dead path and a closed wait -> WARN counting 2"; else fail "C104 dead path -> $out"; fi
+mv "$t/mirror" "$t/mirror.gone"
+out="$(c104_run)"
+if grepq "$out" -F 'WARN C104-memory-truth: 1 memory note finding(s)' && grepq "$out" -F 'the waited-on tickets were not checked'; then pass "C104 a dead path with no mirror -> WARN that names the unchecked tickets"; else fail "C104 no mirror -> $out"; fi
+mv "$t/mirror.gone" "$t/mirror"
 out="$(c104_run "$t/no-store")"
 if grepq "$out" 'INFO C104-memory-truth: check not run' && ! grepq "$out" 'OK   C104'; then pass "C104 no memory store -> INFO, not OK"; else fail "C104 no store -> $out"; fi
 rm -rf "$t"

@@ -104,7 +104,7 @@ if [ "${#notes[@]}" -gt 0 ]; then
         || { printf 'memory-truth: could not read every note in %s\n' "$MEMDIR" >&2; exit 2; }
 fi
 unverified=0
-if awk -F '\t' '$1 == "W" { f = 1 } END { exit !f }' "$TMP/raw" && ! { [ -d "$MIRROR" ] && [ -r "$MIRROR" ] && [ -x "$MIRROR" ]; }; then
+if awk -F '\t' '$1 == "W" { f = 1 } END { exit !f }' "$TMP/raw" && ! { [ -d "$MIRROR" ] && [ -x "$MIRROR" ]; }; then
     printf 'memory-truth: Jira mirror not found or unreadable at %s; the waited-on tickets were not checked\n' "$MIRROR" >&2
     unverified=1
 fi

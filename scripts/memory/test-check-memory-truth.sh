@@ -118,5 +118,6 @@ note dead.md 'Run `scripts/handover/console/console.sh next`.'
 out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
 assert_rc "T11 a dead path still reports without the mirror" 1 "$rc"
 ok "T11 the dead path is listed" has "$out" "dead-path dead.md:5 scripts/handover/console/console.sh"
+ok "T11 the unchecked tickets are still named" has "$out" "tickets were not checked"
 
 if [ "$FAILED" -eq 0 ]; then echo "ALL PASS"; else echo "SOME FAILED"; exit 1; fi
