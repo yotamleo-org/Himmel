@@ -103,10 +103,9 @@ if [ "${#notes[@]}" -gt 0 ]; then
     }' "$TMP/tree" "${notes[@]}" > "$TMP/raw" \
         || { printf 'memory-truth: could not read every note in %s\n' "$MEMDIR" >&2; exit 2; }
 fi
-unverified=0
+unverified=0; mirror_ok=1
 if awk -F '\t' '$1 == "W" { f = 1 } END { exit !f }' "$TMP/raw" && ! { [ -d "$MIRROR" ] && [ -x "$MIRROR" ]; }; then
-    printf 'memory-truth: Jira mirror not found or unreadable at %s; the waited-on tickets were not checked\n' "$MIRROR" >&2
-    unverified=1
+    unverified=1; mirror_ok=0
 fi
 awk -F '\t' '$1 == "P" { print $4 }' "$TMP/raw" | git -C "$REPO" check-ignore --no-index --stdin > "$TMP/ignored" 2>/dev/null
 awk -F '\t' 'FILENAME == ARGV[1] { ign[$0] = 1; next } !($1 == "P" && ($4 in ign))' "$TMP/ignored" "$TMP/raw" > "$TMP/kept"
@@ -116,14 +115,17 @@ while IFS=$'\t' read -r kind name lno what; do
     case "$kind" in
         P) printf 'dead-path %s:%s %s\n' "$name" "$lno" "$what"; found=$((found + 1)) ;;
         W)
-            [ "$unverified" = 0 ] || continue
+            [ "$mirror_ok" = 1 ] || continue
             mf="$MIRROR/${what%%-*}/$what.md"
-            if [ -f "$mf" ] && grep -q '^statusCategory: "Done"$' "$mf"; then
+            if { [ -d "${mf%/*}" ] && [ ! -x "${mf%/*}" ]; } || { [ -f "$mf" ] && [ ! -r "$mf" ]; }; then
+                unverified=1
+            elif [ -f "$mf" ] && grep -q '^statusCategory: "Done"$' "$mf"; then
                 printf 'closed-wait %s:%s %s (Done in the Jira mirror)\n' "$name" "$lno" "$what"; found=$((found + 1))
             fi ;;
     esac
 done < <(sort -u "$TMP/kept" | sort -t "$(printf '\t')" -k2,2 -k3,3n)
 
+[ "$unverified" = 0 ] || printf 'memory-truth: Jira mirror missing or unreadable at %s; waited-on tickets were not checked\n' "$MIRROR" >&2
 printf 'memory-truth: %d finding(s) in %d note(s) checked against %s; %d skipped as sensitive\n' \
     "$found" "${#notes[@]}" "$REF" "$skipped"
 [ "$found" -eq 0 ] || exit 1

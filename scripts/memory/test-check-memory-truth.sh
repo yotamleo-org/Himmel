@@ -113,7 +113,15 @@ echo "== T11 no mirror while a note waits on a ticket is a setup error, never a 
 fresh; note waits.md 'Eval work waits on HIMMEL-9032.'
 out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
 assert_rc "T11 rc" 2 "$rc"
-ok "T11 names the missing mirror" has "$out" "Jira mirror not found"
+ok "T11 names the missing mirror" has "$out" "Jira mirror missing or unreadable"
+chmod 000 "$MIRROR/HIMMEL/HIMMEL-9032.md" || { echo "FAIL T11 fixture chmod"; FAILED=1; }
+if [ -r "$MIRROR/HIMMEL/HIMMEL-9032.md" ]; then
+    echo "SKIP T11 unreadable ticket: this user can read a mode-000 file"
+else
+    run
+    assert_rc "T11 an unreadable ticket file is unverified, never open" 2 "$rc"
+fi
+chmod 644 "$MIRROR/HIMMEL/HIMMEL-9032.md"
 note dead.md 'Run `scripts/handover/console/console.sh next`.'
 out="$(MEMDIR="$MEM" MEMORY_TRUTH_REPO="$REPO" MEMORY_TRUTH_REF=main MEMORY_TRUTH_MIRROR="$SB/no-mirror" JIRA_PROJECT_KEY=HIMMEL bash "$CHECK" 2>&1)"; rc=$?
 assert_rc "T11 a dead path still reports without the mirror" 1 "$rc"

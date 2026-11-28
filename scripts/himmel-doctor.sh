@@ -6449,7 +6449,9 @@ check_c104_memory_truth() {
         1)
             n="$(printf '%s\n' "$out" | grep -cE '^(dead-path|closed-wait) ')"
             unchecked=""
-            case "$out" in *"tickets were not checked"*) unchecked="; the waited-on tickets were not checked (Jira mirror missing or unreadable)" ;; esac
+            if grep -q '^memory-truth: Jira mirror missing or unreadable' <<< "$out"; then
+                unchecked="; the waited-on tickets were not checked (Jira mirror missing or unreadable)"
+            fi
             emit WARN C104-memory-truth "$n memory note finding(s): a repo path missing on main, or a wait on a ticket the Jira mirror shows Done$unchecked" \
                 "bash $script lists them; correct each note against main and set its verified: date (docs/operator-conventions.md, Memory & CLAUDE.md hygiene)" ;;
         *) emit INFO C104-memory-truth "check not run: ${out%%$'\n'*}" ;;
