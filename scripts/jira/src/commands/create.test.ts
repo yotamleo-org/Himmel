@@ -1194,6 +1194,22 @@ describe('create — unplaced follow-up', () => {
       expect(queued()).toEqual([]);
     });
 
+    it('--follow-up-of --remainder stamps remainder, not residual', async () => {
+      parentIs({});
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(issueBody().fields['labels']).toContain('remainder');
+      expect(issueBody().fields['labels']).not.toContain('residual');
+    });
+
+    it.each([
+      ['--labels remainder without --remainder', ['--labels', 'remainder']],
+      ['--remainder with --labels residual-depth-1', ['--remainder', '--labels', 'residual-depth-1']],
+    ] as const)('%s holds both kinds and is refused before any Jira call', async (_n, extra) => {
+      await expect(file('--follow-up-of', 'HIMMEL-5', ...extra)).rejects.toThrow(/exit 1/);
+      expect(errs.join('\n')).toMatch(/a remainder and a review residual never share a ticket/);
+      expect(mockRequest).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['no --why', []],
       ['--why', ['--why', 'the rest of the parent']],
@@ -2776,6 +2792,13 @@ describe('create — duplicate gate', () => {
     play();
     await file(...FU);
     expect(created()).toBe(true);
+  });
+
+  it('the open follow-up search counts a remainder sibling as well as a residual one, and neither label is a topic term', async () => {
+    play();
+    await file(...FU);
+    expect(searches.some((j) => /linkedIssues/.test(j) && /labels in \(residual, remainder\)/.test(j))).toBe(true);
+    expect([...topicTerms('a title', '', ['remainder', 'residual']).keys()].filter((k) => k.startsWith('label:'))).toEqual([]);
   });
 
   it('--new-reason files it past the open follow-up and says so on stderr', async () => {
