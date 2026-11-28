@@ -25,11 +25,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
 default_cli=""
-case " $* " in
-    *" --jira-cli "*) ;;
-    *) common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
-       [ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js" ;;
-esac
+given_cli=0
+for a in "$@"; do
+    [ "$a" = --jira-cli ] && given_cli=1
+done
+if [ "$given_cli" = 0 ]; then
+    common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
+    [ -n "$common" ] && default_cli="${common%/.git}/scripts/jira/dist/index.js"
+fi
 
 python3 -I - "$HERE" "$default_cli" "$@" <<'PY'
 import atexit, json, os, re, shutil, subprocess, sys, tempfile
