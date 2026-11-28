@@ -54,8 +54,8 @@
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
 # real `## Current direction` block; 10 `next` refused: a launch still writes to the
 # predecessor's fleet manifest after the CHIEF_NEXT_LAUNCH_WAIT wait, or that manifest
-# is unreadable; 11 `next` or `wrap` refused: a numbered item of the predecessor's
-# HANDOFF carries no owed-row id (o<N>) and no closed mark; 18 `--project` refused: the project folder would not load the
+# is unreadable; 11 `next` or `wrap` refused: the HANDOFF cannot be read, or a numbered
+# item of it carries no owed-row id (o<N>) and no closed mark; 18 `--project` refused: the project folder would not load the
 # himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the launching shell starts it with one WARN).
 #
 # Platform guard: POSIX bash 3.2+; --arm launches through
@@ -591,7 +591,7 @@ check_handoff_items_owed() {
     fi
     unowed="$(KNOWN=" $known " CHECK_IDS="$check_ids" awk '
         function covered(s,   t, id) {
-            t = tolower(s); gsub(/not[ \t]+closed/, "", t)
+            t = tolower(s); gsub(/(not|never)[ \t]+([a-z]+[ \t]+)?([a-z]+[ \t]+)?closed/, "", t)
             if (t ~ /(^|[^a-z0-9_])closed([^a-z0-9_]|$)/) return 1
             while (match(t, /(^|[^a-z0-9_])o[1-9][0-9]*([^a-z0-9_]|$)/)) {
                 id = substr(t, RSTART, RLENGTH); gsub(/[^o0-9]/, "", id)
