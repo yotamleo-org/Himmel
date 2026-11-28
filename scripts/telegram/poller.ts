@@ -450,8 +450,19 @@ export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat
 // The MFA routes (afk sudo, config restore) run first; true = consumed.
 const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean =>
   !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
-const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): Promise<boolean> =>
-  mfaRouteConsumed(root, auto, msg) || (await auto?.peerReply?.(msg)) === true;
+const takenBeforeRouting = async (root: string, auto: AutoGate | undefined, msg: DeliveredMsg, consoleRoute?: ConsoleRouteGate): Promise<boolean> => {
+  if (mfaRouteConsumed(root, auto, msg)) { await noteHeldChiefReply(root, msg, consoleRoute); return true; }
+  return (await auto?.peerReply?.(msg)) === true;
+};
+
+const HELD_REPLY_NOTE = "the operator replied to your message, but the afk-sudo code gate held the reply as code-shaped, so its text is not shown. Ask the operator to resend it, with a number prefixed by text:";
+async function noteHeldChiefReply(root: string, msg: DeliveredMsg, consoleRoute?: ConsoleRouteGate): Promise<void> {
+  if (msg.reply_to_message_id == null || !consoleRoute?.authorize(msg.from, msg.chat_id)) return;
+  try {
+    const name = await consoleReplyTarget(root, msg.chat_id, msg.reply_to_message_id);
+    if (name) await routeToConsole(root, { from: msg.from, chat_id: msg.chat_id, reply_to_message_id: msg.reply_to_message_id }, { kind: "console", name, text: HELD_REPLY_NOTE, thread: true }, (chat, text, n) => consoleRoute.reply(chat, text, n, msg.message_id));
+  } catch (e) { logRedacted(`[poller] held-reply note not delivered: ${e}`); }
+}
 
 const PEER_NOTIFY_LINE1_RE = /^peer [a-z0-9][a-z0-9-]{0,31} · /;
 export const PEER_MOVED_LINE = "peer messages now arrive in your chat with the peer bridge bot: reply there; nothing was sent";
@@ -631,7 +642,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // `model:`-prefixed message from a member is answered, just not re-modelled).
   // An afk-sudo approve/deny line is consumed before anything else can queue it,
   // so its TOTP code never reaches an inbox or a run.
-  if (await takenBeforeRouting(root, auto, msg)) return;
+  if (await takenBeforeRouting(root, auto, msg, consoleRoute)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;
