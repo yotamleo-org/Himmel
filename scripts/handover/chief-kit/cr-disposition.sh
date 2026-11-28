@@ -29,6 +29,14 @@
 # names a KEY the jira CLI finds, and comes from a judge when the finding is a
 # Critical or the PR is a trust path. A judge source counts only when that qid's
 # signed verdict rules GO on <head-sha> for this PR (go_trust_verdict).
+# A finding the rows leave open, whose latest row is neither fix-here nor
+# unsigned, and that carries a deferred_to (a diff finding, perspective off), is
+# also cleared by a judge's own signed GO: a record of any qid go_trust_verdict
+# accepts at <head-sha>, not a delta no-op, whose ## Verdict block holds the line
+#   <fid>@<finding head> follow-up:<KEY> attest:ci-green,no-data-loss,no-weakened-guard
+# with <KEY> equal to the finding's deferred_to and known to Jira. A NO-GO for the
+# PR at or after <head-sha> (go_nogo_after) vetoes every such ruling, and a root,
+# scope, directory or record that route cannot read whole is exit 2.
 # --repo <owner/repo> reads the judge verdicts from that adopted repo's bucket (where
 # write-verdict.sh --repo writes them); without it, today's harness bucket.
 # The head-branch read rides the read token through scripts/lib/gh-read.sh, main when none is set.
@@ -202,29 +210,50 @@ jira_get() {
     fi
 }
 
-# judge_ruled <qid> <"fid@fhead disposition"> - a GO verdict for $SHA under the
-# judge's directory names this finding and this disposition on a line of its
-# own. A file counts only when its verdict line (the first under ## Verdict,
-# as go_trust_verdict parses it) is GO at $SHA, its pr: line (two lines below
-# it) names $PR, and its mac checks. The ruling counts only inside ## Verdict.
+# judge_ruled <qid> <"fid@fhead disposition"> [d1] - a GO verdict for $SHA under the judge's
+# directory, its mac checked over the bytes read once and its pr: line naming $PR, carries the
+# ruling on a line of its own inside ## Verdict. With d1 the second argument is "<fid>@<fhead>",
+# the line is the ruling line above (follow-up:<KEY> and all three attests), a record carrying
+# "delta: no-op" is skipped, and each <KEY> found is printed.
 judge_ruled() {
-    local scope f snap line name
+    local scope f snap text line name keys=""
     scope=$(go_verdict_scope "$ANCHOR" "$VREPO") || return 1
     for f in "$ROOT/$scope/verdicts/$1"/*.md; do
         [ -f "$f" ] || continue
-        snap=$(tr -d '\r' < "$f") || continue
-        line=$(printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }')
+        go_verdict_snapshot "$f" || continue
+        snap=$GO_VERDICT_SNAP
+        line=$(printf '%s' "$snap" | go_verdict_line /dev/stdin) || continue
         case "$line" in "**GO** for head \`$SHA\`"|"**GO** for head \`$SHA\`.") ;; *) continue ;; esac
         name=${f##*/}; name=${name%.md}
         go_verdict_mac_ok_text "$snap" "$scope" "$1" "$name" || continue
-        [ "$(printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }')" = "pr: $PR" ] || continue
-        printf '%s\n' "$snap" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } /^## / { p = 0 } p' | grep -qxF -e "$2" -e "- $2" && return 0
+        text=$(printf '%s' "$snap" | tr -d '\r')
+        [ "$(printf '%s\n' "$text" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF && !n { n = NR + 2; next } n && NR == n { print; exit }')" = "pr: $PR" ] || continue
+        if [ "${3:-}" != d1 ]; then
+            printf '%s\n' "$text" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } /^## / { p = 0 } p' | grep -qxF -e "$2" -e "- $2" && return 0
+            continue
+        fi
+        ! printf '%s\n' "$text" | grep -qx 'delta: no-op' || continue
+        keys="$keys$(printf '%s\n' "$text" | D1_PRE="$2 follow-up:" D1_SUF=" attest:$ATTEST_ALL" awk '
+            /^## Verdict[[:space:]]*$/ { p = 1; next }
+            /^## / { p = 0 }
+            !p { next }
+            {
+                l = $0; pre = ENVIRON["D1_PRE"]; suf = ENVIRON["D1_SUF"]
+                if (substr(l, 1, 2) == "- ") l = substr(l, 3)
+                if (length(l) <= length(pre) + length(suf)) next
+                if (substr(l, 1, length(pre)) != pre || substr(l, length(l) - length(suf) + 1) != suf) next
+                k = substr(l, length(pre) + 1, length(l) - length(pre) - length(suf))
+                if (k ~ /^[A-Z][A-Z0-9]*-[0-9]+$/) print k
+            }')"$'\n'
     done
-    return 1
+    [ "${3:-}" = d1 ] || return 1
+    keys=$(printf '%s' "$keys" | awk 'NF && !seen[$0]++')
+    [ -n "$keys" ] || return 1
+    printf '%s\n' "$keys"
 }
 
-# One TSV line per open crit/imp: id, finding head, sev, then the latest
-# disposition row for this PR at SHA (disposition, source, attest, mac) or "-".
+# One TSV line per open crit/imp: id, finding head, sev, the latest disposition row for this PR
+# at SHA (disposition, source, attest, mac) or "-", then deferred_to or "-", artifact, perspective.
 ROWS=$(LEDGER="$LEDGER" BRANCH="$BRANCH" PR="$PR" SHA="$SHA" AMEND_AUTH="$ANCHOR/scripts/cr/ledger-amend-auth.js" node -e '
 const fs=require("fs"),e=process.env,SEP=String.fromCharCode(31);
 const rows=[];
@@ -257,6 +286,7 @@ for(const [k,o] of findings){
   const f=[o.finding_id,k.split(SEP)[1],sev];
   if(d) f.push(d.set.disposition,d.source,(d.attest||[]).join(","),d.mac);
   else f.push("-","-","-","-");
+  f.push(o.deferred_to||"-",k.split(SEP)[3],k.split(SEP)[4]);
   // read collapses empty tab fields, so an empty one travels as "-".
   console.log(f.map(x=>String(x||"-").replace(/[\t\n]/g," ")).join("\t"));
 }
@@ -268,19 +298,59 @@ ROOT=""
 if . "$HERE/../../lib/handover-path.sh" 2>/dev/null; then
     ROOT=$(go_resolve_root "$ANCHOR" 2>/dev/null) || ROOT=""  # swallow-ok: empty ROOT fails every judge source closed
 fi
-bad=0 n=0
+VC_BUILT=0 VC_ERR="" VC_VETO=""
+VC_QIDS=()
+verdict_context() {
+    local scope vdir q f r qids
+    [ "$VC_BUILT" -eq 0 ] || { [ -z "$VC_ERR" ]; return; }
+    VC_BUILT=1
+    if [ -z "$ROOT" ]; then
+        # shellcheck disable=SC2031  # HANDOVER_DIR is the caller's; only the lib subshells reassign it
+        VC_ERR="cannot resolve the handover root (HANDOVER_DIR='${HANDOVER_DIR:-}') to read the judge verdicts at this head"
+        return 1
+    fi
+    if ! scope=$(go_verdict_scope "$ANCHOR" "$VREPO"); then
+        VC_ERR="cannot resolve the <user>/<bucket> verdict scope for repo '${VREPO:-this harness}' under $ROOT"
+        return 1
+    fi
+    vdir="$ROOT/$scope/verdicts"
+    r=0; VC_VETO=$(go_nogo_after "$vdir" "$PR" "$GATE_DIR" "$SHA") || r=$?
+    case "$r" in
+        0) VC_VETO="" ;;
+        1) q=$(printf '%s\n' "$VC_VETO" | sed -n 's/^verdict \([^ ]*\) holds a NO-GO .*/\1/p')
+           VC_VETO="judge ${q:-?} holds a NO-GO for PR $PR at or after $SHA" ;;
+        *) VC_ERR="$VC_VETO"; return 1 ;;
+    esac
+    r=0; qids=$(go_pr_qids "$vdir" "$PR" "$SHA") || r=$?
+    [ "$r" -eq 0 ] || { VC_ERR="$qids"; return 1; }
+    while IFS= read -r q; do
+        [ -n "$q" ] || continue
+        for f in "$vdir/$q"/*.md; do
+            [ -e "$f" ] || continue
+            go_verdict_snapshot "$f" || {
+                VC_ERR="the verdict record $f cannot be read whole (unreadable, empty or holds a NUL byte), so it may be a NO-GO"
+                return 1; }
+        done
+        go_trust_verdict "$ROOT" "$q" "$SHA" "$ANCHOR" "$PR" "$VREPO" >/dev/null && VC_QIDS+=("$q")
+    done <<EOF
+$qids
+EOF
+    return 0
+}
+
+bad=0 n=0 OUT=""
 TAB=$(printf '\t')
-while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
+while IFS="$TAB" read -r fid fhead sev disp src attest mac dto art persp; do
     [ -n "$fid" ] || continue
     [ "$attest" != "-" ] || attest=""
     n=$((n + 1))
-    why=""
+    why="" block=0
     if [ "$disp" = "-" ]; then
         why="deferred with no judge or chief disposition at this head (cr-disposition.sh record)"
     elif ! want=$(disp_mac "$fid" "$fhead" "$disp" "$src" "$attest") || [ "$want" != "$mac" ]; then
-        why="its disposition row carries no valid mac"
+        why="its disposition row carries no valid mac" block=1
     elif [ "$disp" = fix-here ]; then
-        why="the ruling is fix-here: fix it in this PR and amend the finding fixed"
+        why="the ruling is fix-here: fix it in this PR and amend the finding fixed" block=1
     elif [ "$attest" != "$ATTEST_ALL" ]; then
         why="follow-up without all three attests ($ATTEST_ALL)"
     else
@@ -307,15 +377,46 @@ while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
             [ "$(printf '%s\n' "$out" | head -n 1 | cut -f1)" = "$key" ] || why="follow-up ticket $key does not exist"
         fi
     fi
+    if [ -n "$why" ] && [ "$block" -eq 0 ] && [ "$dto" != "-" ] && [ "$art" = diff ] && [ "$persp" = off ]; then
+        [ "$disp" != "-" ] || why="no disposition row at this head"
+        if ! verdict_context; then
+            echo "cr-disposition: $VC_ERR (not a GitHub wait: repair the path or re-persist the record)" >&2
+            exit 2
+        fi
+        dkey=$(printf '%s' "$dto" | tr '[:lower:]' '[:upper:]')
+        vwhy="no judge GO at this head carries $fid@$fhead follow-up:$dkey attest:$ATTEST_ALL (brief the judge with the deferred key)"
+        hit="" other=""
+        if [ -n "$VC_VETO" ]; then
+            vwhy="$VC_VETO"
+        else
+            for q in ${VC_QIDS[@]+"${VC_QIDS[@]}"}; do
+                keys=$(judge_ruled "$q" "$fid@$fhead" d1) || continue
+                if printf '%s\n' "$keys" | grep -qxF -e "$dkey"; then hit=$q; break; fi
+                [ -n "$other" ] || other="judge $q rules follow-up:$(printf '%s\n' "$keys" | head -n 1) but the finding is deferred to $dkey"
+            done
+            if [ -n "$hit" ]; then
+                out=$(jira_get "$dkey") || out=""
+                if [ "$(printf '%s\n' "$out" | head -n 1 | cut -f1)" = "$dkey" ]; then
+                    OUT="${OUT}[OK] $sev $fid@$fhead: follow-up:$dkey (verdict:$hit)"$'\n'
+                    continue
+                fi
+                vwhy="follow-up ticket $dkey does not exist"
+            elif [ -n "$other" ]; then
+                vwhy="$other"
+            fi
+        fi
+        why="$why; $vwhy"
+    fi
     if [ -n "$why" ]; then
-        echo "[OPEN] $sev $fid@$fhead: $why"
+        OUT="${OUT}[OPEN] $sev $fid@$fhead: $why"$'\n'
         bad=$((bad + 1))
     else
-        echo "[OK] $sev $fid@$fhead: $disp ($src)"
+        OUT="${OUT}[OK] $sev $fid@$fhead: $disp ($src)"$'\n'
     fi
 done <<EOF
 $ROWS
 EOF
+printf '%s' "$OUT"
 if [ "$bad" -gt 0 ]; then
     echo "DISPOSITION FAIL ($bad of $n open Critical/Important finding(s) on $BRANCH)"
     exit 1

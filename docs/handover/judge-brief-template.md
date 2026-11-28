@@ -327,15 +327,19 @@ gathering, per the rule below.>
 > **Critical/Important disposition (PR-review judges).** A CR finding of
 > severity Critical or Important deferred on the PR's branch blocks the GO until
 > it has a disposition at this head. Rule one per finding: (a) **fix-here** — the
-> diff fixes it and its ledger verdict reads fixed or disproved; or (b)
-> **follow-up:<KEY>** — merge now with the follow-up ticket already filed, and
-> only if all three hold, each with evidence: CI green at this head, no data
-> loss, no weakened guard. If any of the three fails, the answer is (a). Name
-> each finding on a line of its own in your GO verdict, exactly
-> `<finding id>@<finding head> fix-here|follow-up:<KEY>` (a leading `- ` is
-> allowed): the GO gate accepts the disposition only when the judge's GO for
-> that head carries that line. The chief (never the worker) records it with `cr-disposition.sh record … --source
-> judge:<qid>`. A Critical always needs this judge ruling; so does an Important
+> diff fixes it and its ledger verdict reads fixed or disproved; until it does,
+> the finding stays open; or (b) **follow-up:<KEY>** — merge now with the
+> follow-up ticket already filed, and only if all three hold, each with
+> evidence: CI green at this head, no data loss, no weakened guard. If any of
+> the three fails, the answer is (a). For each follow-up you rule, say in your
+> evidence why each of the three holds, then put this line, alone on its line,
+> among the first lines of your evidence file, above any line that starts with `## `:
+> `<fid>@<fhead> follow-up:<KEY> attest:ci-green,no-data-loss,no-weakened-guard`
+> with `<fid>@<fhead>` copied from the finding's `[OPEN]` line of
+> `cr-disposition.sh check` and `<KEY>` its deferred ticket. go.sh reads that
+> line from your signed GO; the chief writes no row for your ruling. If a
+> deferral is not safe, rule NO-GO: leaving its line out only withholds your
+> own ruling. A Critical always needs this judge ruling; so does an Important
 > on a trust-path PR.
 
 > **First step: recorded ceilings (any question about a PR or a head).** Before
